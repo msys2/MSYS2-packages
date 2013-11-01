@@ -1,0 +1,110 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('gettext' 'gettext-devel' 'libgettextpo0' 'libasprintf0' 'libintl8')
+pkgver=0.18.3.1
+pkgrel=1
+pkgdesc="GNU internationalization library"
+arch=('i686' 'x86_64')
+url="http://www.gnu.org/software/gettext/"
+license=('GPL')
+groups=('base' 'base-devel')
+depends=('gcc-libs' 'sh')
+optdepends=('cvs: for autopoint tool')
+options=(!docs)
+install=gettext.install
+source=(ftp://ftp.gnu.org/pub/gnu/gettext/${pkgname}-${pkgver}.tar.gz{,.sig}
+        gettext-0.18.3.1-msys2.patch)
+md5sums=('3fc808f7d25487fc72b5759df7419e02'
+         'SKIP'
+         '2e5e4312411baa929759e3648a8733e6')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  patch -p1 -i $srcdir/gettext-0.18.3.1-msys2.patch
+  libtoolize --copy --force
+  ./autogen.sh --quick --skip-gnulib
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  ./configure --build=${CHOST} \
+    --prefix=/usr \
+	--with-included-libcroco \
+    --with-included-libunistring \
+    --with-included-libxml \
+    --with-included-glib \
+    --with-included-gettext \
+    --without-emacs \
+    --enable-shared \
+    --enable-static \
+    --disable-java \
+    --disable-native-java \
+    --disable-csharp \
+    --disable-openmp \
+	ac_cv_header_spawn_h=no
+
+  make
+  
+  make DESTDIR="${srcdir}/dest" install
+}
+
+check() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make check
+}
+
+package_gettext() {
+  mkdir -p ${pkgdir}/usr/{bin,lib,share}
+  
+  cp -rf ${srcdir}/dest/usr/lib/gettext ${pkgdir}/usr/lib/
+  
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  rm -rf ${pkgdir}/usr/bin/msys-asprintf-0.dll
+  rm -rf ${pkgdir}/usr/bin/msys-gettextpo-0.dll
+  rm -rf ${pkgdir}/usr/bin/msys-intl-8.dll
+  
+  cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/doc ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/info ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/locale ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
+
+}
+
+package_gettext-devel() {
+  pkgdesc="GNU Internationalization development utilities"
+  groups=('development')
+  options=('staticlibs')
+  
+  mkdir -p ${pkgdir}/usr/{bin,include,lib,share}
+  
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+  rm -rf ${pkgdir}/usr/lib/gettext
+  cp -rf ${srcdir}/dest/usr/share/gettext ${pkgdir}/usr/share/
+}
+
+package_libintl8() {
+  pkgdesc="GNU Internationalization runtime library"
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/msys-intl-8.dll ${pkgdir}/usr/bin/
+}
+
+package_libgettextpo0() {
+  pkgdesc="GNU Internationalization runtime library"
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/msys-gettextpo-0.dll ${pkgdir}/usr/bin/
+}
+
+package_libasprintf0() {
+  pkgdesc="C-style formatted output in C++ (runtime)"
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/msys-asprintf-0.dll ${pkgdir}/usr/bin/
+}
