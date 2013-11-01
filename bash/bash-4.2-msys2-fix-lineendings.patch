@@ -1,0 +1,214 @@
+diff -Naur bash-4.2-orig/bashline.c bash-4.2/bashline.c
+--- bash-4.2-orig/bashline.c	2013-03-11 23:06:08.000000000 +0000
++++ bash-4.2/bashline.c	2013-06-08 20:19:18.328125000 +0000
+@@ -706,7 +706,11 @@
+   char *temp, buffer[256], name[256];
+   register int i, start;
+ 
+-  file = fopen (filename, "r");
++#ifdef __MSYS__
++  file = fopen (filename, "rt");
++#else
++   file = fopen (filename, "r");
++#endif
+   if (file == 0)
+     return;
+ 
+diff -Naur bash-4.2-orig/builtins/fc.def bash-4.2/builtins/fc.def
+--- bash-4.2-orig/builtins/fc.def	2013-02-14 04:46:33.000000000 +0000
++++ bash-4.2/builtins/fc.def	2013-06-08 20:45:05.289062500 +0000
+@@ -579,6 +579,10 @@
+      FILE *stream;
+ {
+   register int c;
++#ifdef __MSYS__
++  register int d;
++#endif
++
+   int line_len = 0, lindex = 0;
+   char *line = (char *)NULL;
+ 
+@@ -589,12 +593,19 @@
+ 
+       if (c == '\n')
+ 	{
++#ifdef __MSYS__
++	  if (d == '\r')
++	    lindex--;
++#endif
+ 	  line[lindex++] = '\n';
+ 	  line[lindex++] = '\0';
+ 	  return (line);
+ 	}
+       else
+ 	line[lindex++] = c;
++#ifdef __MSYS__
++      d = c;
++#endif
+     }
+ 
+   if (!lindex)
+diff -Naur bash-4.2-orig/builtins/read.def bash-4.2/builtins/read.def
+--- bash-4.2-orig/builtins/read.def	2013-03-17 06:04:28.000000000 +0000
++++ bash-4.2/builtins/read.def	2013-06-09 03:09:51.450195300 +0000
+@@ -475,7 +475,7 @@
+       fflush (stderr);
+     }
+ 
+-#if defined (__CYGWIN__) && defined (O_TEXT)
++#if (defined (__CYGWIN__) && !defined(__MSYS__)) && defined (O_TEXT)
+   _setmode (0, O_TEXT);
+ #endif
+ 
+diff -Naur bash-4.2-orig/general.c bash-4.2/general.c
+--- bash-4.2-orig/general.c	2013-03-11 23:01:22.000000000 +0000
++++ bash-4.2/general.c	2013-06-08 20:51:14.466796800 +0000
+@@ -607,7 +607,8 @@
+ absolute_program (string)
+      const char *string;
+ {
+-  return ((char *)mbschr (string, '/') != (char *)NULL);
++  return ((char *)mbschr (string, '/') != (char *)NULL ||
++          (char *)mbschr (string, '\\') != (char *)NULL);
+ }
+ 
+ /* **************************************************************** */
+diff -Naur bash-4.2-orig/lib/readline/display.c bash-4.2/lib/readline/display.c
+--- bash-4.2-orig/lib/readline/display.c	2009-09-26 18:37:33.000000000 +0000
++++ bash-4.2/lib/readline/display.c	2013-06-08 20:52:39.540039000 +0000
+@@ -346,7 +346,10 @@
+   if (lp)
+     *lp = rl;
+   if (lip)
+-    *lip = last;
++    /* Hack: faking that the last character is invisible seems to work around
++       prompt display bugs.  I wish I knew what the real bug was...  */
++    *lip = r - ret;
++/*     *lip = last; */
+   if (niflp)
+     *niflp = invfl;
+   if  (vlp)
+diff -Naur bash-4.2-orig/parse.y bash-4.2/parse.y
+--- bash-4.2-orig/parse.y	2013-02-14 05:00:56.000000000 +0000
++++ bash-4.2/parse.y	2013-06-08 20:57:31.833007800 +0000
+@@ -1373,7 +1373,13 @@
+ static int
+ yy_getc ()
+ {
+-  return (*(bash_input.getter)) ();
++#ifdef __MSYS__
++  int c;
++  while ((c = (*(bash_input.getter)) ()) == '\r');
++  return c;
++#else
++   return (*(bash_input.getter)) ();
++#endif
+ }
+ 
+ /* Call this to unget C.  That is, to make C the next character
+diff -Naur bash-4.2-orig/shell.c bash-4.2/shell.c
+--- bash-4.2-orig/shell.c	2013-02-14 05:00:56.000000000 +0000
++++ bash-4.2/shell.c	2013-06-08 21:00:34.114257800 +0000
+@@ -1483,7 +1483,11 @@
+   default_buffered_input = fd;
+   SET_CLOSE_ON_EXEC (default_buffered_input);
+ #else /* !BUFFERED_INPUT */
+-  default_input = fdopen (fd, "r");
++#ifdef __MSYS__
++  default_input = fdopen (fd, "rt");
++#else
++   default_input = fdopen (fd, "r");
++#endif
+ 
+   if (default_input == 0)
+     {
+--- bash-4.2/stringlib.c.orig	2009-08-05 21:14:59.000000000 +0000
++++ bash-4.2/stringlib.c	2013-06-19 05:55:52.548136500 +0000
+@@ -270,7 +270,15 @@
+     {
+       if ((newlines_only && string[len] == '\n') ||
+ 	  (!newlines_only && whitespace (string[len])))
++      {
+ 	len--;
++#ifdef __MSYS__
++	if (newlines_only && string[len + 1] == '\n' && string[len] == '\r')
++	{
++	  len--;
++	}
++#endif
++      }
+       else
+ 	break;
+     }
+diff -Naur bash-4.2-orig/subst.c bash-4.2/subst.c
+--- bash-4.2-orig/subst.c	2013-02-14 05:43:09.000000000 +0000
++++ bash-4.2/subst.c	2013-06-08 21:16:56.551757800 +0000
+@@ -5245,6 +5245,15 @@
+ 	      /* If the newline was quoted, remove the quoting char. */
+ 	      if (istring[istring_index - 1] == CTLESC)
+ 		--istring_index;
++
++	      if (istring_index > 0 && istring[istring_index - 1] == '\r')
++	      {
++		--istring_index;
++
++	        /* If the caret return was quoted, remove the quoting char. */
++	        if (istring[istring_index - 1] == CTLESC)
++		  --istring_index;
++	      }
+ 	    }
+ 	  else
+ 	    break;
+diff -Naur bash-4.2-orig/variables.c bash-4.2/variables.c
+--- bash-4.2-orig/variables.c	2013-02-14 05:00:58.000000000 +0000
++++ bash-4.2/variables.c	2013-06-08 21:22:59.411132800 +0000
+@@ -2281,6 +2281,20 @@
+   SHELL_VAR *v;
+   VAR_CONTEXT *vc;
+ 
++#if defined (__MSYS__)
++  /* Remove trailing \r from value */
++  {
++    char *tpos;
++    if (value && *value)
++    {
++      tpos = strchr (value, '\0');
++      tpos--;
++      if (*tpos == '\r')
++	*tpos = '\0';
++    }
++  }
++#endif
++
+   if (shell_variables == 0)
+     create_variable_tables ();
+ 
+diff -Naur bash-4.2-orig/y.tab.c bash-4.2/y.tab.c
+--- bash-4.2-orig/y.tab.c	2011-01-04 14:57:56.000000000 +0000
++++ bash-4.2/y.tab.c	2013-06-08 21:26:27.458007800 +0000
+@@ -3685,7 +3685,13 @@
+ static int
+ yy_getc ()
+ {
+-  return (*(bash_input.getter)) ();
++#ifdef __MSYS__
++  int c;
++  while ((c = (*(bash_input.getter)) ()) == '\r');
++  return c;
++#else
++   return (*(bash_input.getter)) ();
++#endif
+ }
+ 
+ /* Call this to unget C.  That is, to make C the next character
+@@ -4555,6 +4561,10 @@
+ 
+ 	  RESIZE_MALLOCED_BUFFER (shell_input_line, i, 2, shell_input_line_size, 256);
+ 
++#ifdef __MSYS__
++	  if (c == '\r')
++	    continue;
++#endif
+ 	  if (c == EOF)
+ 	    {
+ 	      if (bash_input.type == st_stream)
