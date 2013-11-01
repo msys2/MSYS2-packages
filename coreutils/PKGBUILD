@@ -1,0 +1,78 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=coreutils
+pkgver=8.21
+pkgrel=1
+pkgdesc="The basic file, shell and text manipulation utilities of the GNU operating system"
+arch=('i686' 'x86_64')
+license=('GPL3')
+url="http://www.gnu.org/software/coreutils"
+groups=('base')
+depends=('gmp' 'libiconv' 'libintl8')
+install=${pkgname}.install
+source=(ftp://ftp.gnu.org/gnu/$pkgname/$pkgname-$pkgver.tar.xz{,.sig}
+        coreutils-8.21-cygwin.patch
+        coreutils-8.21-msys2.patch
+        coreutils-8.21-msys2-src.patch
+        coreutils-8.21-manifest.patch
+        coreutils-8.21-msys1-0x0d.patch
+        coreutils-8.21-msys2-add-to-gnulib.patch
+        coreutils-8.21-msys2-hasmntopt.patch
+        coreutils-8.21-fix-libstdbuf-link.patch
+        coreutils-8.21-fpending.patch
+        coreutils-8.21-fix-man.patch)
+md5sums=('065ba41828644eca5dd8163446de5d64'
+         'SKIP'
+         '4ab2ad21f209c1c0f009ab039c6d71cd'
+         'ca54684c00a17e9d4a8afcc2edb4d9e6'
+         'eda2d867321c21fb448101676ea223d1'
+         'a61ed48fd8b57e6a7894d4532f7a2bfd'
+         '9113031fae1116be3359fceadb15c6b7'
+         'f5c8937709481a814de66728dd596883'
+         'e47212e297fd6a1c95cd00cd4d99ea14'
+         'a8eef34fce0a141652c18aa8e5fb63aa'
+         '3dc4d70c3bf03575c4f9f7faa54e7d8c'
+         'be1c37f8f16d9695d9987c65c0fd3595')
+
+prepare() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  
+  patch -p1 -i $srcdir/coreutils-8.21-cygwin.patch
+  patch -p1 -i $srcdir/coreutils-8.21-msys2.patch
+  patch -p1 -i $srcdir/coreutils-8.21-msys2-src.patch
+  patch -p2 -i $srcdir/coreutils-8.21-manifest.patch
+  patch -p2 -i $srcdir/coreutils-8.21-msys1-0x0d.patch
+  patch -p2 -i $srcdir/coreutils-8.21-msys2-add-to-gnulib.patch
+  patch -p2 -i $srcdir/coreutils-8.21-msys2-hasmntopt.patch
+  patch -p2 -i $srcdir/coreutils-8.21-fix-libstdbuf-link.patch
+  patch -p1 -i $srcdir/coreutils-8.21-fpending.patch
+  patch -p1 -i $srcdir/coreutils-8.21-fix-man.patch
+}
+
+
+build() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  ./configure --build=${CHOST} \
+    --prefix=/usr \
+    --program-transform-name=s/kill/gkill/ \
+    --without-libintl-prefix \
+    --without-libiconv-prefix \
+    --enable-install-program=arch,hostname \
+    --enable-no-install-program=uptime \
+	ac_cv_header_spawn_h=no
+
+  make -j1
+}
+
+#check() {
+#  cd ${srcdir}/${pkgname}-${pkgver}
+#  make RUN_EXPENSIVE_TESTS=yes check
+#}
+
+package() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make DESTDIR=${pkgdir} install
+  
+  mkdir -p ${pkgdir}/usr/etc
+  install -m644 src/dircolors.hin ${pkgdir}/usr/etc/DIR_COLORS
+}
