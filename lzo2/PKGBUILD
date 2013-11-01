@@ -1,0 +1,63 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('liblzo2' 'liblzo2-devel')
+pkgver=2.06
+pkgrel=1
+pkgdesc="Portable lossless data compression library"
+arch=('i686' 'x86_64')
+url="http://www.oberhumer.com/opensource/lzo"
+license=('GPL')
+depends=()
+groups=('libraries' 'compression')
+source=(http://www.oberhumer.com/opensource/lzo/download/lzo-${pkgver}.tar.gz
+        lzo-2.06-msys2.patch)
+options=(!libtool)
+md5sums=('95380bd4081f85ef08c5209f4107e9f8'
+         '31afe76b979e209878f4e06f7fd2c012')
+
+prepare() {
+  cd "${srcdir}/lzo-${pkgver}"
+  patch -p1 -i ${srcdir}/lzo-2.06-msys2.patch
+}
+
+build() {
+  cd "${srcdir}/lzo-${pkgver}"
+  
+  ./configure --prefix=/usr --enable-shared
+  
+  make
+  make DESTDIR=${srcdir}/dest install
+
+  # build minilzo
+  # gcc $CFLAGS -fpic -Iinclude/lzo -o minilzo/minilzo.o -c minilzo/minilzo.c
+  # gcc $LDFLAGS -shared -o libminilzo.so.0 -Wl,-soname,libminilzo.so.0 minilzo/minilzo.o
+}
+
+check() {
+  cd "${srcdir}/lzo-${pkgver}"
+  make test # Larger test
+  make check
+}
+
+package_liblzo2() {
+  mkdir -p ${pkgdir}/usr
+  
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+
+  # install minilzo
+  # install -m 755 libminilzo.so.0 ${pkgdir}/usr/lib
+  # install -p -m 644 minilzo/minilzo.h ${pkgdir}/usr/include/lzo
+  # cd ${pkgdir}/usr/lib
+  # ln -s libminilzo.so.0 libminilzo.so
+}
+
+package_liblzo2-devel() {
+  pkgdesc="Liblzo2 headers and libraries"
+  options=('staticlibs')
+  
+  mkdir -p ${pkgdir}/usr
+  
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
