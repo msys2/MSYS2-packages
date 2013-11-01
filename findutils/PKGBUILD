@@ -1,0 +1,54 @@
+# $Id$
+# Maintainer:
+
+pkgname=findutils
+pkgver=4.5.12
+pkgrel=1
+pkgdesc="GNU utilities to locate files"
+arch=('i686' 'x86_64')
+license=('GPL3')
+groups=('base')
+depends=('libiconv' 'libintl8')
+url="http://www.gnu.org/software/findutils"
+source=(http://mirror.lihnidos.org/GNU/alpha/gnu/findutils//${pkgname}-${pkgver}.tar.gz{,.sig}
+        findutils-4.5.12-msys2.patch
+        findutils-4.5.12-fpending.patch)
+install=findutils.install
+sha1sums=('c6c3d5b921fba12cf8eeabbcffab2fc9ecb893e2'
+          'SKIP'
+          '6039ab6120015fc6c4146f6d246cc8cf526bcf90'
+          '1386136578ba032f5cb24f45700bf59867e6915d')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  patch -p1 -i $srcdir/findutils-4.5.12-msys2.patch
+  patch -p1 -i $srcdir/findutils-4.5.12-fpending.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  # Don't build or install locate because we use mlocate,
+  # which is a secure version of locate.
+  sed -i '/^SUBDIRS/s/locate//' Makefile.in
+
+  ./configure --build=${CHOST} \
+    --prefix=/usr \
+    DEFAULT_ARG_SIZE="(32u*1024)" \
+    --without-libiconv-prefix \
+    --without-libintl-prefix
+
+  make
+}
+
+check() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make check
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make DESTDIR=$pkgdir install
+}
