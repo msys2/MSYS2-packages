@@ -1,0 +1,89 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('libarchive' 'libarchive-devel' 'bsdcpio' 'bsdtar')
+pkgver=3.1.2
+pkgrel=1
+pkgdesc="library that can create and read several streaming archive formats"
+arch=('i686' 'x86_64')
+url="http://libarchive.org/"
+license=('BSD')
+groups=('libraries')
+depends=('libbz2' 'libexpat' 'libiconv' 'libxml2' 'liblzo2' 'openssl' 'liblzma' 'zlib' 'libnettle')
+makedepends=('libbz2-devel' 'libexpat-devel' 'libiconv-devel' 'libxml2-devel' 'liblzo2-devel' 'openssl-devel' 'liblzma-devel' 'zlib-devel' 'libnettle-devel')
+options=('strip' 'libtool')
+# provides=('libarchive.so')
+source=("http://libarchive.org/downloads/$pkgname-$pkgver.tar.gz"
+        '0001-mtree-fix-line-filename-length-calculation.patch'
+        'https://github.com/libarchive/libarchive/commit/22531545514043e04633e1c015c7540b9de9dbe4.patch'
+        'libarchive-3.1.2-acl.patch'
+        'libarchive-3.1.2-msys2.patch')
+md5sums=('efad5a503f66329bb9d2f4308b5de98a'
+         'fda89c145bbcd793a96b06b463ef6a72'
+         '6432f3360abd5645461a9c825c75b307'
+         'a5c995661c62429ceff2c23ea322393b'
+         'a358997999d64fd1cd014aea4b919df6')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+
+  # https://code.google.com/p/libarchive/issues/detail?id=301
+  # upstream commit e65bf287f0133426b26611fe3e80b51267987106
+  patch -Np1 -i "$srcdir/0001-mtree-fix-line-filename-length-calculation.patch"
+
+  # https://code.google.com/p/libarchive/issues/detail?id=329
+  patch -Np1 -i "$srcdir/libarchive-3.1.2-acl.patch"
+
+  # CVE-2013-0211
+  patch -Np1 -i "$srcdir/22531545514043e04633e1c015c7540b9de9dbe4.patch"
+  
+  # msysize patch
+  patch -Np1 -i "$srcdir/libarchive-3.1.2-msys2.patch"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+
+  ./configure --prefix=/usr
+  make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+
+  make check
+}
+
+package_bsdcpio() {
+  groups=('base')
+  
+  mkdir -p $pkgdir/usr/bin
+  mkdir -p $pkgdir/usr/share/man/man1/
+  cp -f ${srcdir}/dest/usr/bin/bsdcpio.exe $pkgdir/usr/bin/
+  cp -f ${srcdir}/dest/usr/share/man/man1/bsdcpio.* $pkgdir/usr/share/man/man1/
+}
+
+package_bsdtar() {
+  groups=('base')
+  
+  mkdir -p $pkgdir/usr/bin
+  mkdir -p $pkgdir/usr/share/man/man1/
+  cp -f ${srcdir}/dest/usr/bin/bsdtar.exe $pkgdir/usr/bin/
+  cp -f ${srcdir}/dest/usr/share/man/man1/bsdtar.* $pkgdir/usr/share/man/man1/
+}
+
+package_libarchive() {
+  mkdir -p $pkgdir/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll $pkgdir/usr/bin/
+
+  install -D -m644 ${srcdir}/${pkgname}-${pkgver}/COPYING $pkgdir/usr/share/licenses/libarchive/COPYING
+}
+
+package_libarchive-devel() {
+  groups=('development')
+  options=('staticlibs')
+  
+  mkdir -p $pkgdir/usr
+  cp -rf ${srcdir}/dest/usr/include $pkgdir/usr/
+  cp -rf ${srcdir}/dest/usr/lib $pkgdir/usr/
+}
