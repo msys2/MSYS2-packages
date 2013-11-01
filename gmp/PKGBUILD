@@ -1,0 +1,56 @@
+# Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+
+pkgname=('gmp' 'gmp-devel')
+pkgver=5.1.3
+pkgrel=1
+pkgdesc="A free library for arbitrary precision arithmetic"
+groups=('libraries')
+arch=('i686' 'x86_64')
+url="http://gmplib.org/"
+depends=()
+license=('LGPL3')
+install=gmp.install
+source=(ftp://ftp.gmplib.org/pub/gmp-${pkgver}/gmp-${pkgver}.tar.xz{,.sig}
+		5.1.1-libtool22.patch
+		gmp-5.1.2-msys2.patch)
+md5sums=('e5fe367801ff067b923d1e6a126448aa'
+         'SKIP'
+         '0c1c9dd4bab4ff3436804b97d7691ad1'
+         '2711f9a5426431c6a18db9518b97e4cf')
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  
+  patch -p2 -i ${srcdir}/5.1.1-libtool22.patch
+  patch -p1 -i ${srcdir}/gmp-5.1.2-msys2.patch
+  
+  autoreconf -fi
+
+  ./configure --build=${CHOST} \
+    --prefix=/usr --enable-cxx \
+    --enable-shared --disable-static
+  make
+  
+  make DESTDIR="${srcdir}/dest" install
+}
+
+check() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make check
+}
+
+package_gmp() {
+  mkdir -p ${pkgdir}/usr
+  cp -rf $srcdir/dest/usr/bin ${pkgdir}/usr/
+  cp -rf $srcdir/dest/usr/share ${pkgdir}/usr/
+}
+
+package_gmp-devel() {
+  groups=('development')
+  options=(staticlibs)
+  pkgdesc="GMP headers and libraries"
+  
+  mkdir -p ${pkgdir}/usr
+  cp -rf $srcdir/dest/usr/include ${pkgdir}/usr/
+  cp -rf $srcdir/dest/usr/lib ${pkgdir}/usr/
+}
