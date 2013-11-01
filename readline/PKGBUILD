@@ -1,0 +1,68 @@
+# Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+
+pkgname=('readline' 'readline-devel')
+_basever=6.2
+_patchlevel=004 #prepare for some patches
+pkgver=$_basever.$_patchlevel
+pkgrel=1
+pkgdesc="GNU readline library"
+arch=('i686' 'x86_64')
+groups=('libraries')
+url="http://tiswww.case.edu/php/chet/readline/rltop.html"
+license=('GPL')
+depends=('ncurses')
+makedepends=('ncurses-develop')
+#backup=('etc/inputrc')
+options=('!emptydirs')
+install=readline.install
+source=(http://ftp.gnu.org/gnu/readline/readline-$_basever.tar.gz{,.sig}
+        readline-6.2-msys2.patch)
+if [ $_patchlevel -gt 00 ]; then
+    for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
+        source=(${source[@]} http://ftp.gnu.org/gnu/readline/readline-$_basever-patches/readline${_basever//./}-$(printf "%03d" $p){,.sig})
+    done
+fi
+md5sums=('67948acb2ca081f23359d0256e9a271c'
+         'SKIP'
+         '0e3392c9789a9cd8284218d515fa8f03'
+         '28471035c59eb84d51ee10fbb86fe84b'
+         'SKIP'
+         '6504600fe90dc409deb2397cfad42fc9'
+         'SKIP'
+         '1d39e234cc103b8b4684908c2232a3f7'
+         'SKIP'
+         'b93c1cc3581aa8a2c23a37795f145d93'
+         'SKIP')
+
+build() {
+  cd ${srcdir}/${pkgname}-$_basever
+  for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
+    msg "applying patch readline${_basever//./}-$(printf "%03d" $p)"
+    patch -p1 -i $srcdir/readline${_basever//./}-$(printf "%03d" $p)
+  done
+  patch -p1 -i $srcdir/readline-6.2-msys2.patch
+
+  # Remove RPATH from shared objects (FS#14366)
+  sed -i 's|-Wl,-rpath,$(libdir) ||g' support/shobj-conf
+
+  ./configure --prefix=/usr --with-curses bash_cv_termcap_lib=libncurses
+  make
+  
+  make DESTDIR=$srcdir/dest install
+}
+
+package_readline() {
+  mkdir -p ${pkgdir}/usr
+  cp -rf $srcdir/dest/usr/bin ${pkgdir}/usr/
+  cp -rf $srcdir/dest/usr/share ${pkgdir}/usr/
+}
+
+package_readline-devel() {
+  groups=('development')
+  options=(staticlibs)
+  pkgdesc="readline headers and libraries"
+  
+  mkdir -p ${pkgdir}/usr
+  cp -rf $srcdir/dest/usr/include ${pkgdir}/usr/
+  cp -rf $srcdir/dest/usr/lib ${pkgdir}/usr/
+}
