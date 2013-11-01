@@ -1,0 +1,5316 @@
+diff -Naur bzip2-1.0.6-orig/aclocal.m4 bzip2-1.0.6/aclocal.m4
+--- bzip2-1.0.6-orig/aclocal.m4	1970-01-01 00:00:00.000000000 +0000
++++ bzip2-1.0.6/aclocal.m4	2013-02-13 04:57:15.000000000 +0000
+@@ -0,0 +1,115 @@
++# aclocal.m4 -*- Autoconf -*- vim: filetype=config
++# ------------------------------------------------------------------
++# This file is part of bzip2/libbzip2, a program and library for
++# lossless, block-sorting data compression.
++#
++# bzip2/libbzip2 version 1.0.5 of 10 December 2007
++# Copyright (C) 1996-2007 Julian Seward <jseward@bzip.org>
++#
++# File: aclocal.m4 for autoconf configuration
++# Contributed by Keith Marshall <keithmarshall@users.sourceforge.net>
++#
++# Please read the WARNING, DISCLAIMER and PATENTS sections in the 
++# README file.
++#
++# This program is released under the terms of the license contained
++# in the file LICENSE.
++# ------------------------------------------------------------------
++
++# BZIP2_AC_WINDOWS_HOST
++# ---------------------
++# Check if the runtime platform is a native MS-Windows host.
++# FIXME: is checking _WIN64 an appropriate choice, for 64-bit Windows?
++# Because we only need to know whether the host is (native) win32
++# or not, we can avoid the expensive AC_CANONICAL_HOST checks.
++#
++AC_DEFUN([BZIP2_AC_WINDOWS_HOST],
++[AC_CACHE_CHECK([whether we are building for an MS-Windows host],
++ [bzip2_cv_windows_host],
++ AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
++@%:@if defined _WIN32 || defined _WIN64
++ choke me
++@%:@endif]])],
++[bzip2_cv_windows_host=no], [bzip2_cv_windows_host=yes]))dnl
++])# BZIP2_AC_WINDOWS_HOST
++
++# BZIP2_AC_CYGWIN_HOST
++# ---------------------
++# Check if the runtime platform is a cygwin host.
++# Because we only need to know whether the host is cygwin
++# or not, we can avoid the expensive AC_CANONICAL_HOST checks.
++#
++AC_DEFUN([BZIP2_AC_CYGWIN_HOST],
++[AC_CACHE_CHECK([whether we are building for a cygwin host],
++ [bzip2_cv_cygwin_host],
++ AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
++@%:@if defined __CYGWIN__
++ choke me
++@%:@endif]])],
++[bzip2_cv_cygwin_host=no], [bzip2_cv_cygwin_host=yes]))dnl
++])# BZIP2_AC_CYGWIN_HOST
++
++# BZIP2_AC_ENABLE_SHARED
++# ----------------------
++# Check if the user is configuring with `--enable-shared';
++# if yes, activate shared library build support as appropriate,
++# for the host on which this build is to be deployed.
++#
++AC_DEFUN([BZIP2_AC_ENABLE_SHARED],
++[AC_REQUIRE([BZIP2_AC_WINDOWS_HOST])dnl
++ AC_REQUIRE([BZIP2_AC_CYGWIN_HOST])dnl
++ AC_MSG_CHECKING([for make goal to build shared libraries])
++ AC_ARG_ENABLE([shared],
++ [AS_HELP_STRING([--enable-shared],
++  [enable building as a shared library @<:@default=no@:>@])],
++ [if test "x$enable_shared" = xyes
++  then
++    if test "x${bzip2_cv_windows_host}" = xyes ||
++       test "x${bzip2_cv_cygwin_host}" = xyes
++    then
++      enable_shared="all-dll-shared"
++    else
++      enable_shared="all-bzip2-shared"
++    fi
++  else
++    enable_shared="none"
++  fi
++ ], [enable_shared="none"])dnl
++ AC_MSG_RESULT([${enable_shared}])
++ [test "x$enable_shared" = xnone && enable_shared=""]
++ AC_SUBST([enable_shared])dnl
++])# BZIP2_AC_ENABLE_SHARED
++
++# BZIP2_AC_SUBST_DLLVER
++# ---------------------
++# Establish the ABI version number for MS-Windows shared libraries;
++# this is derived from the universal SO_VER and SO_AGE properties, as
++# specified in `Makefile.in'; (nominally, it is SO_VER - SO_AGE, but
++# see the note in `Makefile.in', explaining why, in this instance,
++# we use one more than that nominal value for $host = mingw32)
++#
++AC_DEFUN([BZIP2_AC_SUBST_DLLVER],
++[AC_REQUIRE([BZIP2_AC_WINDOWS_HOST])dnl
++ AC_MSG_CHECKING([for API version of DLL shared libraries])
++ [SO_VER=`FS=' 	';sed -n "/^[$FS]*SO_VER[$FS]*=[$FS]*/s///p" ${srcdir}/Makefile.in`]
++ [SO_AGE=`FS=' 	';sed -n "/^[$FS]*SO_AGE[$FS]*=[$FS]*/s///p" ${srcdir}/Makefile.in`]
++ [dllver=`expr ${SO_VER} - ${SO_AGE}`
++  test "x$bzip2_cv_windows_host" = xyes && dllver=`expr 1 + ${SO_VER} - ${SO_AGE}`]
++ AC_SUBST([DLLVER], [${dllver}])
++ AC_MSG_RESULT([${dllver}])dnl
++])# BZIP2_AC_SUBST_DLLVER
++
++# BZIP2_AC_SUBST_DLLNAME
++# ----------------------
++# Establish the base name MS-Windows or cygwin shared libraries;
++#
++AC_DEFUN([BZIP2_AC_SUBST_DLLNAME],
++[AC_REQUIRE([BZIP2_AC_WINDOWS_HOST])dnl
++ AC_MSG_CHECKING([for base name of DLL shared libraries])
++ [dllname=msys-bz2
++  test "x$bzip2_cv_windows_host" = xyes && dllname=libbz2]
++ AC_SUBST([DLLNAME], [${dllname}])
++ AC_MSG_RESULT([${dllname}])dnl
++])# BZIP2_AC_SUBST_DLLNAME
++
++# aclocal.m4: end of file
+diff -Naur bzip2-1.0.6-orig/bzgrep bzip2-1.0.6/bzgrep
+--- bzip2-1.0.6-orig/bzgrep	2007-01-03 02:00:55.000000000 +0000
++++ bzip2-1.0.6/bzgrep	2013-02-13 04:51:08.000000000 +0000
+@@ -1,27 +1,75 @@
+ #!/bin/sh
+ 
+-# Bzgrep wrapped for bzip2, 
+-# adapted from zgrep by Philippe Troin <phil@fifi.org> for Debian GNU/Linux.
+-## zgrep notice:
+-## zgrep -- a wrapper around a grep program that decompresses files as needed
+-## Adapted from a version sent by Charles Levert <charles@comm.polymtl.ca>
++# bzgrep -- a wrapper around a grep program that decompresses files as needed
++# Adapted from zgrep of the Debian gzip package by Anibal Monsalve Salazar. 
++# Adapted from a version sent by Charles Levert <charles@comm.polymtl.ca>
++
++# Copyright (C) 1998, 2001, 2002 Free Software Foundation
++# Copyright (C) 1993 Jean-loup Gailly
++
++# This program is free software; you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation; either version 2, or (at your option)
++# any later version.
++
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++
++# You should have received a copy of the GNU General Public License
++# along with this program; if not, write to the Free Software
++# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
++# 02111-1307, USA.
+ 
+ PATH="/usr/bin:$PATH"; export PATH
+ 
+-prog=`echo $0 | sed 's|.*/||'`
++prog=`echo "$0" | sed 's|.*/||'`
+ case "$prog" in
+ 	*egrep)	grep=${EGREP-egrep}	;;
+ 	*fgrep)	grep=${FGREP-fgrep}	;;
+ 	*)	grep=${GREP-grep}	;;
+ esac
++
+ pat=""
++after_dash_dash=""
++files_with_matches=0
++files_without_matches=0
++no_filename=0
++with_filename=0
++
+ while test $# -ne 0; do
+-  case "$1" in
+-  -e | -f) opt="$opt $1"; shift; pat="$1"
++  case "$after_dash_dash$1" in
++  --d* | --rec*)	echo >&2 "$0: $1: option not supported"; exit 2;;
++  --files-with-*)	files_with_matches=1;;
++  --files-witho*)	files_without_matches=1;;
++  --no-f*)	no_filename=1;;
++  --wi*)	with_filename=1;;
++  --*)	;;
++  -*)
++	case "$1" in
++	-*[dr]*) echo >&2 "$0: $1: option not supported"; exit 2;;
++	esac
++	case "$1" in
++	-*H*)	with_filename=1;;
++	esac
++	case "$1" in
++	-*h*)	no_filename=1;;
++	esac
++	case "$1" in
++	-*L*)	files_without_matches=1;;
++	esac
++	case "$1" in
++	-*l*)	files_with_matches=1;;
++	esac;;
++  esac
++  case "$after_dash_dash$1" in
++  -[ef])   opt="$opt $1"; shift; pat="$1"
+            if test "$grep" = grep; then  # grep is buggy with -e on SVR4
+              grep=egrep
+            fi;;
+-  -A | -B) opt="$opt $1 $2"; shift;;
++  -[ABCdm])opt="$opt $1 $2"; shift;;
++  --)      opt="$opt $1"; after_dash_dash=1;;
+   -*)	   opt="$opt $1";;
+    *)      if test -z "$pat"; then
+ 	     pat="$1"
+@@ -35,19 +83,9 @@
+ if test -z "$pat"; then
+   echo "grep through bzip2 files"
+   echo "usage: $prog [grep_options] pattern [files]"
+-  exit 1
++  exit 2
+ fi
+ 
+-list=0
+-silent=0
+-op=`echo "$opt" | sed -e 's/ //g' -e 's/-//g'`
+-case "$op" in
+-  *l*) list=1
+-esac
+-case "$op" in
+-  *h*) silent=1
+-esac
+-
+ if test $# -eq 0; then
+   bzip2 -cdfq | $grep $opt "$pat"
+   exit $?
+@@ -55,21 +93,40 @@
+ 
+ res=0
+ for i do
+-  if test -f "$i"; then :; else if test -f "$i.bz2"; then i="$i.bz2"; fi; fi
+-  if test $list -eq 1; then
+-    bzip2 -cdfq "$i" | $grep $opt "$pat" 2>&1 > /dev/null && echo $i
+-    r=$?
+-  elif test $# -eq 1 -o $silent -eq 1; then
+-    bzip2 -cdfq "$i" | $grep $opt "$pat"
+-    r=$?
+-  else
+-    j=${i//\\/\\\\}
+-    j=${j//|/\\|}
+-    j=${j//&/\\&}
+-    j=`printf "%s" "$j" | tr '\n' ' '`
+-    bzip2 -cdfq "$i" | $grep $opt "$pat" | sed "s|^|${j}:|"
+-    r=$?
+-  fi
+-  test "$r" -ne 0 && res="$r"
++  bzip2 -cdfq -- "$i" |
++    if test $files_with_matches -eq 1; then
++      $grep $opt "$pat" > /dev/null && printf "%s\n" "$i"
++    elif test $files_without_matches -eq 1; then
++      $grep $opt "$pat" > /dev/null || printf "%s\n" "$i"
++    elif test $with_filename -eq 0 && { test $# -eq 1 || test $no_filename -eq 1; }; then
++      $grep $opt "$pat"
++    else
++      i=$(echo "$i" | sed -e 's/[\\|&]/\\&/g')
++      if test $with_filename -eq 1; then
++	sed_script="s|^[^:]*:|${i}:|"
++      else
++	sed_script="s|^|${i}:|"
++      fi
++      # Hack adapted from GPLed code at
++      # http://home.comcast.net/~j.p.h/cus-faq-2
++      # Has the same effect as the following two lines of bash:
++      #
++      # $grep $opt "$pat" | sed "$sed_script"
++      # exit ${PIPESTATUS[0]}
++      #
++      # Inside the `...`, fd4 goes to the pipe whose other end is read
++      # and passed to eval; fd1 is the normal standard output
++      # preserved the line before with exec 3>&1
++      exec 3>&1
++      eval `
++      exec 4>&1 >&3 3>&-
++      {
++       $grep $opt "$pat" 4>&-; echo "r=$?;" >&4
++      } | sed "$sed_script"
++      `
++      exit $r
++    fi
++  r=$?
++  test $res -lt $r && res=$r
+ done
+ exit $res
+diff -Naur bzip2-1.0.6-orig/bzip2.1 bzip2-1.0.6/bzip2.1
+--- bzip2-1.0.6-orig/bzip2.1	2010-09-11 09:35:11.000000000 +0000
++++ bzip2-1.0.6/bzip2.1	2013-02-13 04:51:08.000000000 +0000
+@@ -235,6 +235,10 @@
+ Suppress non-essential warning messages.  Messages pertaining to
+ I/O errors and other critical events will not be suppressed.
+ .TP
++.B \-p \-\-show\-progress
++Show percentage of input\-file done and while compressing show the percentage
++of the original file the new file is.
++.TP
+ .B \-v --verbose
+ Verbose mode -- show the compression ratio for each file processed.
+ Further \-v's increase the verbosity level, spewing out lots of
+diff -Naur bzip2-1.0.6-orig/bzip2.c bzip2-1.0.6/bzip2.c
+--- bzip2-1.0.6-orig/bzip2.c	2010-09-10 23:04:53.000000000 +0000
++++ bzip2-1.0.6/bzip2.c	2013-02-13 04:51:08.000000000 +0000
+@@ -53,6 +53,7 @@
+ #include <signal.h>
+ #include <math.h>
+ #include <errno.h>
++#include <time.h>
+ #include <ctype.h>
+ #include "bzlib.h"
+ 
+@@ -128,7 +129,7 @@
+ #if BZ_LCCWIN32
+ #   include <io.h>
+ #   include <fcntl.h>
+-#   include <sys\stat.h>
++#   include <sys/stat.h>
+ 
+ #   define NORETURN       /**/
+ #   define PATH_SEP       '\\'
+@@ -209,6 +210,7 @@
+ Char    progNameReally[FILE_NAME_LEN];
+ FILE    *outputHandleJustInCase;
+ Int32   workFactor;
++Char    showProgress;
+ 
+ static void    panic                 ( const Char* ) NORETURN;
+ static void    ioError               ( void )        NORETURN;
+@@ -334,6 +336,12 @@
+    UInt32  nbytes_in_lo32, nbytes_in_hi32;
+    UInt32  nbytes_out_lo32, nbytes_out_hi32;
+    Int32   bzerr, bzerr_dummy, ret;
++   double  fileSize = 0; /* initialized to make the compiler stop crying */
++                         /* double because big files might otherwhise give
++                          * overflows. not long long since not all compilers
++                          * support that one
++                          */
++   time_t  startTime, currentTime;
+ 
+    SET_BINARY_MODE(stream);
+    SET_BINARY_MODE(zStream);
+@@ -341,12 +349,21 @@
+    if (ferror(stream)) goto errhandler_io;
+    if (ferror(zStream)) goto errhandler_io;
+ 
++   if ((srcMode == SM_F2F || srcMode == SM_F2O) && showProgress == True) {
++      (void)fseek(stream, 0, SEEK_END);
++      fileSize = ftello(stream);
++      rewind(stream);
++      if (verbosity >= 1)
++         fprintf(stderr, "Input-file size: %ld\n", (long)fileSize);
++   }
++
+    bzf = BZ2_bzWriteOpen ( &bzerr, zStream, 
+                            blockSize100k, verbosity, workFactor );   
+    if (bzerr != BZ_OK) goto errhandler;
+ 
+    if (verbosity >= 2) fprintf ( stderr, "\n" );
+ 
++   time(&startTime);
+    while (True) {
+ 
+       if (myfeof(stream)) break;
+@@ -355,6 +372,22 @@
+       if (nIbuf > 0) BZ2_bzWrite ( &bzerr, bzf, (void*)ibuf, nIbuf );
+       if (bzerr != BZ_OK) goto errhandler;
+ 
++      if ((srcMode == SM_F2F || srcMode == SM_F2O) && showProgress == True) {
++         time(&currentTime);
++
++         if ((currentTime - startTime) > 1) { /* show progress every 2 seconds */
++            double curInPos = ftello(stream);
++            double curOutPos = ftello(zStream);
++
++            startTime = currentTime;
++
++            fprintf(stderr, "%.2f%% done", (curInPos * 100.0) / fileSize);
++            if (srcMode == SM_F2F)
++               fprintf(stderr, ", new size: %.2f%%", (curOutPos * 100.0) / curInPos);
++
++            fprintf(stderr, "    \r");
++         }
++      }
+    }
+ 
+    BZ2_bzWriteClose64 ( &bzerr, bzf, 0, 
+@@ -439,6 +472,8 @@
+    Int32   nUnused;
+    void*   unusedTmpV;
+    UChar*  unusedTmp;
++   double  fileSize = 0; /* initialized to make the compiler stop crying */
++   time_t  startTime, currentTime;
+ 
+    nUnused = 0;
+    streamNo = 0;
+@@ -446,9 +481,19 @@
+    SET_BINARY_MODE(stream);
+    SET_BINARY_MODE(zStream);
+ 
++   if ((srcMode == SM_F2F || srcMode == SM_F2O) && showProgress == True) {
++      off_t dummy = ftello(zStream);
++      (void)fseeko(zStream, 0, SEEK_END);
++      fileSize = ftello(zStream);
++      (void)fseeko(zStream, dummy, SEEK_SET);
++      if (verbosity >= 1)
++         fprintf(stderr, "Input-file size: %ld\n", (long)fileSize);
++   }
++
+    if (ferror(stream)) goto errhandler_io;
+    if (ferror(zStream)) goto errhandler_io;
+ 
++   time(&startTime);
+    while (True) {
+ 
+       bzf = BZ2_bzReadOpen ( 
+@@ -464,6 +509,16 @@
+          if ((bzerr == BZ_OK || bzerr == BZ_STREAM_END) && nread > 0)
+             fwrite ( obuf, sizeof(UChar), nread, stream );
+          if (ferror(stream)) goto errhandler_io;
++
++         if ((srcMode == SM_F2F || srcMode == SM_F2O) && showProgress == True) {
++            time(&currentTime);
++            if ((currentTime - startTime) >= 2) {
++               double curInPos = ftello(zStream);
++               startTime = currentTime;
++
++               fprintf(stderr, "%.2f%% done\r", (curInPos * 100.0) / fileSize);
++            }
++         }
+       }
+       if (bzerr != BZ_STREAM_END) goto errhandler;
+ 
+@@ -1132,8 +1187,8 @@
+ static 
+ void compress ( Char *name )
+ {
+-   FILE  *inStr;
+-   FILE  *outStr;
++   FILE  *inStr = NULL;
++   FILE  *outStr = NULL;
+    Int32 n, i;
+    struct MY_STAT statBuf;
+ 
+@@ -1313,8 +1368,8 @@
+ static 
+ void uncompress ( Char *name )
+ {
+-   FILE  *inStr;
+-   FILE  *outStr;
++   FILE  *inStr = NULL;
++   FILE  *outStr = NULL;
+    Int32 n, i;
+    Bool  magicNumberOK;
+    Bool  cantGuess;
+@@ -1511,7 +1566,7 @@
+ static 
+ void testf ( Char *name )
+ {
+-   FILE *inStr;
++   FILE *inStr = NULL;
+    Bool allOK;
+    struct MY_STAT statBuf;
+ 
+@@ -1803,6 +1858,7 @@
+    deleteOutputOnInterrupt = False;
+    exitValue               = 0;
+    i = j = 0; /* avoid bogus warning from egcs-1.1.X */
++   showProgress            = False;
+ 
+    /*-- Set up signal handlers for mem access errors --*/
+    signal (SIGSEGV, mySIGSEGVorSIGBUScatcher);
+@@ -1880,6 +1936,7 @@
+                case 'k': keepInputFiles   = True; break;
+                case 's': smallMode        = True; break;
+                case 'q': noisy            = False; break;
++               case 'p': showProgress     = True; break;
+                case '1': blockSize100k    = 1; break;
+                case '2': blockSize100k    = 2; break;
+                case '3': blockSize100k    = 3; break;
+@@ -1916,6 +1973,7 @@
+       if (ISFLAG("--keep"))              keepInputFiles   = True;    else
+       if (ISFLAG("--small"))             smallMode        = True;    else
+       if (ISFLAG("--quiet"))             noisy            = False;   else
++      if (ISFLAG("--show-progress"))     showProgress     = True;    else
+       if (ISFLAG("--version"))           license();                  else
+       if (ISFLAG("--license"))           license();                  else
+       if (ISFLAG("--exponential"))       workFactor = 1;             else 
+diff -Naur bzip2-1.0.6-orig/bzip2recover.c bzip2-1.0.6/bzip2recover.c
+--- bzip2-1.0.6-orig/bzip2recover.c	2010-09-10 23:18:40.000000000 +0000
++++ bzip2-1.0.6/bzip2recover.c	2013-02-13 04:51:08.000000000 +0000
+@@ -24,6 +24,8 @@
+ #include <errno.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <fcntl.h>
++#include <unistd.h>
+ 
+ 
+ /* This program records bit locations in the file to be recovered.
+@@ -269,6 +271,19 @@
+        name[n-1] == '2');
+ }
+ 
++/*---------------------------------------------*/
++/* Open an output file safely with O_EXCL and good permissions */
++FILE* fopen_output( Char* name, const char* mode )
++{
++  FILE *fp;
++  int   fh;
++   
++  fh = open(name, O_WRONLY|O_CREAT|O_EXCL, 0600);
++  if (fh == -1) return NULL;
++  fp = fdopen(fh, mode);
++  if (fp == NULL) close(fh);
++  return fp;
++}
+ 
+ /*---------------------------------------------------*/
+ /*---                                             ---*/
+@@ -306,10 +321,12 @@
+    Int32       b, wrBlock, currBlock, rbCtr;
+    MaybeUInt64 bitsRead;
+ 
++
+    UInt32      buffHi, buffLo, blockCRC;
+    Char*       p;
+ 
+-   strcpy ( progName, argv[0] );
++   strncpy ( progName, argv[0], BZ_MAX_FILENAME-1);
++   progName[BZ_MAX_FILENAME-1]='\0';
+    inFileName[0] = outFileName[0] = 0;
+ 
+    fprintf ( stderr, 
+@@ -486,7 +503,7 @@
+          fprintf ( stderr, "   writing block %d to `%s' ...\n",
+                            wrBlock+1, outFileName );
+ 
+-         outFile = fopen ( outFileName, "wb" );
++         outFile = fopen_output ( outFileName, "wb" );
+          if (outFile == NULL) {
+             fprintf ( stderr, "%s: can't write `%s'\n",
+                       progName, outFileName );
+diff -Naur bzip2-1.0.6-orig/bzlib.c bzip2-1.0.6/bzlib.c
+--- bzip2-1.0.6-orig/bzlib.c	2010-09-10 22:38:23.000000000 +0000
++++ bzip2-1.0.6/bzlib.c	2013-02-13 04:51:08.000000000 +0000
+@@ -1372,7 +1372,7 @@
+ #ifndef BZ_NO_STDIO
+ /*---------------------------------------------------*/
+ 
+-#if defined(_WIN32) || defined(OS2) || defined(MSDOS)
++#if defined(_WIN32) || defined(OS2) || defined(MSDOS) || defined(__CYGWIN__)
+ #   include <fcntl.h>
+ #   include <io.h>
+ #   define SET_BINARY_MODE(file) setmode(fileno(file),O_BINARY)
+diff -Naur bzip2-1.0.6-orig/bzlib.h bzip2-1.0.6/bzlib.h
+--- bzip2-1.0.6-orig/bzlib.h	2010-09-10 23:08:42.000000000 +0000
++++ bzip2-1.0.6/bzlib.h	2013-02-13 04:51:08.000000000 +0000
+@@ -75,21 +75,39 @@
+ #include <stdio.h>
+ #endif
+ 
+-#ifdef _WIN32
++#if defined(_WIN32) && !defined(__CYGWIN__)
+ #   include <windows.h>
+ #   ifdef small
+       /* windows.h define small to char */
+ #      undef small
+ #   endif
+-#   ifdef BZ_EXPORT
+-#   define BZ_API(func) WINAPI func
+-#   define BZ_EXTERN extern
++#   ifndef __GNUC__
++       /* Use these rules only for non-gcc native win32 */
++#      ifdef BZ_EXPORT
++#      define BZ_API(func) WINAPI func
++#      define BZ_EXTERN extern
++#      else
++       /* import windows dll dynamically */
++#      define BZ_API(func) (WINAPI * func)
++#      define BZ_EXTERN
++#      endif
+ #   else
+-   /* import windows dll dynamically */
+-#   define BZ_API(func) (WINAPI * func)
+-#   define BZ_EXTERN
++       /* For gcc on native win32, use import library trampoline       */
++       /* functions on DLL import.  This avoids requiring clients to   */
++       /* use special compilation flags depending on whether eventual  */
++       /* link will be against static libbz2 or against DLL, at the    */
++       /* expense of a small loss of efficiency. */
++
++       /* Because libbz2 does not export any DATA items, GNU ld's      */
++       /* "auto-import" is not a factor; the MinGW-built DLL can be    */
++       /* used by other compilers, provided an import library suitable */
++       /* for that compiler is (manually) constructed using the .def   */
++       /* file and the appropriate tool. */
++#      define BZ_API(func) func
++#      define BZ_EXTERN extern
+ #   endif
+ #else
++    /* non-win32 platforms, and cygwin */
+ #   define BZ_API(func) func
+ #   define BZ_EXTERN extern
+ #endif
+diff -Naur bzip2-1.0.6-orig/bzmore bzip2-1.0.6/bzmore
+--- bzip2-1.0.6-orig/bzmore	2007-01-03 02:00:55.000000000 +0000
++++ bzip2-1.0.6/bzmore	2013-02-13 04:51:08.000000000 +0000
+@@ -24,10 +24,10 @@
+   # 'stty min 1' resets eof to ^a on both SunOS and SysV!
+   cb='min 1 -icanon'; ncb='icanon eof ^d'
+ fi
+-if test $? -eq 0 -a -n "$oldtty"; then
+-   trap 'stty $oldtty 2>/dev/null; exit' 0 2 3 5 10 13 15
++if test $? -eq 0 && test -n "$oldtty"; then
++   trap 'stty $oldtty 2>/dev/null; exit' 0 INT QUIT TRAP USR1 PIPE TERM
+ else
+-   trap 'stty $ncb echo 2>/dev/null; exit' 0 2 3 5 10 13 15
++   trap 'stty $ncb echo 2>/dev/null; exit' 0 INT QUIT TRAP USR1 PIPE TERM
+ fi
+ 
+ if test $# = 0; then
+@@ -46,7 +46,7 @@
+ 		ANS=`dd bs=1 count=1 2>/dev/null` 
+ 		stty $ncb echo 2>/dev/null
+ 		echo " "
+-		if test "$ANS" = 'e' -o "$ANS" = 'q'; then
++		if test "$ANS" = 'e' || test "$ANS" = 'q'; then
+ 			exit
+ 		fi
+ 	fi
+diff -Naur bzip2-1.0.6-orig/configure bzip2-1.0.6/configure
+--- bzip2-1.0.6-orig/configure	1970-01-01 00:00:00.000000000 +0000
++++ bzip2-1.0.6/configure	2013-02-13 04:57:54.000000000 +0000
+@@ -0,0 +1,4003 @@
++#! /bin/sh
++# Guess values for system-dependent variables and create Makefiles.
++# Generated by GNU Autoconf 2.69 for bzip2 1.0.6.
++#
++#
++# Copyright (C) 1992-1996, 1998-2012 Free Software Foundation, Inc.
++#
++#
++# This configure script is free software; the Free Software Foundation
++# gives unlimited permission to copy, distribute and modify it.
++## -------------------- ##
++## M4sh Initialization. ##
++## -------------------- ##
++
++# Be more Bourne compatible
++DUALCASE=1; export DUALCASE # for MKS sh
++if test -n "${ZSH_VERSION+set}" && (emulate sh) >/dev/null 2>&1; then :
++  emulate sh
++  NULLCMD=:
++  # Pre-4.2 versions of Zsh do word splitting on ${1+"$@"}, which
++  # is contrary to our usage.  Disable this feature.
++  alias -g '${1+"$@"}'='"$@"'
++  setopt NO_GLOB_SUBST
++else
++  case `(set -o) 2>/dev/null` in #(
++  *posix*) :
++    set -o posix ;; #(
++  *) :
++     ;;
++esac
++fi
++
++
++as_nl='
++'
++export as_nl
++# Printing a long string crashes Solaris 7 /usr/bin/printf.
++as_echo='\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\'
++as_echo=$as_echo$as_echo$as_echo$as_echo$as_echo
++as_echo=$as_echo$as_echo$as_echo$as_echo$as_echo$as_echo
++# Prefer a ksh shell builtin over an external printf program on Solaris,
++# but without wasting forks for bash or zsh.
++if test -z "$BASH_VERSION$ZSH_VERSION" \
++    && (test "X`print -r -- $as_echo`" = "X$as_echo") 2>/dev/null; then
++  as_echo='print -r --'
++  as_echo_n='print -rn --'
++elif (test "X`printf %s $as_echo`" = "X$as_echo") 2>/dev/null; then
++  as_echo='printf %s\n'
++  as_echo_n='printf %s'
++else
++  if test "X`(/usr/ucb/echo -n -n $as_echo) 2>/dev/null`" = "X-n $as_echo"; then
++    as_echo_body='eval /usr/ucb/echo -n "$1$as_nl"'
++    as_echo_n='/usr/ucb/echo -n'
++  else
++    as_echo_body='eval expr "X$1" : "X\\(.*\\)"'
++    as_echo_n_body='eval
++      arg=$1;
++      case $arg in #(
++      *"$as_nl"*)
++	expr "X$arg" : "X\\(.*\\)$as_nl";
++	arg=`expr "X$arg" : ".*$as_nl\\(.*\\)"`;;
++      esac;
++      expr "X$arg" : "X\\(.*\\)" | tr -d "$as_nl"
++    '
++    export as_echo_n_body
++    as_echo_n='sh -c $as_echo_n_body as_echo'
++  fi
++  export as_echo_body
++  as_echo='sh -c $as_echo_body as_echo'
++fi
++
++# The user is always right.
++if test "${PATH_SEPARATOR+set}" != set; then
++  PATH_SEPARATOR=:
++  (PATH='/bin;/bin'; FPATH=$PATH; sh -c :) >/dev/null 2>&1 && {
++    (PATH='/bin:/bin'; FPATH=$PATH; sh -c :) >/dev/null 2>&1 ||
++      PATH_SEPARATOR=';'
++  }
++fi
++
++
++# IFS
++# We need space, tab and new line, in precisely that order.  Quoting is
++# there to prevent editors from complaining about space-tab.
++# (If _AS_PATH_WALK were called with IFS unset, it would disable word
++# splitting by setting IFS to empty value.)
++IFS=" ""	$as_nl"
++
++# Find who we are.  Look in the path if we contain no directory separator.
++as_myself=
++case $0 in #((
++  *[\\/]* ) as_myself=$0 ;;
++  *) as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    test -r "$as_dir/$0" && as_myself=$as_dir/$0 && break
++  done
++IFS=$as_save_IFS
++
++     ;;
++esac
++# We did not find ourselves, most probably we were run as `sh COMMAND'
++# in which case we are not to be found in the path.
++if test "x$as_myself" = x; then
++  as_myself=$0
++fi
++if test ! -f "$as_myself"; then
++  $as_echo "$as_myself: error: cannot find myself; rerun with an absolute file name" >&2
++  exit 1
++fi
++
++# Unset variables that we do not need and which cause bugs (e.g. in
++# pre-3.0 UWIN ksh).  But do not cause bugs in bash 2.01; the "|| exit 1"
++# suppresses any "Segmentation fault" message there.  '((' could
++# trigger a bug in pdksh 5.2.14.
++for as_var in BASH_ENV ENV MAIL MAILPATH
++do eval test x\${$as_var+set} = xset \
++  && ( (unset $as_var) || exit 1) >/dev/null 2>&1 && unset $as_var || :
++done
++PS1='$ '
++PS2='> '
++PS4='+ '
++
++# NLS nuisances.
++LC_ALL=C
++export LC_ALL
++LANGUAGE=C
++export LANGUAGE
++
++# CDPATH.
++(unset CDPATH) >/dev/null 2>&1 && unset CDPATH
++
++# Use a proper internal environment variable to ensure we don't fall
++  # into an infinite loop, continuously re-executing ourselves.
++  if test x"${_as_can_reexec}" != xno && test "x$CONFIG_SHELL" != x; then
++    _as_can_reexec=no; export _as_can_reexec;
++    # We cannot yet assume a decent shell, so we have to provide a
++# neutralization value for shells without unset; and this also
++# works around shells that cannot unset nonexistent variables.
++# Preserve -v and -x to the replacement shell.
++BASH_ENV=/dev/null
++ENV=/dev/null
++(unset BASH_ENV) >/dev/null 2>&1 && unset BASH_ENV ENV
++case $- in # ((((
++  *v*x* | *x*v* ) as_opts=-vx ;;
++  *v* ) as_opts=-v ;;
++  *x* ) as_opts=-x ;;
++  * ) as_opts= ;;
++esac
++exec $CONFIG_SHELL $as_opts "$as_myself" ${1+"$@"}
++# Admittedly, this is quite paranoid, since all the known shells bail
++# out after a failed `exec'.
++$as_echo "$0: could not re-execute with $CONFIG_SHELL" >&2
++as_fn_exit 255
++  fi
++  # We don't want this to propagate to other subprocesses.
++          { _as_can_reexec=; unset _as_can_reexec;}
++if test "x$CONFIG_SHELL" = x; then
++  as_bourne_compatible="if test -n \"\${ZSH_VERSION+set}\" && (emulate sh) >/dev/null 2>&1; then :
++  emulate sh
++  NULLCMD=:
++  # Pre-4.2 versions of Zsh do word splitting on \${1+\"\$@\"}, which
++  # is contrary to our usage.  Disable this feature.
++  alias -g '\${1+\"\$@\"}'='\"\$@\"'
++  setopt NO_GLOB_SUBST
++else
++  case \`(set -o) 2>/dev/null\` in #(
++  *posix*) :
++    set -o posix ;; #(
++  *) :
++     ;;
++esac
++fi
++"
++  as_required="as_fn_return () { (exit \$1); }
++as_fn_success () { as_fn_return 0; }
++as_fn_failure () { as_fn_return 1; }
++as_fn_ret_success () { return 0; }
++as_fn_ret_failure () { return 1; }
++
++exitcode=0
++as_fn_success || { exitcode=1; echo as_fn_success failed.; }
++as_fn_failure && { exitcode=1; echo as_fn_failure succeeded.; }
++as_fn_ret_success || { exitcode=1; echo as_fn_ret_success failed.; }
++as_fn_ret_failure && { exitcode=1; echo as_fn_ret_failure succeeded.; }
++if ( set x; as_fn_ret_success y && test x = \"\$1\" ); then :
++
++else
++  exitcode=1; echo positional parameters were not saved.
++fi
++test x\$exitcode = x0 || exit 1
++test -x / || exit 1"
++  as_suggested="  as_lineno_1=";as_suggested=$as_suggested$LINENO;as_suggested=$as_suggested" as_lineno_1a=\$LINENO
++  as_lineno_2=";as_suggested=$as_suggested$LINENO;as_suggested=$as_suggested" as_lineno_2a=\$LINENO
++  eval 'test \"x\$as_lineno_1'\$as_run'\" != \"x\$as_lineno_2'\$as_run'\" &&
++  test \"x\`expr \$as_lineno_1'\$as_run' + 1\`\" = \"x\$as_lineno_2'\$as_run'\"' || exit 1"
++  if (eval "$as_required") 2>/dev/null; then :
++  as_have_required=yes
++else
++  as_have_required=no
++fi
++  if test x$as_have_required = xyes && (eval "$as_suggested") 2>/dev/null; then :
++
++else
++  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++as_found=false
++for as_dir in /bin$PATH_SEPARATOR/usr/bin$PATH_SEPARATOR$PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++  as_found=:
++  case $as_dir in #(
++	 /*)
++	   for as_base in sh bash ksh sh5; do
++	     # Try only shells that exist, to save several forks.
++	     as_shell=$as_dir/$as_base
++	     if { test -f "$as_shell" || test -f "$as_shell.exe"; } &&
++		    { $as_echo "$as_bourne_compatible""$as_required" | as_run=a "$as_shell"; } 2>/dev/null; then :
++  CONFIG_SHELL=$as_shell as_have_required=yes
++		   if { $as_echo "$as_bourne_compatible""$as_suggested" | as_run=a "$as_shell"; } 2>/dev/null; then :
++  break 2
++fi
++fi
++	   done;;
++       esac
++  as_found=false
++done
++$as_found || { if { test -f "$SHELL" || test -f "$SHELL.exe"; } &&
++	      { $as_echo "$as_bourne_compatible""$as_required" | as_run=a "$SHELL"; } 2>/dev/null; then :
++  CONFIG_SHELL=$SHELL as_have_required=yes
++fi; }
++IFS=$as_save_IFS
++
++
++      if test "x$CONFIG_SHELL" != x; then :
++  export CONFIG_SHELL
++             # We cannot yet assume a decent shell, so we have to provide a
++# neutralization value for shells without unset; and this also
++# works around shells that cannot unset nonexistent variables.
++# Preserve -v and -x to the replacement shell.
++BASH_ENV=/dev/null
++ENV=/dev/null
++(unset BASH_ENV) >/dev/null 2>&1 && unset BASH_ENV ENV
++case $- in # ((((
++  *v*x* | *x*v* ) as_opts=-vx ;;
++  *v* ) as_opts=-v ;;
++  *x* ) as_opts=-x ;;
++  * ) as_opts= ;;
++esac
++exec $CONFIG_SHELL $as_opts "$as_myself" ${1+"$@"}
++# Admittedly, this is quite paranoid, since all the known shells bail
++# out after a failed `exec'.
++$as_echo "$0: could not re-execute with $CONFIG_SHELL" >&2
++exit 255
++fi
++
++    if test x$as_have_required = xno; then :
++  $as_echo "$0: This script requires a shell more modern than all"
++  $as_echo "$0: the shells that I found on your system."
++  if test x${ZSH_VERSION+set} = xset ; then
++    $as_echo "$0: In particular, zsh $ZSH_VERSION has bugs and should"
++    $as_echo "$0: be upgraded to zsh 4.3.4 or later."
++  else
++    $as_echo "$0: Please tell bug-autoconf@gnu.org about your system,
++$0: including any error possibly output before this
++$0: message. Then install a modern shell, or manually run
++$0: the script under such a shell if you do have one."
++  fi
++  exit 1
++fi
++fi
++fi
++SHELL=${CONFIG_SHELL-/bin/sh}
++export SHELL
++# Unset more variables known to interfere with behavior of common tools.
++CLICOLOR_FORCE= GREP_OPTIONS=
++unset CLICOLOR_FORCE GREP_OPTIONS
++
++## --------------------- ##
++## M4sh Shell Functions. ##
++## --------------------- ##
++# as_fn_unset VAR
++# ---------------
++# Portably unset VAR.
++as_fn_unset ()
++{
++  { eval $1=; unset $1;}
++}
++as_unset=as_fn_unset
++
++# as_fn_set_status STATUS
++# -----------------------
++# Set $? to STATUS, without forking.
++as_fn_set_status ()
++{
++  return $1
++} # as_fn_set_status
++
++# as_fn_exit STATUS
++# -----------------
++# Exit the shell with STATUS, even in a "trap 0" or "set -e" context.
++as_fn_exit ()
++{
++  set +e
++  as_fn_set_status $1
++  exit $1
++} # as_fn_exit
++
++# as_fn_mkdir_p
++# -------------
++# Create "$as_dir" as a directory, including parents if necessary.
++as_fn_mkdir_p ()
++{
++
++  case $as_dir in #(
++  -*) as_dir=./$as_dir;;
++  esac
++  test -d "$as_dir" || eval $as_mkdir_p || {
++    as_dirs=
++    while :; do
++      case $as_dir in #(
++      *\'*) as_qdir=`$as_echo "$as_dir" | sed "s/'/'\\\\\\\\''/g"`;; #'(
++      *) as_qdir=$as_dir;;
++      esac
++      as_dirs="'$as_qdir' $as_dirs"
++      as_dir=`$as_dirname -- "$as_dir" ||
++$as_expr X"$as_dir" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
++	 X"$as_dir" : 'X\(//\)[^/]' \| \
++	 X"$as_dir" : 'X\(//\)$' \| \
++	 X"$as_dir" : 'X\(/\)' \| . 2>/dev/null ||
++$as_echo X"$as_dir" |
++    sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{
++	    s//\1/
++	    q
++	  }
++	  /^X\(\/\/\)[^/].*/{
++	    s//\1/
++	    q
++	  }
++	  /^X\(\/\/\)$/{
++	    s//\1/
++	    q
++	  }
++	  /^X\(\/\).*/{
++	    s//\1/
++	    q
++	  }
++	  s/.*/./; q'`
++      test -d "$as_dir" && break
++    done
++    test -z "$as_dirs" || eval "mkdir $as_dirs"
++  } || test -d "$as_dir" || as_fn_error $? "cannot create directory $as_dir"
++
++
++} # as_fn_mkdir_p
++
++# as_fn_executable_p FILE
++# -----------------------
++# Test if FILE is an executable regular file.
++as_fn_executable_p ()
++{
++  test -f "$1" && test -x "$1"
++} # as_fn_executable_p
++# as_fn_append VAR VALUE
++# ----------------------
++# Append the text in VALUE to the end of the definition contained in VAR. Take
++# advantage of any shell optimizations that allow amortized linear growth over
++# repeated appends, instead of the typical quadratic growth present in naive
++# implementations.
++if (eval "as_var=1; as_var+=2; test x\$as_var = x12") 2>/dev/null; then :
++  eval 'as_fn_append ()
++  {
++    eval $1+=\$2
++  }'
++else
++  as_fn_append ()
++  {
++    eval $1=\$$1\$2
++  }
++fi # as_fn_append
++
++# as_fn_arith ARG...
++# ------------------
++# Perform arithmetic evaluation on the ARGs, and store the result in the
++# global $as_val. Take advantage of shells that can avoid forks. The arguments
++# must be portable across $(()) and expr.
++if (eval "test \$(( 1 + 1 )) = 2") 2>/dev/null; then :
++  eval 'as_fn_arith ()
++  {
++    as_val=$(( $* ))
++  }'
++else
++  as_fn_arith ()
++  {
++    as_val=`expr "$@" || test $? -eq 1`
++  }
++fi # as_fn_arith
++
++
++# as_fn_error STATUS ERROR [LINENO LOG_FD]
++# ----------------------------------------
++# Output "`basename $0`: error: ERROR" to stderr. If LINENO and LOG_FD are
++# provided, also output the error to LOG_FD, referencing LINENO. Then exit the
++# script with STATUS, using 1 if that was 0.
++as_fn_error ()
++{
++  as_status=$1; test $as_status -eq 0 && as_status=1
++  if test "$4"; then
++    as_lineno=${as_lineno-"$3"} as_lineno_stack=as_lineno_stack=$as_lineno_stack
++    $as_echo "$as_me:${as_lineno-$LINENO}: error: $2" >&$4
++  fi
++  $as_echo "$as_me: error: $2" >&2
++  as_fn_exit $as_status
++} # as_fn_error
++
++if expr a : '\(a\)' >/dev/null 2>&1 &&
++   test "X`expr 00001 : '.*\(...\)'`" = X001; then
++  as_expr=expr
++else
++  as_expr=false
++fi
++
++if (basename -- /) >/dev/null 2>&1 && test "X`basename -- / 2>&1`" = "X/"; then
++  as_basename=basename
++else
++  as_basename=false
++fi
++
++if (as_dir=`dirname -- /` && test "X$as_dir" = X/) >/dev/null 2>&1; then
++  as_dirname=dirname
++else
++  as_dirname=false
++fi
++
++as_me=`$as_basename -- "$0" ||
++$as_expr X/"$0" : '.*/\([^/][^/]*\)/*$' \| \
++	 X"$0" : 'X\(//\)$' \| \
++	 X"$0" : 'X\(/\)' \| . 2>/dev/null ||
++$as_echo X/"$0" |
++    sed '/^.*\/\([^/][^/]*\)\/*$/{
++	    s//\1/
++	    q
++	  }
++	  /^X\/\(\/\/\)$/{
++	    s//\1/
++	    q
++	  }
++	  /^X\/\(\/\).*/{
++	    s//\1/
++	    q
++	  }
++	  s/.*/./; q'`
++
++# Avoid depending upon Character Ranges.
++as_cr_letters='abcdefghijklmnopqrstuvwxyz'
++as_cr_LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ'
++as_cr_Letters=$as_cr_letters$as_cr_LETTERS
++as_cr_digits='0123456789'
++as_cr_alnum=$as_cr_Letters$as_cr_digits
++
++
++  as_lineno_1=$LINENO as_lineno_1a=$LINENO
++  as_lineno_2=$LINENO as_lineno_2a=$LINENO
++  eval 'test "x$as_lineno_1'$as_run'" != "x$as_lineno_2'$as_run'" &&
++  test "x`expr $as_lineno_1'$as_run' + 1`" = "x$as_lineno_2'$as_run'"' || {
++  # Blame Lee E. McMahon (1931-1989) for sed's syntax.  :-)
++  sed -n '
++    p
++    /[$]LINENO/=
++  ' <$as_myself |
++    sed '
++      s/[$]LINENO.*/&-/
++      t lineno
++      b
++      :lineno
++      N
++      :loop
++      s/[$]LINENO\([^'$as_cr_alnum'_].*\n\)\(.*\)/\2\1\2/
++      t loop
++      s/-\n.*//
++    ' >$as_me.lineno &&
++  chmod +x "$as_me.lineno" ||
++    { $as_echo "$as_me: error: cannot create $as_me.lineno; rerun with a POSIX shell" >&2; as_fn_exit 1; }
++
++  # If we had to re-execute with $CONFIG_SHELL, we're ensured to have
++  # already done that, so ensure we don't try to do so again and fall
++  # in an infinite loop.  This has already happened in practice.
++  _as_can_reexec=no; export _as_can_reexec
++  # Don't try to exec as it changes $[0], causing all sort of problems
++  # (the dirname of $[0] is not the place where we might find the
++  # original and so on.  Autoconf is especially sensitive to this).
++  . "./$as_me.lineno"
++  # Exit status is that of the last command.
++  exit
++}
++
++ECHO_C= ECHO_N= ECHO_T=
++case `echo -n x` in #(((((
++-n*)
++  case `echo 'xy\c'` in
++  *c*) ECHO_T='	';;	# ECHO_T is single tab character.
++  xy)  ECHO_C='\c';;
++  *)   echo `echo ksh88 bug on AIX 6.1` > /dev/null
++       ECHO_T='	';;
++  esac;;
++*)
++  ECHO_N='-n';;
++esac
++
++rm -f conf$$ conf$$.exe conf$$.file
++if test -d conf$$.dir; then
++  rm -f conf$$.dir/conf$$.file
++else
++  rm -f conf$$.dir
++  mkdir conf$$.dir 2>/dev/null
++fi
++if (echo >conf$$.file) 2>/dev/null; then
++  if ln -s conf$$.file conf$$ 2>/dev/null; then
++    as_ln_s='ln -s'
++    # ... but there are two gotchas:
++    # 1) On MSYS, both `ln -s file dir' and `ln file dir' fail.
++    # 2) DJGPP < 2.04 has no symlinks; `ln -s' creates a wrapper executable.
++    # In both cases, we have to default to `cp -pR'.
++    ln -s conf$$.file conf$$.dir 2>/dev/null && test ! -f conf$$.exe ||
++      as_ln_s='cp -pR'
++  elif ln conf$$.file conf$$ 2>/dev/null; then
++    as_ln_s=ln
++  else
++    as_ln_s='cp -pR'
++  fi
++else
++  as_ln_s='cp -pR'
++fi
++rm -f conf$$ conf$$.exe conf$$.dir/conf$$.file conf$$.file
++rmdir conf$$.dir 2>/dev/null
++
++if mkdir -p . 2>/dev/null; then
++  as_mkdir_p='mkdir -p "$as_dir"'
++else
++  test -d ./-p && rmdir ./-p
++  as_mkdir_p=false
++fi
++
++as_test_x='test -x'
++as_executable_p=as_fn_executable_p
++
++# Sed expression to map a string onto a valid CPP name.
++as_tr_cpp="eval sed 'y%*$as_cr_letters%P$as_cr_LETTERS%;s%[^_$as_cr_alnum]%_%g'"
++
++# Sed expression to map a string onto a valid variable name.
++as_tr_sh="eval sed 'y%*+%pp%;s%[^_$as_cr_alnum]%_%g'"
++
++
++test -n "$DJDIR" || exec 7<&0 </dev/null
++exec 6>&1
++
++# Name of the host.
++# hostname on some systems (SVR3.2, old GNU/Linux) returns a bogus exit status,
++# so uname gets run too.
++ac_hostname=`(hostname || uname -n) 2>/dev/null | sed 1q`
++
++#
++# Initializations.
++#
++ac_default_prefix=/usr/local
++ac_clean_files=
++ac_config_libobj_dir=.
++LIBOBJS=
++cross_compiling=no
++subdirs=
++MFLAGS=
++MAKEFLAGS=
++
++# Identity of this package.
++PACKAGE_NAME='bzip2'
++PACKAGE_TARNAME='bzip2'
++PACKAGE_VERSION='1.0.6'
++PACKAGE_STRING='bzip2 1.0.6'
++PACKAGE_BUGREPORT=''
++PACKAGE_URL=''
++
++ac_subst_vars='LTLIBOBJS
++LIBOBJS
++RANLIB
++ARFLAGS
++AR
++DLLNAME
++DLLVER
++enable_shared
++LN_S
++OBJEXT
++EXEEXT
++ac_ct_CC
++CPPFLAGS
++LDFLAGS
++CFLAGS
++CC
++target_alias
++host_alias
++build_alias
++LIBS
++ECHO_T
++ECHO_N
++ECHO_C
++DEFS
++mandir
++localedir
++libdir
++psdir
++pdfdir
++dvidir
++htmldir
++infodir
++docdir
++oldincludedir
++includedir
++localstatedir
++sharedstatedir
++sysconfdir
++datadir
++datarootdir
++libexecdir
++sbindir
++bindir
++program_transform_name
++prefix
++exec_prefix
++PACKAGE_URL
++PACKAGE_BUGREPORT
++PACKAGE_STRING
++PACKAGE_VERSION
++PACKAGE_TARNAME
++PACKAGE_NAME
++PATH_SEPARATOR
++SHELL'
++ac_subst_files=''
++ac_user_opts='
++enable_option_checking
++enable_shared
++'
++      ac_precious_vars='build_alias
++host_alias
++target_alias
++CC
++CFLAGS
++LDFLAGS
++LIBS
++CPPFLAGS
++AR
++ARFLAGS
++RANLIB'
++
++
++# Initialize some variables set by options.
++ac_init_help=
++ac_init_version=false
++ac_unrecognized_opts=
++ac_unrecognized_sep=
++# The variables have the same names as the options, with
++# dashes changed to underlines.
++cache_file=/dev/null
++exec_prefix=NONE
++no_create=
++no_recursion=
++prefix=NONE
++program_prefix=NONE
++program_suffix=NONE
++program_transform_name=s,x,x,
++silent=
++site=
++srcdir=
++verbose=
++x_includes=NONE
++x_libraries=NONE
++
++# Installation directory options.
++# These are left unexpanded so users can "make install exec_prefix=/foo"
++# and all the variables that are supposed to be based on exec_prefix
++# by default will actually change.
++# Use braces instead of parens because sh, perl, etc. also accept them.
++# (The list follows the same order as the GNU Coding Standards.)
++bindir='${exec_prefix}/bin'
++sbindir='${exec_prefix}/sbin'
++libexecdir='${exec_prefix}/libexec'
++datarootdir='${prefix}/share'
++datadir='${datarootdir}'
++sysconfdir='${prefix}/etc'
++sharedstatedir='${prefix}/com'
++localstatedir='${prefix}/var'
++includedir='${prefix}/include'
++oldincludedir='/usr/include'
++docdir='${datarootdir}/doc/${PACKAGE_TARNAME}'
++infodir='${datarootdir}/info'
++htmldir='${docdir}'
++dvidir='${docdir}'
++pdfdir='${docdir}'
++psdir='${docdir}'
++libdir='${exec_prefix}/lib'
++localedir='${datarootdir}/locale'
++mandir='${datarootdir}/man'
++
++ac_prev=
++ac_dashdash=
++for ac_option
++do
++  # If the previous option needs an argument, assign it.
++  if test -n "$ac_prev"; then
++    eval $ac_prev=\$ac_option
++    ac_prev=
++    continue
++  fi
++
++  case $ac_option in
++  *=?*) ac_optarg=`expr "X$ac_option" : '[^=]*=\(.*\)'` ;;
++  *=)   ac_optarg= ;;
++  *)    ac_optarg=yes ;;
++  esac
++
++  # Accept the important Cygnus configure options, so we can diagnose typos.
++
++  case $ac_dashdash$ac_option in
++  --)
++    ac_dashdash=yes ;;
++
++  -bindir | --bindir | --bindi | --bind | --bin | --bi)
++    ac_prev=bindir ;;
++  -bindir=* | --bindir=* | --bindi=* | --bind=* | --bin=* | --bi=*)
++    bindir=$ac_optarg ;;
++
++  -build | --build | --buil | --bui | --bu)
++    ac_prev=build_alias ;;
++  -build=* | --build=* | --buil=* | --bui=* | --bu=*)
++    build_alias=$ac_optarg ;;
++
++  -cache-file | --cache-file | --cache-fil | --cache-fi \
++  | --cache-f | --cache- | --cache | --cach | --cac | --ca | --c)
++    ac_prev=cache_file ;;
++  -cache-file=* | --cache-file=* | --cache-fil=* | --cache-fi=* \
++  | --cache-f=* | --cache-=* | --cache=* | --cach=* | --cac=* | --ca=* | --c=*)
++    cache_file=$ac_optarg ;;
++
++  --config-cache | -C)
++    cache_file=config.cache ;;
++
++  -datadir | --datadir | --datadi | --datad)
++    ac_prev=datadir ;;
++  -datadir=* | --datadir=* | --datadi=* | --datad=*)
++    datadir=$ac_optarg ;;
++
++  -datarootdir | --datarootdir | --datarootdi | --datarootd | --dataroot \
++  | --dataroo | --dataro | --datar)
++    ac_prev=datarootdir ;;
++  -datarootdir=* | --datarootdir=* | --datarootdi=* | --datarootd=* \
++  | --dataroot=* | --dataroo=* | --dataro=* | --datar=*)
++    datarootdir=$ac_optarg ;;
++
++  -disable-* | --disable-*)
++    ac_useropt=`expr "x$ac_option" : 'x-*disable-\(.*\)'`
++    # Reject names that are not valid shell variable names.
++    expr "x$ac_useropt" : ".*[^-+._$as_cr_alnum]" >/dev/null &&
++      as_fn_error $? "invalid feature name: $ac_useropt"
++    ac_useropt_orig=$ac_useropt
++    ac_useropt=`$as_echo "$ac_useropt" | sed 's/[-+.]/_/g'`
++    case $ac_user_opts in
++      *"
++"enable_$ac_useropt"
++"*) ;;
++      *) ac_unrecognized_opts="$ac_unrecognized_opts$ac_unrecognized_sep--disable-$ac_useropt_orig"
++	 ac_unrecognized_sep=', ';;
++    esac
++    eval enable_$ac_useropt=no ;;
++
++  -docdir | --docdir | --docdi | --doc | --do)
++    ac_prev=docdir ;;
++  -docdir=* | --docdir=* | --docdi=* | --doc=* | --do=*)
++    docdir=$ac_optarg ;;
++
++  -dvidir | --dvidir | --dvidi | --dvid | --dvi | --dv)
++    ac_prev=dvidir ;;
++  -dvidir=* | --dvidir=* | --dvidi=* | --dvid=* | --dvi=* | --dv=*)
++    dvidir=$ac_optarg ;;
++
++  -enable-* | --enable-*)
++    ac_useropt=`expr "x$ac_option" : 'x-*enable-\([^=]*\)'`
++    # Reject names that are not valid shell variable names.
++    expr "x$ac_useropt" : ".*[^-+._$as_cr_alnum]" >/dev/null &&
++      as_fn_error $? "invalid feature name: $ac_useropt"
++    ac_useropt_orig=$ac_useropt
++    ac_useropt=`$as_echo "$ac_useropt" | sed 's/[-+.]/_/g'`
++    case $ac_user_opts in
++      *"
++"enable_$ac_useropt"
++"*) ;;
++      *) ac_unrecognized_opts="$ac_unrecognized_opts$ac_unrecognized_sep--enable-$ac_useropt_orig"
++	 ac_unrecognized_sep=', ';;
++    esac
++    eval enable_$ac_useropt=\$ac_optarg ;;
++
++  -exec-prefix | --exec_prefix | --exec-prefix | --exec-prefi \
++  | --exec-pref | --exec-pre | --exec-pr | --exec-p | --exec- \
++  | --exec | --exe | --ex)
++    ac_prev=exec_prefix ;;
++  -exec-prefix=* | --exec_prefix=* | --exec-prefix=* | --exec-prefi=* \
++  | --exec-pref=* | --exec-pre=* | --exec-pr=* | --exec-p=* | --exec-=* \
++  | --exec=* | --exe=* | --ex=*)
++    exec_prefix=$ac_optarg ;;
++
++  -gas | --gas | --ga | --g)
++    # Obsolete; use --with-gas.
++    with_gas=yes ;;
++
++  -help | --help | --hel | --he | -h)
++    ac_init_help=long ;;
++  -help=r* | --help=r* | --hel=r* | --he=r* | -hr*)
++    ac_init_help=recursive ;;
++  -help=s* | --help=s* | --hel=s* | --he=s* | -hs*)
++    ac_init_help=short ;;
++
++  -host | --host | --hos | --ho)
++    ac_prev=host_alias ;;
++  -host=* | --host=* | --hos=* | --ho=*)
++    host_alias=$ac_optarg ;;
++
++  -htmldir | --htmldir | --htmldi | --htmld | --html | --htm | --ht)
++    ac_prev=htmldir ;;
++  -htmldir=* | --htmldir=* | --htmldi=* | --htmld=* | --html=* | --htm=* \
++  | --ht=*)
++    htmldir=$ac_optarg ;;
++
++  -includedir | --includedir | --includedi | --included | --include \
++  | --includ | --inclu | --incl | --inc)
++    ac_prev=includedir ;;
++  -includedir=* | --includedir=* | --includedi=* | --included=* | --include=* \
++  | --includ=* | --inclu=* | --incl=* | --inc=*)
++    includedir=$ac_optarg ;;
++
++  -infodir | --infodir | --infodi | --infod | --info | --inf)
++    ac_prev=infodir ;;
++  -infodir=* | --infodir=* | --infodi=* | --infod=* | --info=* | --inf=*)
++    infodir=$ac_optarg ;;
++
++  -libdir | --libdir | --libdi | --libd)
++    ac_prev=libdir ;;
++  -libdir=* | --libdir=* | --libdi=* | --libd=*)
++    libdir=$ac_optarg ;;
++
++  -libexecdir | --libexecdir | --libexecdi | --libexecd | --libexec \
++  | --libexe | --libex | --libe)
++    ac_prev=libexecdir ;;
++  -libexecdir=* | --libexecdir=* | --libexecdi=* | --libexecd=* | --libexec=* \
++  | --libexe=* | --libex=* | --libe=*)
++    libexecdir=$ac_optarg ;;
++
++  -localedir | --localedir | --localedi | --localed | --locale)
++    ac_prev=localedir ;;
++  -localedir=* | --localedir=* | --localedi=* | --localed=* | --locale=*)
++    localedir=$ac_optarg ;;
++
++  -localstatedir | --localstatedir | --localstatedi | --localstated \
++  | --localstate | --localstat | --localsta | --localst | --locals)
++    ac_prev=localstatedir ;;
++  -localstatedir=* | --localstatedir=* | --localstatedi=* | --localstated=* \
++  | --localstate=* | --localstat=* | --localsta=* | --localst=* | --locals=*)
++    localstatedir=$ac_optarg ;;
++
++  -mandir | --mandir | --mandi | --mand | --man | --ma | --m)
++    ac_prev=mandir ;;
++  -mandir=* | --mandir=* | --mandi=* | --mand=* | --man=* | --ma=* | --m=*)
++    mandir=$ac_optarg ;;
++
++  -nfp | --nfp | --nf)
++    # Obsolete; use --without-fp.
++    with_fp=no ;;
++
++  -no-create | --no-create | --no-creat | --no-crea | --no-cre \
++  | --no-cr | --no-c | -n)
++    no_create=yes ;;
++
++  -no-recursion | --no-recursion | --no-recursio | --no-recursi \
++  | --no-recurs | --no-recur | --no-recu | --no-rec | --no-re | --no-r)
++    no_recursion=yes ;;
++
++  -oldincludedir | --oldincludedir | --oldincludedi | --oldincluded \
++  | --oldinclude | --oldinclud | --oldinclu | --oldincl | --oldinc \
++  | --oldin | --oldi | --old | --ol | --o)
++    ac_prev=oldincludedir ;;
++  -oldincludedir=* | --oldincludedir=* | --oldincludedi=* | --oldincluded=* \
++  | --oldinclude=* | --oldinclud=* | --oldinclu=* | --oldincl=* | --oldinc=* \
++  | --oldin=* | --oldi=* | --old=* | --ol=* | --o=*)
++    oldincludedir=$ac_optarg ;;
++
++  -prefix | --prefix | --prefi | --pref | --pre | --pr | --p)
++    ac_prev=prefix ;;
++  -prefix=* | --prefix=* | --prefi=* | --pref=* | --pre=* | --pr=* | --p=*)
++    prefix=$ac_optarg ;;
++
++  -program-prefix | --program-prefix | --program-prefi | --program-pref \
++  | --program-pre | --program-pr | --program-p)
++    ac_prev=program_prefix ;;
++  -program-prefix=* | --program-prefix=* | --program-prefi=* \
++  | --program-pref=* | --program-pre=* | --program-pr=* | --program-p=*)
++    program_prefix=$ac_optarg ;;
++
++  -program-suffix | --program-suffix | --program-suffi | --program-suff \
++  | --program-suf | --program-su | --program-s)
++    ac_prev=program_suffix ;;
++  -program-suffix=* | --program-suffix=* | --program-suffi=* \
++  | --program-suff=* | --program-suf=* | --program-su=* | --program-s=*)
++    program_suffix=$ac_optarg ;;
++
++  -program-transform-name | --program-transform-name \
++  | --program-transform-nam | --program-transform-na \
++  | --program-transform-n | --program-transform- \
++  | --program-transform | --program-transfor \
++  | --program-transfo | --program-transf \
++  | --program-trans | --program-tran \
++  | --progr-tra | --program-tr | --program-t)
++    ac_prev=program_transform_name ;;
++  -program-transform-name=* | --program-transform-name=* \
++  | --program-transform-nam=* | --program-transform-na=* \
++  | --program-transform-n=* | --program-transform-=* \
++  | --program-transform=* | --program-transfor=* \
++  | --program-transfo=* | --program-transf=* \
++  | --program-trans=* | --program-tran=* \
++  | --progr-tra=* | --program-tr=* | --program-t=*)
++    program_transform_name=$ac_optarg ;;
++
++  -pdfdir | --pdfdir | --pdfdi | --pdfd | --pdf | --pd)
++    ac_prev=pdfdir ;;
++  -pdfdir=* | --pdfdir=* | --pdfdi=* | --pdfd=* | --pdf=* | --pd=*)
++    pdfdir=$ac_optarg ;;
++
++  -psdir | --psdir | --psdi | --psd | --ps)
++    ac_prev=psdir ;;
++  -psdir=* | --psdir=* | --psdi=* | --psd=* | --ps=*)
++    psdir=$ac_optarg ;;
++
++  -q | -quiet | --quiet | --quie | --qui | --qu | --q \
++  | -silent | --silent | --silen | --sile | --sil)
++    silent=yes ;;
++
++  -sbindir | --sbindir | --sbindi | --sbind | --sbin | --sbi | --sb)
++    ac_prev=sbindir ;;
++  -sbindir=* | --sbindir=* | --sbindi=* | --sbind=* | --sbin=* \
++  | --sbi=* | --sb=*)
++    sbindir=$ac_optarg ;;
++
++  -sharedstatedir | --sharedstatedir | --sharedstatedi \
++  | --sharedstated | --sharedstate | --sharedstat | --sharedsta \
++  | --sharedst | --shareds | --shared | --share | --shar \
++  | --sha | --sh)
++    ac_prev=sharedstatedir ;;
++  -sharedstatedir=* | --sharedstatedir=* | --sharedstatedi=* \
++  | --sharedstated=* | --sharedstate=* | --sharedstat=* | --sharedsta=* \
++  | --sharedst=* | --shareds=* | --shared=* | --share=* | --shar=* \
++  | --sha=* | --sh=*)
++    sharedstatedir=$ac_optarg ;;
++
++  -site | --site | --sit)
++    ac_prev=site ;;
++  -site=* | --site=* | --sit=*)
++    site=$ac_optarg ;;
++
++  -srcdir | --srcdir | --srcdi | --srcd | --src | --sr)
++    ac_prev=srcdir ;;
++  -srcdir=* | --srcdir=* | --srcdi=* | --srcd=* | --src=* | --sr=*)
++    srcdir=$ac_optarg ;;
++
++  -sysconfdir | --sysconfdir | --sysconfdi | --sysconfd | --sysconf \
++  | --syscon | --sysco | --sysc | --sys | --sy)
++    ac_prev=sysconfdir ;;
++  -sysconfdir=* | --sysconfdir=* | --sysconfdi=* | --sysconfd=* | --sysconf=* \
++  | --syscon=* | --sysco=* | --sysc=* | --sys=* | --sy=*)
++    sysconfdir=$ac_optarg ;;
++
++  -target | --target | --targe | --targ | --tar | --ta | --t)
++    ac_prev=target_alias ;;
++  -target=* | --target=* | --targe=* | --targ=* | --tar=* | --ta=* | --t=*)
++    target_alias=$ac_optarg ;;
++
++  -v | -verbose | --verbose | --verbos | --verbo | --verb)
++    verbose=yes ;;
++
++  -version | --version | --versio | --versi | --vers | -V)
++    ac_init_version=: ;;
++
++  -with-* | --with-*)
++    ac_useropt=`expr "x$ac_option" : 'x-*with-\([^=]*\)'`
++    # Reject names that are not valid shell variable names.
++    expr "x$ac_useropt" : ".*[^-+._$as_cr_alnum]" >/dev/null &&
++      as_fn_error $? "invalid package name: $ac_useropt"
++    ac_useropt_orig=$ac_useropt
++    ac_useropt=`$as_echo "$ac_useropt" | sed 's/[-+.]/_/g'`
++    case $ac_user_opts in
++      *"
++"with_$ac_useropt"
++"*) ;;
++      *) ac_unrecognized_opts="$ac_unrecognized_opts$ac_unrecognized_sep--with-$ac_useropt_orig"
++	 ac_unrecognized_sep=', ';;
++    esac
++    eval with_$ac_useropt=\$ac_optarg ;;
++
++  -without-* | --without-*)
++    ac_useropt=`expr "x$ac_option" : 'x-*without-\(.*\)'`
++    # Reject names that are not valid shell variable names.
++    expr "x$ac_useropt" : ".*[^-+._$as_cr_alnum]" >/dev/null &&
++      as_fn_error $? "invalid package name: $ac_useropt"
++    ac_useropt_orig=$ac_useropt
++    ac_useropt=`$as_echo "$ac_useropt" | sed 's/[-+.]/_/g'`
++    case $ac_user_opts in
++      *"
++"with_$ac_useropt"
++"*) ;;
++      *) ac_unrecognized_opts="$ac_unrecognized_opts$ac_unrecognized_sep--without-$ac_useropt_orig"
++	 ac_unrecognized_sep=', ';;
++    esac
++    eval with_$ac_useropt=no ;;
++
++  --x)
++    # Obsolete; use --with-x.
++    with_x=yes ;;
++
++  -x-includes | --x-includes | --x-include | --x-includ | --x-inclu \
++  | --x-incl | --x-inc | --x-in | --x-i)
++    ac_prev=x_includes ;;
++  -x-includes=* | --x-includes=* | --x-include=* | --x-includ=* | --x-inclu=* \
++  | --x-incl=* | --x-inc=* | --x-in=* | --x-i=*)
++    x_includes=$ac_optarg ;;
++
++  -x-libraries | --x-libraries | --x-librarie | --x-librari \
++  | --x-librar | --x-libra | --x-libr | --x-lib | --x-li | --x-l)
++    ac_prev=x_libraries ;;
++  -x-libraries=* | --x-libraries=* | --x-librarie=* | --x-librari=* \
++  | --x-librar=* | --x-libra=* | --x-libr=* | --x-lib=* | --x-li=* | --x-l=*)
++    x_libraries=$ac_optarg ;;
++
++  -*) as_fn_error $? "unrecognized option: \`$ac_option'
++Try \`$0 --help' for more information"
++    ;;
++
++  *=*)
++    ac_envvar=`expr "x$ac_option" : 'x\([^=]*\)='`
++    # Reject names that are not valid shell variable names.
++    case $ac_envvar in #(
++      '' | [0-9]* | *[!_$as_cr_alnum]* )
++      as_fn_error $? "invalid variable name: \`$ac_envvar'" ;;
++    esac
++    eval $ac_envvar=\$ac_optarg
++    export $ac_envvar ;;
++
++  *)
++    # FIXME: should be removed in autoconf 3.0.
++    $as_echo "$as_me: WARNING: you should use --build, --host, --target" >&2
++    expr "x$ac_option" : ".*[^-._$as_cr_alnum]" >/dev/null &&
++      $as_echo "$as_me: WARNING: invalid host type: $ac_option" >&2
++    : "${build_alias=$ac_option} ${host_alias=$ac_option} ${target_alias=$ac_option}"
++    ;;
++
++  esac
++done
++
++if test -n "$ac_prev"; then
++  ac_option=--`echo $ac_prev | sed 's/_/-/g'`
++  as_fn_error $? "missing argument to $ac_option"
++fi
++
++if test -n "$ac_unrecognized_opts"; then
++  case $enable_option_checking in
++    no) ;;
++    fatal) as_fn_error $? "unrecognized options: $ac_unrecognized_opts" ;;
++    *)     $as_echo "$as_me: WARNING: unrecognized options: $ac_unrecognized_opts" >&2 ;;
++  esac
++fi
++
++# Check all directory arguments for consistency.
++for ac_var in	exec_prefix prefix bindir sbindir libexecdir datarootdir \
++		datadir sysconfdir sharedstatedir localstatedir includedir \
++		oldincludedir docdir infodir htmldir dvidir pdfdir psdir \
++		libdir localedir mandir
++do
++  eval ac_val=\$$ac_var
++  # Remove trailing slashes.
++  case $ac_val in
++    */ )
++      ac_val=`expr "X$ac_val" : 'X\(.*[^/]\)' \| "X$ac_val" : 'X\(.*\)'`
++      eval $ac_var=\$ac_val;;
++  esac
++  # Be sure to have absolute directory names.
++  case $ac_val in
++    [\\/$]* | ?:[\\/]* )  continue;;
++    NONE | '' ) case $ac_var in *prefix ) continue;; esac;;
++  esac
++  as_fn_error $? "expected an absolute directory name for --$ac_var: $ac_val"
++done
++
++# There might be people who depend on the old broken behavior: `$host'
++# used to hold the argument of --host etc.
++# FIXME: To remove some day.
++build=$build_alias
++host=$host_alias
++target=$target_alias
++
++# FIXME: To remove some day.
++if test "x$host_alias" != x; then
++  if test "x$build_alias" = x; then
++    cross_compiling=maybe
++  elif test "x$build_alias" != "x$host_alias"; then
++    cross_compiling=yes
++  fi
++fi
++
++ac_tool_prefix=
++test -n "$host_alias" && ac_tool_prefix=$host_alias-
++
++test "$silent" = yes && exec 6>/dev/null
++
++
++ac_pwd=`pwd` && test -n "$ac_pwd" &&
++ac_ls_di=`ls -di .` &&
++ac_pwd_ls_di=`cd "$ac_pwd" && ls -di .` ||
++  as_fn_error $? "working directory cannot be determined"
++test "X$ac_ls_di" = "X$ac_pwd_ls_di" ||
++  as_fn_error $? "pwd does not report name of working directory"
++
++
++# Find the source files, if location was not specified.
++if test -z "$srcdir"; then
++  ac_srcdir_defaulted=yes
++  # Try the directory containing this script, then the parent directory.
++  ac_confdir=`$as_dirname -- "$as_myself" ||
++$as_expr X"$as_myself" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
++	 X"$as_myself" : 'X\(//\)[^/]' \| \
++	 X"$as_myself" : 'X\(//\)$' \| \
++	 X"$as_myself" : 'X\(/\)' \| . 2>/dev/null ||
++$as_echo X"$as_myself" |
++    sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{
++	    s//\1/
++	    q
++	  }
++	  /^X\(\/\/\)[^/].*/{
++	    s//\1/
++	    q
++	  }
++	  /^X\(\/\/\)$/{
++	    s//\1/
++	    q
++	  }
++	  /^X\(\/\).*/{
++	    s//\1/
++	    q
++	  }
++	  s/.*/./; q'`
++  srcdir=$ac_confdir
++  if test ! -r "$srcdir/$ac_unique_file"; then
++    srcdir=..
++  fi
++else
++  ac_srcdir_defaulted=no
++fi
++if test ! -r "$srcdir/$ac_unique_file"; then
++  test "$ac_srcdir_defaulted" = yes && srcdir="$ac_confdir or .."
++  as_fn_error $? "cannot find sources ($ac_unique_file) in $srcdir"
++fi
++ac_msg="sources are in $srcdir, but \`cd $srcdir' does not work"
++ac_abs_confdir=`(
++	cd "$srcdir" && test -r "./$ac_unique_file" || as_fn_error $? "$ac_msg"
++	pwd)`
++# When building in place, set srcdir=.
++if test "$ac_abs_confdir" = "$ac_pwd"; then
++  srcdir=.
++fi
++# Remove unnecessary trailing slashes from srcdir.
++# Double slashes in file names in object file debugging info
++# mess up M-x gdb in Emacs.
++case $srcdir in
++*/) srcdir=`expr "X$srcdir" : 'X\(.*[^/]\)' \| "X$srcdir" : 'X\(.*\)'`;;
++esac
++for ac_var in $ac_precious_vars; do
++  eval ac_env_${ac_var}_set=\${${ac_var}+set}
++  eval ac_env_${ac_var}_value=\$${ac_var}
++  eval ac_cv_env_${ac_var}_set=\${${ac_var}+set}
++  eval ac_cv_env_${ac_var}_value=\$${ac_var}
++done
++
++#
++# Report the --help message.
++#
++if test "$ac_init_help" = "long"; then
++  # Omit some internal or obsolete options to make the list less imposing.
++  # This message is too long to be a string in the A/UX 3.1 sh.
++  cat <<_ACEOF
++\`configure' configures bzip2 1.0.6 to adapt to many kinds of systems.
++
++Usage: $0 [OPTION]... [VAR=VALUE]...
++
++To assign environment variables (e.g., CC, CFLAGS...), specify them as
++VAR=VALUE.  See below for descriptions of some of the useful variables.
++
++Defaults for the options are specified in brackets.
++
++Configuration:
++  -h, --help              display this help and exit
++      --help=short        display options specific to this package
++      --help=recursive    display the short help of all the included packages
++  -V, --version           display version information and exit
++  -q, --quiet, --silent   do not print \`checking ...' messages
++      --cache-file=FILE   cache test results in FILE [disabled]
++  -C, --config-cache      alias for \`--cache-file=config.cache'
++  -n, --no-create         do not create output files
++      --srcdir=DIR        find the sources in DIR [configure dir or \`..']
++
++Installation directories:
++  --prefix=PREFIX         install architecture-independent files in PREFIX
++                          [$ac_default_prefix]
++  --exec-prefix=EPREFIX   install architecture-dependent files in EPREFIX
++                          [PREFIX]
++
++By default, \`make install' will install all the files in
++\`$ac_default_prefix/bin', \`$ac_default_prefix/lib' etc.  You can specify
++an installation prefix other than \`$ac_default_prefix' using \`--prefix',
++for instance \`--prefix=\$HOME'.
++
++For better control, use the options below.
++
++Fine tuning of the installation directories:
++  --bindir=DIR            user executables [EPREFIX/bin]
++  --sbindir=DIR           system admin executables [EPREFIX/sbin]
++  --libexecdir=DIR        program executables [EPREFIX/libexec]
++  --sysconfdir=DIR        read-only single-machine data [PREFIX/etc]
++  --sharedstatedir=DIR    modifiable architecture-independent data [PREFIX/com]
++  --localstatedir=DIR     modifiable single-machine data [PREFIX/var]
++  --libdir=DIR            object code libraries [EPREFIX/lib]
++  --includedir=DIR        C header files [PREFIX/include]
++  --oldincludedir=DIR     C header files for non-gcc [/usr/include]
++  --datarootdir=DIR       read-only arch.-independent data root [PREFIX/share]
++  --datadir=DIR           read-only architecture-independent data [DATAROOTDIR]
++  --infodir=DIR           info documentation [DATAROOTDIR/info]
++  --localedir=DIR         locale-dependent data [DATAROOTDIR/locale]
++  --mandir=DIR            man documentation [DATAROOTDIR/man]
++  --docdir=DIR            documentation root [DATAROOTDIR/doc/bzip2]
++  --htmldir=DIR           html documentation [DOCDIR]
++  --dvidir=DIR            dvi documentation [DOCDIR]
++  --pdfdir=DIR            pdf documentation [DOCDIR]
++  --psdir=DIR             ps documentation [DOCDIR]
++_ACEOF
++
++  cat <<\_ACEOF
++_ACEOF
++fi
++
++if test -n "$ac_init_help"; then
++  case $ac_init_help in
++     short | recursive ) echo "Configuration of bzip2 1.0.6:";;
++   esac
++  cat <<\_ACEOF
++
++Optional Features:
++  --disable-option-checking  ignore unrecognized --enable/--with options
++  --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
++  --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
++  --enable-shared         enable building as a shared library [default=no]
++
++Some influential environment variables:
++  CC          C compiler command
++  CFLAGS      C compiler flags
++  LDFLAGS     linker flags, e.g. -L<lib dir> if you have libraries in a
++              nonstandard directory <lib dir>
++  LIBS        libraries to pass to the linker, e.g. -l<library>
++  CPPFLAGS    (Objective) C/C++ preprocessor flags, e.g. -I<include dir> if
++              you have headers in a nonstandard directory <include dir>
++  AR          Archive librarian command
++  ARFLAGS     Archive librarian control flags, e.g. cq
++  RANLIB      Archive library indexing command
++
++Use these variables to override the choices made by `configure' or to help
++it to find libraries and programs with nonstandard names/locations.
++
++Report bugs to the package provider.
++_ACEOF
++ac_status=$?
++fi
++
++if test "$ac_init_help" = "recursive"; then
++  # If there are subdirs, report their specific --help.
++  for ac_dir in : $ac_subdirs_all; do test "x$ac_dir" = x: && continue
++    test -d "$ac_dir" ||
++      { cd "$srcdir" && ac_pwd=`pwd` && srcdir=. && test -d "$ac_dir"; } ||
++      continue
++    ac_builddir=.
++
++case "$ac_dir" in
++.) ac_dir_suffix= ac_top_builddir_sub=. ac_top_build_prefix= ;;
++*)
++  ac_dir_suffix=/`$as_echo "$ac_dir" | sed 's|^\.[\\/]||'`
++  # A ".." for each directory in $ac_dir_suffix.
++  ac_top_builddir_sub=`$as_echo "$ac_dir_suffix" | sed 's|/[^\\/]*|/..|g;s|/||'`
++  case $ac_top_builddir_sub in
++  "") ac_top_builddir_sub=. ac_top_build_prefix= ;;
++  *)  ac_top_build_prefix=$ac_top_builddir_sub/ ;;
++  esac ;;
++esac
++ac_abs_top_builddir=$ac_pwd
++ac_abs_builddir=$ac_pwd$ac_dir_suffix
++# for backward compatibility:
++ac_top_builddir=$ac_top_build_prefix
++
++case $srcdir in
++  .)  # We are building in place.
++    ac_srcdir=.
++    ac_top_srcdir=$ac_top_builddir_sub
++    ac_abs_top_srcdir=$ac_pwd ;;
++  [\\/]* | ?:[\\/]* )  # Absolute name.
++    ac_srcdir=$srcdir$ac_dir_suffix;
++    ac_top_srcdir=$srcdir
++    ac_abs_top_srcdir=$srcdir ;;
++  *) # Relative name.
++    ac_srcdir=$ac_top_build_prefix$srcdir$ac_dir_suffix
++    ac_top_srcdir=$ac_top_build_prefix$srcdir
++    ac_abs_top_srcdir=$ac_pwd/$srcdir ;;
++esac
++ac_abs_srcdir=$ac_abs_top_srcdir$ac_dir_suffix
++
++    cd "$ac_dir" || { ac_status=$?; continue; }
++    # Check for guested configure.
++    if test -f "$ac_srcdir/configure.gnu"; then
++      echo &&
++      $SHELL "$ac_srcdir/configure.gnu" --help=recursive
++    elif test -f "$ac_srcdir/configure"; then
++      echo &&
++      $SHELL "$ac_srcdir/configure" --help=recursive
++    else
++      $as_echo "$as_me: WARNING: no configuration information is in $ac_dir" >&2
++    fi || ac_status=$?
++    cd "$ac_pwd" || { ac_status=$?; break; }
++  done
++fi
++
++test -n "$ac_init_help" && exit $ac_status
++if $ac_init_version; then
++  cat <<\_ACEOF
++bzip2 configure 1.0.6
++generated by GNU Autoconf 2.69
++
++Copyright (C) 2012 Free Software Foundation, Inc.
++This configure script is free software; the Free Software Foundation
++gives unlimited permission to copy, distribute and modify it.
++_ACEOF
++  exit
++fi
++
++## ------------------------ ##
++## Autoconf initialization. ##
++## ------------------------ ##
++
++# ac_fn_c_try_compile LINENO
++# --------------------------
++# Try to compile conftest.$ac_ext, and return whether this succeeded.
++ac_fn_c_try_compile ()
++{
++  as_lineno=${as_lineno-"$1"} as_lineno_stack=as_lineno_stack=$as_lineno_stack
++  rm -f conftest.$ac_objext
++  if { { ac_try="$ac_compile"
++case "(($ac_try" in
++  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
++  *) ac_try_echo=$ac_try;;
++esac
++eval ac_try_echo="\"\$as_me:${as_lineno-$LINENO}: $ac_try_echo\""
++$as_echo "$ac_try_echo"; } >&5
++  (eval "$ac_compile") 2>conftest.err
++  ac_status=$?
++  if test -s conftest.err; then
++    grep -v '^ *+' conftest.err >conftest.er1
++    cat conftest.er1 >&5
++    mv -f conftest.er1 conftest.err
++  fi
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; } && {
++	 test -z "$ac_c_werror_flag" ||
++	 test ! -s conftest.err
++       } && test -s conftest.$ac_objext; then :
++  ac_retval=0
++else
++  $as_echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++	ac_retval=1
++fi
++  eval $as_lineno_stack; ${as_lineno_stack:+:} unset as_lineno
++  as_fn_set_status $ac_retval
++
++} # ac_fn_c_try_compile
++cat >config.log <<_ACEOF
++This file contains any messages produced by compilers while
++running configure, to aid debugging if configure makes a mistake.
++
++It was created by bzip2 $as_me 1.0.6, which was
++generated by GNU Autoconf 2.69.  Invocation command line was
++
++  $ $0 $@
++
++_ACEOF
++exec 5>>config.log
++{
++cat <<_ASUNAME
++## --------- ##
++## Platform. ##
++## --------- ##
++
++hostname = `(hostname || uname -n) 2>/dev/null | sed 1q`
++uname -m = `(uname -m) 2>/dev/null || echo unknown`
++uname -r = `(uname -r) 2>/dev/null || echo unknown`
++uname -s = `(uname -s) 2>/dev/null || echo unknown`
++uname -v = `(uname -v) 2>/dev/null || echo unknown`
++
++/usr/bin/uname -p = `(/usr/bin/uname -p) 2>/dev/null || echo unknown`
++/bin/uname -X     = `(/bin/uname -X) 2>/dev/null     || echo unknown`
++
++/bin/arch              = `(/bin/arch) 2>/dev/null              || echo unknown`
++/usr/bin/arch -k       = `(/usr/bin/arch -k) 2>/dev/null       || echo unknown`
++/usr/convex/getsysinfo = `(/usr/convex/getsysinfo) 2>/dev/null || echo unknown`
++/usr/bin/hostinfo      = `(/usr/bin/hostinfo) 2>/dev/null      || echo unknown`
++/bin/machine           = `(/bin/machine) 2>/dev/null           || echo unknown`
++/usr/bin/oslevel       = `(/usr/bin/oslevel) 2>/dev/null       || echo unknown`
++/bin/universe          = `(/bin/universe) 2>/dev/null          || echo unknown`
++
++_ASUNAME
++
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    $as_echo "PATH: $as_dir"
++  done
++IFS=$as_save_IFS
++
++} >&5
++
++cat >&5 <<_ACEOF
++
++
++## ----------- ##
++## Core tests. ##
++## ----------- ##
++
++_ACEOF
++
++
++# Keep a trace of the command line.
++# Strip out --no-create and --no-recursion so they do not pile up.
++# Strip out --silent because we don't want to record it for future runs.
++# Also quote any args containing shell meta-characters.
++# Make two passes to allow for proper duplicate-argument suppression.
++ac_configure_args=
++ac_configure_args0=
++ac_configure_args1=
++ac_must_keep_next=false
++for ac_pass in 1 2
++do
++  for ac_arg
++  do
++    case $ac_arg in
++    -no-create | --no-c* | -n | -no-recursion | --no-r*) continue ;;
++    -q | -quiet | --quiet | --quie | --qui | --qu | --q \
++    | -silent | --silent | --silen | --sile | --sil)
++      continue ;;
++    *\'*)
++      ac_arg=`$as_echo "$ac_arg" | sed "s/'/'\\\\\\\\''/g"` ;;
++    esac
++    case $ac_pass in
++    1) as_fn_append ac_configure_args0 " '$ac_arg'" ;;
++    2)
++      as_fn_append ac_configure_args1 " '$ac_arg'"
++      if test $ac_must_keep_next = true; then
++	ac_must_keep_next=false # Got value, back to normal.
++      else
++	case $ac_arg in
++	  *=* | --config-cache | -C | -disable-* | --disable-* \
++	  | -enable-* | --enable-* | -gas | --g* | -nfp | --nf* \
++	  | -q | -quiet | --q* | -silent | --sil* | -v | -verb* \
++	  | -with-* | --with-* | -without-* | --without-* | --x)
++	    case "$ac_configure_args0 " in
++	      "$ac_configure_args1"*" '$ac_arg' "* ) continue ;;
++	    esac
++	    ;;
++	  -* ) ac_must_keep_next=true ;;
++	esac
++      fi
++      as_fn_append ac_configure_args " '$ac_arg'"
++      ;;
++    esac
++  done
++done
++{ ac_configure_args0=; unset ac_configure_args0;}
++{ ac_configure_args1=; unset ac_configure_args1;}
++
++# When interrupted or exit'd, cleanup temporary files, and complete
++# config.log.  We remove comments because anyway the quotes in there
++# would cause problems or look ugly.
++# WARNING: Use '\'' to represent an apostrophe within the trap.
++# WARNING: Do not start the trap code with a newline, due to a FreeBSD 4.0 bug.
++trap 'exit_status=$?
++  # Save into config.log some information that might help in debugging.
++  {
++    echo
++
++    $as_echo "## ---------------- ##
++## Cache variables. ##
++## ---------------- ##"
++    echo
++    # The following way of writing the cache mishandles newlines in values,
++(
++  for ac_var in `(set) 2>&1 | sed -n '\''s/^\([a-zA-Z_][a-zA-Z0-9_]*\)=.*/\1/p'\''`; do
++    eval ac_val=\$$ac_var
++    case $ac_val in #(
++    *${as_nl}*)
++      case $ac_var in #(
++      *_cv_*) { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: cache variable $ac_var contains a newline" >&5
++$as_echo "$as_me: WARNING: cache variable $ac_var contains a newline" >&2;} ;;
++      esac
++      case $ac_var in #(
++      _ | IFS | as_nl) ;; #(
++      BASH_ARGV | BASH_SOURCE) eval $ac_var= ;; #(
++      *) { eval $ac_var=; unset $ac_var;} ;;
++      esac ;;
++    esac
++  done
++  (set) 2>&1 |
++    case $as_nl`(ac_space='\'' '\''; set) 2>&1` in #(
++    *${as_nl}ac_space=\ *)
++      sed -n \
++	"s/'\''/'\''\\\\'\'''\''/g;
++	  s/^\\([_$as_cr_alnum]*_cv_[_$as_cr_alnum]*\\)=\\(.*\\)/\\1='\''\\2'\''/p"
++      ;; #(
++    *)
++      sed -n "/^[_$as_cr_alnum]*_cv_[_$as_cr_alnum]*=/p"
++      ;;
++    esac |
++    sort
++)
++    echo
++
++    $as_echo "## ----------------- ##
++## Output variables. ##
++## ----------------- ##"
++    echo
++    for ac_var in $ac_subst_vars
++    do
++      eval ac_val=\$$ac_var
++      case $ac_val in
++      *\'\''*) ac_val=`$as_echo "$ac_val" | sed "s/'\''/'\''\\\\\\\\'\'''\''/g"`;;
++      esac
++      $as_echo "$ac_var='\''$ac_val'\''"
++    done | sort
++    echo
++
++    if test -n "$ac_subst_files"; then
++      $as_echo "## ------------------- ##
++## File substitutions. ##
++## ------------------- ##"
++      echo
++      for ac_var in $ac_subst_files
++      do
++	eval ac_val=\$$ac_var
++	case $ac_val in
++	*\'\''*) ac_val=`$as_echo "$ac_val" | sed "s/'\''/'\''\\\\\\\\'\'''\''/g"`;;
++	esac
++	$as_echo "$ac_var='\''$ac_val'\''"
++      done | sort
++      echo
++    fi
++
++    if test -s confdefs.h; then
++      $as_echo "## ----------- ##
++## confdefs.h. ##
++## ----------- ##"
++      echo
++      cat confdefs.h
++      echo
++    fi
++    test "$ac_signal" != 0 &&
++      $as_echo "$as_me: caught signal $ac_signal"
++    $as_echo "$as_me: exit $exit_status"
++  } >&5
++  rm -f core *.core core.conftest.* &&
++    rm -f -r conftest* confdefs* conf$$* $ac_clean_files &&
++    exit $exit_status
++' 0
++for ac_signal in 1 2 13 15; do
++  trap 'ac_signal='$ac_signal'; as_fn_exit 1' $ac_signal
++done
++ac_signal=0
++
++# confdefs.h avoids OS command line length limits that DEFS can exceed.
++rm -f -r conftest* confdefs.h
++
++$as_echo "/* confdefs.h */" > confdefs.h
++
++# Predefined preprocessor variables.
++
++cat >>confdefs.h <<_ACEOF
++#define PACKAGE_NAME "$PACKAGE_NAME"
++_ACEOF
++
++cat >>confdefs.h <<_ACEOF
++#define PACKAGE_TARNAME "$PACKAGE_TARNAME"
++_ACEOF
++
++cat >>confdefs.h <<_ACEOF
++#define PACKAGE_VERSION "$PACKAGE_VERSION"
++_ACEOF
++
++cat >>confdefs.h <<_ACEOF
++#define PACKAGE_STRING "$PACKAGE_STRING"
++_ACEOF
++
++cat >>confdefs.h <<_ACEOF
++#define PACKAGE_BUGREPORT "$PACKAGE_BUGREPORT"
++_ACEOF
++
++cat >>confdefs.h <<_ACEOF
++#define PACKAGE_URL "$PACKAGE_URL"
++_ACEOF
++
++
++# Let the site file select an alternate cache file if it wants to.
++# Prefer an explicitly selected file to automatically selected ones.
++ac_site_file1=NONE
++ac_site_file2=NONE
++if test -n "$CONFIG_SITE"; then
++  # We do not want a PATH search for config.site.
++  case $CONFIG_SITE in #((
++    -*)  ac_site_file1=./$CONFIG_SITE;;
++    */*) ac_site_file1=$CONFIG_SITE;;
++    *)   ac_site_file1=./$CONFIG_SITE;;
++  esac
++elif test "x$prefix" != xNONE; then
++  ac_site_file1=$prefix/share/config.site
++  ac_site_file2=$prefix/etc/config.site
++else
++  ac_site_file1=$ac_default_prefix/share/config.site
++  ac_site_file2=$ac_default_prefix/etc/config.site
++fi
++for ac_site_file in "$ac_site_file1" "$ac_site_file2"
++do
++  test "x$ac_site_file" = xNONE && continue
++  if test /dev/null != "$ac_site_file" && test -r "$ac_site_file"; then
++    { $as_echo "$as_me:${as_lineno-$LINENO}: loading site script $ac_site_file" >&5
++$as_echo "$as_me: loading site script $ac_site_file" >&6;}
++    sed 's/^/| /' "$ac_site_file" >&5
++    . "$ac_site_file" \
++      || { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
++$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
++as_fn_error $? "failed to load site script $ac_site_file
++See \`config.log' for more details" "$LINENO" 5 ; }
++  fi
++done
++
++if test -r "$cache_file"; then
++  # Some versions of bash will fail to source /dev/null (special files
++  # actually), so we avoid doing that.  DJGPP emulates it as a regular file.
++  if test /dev/null != "$cache_file" && test -f "$cache_file"; then
++    { $as_echo "$as_me:${as_lineno-$LINENO}: loading cache $cache_file" >&5
++$as_echo "$as_me: loading cache $cache_file" >&6;}
++    case $cache_file in
++      [\\/]* | ?:[\\/]* ) . "$cache_file";;
++      *)                      . "./$cache_file";;
++    esac
++  fi
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: creating cache $cache_file" >&5
++$as_echo "$as_me: creating cache $cache_file" >&6;}
++  >$cache_file
++fi
++
++# Check that the precious variables saved in the cache have kept the same
++# value.
++ac_cache_corrupted=false
++for ac_var in $ac_precious_vars; do
++  eval ac_old_set=\$ac_cv_env_${ac_var}_set
++  eval ac_new_set=\$ac_env_${ac_var}_set
++  eval ac_old_val=\$ac_cv_env_${ac_var}_value
++  eval ac_new_val=\$ac_env_${ac_var}_value
++  case $ac_old_set,$ac_new_set in
++    set,)
++      { $as_echo "$as_me:${as_lineno-$LINENO}: error: \`$ac_var' was set to \`$ac_old_val' in the previous run" >&5
++$as_echo "$as_me: error: \`$ac_var' was set to \`$ac_old_val' in the previous run" >&2;}
++      ac_cache_corrupted=: ;;
++    ,set)
++      { $as_echo "$as_me:${as_lineno-$LINENO}: error: \`$ac_var' was not set in the previous run" >&5
++$as_echo "$as_me: error: \`$ac_var' was not set in the previous run" >&2;}
++      ac_cache_corrupted=: ;;
++    ,);;
++    *)
++      if test "x$ac_old_val" != "x$ac_new_val"; then
++	# differences in whitespace do not lead to failure.
++	ac_old_val_w=`echo x $ac_old_val`
++	ac_new_val_w=`echo x $ac_new_val`
++	if test "$ac_old_val_w" != "$ac_new_val_w"; then
++	  { $as_echo "$as_me:${as_lineno-$LINENO}: error: \`$ac_var' has changed since the previous run:" >&5
++$as_echo "$as_me: error: \`$ac_var' has changed since the previous run:" >&2;}
++	  ac_cache_corrupted=:
++	else
++	  { $as_echo "$as_me:${as_lineno-$LINENO}: warning: ignoring whitespace changes in \`$ac_var' since the previous run:" >&5
++$as_echo "$as_me: warning: ignoring whitespace changes in \`$ac_var' since the previous run:" >&2;}
++	  eval $ac_var=\$ac_old_val
++	fi
++	{ $as_echo "$as_me:${as_lineno-$LINENO}:   former value:  \`$ac_old_val'" >&5
++$as_echo "$as_me:   former value:  \`$ac_old_val'" >&2;}
++	{ $as_echo "$as_me:${as_lineno-$LINENO}:   current value: \`$ac_new_val'" >&5
++$as_echo "$as_me:   current value: \`$ac_new_val'" >&2;}
++      fi;;
++  esac
++  # Pass precious variables to config.status.
++  if test "$ac_new_set" = set; then
++    case $ac_new_val in
++    *\'*) ac_arg=$ac_var=`$as_echo "$ac_new_val" | sed "s/'/'\\\\\\\\''/g"` ;;
++    *) ac_arg=$ac_var=$ac_new_val ;;
++    esac
++    case " $ac_configure_args " in
++      *" '$ac_arg' "*) ;; # Avoid dups.  Use of quotes ensures accuracy.
++      *) as_fn_append ac_configure_args " '$ac_arg'" ;;
++    esac
++  fi
++done
++if $ac_cache_corrupted; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
++$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
++  { $as_echo "$as_me:${as_lineno-$LINENO}: error: changes in the environment can compromise the build" >&5
++$as_echo "$as_me: error: changes in the environment can compromise the build" >&2;}
++  as_fn_error $? "run \`make distclean' and/or \`rm $cache_file' and start over" "$LINENO" 5
++fi
++## -------------------- ##
++## Main body of script. ##
++## -------------------- ##
++
++ac_ext=c
++ac_cpp='$CPP $CPPFLAGS'
++ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
++ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
++ac_compiler_gnu=$ac_cv_c_compiler_gnu
++
++
++# ------------------------------------------------------------------
++# This file is part of bzip2/libbzip2, a program and library for
++# lossless, block-sorting data compression.
++#
++# bzip2/libbzip2 version 1.0.6 of 6 September 2010
++# Copyright (C) 1996-2010 Julian Seward <jseward@bzip.org>
++#
++# File: configure.ac for autoconf configuration
++# Contributed by Keith Marshall <keithmarshall@users.sourceforge.net>
++#
++# Please read the WARNING, DISCLAIMER and PATENTS sections in the
++# README file.
++#
++# This program is released under the terms of the license contained
++# in the file LICENSE.
++# ------------------------------------------------------------------
++ac_ext=c
++ac_cpp='$CPP $CPPFLAGS'
++ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
++ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
++ac_compiler_gnu=$ac_cv_c_compiler_gnu
++if test -n "$ac_tool_prefix"; then
++  # Extract the first word of "${ac_tool_prefix}gcc", so it can be a program name with args.
++set dummy ${ac_tool_prefix}gcc; ac_word=$2
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
++$as_echo_n "checking for $ac_word... " >&6; }
++if ${ac_cv_prog_CC+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  if test -n "$CC"; then
++  ac_cv_prog_CC="$CC" # Let the user override the test.
++else
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    for ac_exec_ext in '' $ac_executable_extensions; do
++  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
++    ac_cv_prog_CC="${ac_tool_prefix}gcc"
++    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
++    break 2
++  fi
++done
++  done
++IFS=$as_save_IFS
++
++fi
++fi
++CC=$ac_cv_prog_CC
++if test -n "$CC"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CC" >&5
++$as_echo "$CC" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++fi
++
++
++fi
++if test -z "$ac_cv_prog_CC"; then
++  ac_ct_CC=$CC
++  # Extract the first word of "gcc", so it can be a program name with args.
++set dummy gcc; ac_word=$2
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
++$as_echo_n "checking for $ac_word... " >&6; }
++if ${ac_cv_prog_ac_ct_CC+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  if test -n "$ac_ct_CC"; then
++  ac_cv_prog_ac_ct_CC="$ac_ct_CC" # Let the user override the test.
++else
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    for ac_exec_ext in '' $ac_executable_extensions; do
++  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
++    ac_cv_prog_ac_ct_CC="gcc"
++    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
++    break 2
++  fi
++done
++  done
++IFS=$as_save_IFS
++
++fi
++fi
++ac_ct_CC=$ac_cv_prog_ac_ct_CC
++if test -n "$ac_ct_CC"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_ct_CC" >&5
++$as_echo "$ac_ct_CC" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++fi
++
++  if test "x$ac_ct_CC" = x; then
++    CC=""
++  else
++    case $cross_compiling:$ac_tool_warned in
++yes:)
++{ $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
++$as_echo "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
++ac_tool_warned=yes ;;
++esac
++    CC=$ac_ct_CC
++  fi
++else
++  CC="$ac_cv_prog_CC"
++fi
++
++if test -z "$CC"; then
++          if test -n "$ac_tool_prefix"; then
++    # Extract the first word of "${ac_tool_prefix}cc", so it can be a program name with args.
++set dummy ${ac_tool_prefix}cc; ac_word=$2
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
++$as_echo_n "checking for $ac_word... " >&6; }
++if ${ac_cv_prog_CC+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  if test -n "$CC"; then
++  ac_cv_prog_CC="$CC" # Let the user override the test.
++else
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    for ac_exec_ext in '' $ac_executable_extensions; do
++  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
++    ac_cv_prog_CC="${ac_tool_prefix}cc"
++    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
++    break 2
++  fi
++done
++  done
++IFS=$as_save_IFS
++
++fi
++fi
++CC=$ac_cv_prog_CC
++if test -n "$CC"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CC" >&5
++$as_echo "$CC" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++fi
++
++
++  fi
++fi
++if test -z "$CC"; then
++  # Extract the first word of "cc", so it can be a program name with args.
++set dummy cc; ac_word=$2
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
++$as_echo_n "checking for $ac_word... " >&6; }
++if ${ac_cv_prog_CC+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  if test -n "$CC"; then
++  ac_cv_prog_CC="$CC" # Let the user override the test.
++else
++  ac_prog_rejected=no
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    for ac_exec_ext in '' $ac_executable_extensions; do
++  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
++    if test "$as_dir/$ac_word$ac_exec_ext" = "/usr/ucb/cc"; then
++       ac_prog_rejected=yes
++       continue
++     fi
++    ac_cv_prog_CC="cc"
++    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
++    break 2
++  fi
++done
++  done
++IFS=$as_save_IFS
++
++if test $ac_prog_rejected = yes; then
++  # We found a bogon in the path, so make sure we never use it.
++  set dummy $ac_cv_prog_CC
++  shift
++  if test $# != 0; then
++    # We chose a different compiler from the bogus one.
++    # However, it has the same basename, so the bogon will be chosen
++    # first if we set CC to just the basename; use the full file name.
++    shift
++    ac_cv_prog_CC="$as_dir/$ac_word${1+' '}$@"
++  fi
++fi
++fi
++fi
++CC=$ac_cv_prog_CC
++if test -n "$CC"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CC" >&5
++$as_echo "$CC" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++fi
++
++
++fi
++if test -z "$CC"; then
++  if test -n "$ac_tool_prefix"; then
++  for ac_prog in cl.exe
++  do
++    # Extract the first word of "$ac_tool_prefix$ac_prog", so it can be a program name with args.
++set dummy $ac_tool_prefix$ac_prog; ac_word=$2
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
++$as_echo_n "checking for $ac_word... " >&6; }
++if ${ac_cv_prog_CC+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  if test -n "$CC"; then
++  ac_cv_prog_CC="$CC" # Let the user override the test.
++else
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    for ac_exec_ext in '' $ac_executable_extensions; do
++  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
++    ac_cv_prog_CC="$ac_tool_prefix$ac_prog"
++    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
++    break 2
++  fi
++done
++  done
++IFS=$as_save_IFS
++
++fi
++fi
++CC=$ac_cv_prog_CC
++if test -n "$CC"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $CC" >&5
++$as_echo "$CC" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++fi
++
++
++    test -n "$CC" && break
++  done
++fi
++if test -z "$CC"; then
++  ac_ct_CC=$CC
++  for ac_prog in cl.exe
++do
++  # Extract the first word of "$ac_prog", so it can be a program name with args.
++set dummy $ac_prog; ac_word=$2
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
++$as_echo_n "checking for $ac_word... " >&6; }
++if ${ac_cv_prog_ac_ct_CC+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  if test -n "$ac_ct_CC"; then
++  ac_cv_prog_ac_ct_CC="$ac_ct_CC" # Let the user override the test.
++else
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    for ac_exec_ext in '' $ac_executable_extensions; do
++  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
++    ac_cv_prog_ac_ct_CC="$ac_prog"
++    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
++    break 2
++  fi
++done
++  done
++IFS=$as_save_IFS
++
++fi
++fi
++ac_ct_CC=$ac_cv_prog_ac_ct_CC
++if test -n "$ac_ct_CC"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_ct_CC" >&5
++$as_echo "$ac_ct_CC" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++fi
++
++
++  test -n "$ac_ct_CC" && break
++done
++
++  if test "x$ac_ct_CC" = x; then
++    CC=""
++  else
++    case $cross_compiling:$ac_tool_warned in
++yes:)
++{ $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
++$as_echo "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
++ac_tool_warned=yes ;;
++esac
++    CC=$ac_ct_CC
++  fi
++fi
++
++fi
++
++
++test -z "$CC" && { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
++$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
++as_fn_error $? "no acceptable C compiler found in \$PATH
++See \`config.log' for more details" "$LINENO" 5 ; }
++
++# Provide some information about the compiler.
++$as_echo "$as_me:${as_lineno-$LINENO}: checking for C compiler version" >&5
++set X $ac_compile
++ac_compiler=$2
++for ac_option in --version -v -V -qversion; do
++  { { ac_try="$ac_compiler $ac_option >&5"
++case "(($ac_try" in
++  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
++  *) ac_try_echo=$ac_try;;
++esac
++eval ac_try_echo="\"\$as_me:${as_lineno-$LINENO}: $ac_try_echo\""
++$as_echo "$ac_try_echo"; } >&5
++  (eval "$ac_compiler $ac_option >&5") 2>conftest.err
++  ac_status=$?
++  if test -s conftest.err; then
++    sed '10a\
++... rest of stderr output deleted ...
++         10q' conftest.err >conftest.er1
++    cat conftest.er1 >&5
++  fi
++  rm -f conftest.er1 conftest.err
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }
++done
++
++cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++int
++main ()
++{
++
++  ;
++  return 0;
++}
++_ACEOF
++ac_clean_files_save=$ac_clean_files
++ac_clean_files="$ac_clean_files a.out a.out.dSYM a.exe b.out"
++# Try to create an executable without -o first, disregard a.out.
++# It will help us diagnose broken compilers, and finding out an intuition
++# of exeext.
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the C compiler works" >&5
++$as_echo_n "checking whether the C compiler works... " >&6; }
++ac_link_default=`$as_echo "$ac_link" | sed 's/ -o *conftest[^ ]*//'`
++
++# The possible output files:
++ac_files="a.out conftest.exe conftest a.exe a_out.exe b.out conftest.*"
++
++ac_rmfiles=
++for ac_file in $ac_files
++do
++  case $ac_file in
++    *.$ac_ext | *.xcoff | *.tds | *.d | *.pdb | *.xSYM | *.bb | *.bbg | *.map | *.inf | *.dSYM | *.o | *.obj ) ;;
++    * ) ac_rmfiles="$ac_rmfiles $ac_file";;
++  esac
++done
++rm -f $ac_rmfiles
++
++if { { ac_try="$ac_link_default"
++case "(($ac_try" in
++  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
++  *) ac_try_echo=$ac_try;;
++esac
++eval ac_try_echo="\"\$as_me:${as_lineno-$LINENO}: $ac_try_echo\""
++$as_echo "$ac_try_echo"; } >&5
++  (eval "$ac_link_default") 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; then :
++  # Autoconf-2.13 could set the ac_cv_exeext variable to `no'.
++# So ignore a value of `no', otherwise this would lead to `EXEEXT = no'
++# in a Makefile.  We should not override ac_cv_exeext if it was cached,
++# so that the user can short-circuit this test for compilers unknown to
++# Autoconf.
++for ac_file in $ac_files ''
++do
++  test -f "$ac_file" || continue
++  case $ac_file in
++    *.$ac_ext | *.xcoff | *.tds | *.d | *.pdb | *.xSYM | *.bb | *.bbg | *.map | *.inf | *.dSYM | *.o | *.obj )
++	;;
++    [ab].out )
++	# We found the default executable, but exeext='' is most
++	# certainly right.
++	break;;
++    *.* )
++	if test "${ac_cv_exeext+set}" = set && test "$ac_cv_exeext" != no;
++	then :; else
++	   ac_cv_exeext=`expr "$ac_file" : '[^.]*\(\..*\)'`
++	fi
++	# We set ac_cv_exeext here because the later test for it is not
++	# safe: cross compilers may not add the suffix if given an `-o'
++	# argument, so we may need to know it at that point already.
++	# Even if this section looks crufty: it has the advantage of
++	# actually working.
++	break;;
++    * )
++	break;;
++  esac
++done
++test "$ac_cv_exeext" = no && ac_cv_exeext=
++
++else
++  ac_file=''
++fi
++if test -z "$ac_file"; then :
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++$as_echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++{ { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
++$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
++as_fn_error 77 "C compiler cannot create executables
++See \`config.log' for more details" "$LINENO" 5 ; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
++$as_echo "yes" >&6; }
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for C compiler default output file name" >&5
++$as_echo_n "checking for C compiler default output file name... " >&6; }
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_file" >&5
++$as_echo "$ac_file" >&6; }
++ac_exeext=$ac_cv_exeext
++
++rm -f -r a.out a.out.dSYM a.exe conftest$ac_cv_exeext b.out
++ac_clean_files=$ac_clean_files_save
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for suffix of executables" >&5
++$as_echo_n "checking for suffix of executables... " >&6; }
++if { { ac_try="$ac_link"
++case "(($ac_try" in
++  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
++  *) ac_try_echo=$ac_try;;
++esac
++eval ac_try_echo="\"\$as_me:${as_lineno-$LINENO}: $ac_try_echo\""
++$as_echo "$ac_try_echo"; } >&5
++  (eval "$ac_link") 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; then :
++  # If both `conftest.exe' and `conftest' are `present' (well, observable)
++# catch `conftest.exe'.  For instance with Cygwin, `ls conftest' will
++# work properly (i.e., refer to `conftest.exe'), while it won't with
++# `rm'.
++for ac_file in conftest.exe conftest conftest.*; do
++  test -f "$ac_file" || continue
++  case $ac_file in
++    *.$ac_ext | *.xcoff | *.tds | *.d | *.pdb | *.xSYM | *.bb | *.bbg | *.map | *.inf | *.dSYM | *.o | *.obj ) ;;
++    *.* ) ac_cv_exeext=`expr "$ac_file" : '[^.]*\(\..*\)'`
++	  break;;
++    * ) break;;
++  esac
++done
++else
++  { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
++$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
++as_fn_error $? "cannot compute suffix of executables: cannot compile and link
++See \`config.log' for more details" "$LINENO" 5 ; }
++fi
++rm -f conftest conftest$ac_cv_exeext
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_exeext" >&5
++$as_echo "$ac_cv_exeext" >&6; }
++
++rm -f conftest.$ac_ext
++EXEEXT=$ac_cv_exeext
++ac_exeext=$EXEEXT
++cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++#include <stdio.h>
++int
++main ()
++{
++FILE *f = fopen ("conftest.out", "w");
++ return ferror (f) || fclose (f) != 0;
++
++  ;
++  return 0;
++}
++_ACEOF
++ac_clean_files="$ac_clean_files conftest.out"
++# Check that the compiler produces executables we can run.  If not, either
++# the compiler is broken, or we cross compile.
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether we are cross compiling" >&5
++$as_echo_n "checking whether we are cross compiling... " >&6; }
++if test "$cross_compiling" != yes; then
++  { { ac_try="$ac_link"
++case "(($ac_try" in
++  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
++  *) ac_try_echo=$ac_try;;
++esac
++eval ac_try_echo="\"\$as_me:${as_lineno-$LINENO}: $ac_try_echo\""
++$as_echo "$ac_try_echo"; } >&5
++  (eval "$ac_link") 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }
++  if { ac_try='./conftest$ac_cv_exeext'
++  { { case "(($ac_try" in
++  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
++  *) ac_try_echo=$ac_try;;
++esac
++eval ac_try_echo="\"\$as_me:${as_lineno-$LINENO}: $ac_try_echo\""
++$as_echo "$ac_try_echo"; } >&5
++  (eval "$ac_try") 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; }; then
++    cross_compiling=no
++  else
++    if test "$cross_compiling" = maybe; then
++	cross_compiling=yes
++    else
++	{ { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
++$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
++as_fn_error $? "cannot run C compiled programs.
++If you meant to cross compile, use \`--host'.
++See \`config.log' for more details" "$LINENO" 5 ; }
++    fi
++  fi
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $cross_compiling" >&5
++$as_echo "$cross_compiling" >&6; }
++
++rm -f conftest.$ac_ext conftest$ac_cv_exeext conftest.out
++ac_clean_files=$ac_clean_files_save
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for suffix of object files" >&5
++$as_echo_n "checking for suffix of object files... " >&6; }
++if ${ac_cv_objext+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++int
++main ()
++{
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.o conftest.obj
++if { { ac_try="$ac_compile"
++case "(($ac_try" in
++  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
++  *) ac_try_echo=$ac_try;;
++esac
++eval ac_try_echo="\"\$as_me:${as_lineno-$LINENO}: $ac_try_echo\""
++$as_echo "$ac_try_echo"; } >&5
++  (eval "$ac_compile") 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; then :
++  for ac_file in conftest.o conftest.obj conftest.*; do
++  test -f "$ac_file" || continue;
++  case $ac_file in
++    *.$ac_ext | *.xcoff | *.tds | *.d | *.pdb | *.xSYM | *.bb | *.bbg | *.map | *.inf | *.dSYM ) ;;
++    *) ac_cv_objext=`expr "$ac_file" : '.*\.\(.*\)'`
++       break;;
++  esac
++done
++else
++  $as_echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++{ { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
++$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
++as_fn_error $? "cannot compute suffix of object files: cannot compile
++See \`config.log' for more details" "$LINENO" 5 ; }
++fi
++rm -f conftest.$ac_cv_objext conftest.$ac_ext
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_objext" >&5
++$as_echo "$ac_cv_objext" >&6; }
++OBJEXT=$ac_cv_objext
++ac_objext=$OBJEXT
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether we are using the GNU C compiler" >&5
++$as_echo_n "checking whether we are using the GNU C compiler... " >&6; }
++if ${ac_cv_c_compiler_gnu+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++int
++main ()
++{
++#ifndef __GNUC__
++       choke me
++#endif
++
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_compile "$LINENO"; then :
++  ac_compiler_gnu=yes
++else
++  ac_compiler_gnu=no
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
++ac_cv_c_compiler_gnu=$ac_compiler_gnu
++
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_c_compiler_gnu" >&5
++$as_echo "$ac_cv_c_compiler_gnu" >&6; }
++if test $ac_compiler_gnu = yes; then
++  GCC=yes
++else
++  GCC=
++fi
++ac_test_CFLAGS=${CFLAGS+set}
++ac_save_CFLAGS=$CFLAGS
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC accepts -g" >&5
++$as_echo_n "checking whether $CC accepts -g... " >&6; }
++if ${ac_cv_prog_cc_g+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  ac_save_c_werror_flag=$ac_c_werror_flag
++   ac_c_werror_flag=yes
++   ac_cv_prog_cc_g=no
++   CFLAGS="-g"
++   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++int
++main ()
++{
++
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_compile "$LINENO"; then :
++  ac_cv_prog_cc_g=yes
++else
++  CFLAGS=""
++      cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++int
++main ()
++{
++
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_compile "$LINENO"; then :
++
++else
++  ac_c_werror_flag=$ac_save_c_werror_flag
++	 CFLAGS="-g"
++	 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++int
++main ()
++{
++
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_compile "$LINENO"; then :
++  ac_cv_prog_cc_g=yes
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
++   ac_c_werror_flag=$ac_save_c_werror_flag
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_prog_cc_g" >&5
++$as_echo "$ac_cv_prog_cc_g" >&6; }
++if test "$ac_test_CFLAGS" = set; then
++  CFLAGS=$ac_save_CFLAGS
++elif test $ac_cv_prog_cc_g = yes; then
++  if test "$GCC" = yes; then
++    CFLAGS="-g -O2"
++  else
++    CFLAGS="-g"
++  fi
++else
++  if test "$GCC" = yes; then
++    CFLAGS="-O2"
++  else
++    CFLAGS=
++  fi
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $CC option to accept ISO C89" >&5
++$as_echo_n "checking for $CC option to accept ISO C89... " >&6; }
++if ${ac_cv_prog_cc_c89+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  ac_cv_prog_cc_c89=no
++ac_save_CC=$CC
++cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++#include <stdarg.h>
++#include <stdio.h>
++struct stat;
++/* Most of the following tests are stolen from RCS 5.7's src/conf.sh.  */
++struct buf { int x; };
++FILE * (*rcsopen) (struct buf *, struct stat *, int);
++static char *e (p, i)
++     char **p;
++     int i;
++{
++  return p[i];
++}
++static char *f (char * (*g) (char **, int), char **p, ...)
++{
++  char *s;
++  va_list v;
++  va_start (v,p);
++  s = g (p, va_arg (v,int));
++  va_end (v);
++  return s;
++}
++
++/* OSF 4.0 Compaq cc is some sort of almost-ANSI by default.  It has
++   function prototypes and stuff, but not '\xHH' hex character constants.
++   These don't provoke an error unfortunately, instead are silently treated
++   as 'x'.  The following induces an error, until -std is added to get
++   proper ANSI mode.  Curiously '\x00'!='x' always comes out true, for an
++   array size at least.  It's necessary to write '\x00'==0 to get something
++   that's true only with -std.  */
++int osf4_cc_array ['\x00' == 0 ? 1 : -1];
++
++/* IBM C 6 for AIX is almost-ANSI by default, but it replaces macro parameters
++   inside strings and character constants.  */
++#define FOO(x) 'x'
++int xlc6_cc_array[FOO(a) == 'x' ? 1 : -1];
++
++int test (int i, double x);
++struct s1 {int (*f) (int a);};
++struct s2 {int (*f) (double a);};
++int pairnames (int, char **, FILE *(*)(struct buf *, struct stat *, int), int, int);
++int argc;
++char **argv;
++int
++main ()
++{
++return f (e, argv, 0) != argv[0]  ||  f (e, argv, 1) != argv[1];
++  ;
++  return 0;
++}
++_ACEOF
++for ac_arg in '' -qlanglvl=extc89 -qlanglvl=ansi -std \
++	-Ae "-Aa -D_HPUX_SOURCE" "-Xc -D__EXTENSIONS__"
++do
++  CC="$ac_save_CC $ac_arg"
++  if ac_fn_c_try_compile "$LINENO"; then :
++  ac_cv_prog_cc_c89=$ac_arg
++fi
++rm -f core conftest.err conftest.$ac_objext
++  test "x$ac_cv_prog_cc_c89" != "xno" && break
++done
++rm -f conftest.$ac_ext
++CC=$ac_save_CC
++
++fi
++# AC_CACHE_VAL
++case "x$ac_cv_prog_cc_c89" in
++  x)
++    { $as_echo "$as_me:${as_lineno-$LINENO}: result: none needed" >&5
++$as_echo "none needed" >&6; } ;;
++  xno)
++    { $as_echo "$as_me:${as_lineno-$LINENO}: result: unsupported" >&5
++$as_echo "unsupported" >&6; } ;;
++  *)
++    CC="$CC $ac_cv_prog_cc_c89"
++    { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_prog_cc_c89" >&5
++$as_echo "$ac_cv_prog_cc_c89" >&6; } ;;
++esac
++if test "x$ac_cv_prog_cc_c89" != xno; then :
++
++fi
++
++ac_ext=c
++ac_cpp='$CPP $CPPFLAGS'
++ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
++ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
++ac_compiler_gnu=$ac_cv_c_compiler_gnu
++
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether ln -s works" >&5
++$as_echo_n "checking whether ln -s works... " >&6; }
++LN_S=$as_ln_s
++if test "$LN_S" = "ln -s"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
++$as_echo "yes" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no, using $LN_S" >&5
++$as_echo "no, using $LN_S" >&6; }
++fi
++
++
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether we are building for an MS-Windows host" >&5
++$as_echo_n "checking whether we are building for an MS-Windows host... " >&6; }
++if ${bzip2_cv_windows_host+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++
++cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++#if defined _WIN32 || defined _WIN64
++ choke me
++#endif
++_ACEOF
++if ac_fn_c_try_compile "$LINENO"; then :
++  bzip2_cv_windows_host=no
++else
++  bzip2_cv_windows_host=yes
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $bzip2_cv_windows_host" >&5
++$as_echo "$bzip2_cv_windows_host" >&6; }
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether we are building for a cygwin host" >&5
++$as_echo_n "checking whether we are building for a cygwin host... " >&6; }
++if ${bzip2_cv_cygwin_host+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++#if defined __CYGWIN__
++ choke me
++#endif
++_ACEOF
++if ac_fn_c_try_compile "$LINENO"; then :
++  bzip2_cv_cygwin_host=no
++else
++  bzip2_cv_cygwin_host=yes
++fi
++rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $bzip2_cv_cygwin_host" >&5
++$as_echo "$bzip2_cv_cygwin_host" >&6; }
++  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for make goal to build shared libraries" >&5
++$as_echo_n "checking for make goal to build shared libraries... " >&6; }
++ # Check whether --enable-shared was given.
++if test "${enable_shared+set}" = set; then :
++  enableval=$enable_shared; if test "x$enable_shared" = xyes
++  then
++    if test "x${bzip2_cv_windows_host}" = xyes ||
++       test "x${bzip2_cv_cygwin_host}" = xyes
++    then
++      enable_shared="all-dll-shared"
++    else
++      enable_shared="all-bzip2-shared"
++    fi
++  else
++    enable_shared="none"
++  fi
++
++else
++  enable_shared="none"
++fi
++ { $as_echo "$as_me:${as_lineno-$LINENO}: result: ${enable_shared}" >&5
++$as_echo "${enable_shared}" >&6; }
++ test "x$enable_shared" = xnone && enable_shared=""
++
++ { $as_echo "$as_me:${as_lineno-$LINENO}: checking for API version of DLL shared libraries" >&5
++$as_echo_n "checking for API version of DLL shared libraries... " >&6; }
++ SO_VER=`FS=' 	';sed -n "/^[$FS]*SO_VER[$FS]*=[$FS]*/s///p" ${srcdir}/Makefile.in`
++ SO_AGE=`FS=' 	';sed -n "/^[$FS]*SO_AGE[$FS]*=[$FS]*/s///p" ${srcdir}/Makefile.in`
++ dllver=`expr ${SO_VER} - ${SO_AGE}`
++  test "x$bzip2_cv_windows_host" = xyes && dllver=`expr 1 + ${SO_VER} - ${SO_AGE}`
++ DLLVER=${dllver}
++
++ { $as_echo "$as_me:${as_lineno-$LINENO}: result: ${dllver}" >&5
++$as_echo "${dllver}" >&6; }
++ { $as_echo "$as_me:${as_lineno-$LINENO}: checking for base name of DLL shared libraries" >&5
++$as_echo_n "checking for base name of DLL shared libraries... " >&6; }
++ dllname=msys-bz2
++  test "x$bzip2_cv_windows_host" = xyes && dllname=libbz2
++ DLLNAME=${dllname}
++
++ { $as_echo "$as_me:${as_lineno-$LINENO}: result: ${dllname}" >&5
++$as_echo "${dllname}" >&6; }
++
++
++
++
++
++if test -n "$ac_tool_prefix"; then
++  # Extract the first word of "${ac_tool_prefix}ar", so it can be a program name with args.
++set dummy ${ac_tool_prefix}ar; ac_word=$2
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
++$as_echo_n "checking for $ac_word... " >&6; }
++if ${ac_cv_prog_AR+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  if test -n "$AR"; then
++  ac_cv_prog_AR="$AR" # Let the user override the test.
++else
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    for ac_exec_ext in '' $ac_executable_extensions; do
++  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
++    ac_cv_prog_AR="${ac_tool_prefix}ar"
++    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
++    break 2
++  fi
++done
++  done
++IFS=$as_save_IFS
++
++fi
++fi
++AR=$ac_cv_prog_AR
++if test -n "$AR"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $AR" >&5
++$as_echo "$AR" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++fi
++
++
++fi
++if test -z "$ac_cv_prog_AR"; then
++  ac_ct_AR=$AR
++  # Extract the first word of "ar", so it can be a program name with args.
++set dummy ar; ac_word=$2
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
++$as_echo_n "checking for $ac_word... " >&6; }
++if ${ac_cv_prog_ac_ct_AR+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  if test -n "$ac_ct_AR"; then
++  ac_cv_prog_ac_ct_AR="$ac_ct_AR" # Let the user override the test.
++else
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    for ac_exec_ext in '' $ac_executable_extensions; do
++  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
++    ac_cv_prog_ac_ct_AR="ar"
++    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
++    break 2
++  fi
++done
++  done
++IFS=$as_save_IFS
++
++fi
++fi
++ac_ct_AR=$ac_cv_prog_ac_ct_AR
++if test -n "$ac_ct_AR"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_ct_AR" >&5
++$as_echo "$ac_ct_AR" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++fi
++
++  if test "x$ac_ct_AR" = x; then
++    AR="ar"
++  else
++    case $cross_compiling:$ac_tool_warned in
++yes:)
++{ $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
++$as_echo "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
++ac_tool_warned=yes ;;
++esac
++    AR=$ac_ct_AR
++  fi
++else
++  AR="$ac_cv_prog_AR"
++fi
++
++if test -n "$ac_tool_prefix"; then
++  # Extract the first word of "${ac_tool_prefix}ranlib", so it can be a program name with args.
++set dummy ${ac_tool_prefix}ranlib; ac_word=$2
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
++$as_echo_n "checking for $ac_word... " >&6; }
++if ${ac_cv_prog_RANLIB+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  if test -n "$RANLIB"; then
++  ac_cv_prog_RANLIB="$RANLIB" # Let the user override the test.
++else
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    for ac_exec_ext in '' $ac_executable_extensions; do
++  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
++    ac_cv_prog_RANLIB="${ac_tool_prefix}ranlib"
++    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
++    break 2
++  fi
++done
++  done
++IFS=$as_save_IFS
++
++fi
++fi
++RANLIB=$ac_cv_prog_RANLIB
++if test -n "$RANLIB"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $RANLIB" >&5
++$as_echo "$RANLIB" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++fi
++
++
++fi
++if test -z "$ac_cv_prog_RANLIB"; then
++  ac_ct_RANLIB=$RANLIB
++  # Extract the first word of "ranlib", so it can be a program name with args.
++set dummy ranlib; ac_word=$2
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
++$as_echo_n "checking for $ac_word... " >&6; }
++if ${ac_cv_prog_ac_ct_RANLIB+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  if test -n "$ac_ct_RANLIB"; then
++  ac_cv_prog_ac_ct_RANLIB="$ac_ct_RANLIB" # Let the user override the test.
++else
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    for ac_exec_ext in '' $ac_executable_extensions; do
++  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
++    ac_cv_prog_ac_ct_RANLIB="ranlib"
++    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
++    break 2
++  fi
++done
++  done
++IFS=$as_save_IFS
++
++fi
++fi
++ac_ct_RANLIB=$ac_cv_prog_ac_ct_RANLIB
++if test -n "$ac_ct_RANLIB"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_ct_RANLIB" >&5
++$as_echo "$ac_ct_RANLIB" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++fi
++
++  if test "x$ac_ct_RANLIB" = x; then
++    RANLIB="true"
++  else
++    case $cross_compiling:$ac_tool_warned in
++yes:)
++{ $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
++$as_echo "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
++ac_tool_warned=yes ;;
++esac
++    RANLIB=$ac_ct_RANLIB
++  fi
++else
++  RANLIB="$ac_cv_prog_RANLIB"
++fi
++
++
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for flags to pass to ${AR}" >&5
++$as_echo_n "checking for flags to pass to ${AR}... " >&6; }
++ARFLAGS=${ARFLAGS-cq}
++
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: ${ARFLAGS}" >&5
++$as_echo "${ARFLAGS}" >&6; }
++
++ac_config_files="$ac_config_files Makefile"
++
++cat >confcache <<\_ACEOF
++# This file is a shell script that caches the results of configure
++# tests run on this system so they can be shared between configure
++# scripts and configure runs, see configure's option --config-cache.
++# It is not useful on other systems.  If it contains results you don't
++# want to keep, you may remove or edit it.
++#
++# config.status only pays attention to the cache file if you give it
++# the --recheck option to rerun configure.
++#
++# `ac_cv_env_foo' variables (set or unset) will be overridden when
++# loading this file, other *unset* `ac_cv_foo' will be assigned the
++# following values.
++
++_ACEOF
++
++# The following way of writing the cache mishandles newlines in values,
++# but we know of no workaround that is simple, portable, and efficient.
++# So, we kill variables containing newlines.
++# Ultrix sh set writes to stderr and can't be redirected directly,
++# and sets the high bit in the cache file unless we assign to the vars.
++(
++  for ac_var in `(set) 2>&1 | sed -n 's/^\([a-zA-Z_][a-zA-Z0-9_]*\)=.*/\1/p'`; do
++    eval ac_val=\$$ac_var
++    case $ac_val in #(
++    *${as_nl}*)
++      case $ac_var in #(
++      *_cv_*) { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: cache variable $ac_var contains a newline" >&5
++$as_echo "$as_me: WARNING: cache variable $ac_var contains a newline" >&2;} ;;
++      esac
++      case $ac_var in #(
++      _ | IFS | as_nl) ;; #(
++      BASH_ARGV | BASH_SOURCE) eval $ac_var= ;; #(
++      *) { eval $ac_var=; unset $ac_var;} ;;
++      esac ;;
++    esac
++  done
++
++  (set) 2>&1 |
++    case $as_nl`(ac_space=' '; set) 2>&1` in #(
++    *${as_nl}ac_space=\ *)
++      # `set' does not quote correctly, so add quotes: double-quote
++      # substitution turns \\\\ into \\, and sed turns \\ into \.
++      sed -n \
++	"s/'/'\\\\''/g;
++	  s/^\\([_$as_cr_alnum]*_cv_[_$as_cr_alnum]*\\)=\\(.*\\)/\\1='\\2'/p"
++      ;; #(
++    *)
++      # `set' quotes correctly as required by POSIX, so do not add quotes.
++      sed -n "/^[_$as_cr_alnum]*_cv_[_$as_cr_alnum]*=/p"
++      ;;
++    esac |
++    sort
++) |
++  sed '
++     /^ac_cv_env_/b end
++     t clear
++     :clear
++     s/^\([^=]*\)=\(.*[{}].*\)$/test "${\1+set}" = set || &/
++     t end
++     s/^\([^=]*\)=\(.*\)$/\1=${\1=\2}/
++     :end' >>confcache
++if diff "$cache_file" confcache >/dev/null 2>&1; then :; else
++  if test -w "$cache_file"; then
++    if test "x$cache_file" != "x/dev/null"; then
++      { $as_echo "$as_me:${as_lineno-$LINENO}: updating cache $cache_file" >&5
++$as_echo "$as_me: updating cache $cache_file" >&6;}
++      if test ! -f "$cache_file" || test -h "$cache_file"; then
++	cat confcache >"$cache_file"
++      else
++        case $cache_file in #(
++        */* | ?:*)
++	  mv -f confcache "$cache_file"$$ &&
++	  mv -f "$cache_file"$$ "$cache_file" ;; #(
++        *)
++	  mv -f confcache "$cache_file" ;;
++	esac
++      fi
++    fi
++  else
++    { $as_echo "$as_me:${as_lineno-$LINENO}: not updating unwritable cache $cache_file" >&5
++$as_echo "$as_me: not updating unwritable cache $cache_file" >&6;}
++  fi
++fi
++rm -f confcache
++
++test "x$prefix" = xNONE && prefix=$ac_default_prefix
++# Let make expand exec_prefix.
++test "x$exec_prefix" = xNONE && exec_prefix='${prefix}'
++
++# Transform confdefs.h into DEFS.
++# Protect against shell expansion while executing Makefile rules.
++# Protect against Makefile macro expansion.
++#
++# If the first sed substitution is executed (which looks for macros that
++# take arguments), then branch to the quote section.  Otherwise,
++# look for a macro that doesn't take arguments.
++ac_script='
++:mline
++/\\$/{
++ N
++ s,\\\n,,
++ b mline
++}
++t clear
++:clear
++s/^[	 ]*#[	 ]*define[	 ][	 ]*\([^	 (][^	 (]*([^)]*)\)[	 ]*\(.*\)/-D\1=\2/g
++t quote
++s/^[	 ]*#[	 ]*define[	 ][	 ]*\([^	 ][^	 ]*\)[	 ]*\(.*\)/-D\1=\2/g
++t quote
++b any
++:quote
++s/[	 `~#$^&*(){}\\|;'\''"<>?]/\\&/g
++s/\[/\\&/g
++s/\]/\\&/g
++s/\$/$$/g
++H
++:any
++${
++	g
++	s/^\n//
++	s/\n/ /g
++	p
++}
++'
++DEFS=`sed -n "$ac_script" confdefs.h`
++
++
++ac_libobjs=
++ac_ltlibobjs=
++U=
++for ac_i in : $LIBOBJS; do test "x$ac_i" = x: && continue
++  # 1. Remove the extension, and $U if already installed.
++  ac_script='s/\$U\././;s/\.o$//;s/\.obj$//'
++  ac_i=`$as_echo "$ac_i" | sed "$ac_script"`
++  # 2. Prepend LIBOBJDIR.  When used with automake>=1.10 LIBOBJDIR
++  #    will be set to the directory where LIBOBJS objects are built.
++  as_fn_append ac_libobjs " \${LIBOBJDIR}$ac_i\$U.$ac_objext"
++  as_fn_append ac_ltlibobjs " \${LIBOBJDIR}$ac_i"'$U.lo'
++done
++LIBOBJS=$ac_libobjs
++
++LTLIBOBJS=$ac_ltlibobjs
++
++
++
++: "${CONFIG_STATUS=./config.status}"
++ac_write_fail=0
++ac_clean_files_save=$ac_clean_files
++ac_clean_files="$ac_clean_files $CONFIG_STATUS"
++{ $as_echo "$as_me:${as_lineno-$LINENO}: creating $CONFIG_STATUS" >&5
++$as_echo "$as_me: creating $CONFIG_STATUS" >&6;}
++as_write_fail=0
++cat >$CONFIG_STATUS <<_ASEOF || as_write_fail=1
++#! $SHELL
++# Generated by $as_me.
++# Run this file to recreate the current configuration.
++# Compiler output produced by configure, useful for debugging
++# configure, is in config.log if it exists.
++
++debug=false
++ac_cs_recheck=false
++ac_cs_silent=false
++
++SHELL=\${CONFIG_SHELL-$SHELL}
++export SHELL
++_ASEOF
++cat >>$CONFIG_STATUS <<\_ASEOF || as_write_fail=1
++## -------------------- ##
++## M4sh Initialization. ##
++## -------------------- ##
++
++# Be more Bourne compatible
++DUALCASE=1; export DUALCASE # for MKS sh
++if test -n "${ZSH_VERSION+set}" && (emulate sh) >/dev/null 2>&1; then :
++  emulate sh
++  NULLCMD=:
++  # Pre-4.2 versions of Zsh do word splitting on ${1+"$@"}, which
++  # is contrary to our usage.  Disable this feature.
++  alias -g '${1+"$@"}'='"$@"'
++  setopt NO_GLOB_SUBST
++else
++  case `(set -o) 2>/dev/null` in #(
++  *posix*) :
++    set -o posix ;; #(
++  *) :
++     ;;
++esac
++fi
++
++
++as_nl='
++'
++export as_nl
++# Printing a long string crashes Solaris 7 /usr/bin/printf.
++as_echo='\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\'
++as_echo=$as_echo$as_echo$as_echo$as_echo$as_echo
++as_echo=$as_echo$as_echo$as_echo$as_echo$as_echo$as_echo
++# Prefer a ksh shell builtin over an external printf program on Solaris,
++# but without wasting forks for bash or zsh.
++if test -z "$BASH_VERSION$ZSH_VERSION" \
++    && (test "X`print -r -- $as_echo`" = "X$as_echo") 2>/dev/null; then
++  as_echo='print -r --'
++  as_echo_n='print -rn --'
++elif (test "X`printf %s $as_echo`" = "X$as_echo") 2>/dev/null; then
++  as_echo='printf %s\n'
++  as_echo_n='printf %s'
++else
++  if test "X`(/usr/ucb/echo -n -n $as_echo) 2>/dev/null`" = "X-n $as_echo"; then
++    as_echo_body='eval /usr/ucb/echo -n "$1$as_nl"'
++    as_echo_n='/usr/ucb/echo -n'
++  else
++    as_echo_body='eval expr "X$1" : "X\\(.*\\)"'
++    as_echo_n_body='eval
++      arg=$1;
++      case $arg in #(
++      *"$as_nl"*)
++	expr "X$arg" : "X\\(.*\\)$as_nl";
++	arg=`expr "X$arg" : ".*$as_nl\\(.*\\)"`;;
++      esac;
++      expr "X$arg" : "X\\(.*\\)" | tr -d "$as_nl"
++    '
++    export as_echo_n_body
++    as_echo_n='sh -c $as_echo_n_body as_echo'
++  fi
++  export as_echo_body
++  as_echo='sh -c $as_echo_body as_echo'
++fi
++
++# The user is always right.
++if test "${PATH_SEPARATOR+set}" != set; then
++  PATH_SEPARATOR=:
++  (PATH='/bin;/bin'; FPATH=$PATH; sh -c :) >/dev/null 2>&1 && {
++    (PATH='/bin:/bin'; FPATH=$PATH; sh -c :) >/dev/null 2>&1 ||
++      PATH_SEPARATOR=';'
++  }
++fi
++
++
++# IFS
++# We need space, tab and new line, in precisely that order.  Quoting is
++# there to prevent editors from complaining about space-tab.
++# (If _AS_PATH_WALK were called with IFS unset, it would disable word
++# splitting by setting IFS to empty value.)
++IFS=" ""	$as_nl"
++
++# Find who we are.  Look in the path if we contain no directory separator.
++as_myself=
++case $0 in #((
++  *[\\/]* ) as_myself=$0 ;;
++  *) as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    test -r "$as_dir/$0" && as_myself=$as_dir/$0 && break
++  done
++IFS=$as_save_IFS
++
++     ;;
++esac
++# We did not find ourselves, most probably we were run as `sh COMMAND'
++# in which case we are not to be found in the path.
++if test "x$as_myself" = x; then
++  as_myself=$0
++fi
++if test ! -f "$as_myself"; then
++  $as_echo "$as_myself: error: cannot find myself; rerun with an absolute file name" >&2
++  exit 1
++fi
++
++# Unset variables that we do not need and which cause bugs (e.g. in
++# pre-3.0 UWIN ksh).  But do not cause bugs in bash 2.01; the "|| exit 1"
++# suppresses any "Segmentation fault" message there.  '((' could
++# trigger a bug in pdksh 5.2.14.
++for as_var in BASH_ENV ENV MAIL MAILPATH
++do eval test x\${$as_var+set} = xset \
++  && ( (unset $as_var) || exit 1) >/dev/null 2>&1 && unset $as_var || :
++done
++PS1='$ '
++PS2='> '
++PS4='+ '
++
++# NLS nuisances.
++LC_ALL=C
++export LC_ALL
++LANGUAGE=C
++export LANGUAGE
++
++# CDPATH.
++(unset CDPATH) >/dev/null 2>&1 && unset CDPATH
++
++
++# as_fn_error STATUS ERROR [LINENO LOG_FD]
++# ----------------------------------------
++# Output "`basename $0`: error: ERROR" to stderr. If LINENO and LOG_FD are
++# provided, also output the error to LOG_FD, referencing LINENO. Then exit the
++# script with STATUS, using 1 if that was 0.
++as_fn_error ()
++{
++  as_status=$1; test $as_status -eq 0 && as_status=1
++  if test "$4"; then
++    as_lineno=${as_lineno-"$3"} as_lineno_stack=as_lineno_stack=$as_lineno_stack
++    $as_echo "$as_me:${as_lineno-$LINENO}: error: $2" >&$4
++  fi
++  $as_echo "$as_me: error: $2" >&2
++  as_fn_exit $as_status
++} # as_fn_error
++
++
++# as_fn_set_status STATUS
++# -----------------------
++# Set $? to STATUS, without forking.
++as_fn_set_status ()
++{
++  return $1
++} # as_fn_set_status
++
++# as_fn_exit STATUS
++# -----------------
++# Exit the shell with STATUS, even in a "trap 0" or "set -e" context.
++as_fn_exit ()
++{
++  set +e
++  as_fn_set_status $1
++  exit $1
++} # as_fn_exit
++
++# as_fn_unset VAR
++# ---------------
++# Portably unset VAR.
++as_fn_unset ()
++{
++  { eval $1=; unset $1;}
++}
++as_unset=as_fn_unset
++# as_fn_append VAR VALUE
++# ----------------------
++# Append the text in VALUE to the end of the definition contained in VAR. Take
++# advantage of any shell optimizations that allow amortized linear growth over
++# repeated appends, instead of the typical quadratic growth present in naive
++# implementations.
++if (eval "as_var=1; as_var+=2; test x\$as_var = x12") 2>/dev/null; then :
++  eval 'as_fn_append ()
++  {
++    eval $1+=\$2
++  }'
++else
++  as_fn_append ()
++  {
++    eval $1=\$$1\$2
++  }
++fi # as_fn_append
++
++# as_fn_arith ARG...
++# ------------------
++# Perform arithmetic evaluation on the ARGs, and store the result in the
++# global $as_val. Take advantage of shells that can avoid forks. The arguments
++# must be portable across $(()) and expr.
++if (eval "test \$(( 1 + 1 )) = 2") 2>/dev/null; then :
++  eval 'as_fn_arith ()
++  {
++    as_val=$(( $* ))
++  }'
++else
++  as_fn_arith ()
++  {
++    as_val=`expr "$@" || test $? -eq 1`
++  }
++fi # as_fn_arith
++
++
++if expr a : '\(a\)' >/dev/null 2>&1 &&
++   test "X`expr 00001 : '.*\(...\)'`" = X001; then
++  as_expr=expr
++else
++  as_expr=false
++fi
++
++if (basename -- /) >/dev/null 2>&1 && test "X`basename -- / 2>&1`" = "X/"; then
++  as_basename=basename
++else
++  as_basename=false
++fi
++
++if (as_dir=`dirname -- /` && test "X$as_dir" = X/) >/dev/null 2>&1; then
++  as_dirname=dirname
++else
++  as_dirname=false
++fi
++
++as_me=`$as_basename -- "$0" ||
++$as_expr X/"$0" : '.*/\([^/][^/]*\)/*$' \| \
++	 X"$0" : 'X\(//\)$' \| \
++	 X"$0" : 'X\(/\)' \| . 2>/dev/null ||
++$as_echo X/"$0" |
++    sed '/^.*\/\([^/][^/]*\)\/*$/{
++	    s//\1/
++	    q
++	  }
++	  /^X\/\(\/\/\)$/{
++	    s//\1/
++	    q
++	  }
++	  /^X\/\(\/\).*/{
++	    s//\1/
++	    q
++	  }
++	  s/.*/./; q'`
++
++# Avoid depending upon Character Ranges.
++as_cr_letters='abcdefghijklmnopqrstuvwxyz'
++as_cr_LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ'
++as_cr_Letters=$as_cr_letters$as_cr_LETTERS
++as_cr_digits='0123456789'
++as_cr_alnum=$as_cr_Letters$as_cr_digits
++
++ECHO_C= ECHO_N= ECHO_T=
++case `echo -n x` in #(((((
++-n*)
++  case `echo 'xy\c'` in
++  *c*) ECHO_T='	';;	# ECHO_T is single tab character.
++  xy)  ECHO_C='\c';;
++  *)   echo `echo ksh88 bug on AIX 6.1` > /dev/null
++       ECHO_T='	';;
++  esac;;
++*)
++  ECHO_N='-n';;
++esac
++
++rm -f conf$$ conf$$.exe conf$$.file
++if test -d conf$$.dir; then
++  rm -f conf$$.dir/conf$$.file
++else
++  rm -f conf$$.dir
++  mkdir conf$$.dir 2>/dev/null
++fi
++if (echo >conf$$.file) 2>/dev/null; then
++  if ln -s conf$$.file conf$$ 2>/dev/null; then
++    as_ln_s='ln -s'
++    # ... but there are two gotchas:
++    # 1) On MSYS, both `ln -s file dir' and `ln file dir' fail.
++    # 2) DJGPP < 2.04 has no symlinks; `ln -s' creates a wrapper executable.
++    # In both cases, we have to default to `cp -pR'.
++    ln -s conf$$.file conf$$.dir 2>/dev/null && test ! -f conf$$.exe ||
++      as_ln_s='cp -pR'
++  elif ln conf$$.file conf$$ 2>/dev/null; then
++    as_ln_s=ln
++  else
++    as_ln_s='cp -pR'
++  fi
++else
++  as_ln_s='cp -pR'
++fi
++rm -f conf$$ conf$$.exe conf$$.dir/conf$$.file conf$$.file
++rmdir conf$$.dir 2>/dev/null
++
++
++# as_fn_mkdir_p
++# -------------
++# Create "$as_dir" as a directory, including parents if necessary.
++as_fn_mkdir_p ()
++{
++
++  case $as_dir in #(
++  -*) as_dir=./$as_dir;;
++  esac
++  test -d "$as_dir" || eval $as_mkdir_p || {
++    as_dirs=
++    while :; do
++      case $as_dir in #(
++      *\'*) as_qdir=`$as_echo "$as_dir" | sed "s/'/'\\\\\\\\''/g"`;; #'(
++      *) as_qdir=$as_dir;;
++      esac
++      as_dirs="'$as_qdir' $as_dirs"
++      as_dir=`$as_dirname -- "$as_dir" ||
++$as_expr X"$as_dir" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
++	 X"$as_dir" : 'X\(//\)[^/]' \| \
++	 X"$as_dir" : 'X\(//\)$' \| \
++	 X"$as_dir" : 'X\(/\)' \| . 2>/dev/null ||
++$as_echo X"$as_dir" |
++    sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{
++	    s//\1/
++	    q
++	  }
++	  /^X\(\/\/\)[^/].*/{
++	    s//\1/
++	    q
++	  }
++	  /^X\(\/\/\)$/{
++	    s//\1/
++	    q
++	  }
++	  /^X\(\/\).*/{
++	    s//\1/
++	    q
++	  }
++	  s/.*/./; q'`
++      test -d "$as_dir" && break
++    done
++    test -z "$as_dirs" || eval "mkdir $as_dirs"
++  } || test -d "$as_dir" || as_fn_error $? "cannot create directory $as_dir"
++
++
++} # as_fn_mkdir_p
++if mkdir -p . 2>/dev/null; then
++  as_mkdir_p='mkdir -p "$as_dir"'
++else
++  test -d ./-p && rmdir ./-p
++  as_mkdir_p=false
++fi
++
++
++# as_fn_executable_p FILE
++# -----------------------
++# Test if FILE is an executable regular file.
++as_fn_executable_p ()
++{
++  test -f "$1" && test -x "$1"
++} # as_fn_executable_p
++as_test_x='test -x'
++as_executable_p=as_fn_executable_p
++
++# Sed expression to map a string onto a valid CPP name.
++as_tr_cpp="eval sed 'y%*$as_cr_letters%P$as_cr_LETTERS%;s%[^_$as_cr_alnum]%_%g'"
++
++# Sed expression to map a string onto a valid variable name.
++as_tr_sh="eval sed 'y%*+%pp%;s%[^_$as_cr_alnum]%_%g'"
++
++
++exec 6>&1
++## ----------------------------------- ##
++## Main body of $CONFIG_STATUS script. ##
++## ----------------------------------- ##
++_ASEOF
++test $as_write_fail = 0 && chmod +x $CONFIG_STATUS || ac_write_fail=1
++
++cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
++# Save the log message, to keep $0 and so on meaningful, and to
++# report actual input values of CONFIG_FILES etc. instead of their
++# values after options handling.
++ac_log="
++This file was extended by bzip2 $as_me 1.0.6, which was
++generated by GNU Autoconf 2.69.  Invocation command line was
++
++  CONFIG_FILES    = $CONFIG_FILES
++  CONFIG_HEADERS  = $CONFIG_HEADERS
++  CONFIG_LINKS    = $CONFIG_LINKS
++  CONFIG_COMMANDS = $CONFIG_COMMANDS
++  $ $0 $@
++
++on `(hostname || uname -n) 2>/dev/null | sed 1q`
++"
++
++_ACEOF
++
++case $ac_config_files in *"
++"*) set x $ac_config_files; shift; ac_config_files=$*;;
++esac
++
++
++
++cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
++# Files that config.status was made for.
++config_files="$ac_config_files"
++
++_ACEOF
++
++cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
++ac_cs_usage="\
++\`$as_me' instantiates files and other configuration actions
++from templates according to the current configuration.  Unless the files
++and actions are specified as TAGs, all are instantiated by default.
++
++Usage: $0 [OPTION]... [TAG]...
++
++  -h, --help       print this help, then exit
++  -V, --version    print version number and configuration settings, then exit
++      --config     print configuration, then exit
++  -q, --quiet, --silent
++                   do not print progress messages
++  -d, --debug      don't remove temporary files
++      --recheck    update $as_me by reconfiguring in the same conditions
++      --file=FILE[:TEMPLATE]
++                   instantiate the configuration file FILE
++
++Configuration files:
++$config_files
++
++Report bugs to the package provider."
++
++_ACEOF
++cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
++ac_cs_config="`$as_echo "$ac_configure_args" | sed 's/^ //; s/[\\""\`\$]/\\\\&/g'`"
++ac_cs_version="\\
++bzip2 config.status 1.0.6
++configured by $0, generated by GNU Autoconf 2.69,
++  with options \\"\$ac_cs_config\\"
++
++Copyright (C) 2012 Free Software Foundation, Inc.
++This config.status script is free software; the Free Software Foundation
++gives unlimited permission to copy, distribute and modify it."
++
++ac_pwd='$ac_pwd'
++srcdir='$srcdir'
++test -n "\$AWK" || AWK=awk
++_ACEOF
++
++cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
++# The default lists apply if the user does not specify any file.
++ac_need_defaults=:
++while test $# != 0
++do
++  case $1 in
++  --*=?*)
++    ac_option=`expr "X$1" : 'X\([^=]*\)='`
++    ac_optarg=`expr "X$1" : 'X[^=]*=\(.*\)'`
++    ac_shift=:
++    ;;
++  --*=)
++    ac_option=`expr "X$1" : 'X\([^=]*\)='`
++    ac_optarg=
++    ac_shift=:
++    ;;
++  *)
++    ac_option=$1
++    ac_optarg=$2
++    ac_shift=shift
++    ;;
++  esac
++
++  case $ac_option in
++  # Handling of the options.
++  -recheck | --recheck | --rechec | --reche | --rech | --rec | --re | --r)
++    ac_cs_recheck=: ;;
++  --version | --versio | --versi | --vers | --ver | --ve | --v | -V )
++    $as_echo "$ac_cs_version"; exit ;;
++  --config | --confi | --conf | --con | --co | --c )
++    $as_echo "$ac_cs_config"; exit ;;
++  --debug | --debu | --deb | --de | --d | -d )
++    debug=: ;;
++  --file | --fil | --fi | --f )
++    $ac_shift
++    case $ac_optarg in
++    *\'*) ac_optarg=`$as_echo "$ac_optarg" | sed "s/'/'\\\\\\\\''/g"` ;;
++    '') as_fn_error $? "missing file argument" ;;
++    esac
++    as_fn_append CONFIG_FILES " '$ac_optarg'"
++    ac_need_defaults=false;;
++  --he | --h |  --help | --hel | -h )
++    $as_echo "$ac_cs_usage"; exit ;;
++  -q | -quiet | --quiet | --quie | --qui | --qu | --q \
++  | -silent | --silent | --silen | --sile | --sil | --si | --s)
++    ac_cs_silent=: ;;
++
++  # This is an error.
++  -*) as_fn_error $? "unrecognized option: \`$1'
++Try \`$0 --help' for more information." ;;
++
++  *) as_fn_append ac_config_targets " $1"
++     ac_need_defaults=false ;;
++
++  esac
++  shift
++done
++
++ac_configure_extra_args=
++
++if $ac_cs_silent; then
++  exec 6>/dev/null
++  ac_configure_extra_args="$ac_configure_extra_args --silent"
++fi
++
++_ACEOF
++cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
++if \$ac_cs_recheck; then
++  set X $SHELL '$0' $ac_configure_args \$ac_configure_extra_args --no-create --no-recursion
++  shift
++  \$as_echo "running CONFIG_SHELL=$SHELL \$*" >&6
++  CONFIG_SHELL='$SHELL'
++  export CONFIG_SHELL
++  exec "\$@"
++fi
++
++_ACEOF
++cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
++exec 5>>config.log
++{
++  echo
++  sed 'h;s/./-/g;s/^.../## /;s/...$/ ##/;p;x;p;x' <<_ASBOX
++## Running $as_me. ##
++_ASBOX
++  $as_echo "$ac_log"
++} >&5
++
++_ACEOF
++cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
++_ACEOF
++
++cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
++
++# Handling of arguments.
++for ac_config_target in $ac_config_targets
++do
++  case $ac_config_target in
++    "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
++
++  *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5 ;;
++  esac
++done
++
++
++# If the user did not use the arguments to specify the items to instantiate,
++# then the envvar interface is used.  Set only those that are not.
++# We use the long form for the default assignment because of an extremely
++# bizarre bug on SunOS 4.1.3.
++if $ac_need_defaults; then
++  test "${CONFIG_FILES+set}" = set || CONFIG_FILES=$config_files
++fi
++
++# Have a temporary directory for convenience.  Make it in the build tree
++# simply because there is no reason against having it here, and in addition,
++# creating and moving files from /tmp can sometimes cause problems.
++# Hook for its removal unless debugging.
++# Note that there is a small window in which the directory will not be cleaned:
++# after its creation but before its name has been assigned to `$tmp'.
++$debug ||
++{
++  tmp= ac_tmp=
++  trap 'exit_status=$?
++  : "${ac_tmp:=$tmp}"
++  { test ! -d "$ac_tmp" || rm -fr "$ac_tmp"; } && exit $exit_status
++' 0
++  trap 'as_fn_exit 1' 1 2 13 15
++}
++# Create a (secure) tmp directory for tmp files.
++
++{
++  tmp=`(umask 077 && mktemp -d "./confXXXXXX") 2>/dev/null` &&
++  test -d "$tmp"
++}  ||
++{
++  tmp=./conf$$-$RANDOM
++  (umask 077 && mkdir "$tmp")
++} || as_fn_error $? "cannot create a temporary directory in ." "$LINENO" 5
++ac_tmp=$tmp
++
++# Set up the scripts for CONFIG_FILES section.
++# No need to generate them if there are no CONFIG_FILES.
++# This happens for instance with `./config.status config.h'.
++if test -n "$CONFIG_FILES"; then
++
++
++ac_cr=`echo X | tr X '\015'`
++# On cygwin, bash can eat \r inside `` if the user requested igncr.
++# But we know of no other shell where ac_cr would be empty at this
++# point, so we can use a bashism as a fallback.
++if test "x$ac_cr" = x; then
++  eval ac_cr=\$\'\\r\'
++fi
++ac_cs_awk_cr=`$AWK 'BEGIN { print "a\rb" }' </dev/null 2>/dev/null`
++if test "$ac_cs_awk_cr" = "a${ac_cr}b"; then
++  ac_cs_awk_cr='\\r'
++else
++  ac_cs_awk_cr=$ac_cr
++fi
++
++echo 'BEGIN {' >"$ac_tmp/subs1.awk" &&
++_ACEOF
++
++
++{
++  echo "cat >conf$$subs.awk <<_ACEOF" &&
++  echo "$ac_subst_vars" | sed 's/.*/&!$&$ac_delim/' &&
++  echo "_ACEOF"
++} >conf$$subs.sh ||
++  as_fn_error $? "could not make $CONFIG_STATUS" "$LINENO" 5
++ac_delim_num=`echo "$ac_subst_vars" | grep -c '^'`
++ac_delim='%!_!# '
++for ac_last_try in false false false false false :; do
++  . ./conf$$subs.sh ||
++    as_fn_error $? "could not make $CONFIG_STATUS" "$LINENO" 5
++
++  ac_delim_n=`sed -n "s/.*$ac_delim\$/X/p" conf$$subs.awk | grep -c X`
++  if test $ac_delim_n = $ac_delim_num; then
++    break
++  elif $ac_last_try; then
++    as_fn_error $? "could not make $CONFIG_STATUS" "$LINENO" 5
++  else
++    ac_delim="$ac_delim!$ac_delim _$ac_delim!! "
++  fi
++done
++rm -f conf$$subs.sh
++
++cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
++cat >>"\$ac_tmp/subs1.awk" <<\\_ACAWK &&
++_ACEOF
++sed -n '
++h
++s/^/S["/; s/!.*/"]=/
++p
++g
++s/^[^!]*!//
++:repl
++t repl
++s/'"$ac_delim"'$//
++t delim
++:nl
++h
++s/\(.\{148\}\)..*/\1/
++t more1
++s/["\\]/\\&/g; s/^/"/; s/$/\\n"\\/
++p
++n
++b repl
++:more1
++s/["\\]/\\&/g; s/^/"/; s/$/"\\/
++p
++g
++s/.\{148\}//
++t nl
++:delim
++h
++s/\(.\{148\}\)..*/\1/
++t more2
++s/["\\]/\\&/g; s/^/"/; s/$/"/
++p
++b
++:more2
++s/["\\]/\\&/g; s/^/"/; s/$/"\\/
++p
++g
++s/.\{148\}//
++t delim
++' <conf$$subs.awk | sed '
++/^[^""]/{
++  N
++  s/\n//
++}
++' >>$CONFIG_STATUS || ac_write_fail=1
++rm -f conf$$subs.awk
++cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
++_ACAWK
++cat >>"\$ac_tmp/subs1.awk" <<_ACAWK &&
++  for (key in S) S_is_set[key] = 1
++  FS = ""
++
++}
++{
++  line = $ 0
++  nfields = split(line, field, "@")
++  substed = 0
++  len = length(field[1])
++  for (i = 2; i < nfields; i++) {
++    key = field[i]
++    keylen = length(key)
++    if (S_is_set[key]) {
++      value = S[key]
++      line = substr(line, 1, len) "" value "" substr(line, len + keylen + 3)
++      len += length(value) + length(field[++i])
++      substed = 1
++    } else
++      len += 1 + keylen
++  }
++
++  print line
++}
++
++_ACAWK
++_ACEOF
++cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
++if sed "s/$ac_cr//" < /dev/null > /dev/null 2>&1; then
++  sed "s/$ac_cr\$//; s/$ac_cr/$ac_cs_awk_cr/g"
++else
++  cat
++fi < "$ac_tmp/subs1.awk" > "$ac_tmp/subs.awk" \
++  || as_fn_error $? "could not setup config files machinery" "$LINENO" 5
++_ACEOF
++
++# VPATH may cause trouble with some makes, so we remove sole $(srcdir),
++# ${srcdir} and @srcdir@ entries from VPATH if srcdir is ".", strip leading and
++# trailing colons and then remove the whole line if VPATH becomes empty
++# (actually we leave an empty line to preserve line numbers).
++if test "x$srcdir" = x.; then
++  ac_vpsub='/^[	 ]*VPATH[	 ]*=[	 ]*/{
++h
++s///
++s/^/:/
++s/[	 ]*$/:/
++s/:\$(srcdir):/:/g
++s/:\${srcdir}:/:/g
++s/:@srcdir@:/:/g
++s/^:*//
++s/:*$//
++x
++s/\(=[	 ]*\).*/\1/
++G
++s/\n//
++s/^[^=]*=[	 ]*$//
++}'
++fi
++
++cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
++fi # test -n "$CONFIG_FILES"
++
++
++eval set X "  :F $CONFIG_FILES      "
++shift
++for ac_tag
++do
++  case $ac_tag in
++  :[FHLC]) ac_mode=$ac_tag; continue;;
++  esac
++  case $ac_mode$ac_tag in
++  :[FHL]*:*);;
++  :L* | :C*:*) as_fn_error $? "invalid tag \`$ac_tag'" "$LINENO" 5 ;;
++  :[FH]-) ac_tag=-:-;;
++  :[FH]*) ac_tag=$ac_tag:$ac_tag.in;;
++  esac
++  ac_save_IFS=$IFS
++  IFS=:
++  set x $ac_tag
++  IFS=$ac_save_IFS
++  shift
++  ac_file=$1
++  shift
++
++  case $ac_mode in
++  :L) ac_source=$1;;
++  :[FH])
++    ac_file_inputs=
++    for ac_f
++    do
++      case $ac_f in
++      -) ac_f="$ac_tmp/stdin";;
++      *) # Look for the file first in the build tree, then in the source tree
++	 # (if the path is not absolute).  The absolute path cannot be DOS-style,
++	 # because $ac_f cannot contain `:'.
++	 test -f "$ac_f" ||
++	   case $ac_f in
++	   [\\/$]*) false;;
++	   *) test -f "$srcdir/$ac_f" && ac_f="$srcdir/$ac_f";;
++	   esac ||
++	   as_fn_error 1 "cannot find input file: \`$ac_f'" "$LINENO" 5 ;;
++      esac
++      case $ac_f in *\'*) ac_f=`$as_echo "$ac_f" | sed "s/'/'\\\\\\\\''/g"`;; esac
++      as_fn_append ac_file_inputs " '$ac_f'"
++    done
++
++    # Let's still pretend it is `configure' which instantiates (i.e., don't
++    # use $as_me), people would be surprised to read:
++    #    /* config.h.  Generated by config.status.  */
++    configure_input='Generated from '`
++	  $as_echo "$*" | sed 's|^[^:]*/||;s|:[^:]*/|, |g'
++	`' by configure.'
++    if test x"$ac_file" != x-; then
++      configure_input="$ac_file.  $configure_input"
++      { $as_echo "$as_me:${as_lineno-$LINENO}: creating $ac_file" >&5
++$as_echo "$as_me: creating $ac_file" >&6;}
++    fi
++    # Neutralize special characters interpreted by sed in replacement strings.
++    case $configure_input in #(
++    *\&* | *\|* | *\\* )
++       ac_sed_conf_input=`$as_echo "$configure_input" |
++       sed 's/[\\\\&|]/\\\\&/g'`;; #(
++    *) ac_sed_conf_input=$configure_input;;
++    esac
++
++    case $ac_tag in
++    *:-:* | *:-) cat >"$ac_tmp/stdin" \
++      || as_fn_error $? "could not create $ac_file" "$LINENO" 5  ;;
++    esac
++    ;;
++  esac
++
++  ac_dir=`$as_dirname -- "$ac_file" ||
++$as_expr X"$ac_file" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
++	 X"$ac_file" : 'X\(//\)[^/]' \| \
++	 X"$ac_file" : 'X\(//\)$' \| \
++	 X"$ac_file" : 'X\(/\)' \| . 2>/dev/null ||
++$as_echo X"$ac_file" |
++    sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{
++	    s//\1/
++	    q
++	  }
++	  /^X\(\/\/\)[^/].*/{
++	    s//\1/
++	    q
++	  }
++	  /^X\(\/\/\)$/{
++	    s//\1/
++	    q
++	  }
++	  /^X\(\/\).*/{
++	    s//\1/
++	    q
++	  }
++	  s/.*/./; q'`
++  as_dir="$ac_dir"; as_fn_mkdir_p
++  ac_builddir=.
++
++case "$ac_dir" in
++.) ac_dir_suffix= ac_top_builddir_sub=. ac_top_build_prefix= ;;
++*)
++  ac_dir_suffix=/`$as_echo "$ac_dir" | sed 's|^\.[\\/]||'`
++  # A ".." for each directory in $ac_dir_suffix.
++  ac_top_builddir_sub=`$as_echo "$ac_dir_suffix" | sed 's|/[^\\/]*|/..|g;s|/||'`
++  case $ac_top_builddir_sub in
++  "") ac_top_builddir_sub=. ac_top_build_prefix= ;;
++  *)  ac_top_build_prefix=$ac_top_builddir_sub/ ;;
++  esac ;;
++esac
++ac_abs_top_builddir=$ac_pwd
++ac_abs_builddir=$ac_pwd$ac_dir_suffix
++# for backward compatibility:
++ac_top_builddir=$ac_top_build_prefix
++
++case $srcdir in
++  .)  # We are building in place.
++    ac_srcdir=.
++    ac_top_srcdir=$ac_top_builddir_sub
++    ac_abs_top_srcdir=$ac_pwd ;;
++  [\\/]* | ?:[\\/]* )  # Absolute name.
++    ac_srcdir=$srcdir$ac_dir_suffix;
++    ac_top_srcdir=$srcdir
++    ac_abs_top_srcdir=$srcdir ;;
++  *) # Relative name.
++    ac_srcdir=$ac_top_build_prefix$srcdir$ac_dir_suffix
++    ac_top_srcdir=$ac_top_build_prefix$srcdir
++    ac_abs_top_srcdir=$ac_pwd/$srcdir ;;
++esac
++ac_abs_srcdir=$ac_abs_top_srcdir$ac_dir_suffix
++
++
++  case $ac_mode in
++  :F)
++  #
++  # CONFIG_FILE
++  #
++
++_ACEOF
++
++cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
++# If the template does not know about datarootdir, expand it.
++# FIXME: This hack should be removed a few years after 2.60.
++ac_datarootdir_hack=; ac_datarootdir_seen=
++ac_sed_dataroot='
++/datarootdir/ {
++  p
++  q
++}
++/@datadir@/p
++/@docdir@/p
++/@infodir@/p
++/@localedir@/p
++/@mandir@/p'
++case `eval "sed -n \"\$ac_sed_dataroot\" $ac_file_inputs"` in
++*datarootdir*) ac_datarootdir_seen=yes;;
++*@datadir@*|*@docdir@*|*@infodir@*|*@localedir@*|*@mandir@*)
++  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: $ac_file_inputs seems to ignore the --datarootdir setting" >&5
++$as_echo "$as_me: WARNING: $ac_file_inputs seems to ignore the --datarootdir setting" >&2;}
++_ACEOF
++cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
++  ac_datarootdir_hack='
++  s&@datadir@&$datadir&g
++  s&@docdir@&$docdir&g
++  s&@infodir@&$infodir&g
++  s&@localedir@&$localedir&g
++  s&@mandir@&$mandir&g
++  s&\\\${datarootdir}&$datarootdir&g' ;;
++esac
++_ACEOF
++
++# Neutralize VPATH when `$srcdir' = `.'.
++# Shell code in configure.ac might set extrasub.
++# FIXME: do we really want to maintain this feature?
++cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
++ac_sed_extra="$ac_vpsub
++$extrasub
++_ACEOF
++cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
++:t
++/@[a-zA-Z_][a-zA-Z_0-9]*@/!b
++s|@configure_input@|$ac_sed_conf_input|;t t
++s&@top_builddir@&$ac_top_builddir_sub&;t t
++s&@top_build_prefix@&$ac_top_build_prefix&;t t
++s&@srcdir@&$ac_srcdir&;t t
++s&@abs_srcdir@&$ac_abs_srcdir&;t t
++s&@top_srcdir@&$ac_top_srcdir&;t t
++s&@abs_top_srcdir@&$ac_abs_top_srcdir&;t t
++s&@builddir@&$ac_builddir&;t t
++s&@abs_builddir@&$ac_abs_builddir&;t t
++s&@abs_top_builddir@&$ac_abs_top_builddir&;t t
++$ac_datarootdir_hack
++"
++eval sed \"\$ac_sed_extra\" "$ac_file_inputs" | $AWK -f "$ac_tmp/subs.awk" \
++  >$ac_tmp/out || as_fn_error $? "could not create $ac_file" "$LINENO" 5
++
++test -z "$ac_datarootdir_hack$ac_datarootdir_seen" &&
++  { ac_out=`sed -n '/\${datarootdir}/p' "$ac_tmp/out"`; test -n "$ac_out"; } &&
++  { ac_out=`sed -n '/^[	 ]*datarootdir[	 ]*:*=/p' \
++      "$ac_tmp/out"`; test -z "$ac_out"; } &&
++  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: $ac_file contains a reference to the variable \`datarootdir'
++which seems to be undefined.  Please make sure it is defined" >&5
++$as_echo "$as_me: WARNING: $ac_file contains a reference to the variable \`datarootdir'
++which seems to be undefined.  Please make sure it is defined" >&2;}
++
++  rm -f "$ac_tmp/stdin"
++  case $ac_file in
++  -) cat "$ac_tmp/out" && rm -f "$ac_tmp/out";;
++  *) rm -f "$ac_file" && mv "$ac_tmp/out" "$ac_file";;
++  esac \
++  || as_fn_error $? "could not create $ac_file" "$LINENO" 5
++ ;;
++
++
++
++  esac
++
++done # for ac_tag
++
++
++as_fn_exit 0
++_ACEOF
++ac_clean_files=$ac_clean_files_save
++
++test $ac_write_fail = 0 ||
++  as_fn_error $? "write failure creating $CONFIG_STATUS" "$LINENO" 5
++
++
++# configure is writing to config.log, and then calls config.status.
++# config.status does its own redirection, appending to config.log.
++# Unfortunately, on DOS this fails, as config.log is still kept open
++# by configure, so config.status won't be able to write to it; its
++# output is simply discarded.  So we exec the FD to /dev/null,
++# effectively closing config.log, so it can be properly (re)opened and
++# appended to by config.status.  When coming back to configure, we
++# need to make the FD available again.
++if test "$no_create" != yes; then
++  ac_cs_success=:
++  ac_config_status_args=
++  test "$silent" = yes &&
++    ac_config_status_args="$ac_config_status_args --quiet"
++  exec 5>/dev/null
++  $SHELL $CONFIG_STATUS $ac_config_status_args || ac_cs_success=false
++  exec 5>>config.log
++  # Use ||, not &&, to avoid exiting from the if with $? = 1, which
++  # would make configure fail if this is the last instruction.
++  $ac_cs_success || as_fn_exit 1
++fi
++if test -n "$ac_unrecognized_opts" && test "$enable_option_checking" != no; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: unrecognized options: $ac_unrecognized_opts" >&5
++$as_echo "$as_me: WARNING: unrecognized options: $ac_unrecognized_opts" >&2;}
++fi
++
++
++# configure.ac: end of file
+diff -Naur bzip2-1.0.6-orig/configure.ac bzip2-1.0.6/configure.ac
+--- bzip2-1.0.6-orig/configure.ac	1970-01-01 00:00:00.000000000 +0000
++++ bzip2-1.0.6/configure.ac	2011-05-21 04:35:18.000000000 +0000
+@@ -0,0 +1,39 @@
++AC_INIT([bzip2],[1.0.6])
++# ------------------------------------------------------------------
++# This file is part of bzip2/libbzip2, a program and library for
++# lossless, block-sorting data compression.
++#
++# bzip2/libbzip2 version 1.0.6 of 6 September 2010
++# Copyright (C) 1996-2010 Julian Seward <jseward@bzip.org>
++#
++# File: configure.ac for autoconf configuration
++# Contributed by Keith Marshall <keithmarshall@users.sourceforge.net>
++#
++# Please read the WARNING, DISCLAIMER and PATENTS sections in the 
++# README file.
++#
++# This program is released under the terms of the license contained
++# in the file LICENSE.
++# ------------------------------------------------------------------
++AC_PROG_CC
++AC_PROG_LN_S
++
++BZIP2_AC_ENABLE_SHARED
++BZIP2_AC_SUBST_DLLVER
++BZIP2_AC_SUBST_DLLNAME
++
++AC_ARG_VAR([AR],[Archive librarian command])
++AC_ARG_VAR([ARFLAGS],[Archive librarian control flags, e.g. cq])
++AC_ARG_VAR([RANLIB],[Archive library indexing command])
++
++AC_CHECK_TOOL([AR],[ar],[ar])
++AC_CHECK_TOOL([RANLIB],[ranlib],[true])
++
++AC_MSG_CHECKING([for flags to pass to ${AR}])
++AC_SUBST([ARFLAGS],[${ARFLAGS-cq}])
++AC_MSG_RESULT([${ARFLAGS}])
++
++AC_CONFIG_FILES([Makefile])
++AC_OUTPUT
++
++# configure.ac: end of file
+diff -Naur bzip2-1.0.6-orig/libbz2.def.in bzip2-1.0.6/libbz2.def.in
+--- bzip2-1.0.6-orig/libbz2.def.in	1970-01-01 00:00:00.000000000 +0000
++++ bzip2-1.0.6/libbz2.def.in	2011-05-21 04:35:45.000000000 +0000
+@@ -0,0 +1,27 @@
++LIBRARY			%DLLNAME%-%DLLVER%
++DESCRIPTION		"libbzip2: library for data compression"
++EXPORTS
++	BZ2_bzCompressInit
++	BZ2_bzCompress
++	BZ2_bzCompressEnd
++	BZ2_bzDecompressInit
++	BZ2_bzDecompress
++	BZ2_bzDecompressEnd
++	BZ2_bzReadOpen
++	BZ2_bzReadClose
++	BZ2_bzReadGetUnused
++	BZ2_bzRead
++	BZ2_bzWriteOpen
++	BZ2_bzWrite
++	BZ2_bzWriteClose
++	BZ2_bzWriteClose64
++	BZ2_bzBuffToBuffCompress
++	BZ2_bzBuffToBuffDecompress
++	BZ2_bzlibVersion
++	BZ2_bzopen
++	BZ2_bzdopen
++	BZ2_bzread
++	BZ2_bzwrite
++	BZ2_bzflush
++	BZ2_bzclose
++	BZ2_bzerror
+diff -Naur bzip2-1.0.6-orig/Makefile bzip2-1.0.6/Makefile
+--- bzip2-1.0.6-orig/Makefile	2010-09-10 22:46:02.000000000 +0000
++++ bzip2-1.0.6/Makefile	1970-01-01 00:00:00.000000000 +0000
+@@ -1,217 +0,0 @@
+-# ------------------------------------------------------------------
+-# This file is part of bzip2/libbzip2, a program and library for
+-# lossless, block-sorting data compression.
+-#
+-# bzip2/libbzip2 version 1.0.6 of 6 September 2010
+-# Copyright (C) 1996-2010 Julian Seward <jseward@bzip.org>
+-#
+-# Please read the WARNING, DISCLAIMER and PATENTS sections in the 
+-# README file.
+-#
+-# This program is released under the terms of the license contained
+-# in the file LICENSE.
+-# ------------------------------------------------------------------
+-
+-SHELL=/bin/sh
+-
+-# To assist in cross-compiling
+-CC=gcc
+-AR=ar
+-RANLIB=ranlib
+-LDFLAGS=
+-
+-BIGFILES=-D_FILE_OFFSET_BITS=64
+-CFLAGS=-Wall -Winline -O2 -g $(BIGFILES)
+-
+-# Where you want it installed when you do 'make install'
+-PREFIX=/usr/local
+-
+-
+-OBJS= blocksort.o  \
+-      huffman.o    \
+-      crctable.o   \
+-      randtable.o  \
+-      compress.o   \
+-      decompress.o \
+-      bzlib.o
+-
+-all: libbz2.a bzip2 bzip2recover test
+-
+-bzip2: libbz2.a bzip2.o
+-	$(CC) $(CFLAGS) $(LDFLAGS) -o bzip2 bzip2.o -L. -lbz2
+-
+-bzip2recover: bzip2recover.o
+-	$(CC) $(CFLAGS) $(LDFLAGS) -o bzip2recover bzip2recover.o
+-
+-libbz2.a: $(OBJS)
+-	rm -f libbz2.a
+-	$(AR) cq libbz2.a $(OBJS)
+-	@if ( test -f $(RANLIB) -o -f /usr/bin/ranlib -o \
+-		-f /bin/ranlib -o -f /usr/ccs/bin/ranlib ) ; then \
+-		echo $(RANLIB) libbz2.a ; \
+-		$(RANLIB) libbz2.a ; \
+-	fi
+-
+-check: test
+-test: bzip2
+-	@cat words1
+-	./bzip2 -1  < sample1.ref > sample1.rb2
+-	./bzip2 -2  < sample2.ref > sample2.rb2
+-	./bzip2 -3  < sample3.ref > sample3.rb2
+-	./bzip2 -d  < sample1.bz2 > sample1.tst
+-	./bzip2 -d  < sample2.bz2 > sample2.tst
+-	./bzip2 -ds < sample3.bz2 > sample3.tst
+-	cmp sample1.bz2 sample1.rb2 
+-	cmp sample2.bz2 sample2.rb2
+-	cmp sample3.bz2 sample3.rb2
+-	cmp sample1.tst sample1.ref
+-	cmp sample2.tst sample2.ref
+-	cmp sample3.tst sample3.ref
+-	@cat words3
+-
+-install: bzip2 bzip2recover
+-	if ( test ! -d $(PREFIX)/bin ) ; then mkdir -p $(PREFIX)/bin ; fi
+-	if ( test ! -d $(PREFIX)/lib ) ; then mkdir -p $(PREFIX)/lib ; fi
+-	if ( test ! -d $(PREFIX)/man ) ; then mkdir -p $(PREFIX)/man ; fi
+-	if ( test ! -d $(PREFIX)/man/man1 ) ; then mkdir -p $(PREFIX)/man/man1 ; fi
+-	if ( test ! -d $(PREFIX)/include ) ; then mkdir -p $(PREFIX)/include ; fi
+-	cp -f bzip2 $(PREFIX)/bin/bzip2
+-	cp -f bzip2 $(PREFIX)/bin/bunzip2
+-	cp -f bzip2 $(PREFIX)/bin/bzcat
+-	cp -f bzip2recover $(PREFIX)/bin/bzip2recover
+-	chmod a+x $(PREFIX)/bin/bzip2
+-	chmod a+x $(PREFIX)/bin/bunzip2
+-	chmod a+x $(PREFIX)/bin/bzcat
+-	chmod a+x $(PREFIX)/bin/bzip2recover
+-	cp -f bzip2.1 $(PREFIX)/man/man1
+-	chmod a+r $(PREFIX)/man/man1/bzip2.1
+-	cp -f bzlib.h $(PREFIX)/include
+-	chmod a+r $(PREFIX)/include/bzlib.h
+-	cp -f libbz2.a $(PREFIX)/lib
+-	chmod a+r $(PREFIX)/lib/libbz2.a
+-	cp -f bzgrep $(PREFIX)/bin/bzgrep
+-	ln -s -f $(PREFIX)/bin/bzgrep $(PREFIX)/bin/bzegrep
+-	ln -s -f $(PREFIX)/bin/bzgrep $(PREFIX)/bin/bzfgrep
+-	chmod a+x $(PREFIX)/bin/bzgrep
+-	cp -f bzmore $(PREFIX)/bin/bzmore
+-	ln -s -f $(PREFIX)/bin/bzmore $(PREFIX)/bin/bzless
+-	chmod a+x $(PREFIX)/bin/bzmore
+-	cp -f bzdiff $(PREFIX)/bin/bzdiff
+-	ln -s -f $(PREFIX)/bin/bzdiff $(PREFIX)/bin/bzcmp
+-	chmod a+x $(PREFIX)/bin/bzdiff
+-	cp -f bzgrep.1 bzmore.1 bzdiff.1 $(PREFIX)/man/man1
+-	chmod a+r $(PREFIX)/man/man1/bzgrep.1
+-	chmod a+r $(PREFIX)/man/man1/bzmore.1
+-	chmod a+r $(PREFIX)/man/man1/bzdiff.1
+-	echo ".so man1/bzgrep.1" > $(PREFIX)/man/man1/bzegrep.1
+-	echo ".so man1/bzgrep.1" > $(PREFIX)/man/man1/bzfgrep.1
+-	echo ".so man1/bzmore.1" > $(PREFIX)/man/man1/bzless.1
+-	echo ".so man1/bzdiff.1" > $(PREFIX)/man/man1/bzcmp.1
+-
+-clean: 
+-	rm -f *.o libbz2.a bzip2 bzip2recover \
+-	sample1.rb2 sample2.rb2 sample3.rb2 \
+-	sample1.tst sample2.tst sample3.tst
+-
+-blocksort.o: blocksort.c
+-	@cat words0
+-	$(CC) $(CFLAGS) -c blocksort.c
+-huffman.o: huffman.c
+-	$(CC) $(CFLAGS) -c huffman.c
+-crctable.o: crctable.c
+-	$(CC) $(CFLAGS) -c crctable.c
+-randtable.o: randtable.c
+-	$(CC) $(CFLAGS) -c randtable.c
+-compress.o: compress.c
+-	$(CC) $(CFLAGS) -c compress.c
+-decompress.o: decompress.c
+-	$(CC) $(CFLAGS) -c decompress.c
+-bzlib.o: bzlib.c
+-	$(CC) $(CFLAGS) -c bzlib.c
+-bzip2.o: bzip2.c
+-	$(CC) $(CFLAGS) -c bzip2.c
+-bzip2recover.o: bzip2recover.c
+-	$(CC) $(CFLAGS) -c bzip2recover.c
+-
+-
+-distclean: clean
+-	rm -f manual.ps manual.html manual.pdf
+-
+-DISTNAME=bzip2-1.0.6
+-dist: check manual
+-	rm -f $(DISTNAME)
+-	ln -s -f . $(DISTNAME)
+-	tar cvf $(DISTNAME).tar \
+-	   $(DISTNAME)/blocksort.c \
+-	   $(DISTNAME)/huffman.c \
+-	   $(DISTNAME)/crctable.c \
+-	   $(DISTNAME)/randtable.c \
+-	   $(DISTNAME)/compress.c \
+-	   $(DISTNAME)/decompress.c \
+-	   $(DISTNAME)/bzlib.c \
+-	   $(DISTNAME)/bzip2.c \
+-	   $(DISTNAME)/bzip2recover.c \
+-	   $(DISTNAME)/bzlib.h \
+-	   $(DISTNAME)/bzlib_private.h \
+-	   $(DISTNAME)/Makefile \
+-	   $(DISTNAME)/LICENSE \
+-	   $(DISTNAME)/bzip2.1 \
+-	   $(DISTNAME)/bzip2.1.preformatted \
+-	   $(DISTNAME)/bzip2.txt \
+-	   $(DISTNAME)/words0 \
+-	   $(DISTNAME)/words1 \
+-	   $(DISTNAME)/words2 \
+-	   $(DISTNAME)/words3 \
+-	   $(DISTNAME)/sample1.ref \
+-	   $(DISTNAME)/sample2.ref \
+-	   $(DISTNAME)/sample3.ref \
+-	   $(DISTNAME)/sample1.bz2 \
+-	   $(DISTNAME)/sample2.bz2 \
+-	   $(DISTNAME)/sample3.bz2 \
+-	   $(DISTNAME)/dlltest.c \
+-	   $(DISTNAME)/manual.html \
+-	   $(DISTNAME)/manual.pdf \
+-	   $(DISTNAME)/manual.ps \
+-	   $(DISTNAME)/README \
+-	   $(DISTNAME)/README.COMPILATION.PROBLEMS \
+-	   $(DISTNAME)/README.XML.STUFF \
+-	   $(DISTNAME)/CHANGES \
+-	   $(DISTNAME)/libbz2.def \
+-	   $(DISTNAME)/libbz2.dsp \
+-	   $(DISTNAME)/dlltest.dsp \
+-	   $(DISTNAME)/makefile.msc \
+-	   $(DISTNAME)/unzcrash.c \
+-	   $(DISTNAME)/spewG.c \
+-	   $(DISTNAME)/mk251.c \
+-	   $(DISTNAME)/bzdiff \
+-	   $(DISTNAME)/bzdiff.1 \
+-	   $(DISTNAME)/bzmore \
+-	   $(DISTNAME)/bzmore.1 \
+-	   $(DISTNAME)/bzgrep \
+-	   $(DISTNAME)/bzgrep.1 \
+-	   $(DISTNAME)/Makefile-libbz2_so \
+-	   $(DISTNAME)/bz-common.xsl \
+-	   $(DISTNAME)/bz-fo.xsl \
+-	   $(DISTNAME)/bz-html.xsl \
+-	   $(DISTNAME)/bzip.css \
+-	   $(DISTNAME)/entities.xml \
+-	   $(DISTNAME)/manual.xml \
+-	   $(DISTNAME)/format.pl \
+-	   $(DISTNAME)/xmlproc.sh
+-	gzip -v $(DISTNAME).tar
+-
+-# For rebuilding the manual from sources on my SuSE 9.1 box
+-
+-MANUAL_SRCS= 	bz-common.xsl bz-fo.xsl bz-html.xsl bzip.css \
+-		entities.xml manual.xml 
+-
+-manual: manual.html manual.ps manual.pdf
+-
+-manual.ps: $(MANUAL_SRCS)
+-	./xmlproc.sh -ps manual.xml
+-
+-manual.pdf: $(MANUAL_SRCS)
+-	./xmlproc.sh -pdf manual.xml
+-
+-manual.html: $(MANUAL_SRCS)
+-	./xmlproc.sh -html manual.xml
+diff -Naur bzip2-1.0.6-orig/Makefile.in bzip2-1.0.6/Makefile.in
+--- bzip2-1.0.6-orig/Makefile.in	1970-01-01 00:00:00.000000000 +0000
++++ bzip2-1.0.6/Makefile.in	2011-05-21 19:10:44.000000000 +0000
+@@ -0,0 +1,381 @@
++# @configure_input@
++# ------------------------------------------------------------------
++# This file is part of bzip2/libbzip2, a program and library for
++# lossless, block-sorting data compression.
++#
++# bzip2/libbzip2 version 1.0.6 of 6 September 2010
++# Copyright (C) 1996-2010 Julian Seward <jseward@bzip.org>
++#
++# File: Makefile.in for autoconf configuration
++# Contributed by Keith Marshall <keithmarshall@users.sourceforge.net>
++#
++# Please read the WARNING, DISCLAIMER and PATENTS sections in the 
++# README file.
++#
++# This program is released under the terms of the license contained
++# in the file LICENSE.
++# ------------------------------------------------------------------
++
++PACKAGE	   =	@PACKAGE_TARNAME@
++VERSION	   =	@PACKAGE_VERSION@
++
++# If building libbz2 as a shared library, we use these version tags,
++SO_VER	   =	1
++SO_AGE	   =    0
++SO_REV	   =	6
++#
++# This yields a shared object library name below, following the
++# normal naming rules -- most linux distributions patch Julian's
++# original makefile to do something similar.
++#
++SO_MAJOR   :=   $(shell expr $(SO_VER) - $(SO_AGE))
++SONAME	   =	libbz2.so.$(SO_MAJOR)
++SOFULL     =    $(SONAME).$(SO_AGE).$(SO_REV)
++
++# For MS-Windows hosts, Julian's original build strategy, (and that
++# still adopted for building with MSVC), creates an unversioned DLL,
++# exporting functions using the __stdcall (WINAPI) calling convention.
++# Conversly, MinGW developers have chosen to sanitise the libbz2 ABI,
++# avoiding the use of the __stdcall calling convention, in favour of
++# the more GNU/Linux-alike __cdecl convention.
++#
++# To permit MinGW builds of libbz2.dll to co-exist, in the developer
++# universe, with MSVC builds, the MinGW Project has specified a scheme
++# for distribution of versioned DLLs, unambiguously named libbz2-N.dll,
++# where N is an ABI version number, nominally computed as:
++#
++#   SO_VER - SO_AGE	(ignoring SO_REV)
++#
++# Unfortunately, at an early stage in the evolution of the MinGW
++# versioned libbz2-N.dll, at a time when this version paradigm would
++# have yielded N = 1, a libbz2-1.dll was released, which employed the
++# __stdcall calling convention.  Thus, to avoid potential confusion
++# with this early release, and specific to the case of libbz2-N.dll,
++# the DLLVER for the __cdecl releases, as computed by the configure
++# script will lead the nominal value by one, becoming effectively:
++#
++#   1 + SO_VER - SO_AGE
++#
++# Note that for cygwin, a similar scheme (SO_VER - SO_AGE) is used,
++# but on that platform the extra +1 is not needed.
++DLLVER	   =	@DLLVER@
++DLLNAME    =    @DLLNAME@
++LIBNAME    =    libbz2
++
++
++# Shell used by make...
++#
++SHELL	   =	@SHELL@
++
++# Where to find the sources...
++#
++VPATH	   =	${srcdir}
++srcdir	   =	@srcdir@
++
++# To assist in cross-compiling...
++#
++CC	   =	@CC@
++AR	   =	@AR@
++RANLIB	   =	@RANLIB@
++LN_S	   =	@LN_S@
++
++OBJEXT	   =	@OBJEXT@
++EXEEXT	   =	@EXEEXT@
++
++BIGFILES   =	-D_FILE_OFFSET_BITS=64
++CFLAGS	   =	@CFLAGS@ $(BIGFILES)
++LDFLAGS	   =	@LDFLAGS@
++ARFLAGS    =	@ARFLAGS@
++
++# Where you want it installed when you do 'make install'
++#
++PREFIX	   =	@prefix@
++
++OBJS= blocksort.$(OBJEXT)  \
++      huffman.$(OBJEXT)    \
++      crctable.$(OBJEXT)   \
++      randtable.$(OBJEXT)  \
++      compress.$(OBJEXT)   \
++      decompress.$(OBJEXT) \
++      bzlib.$(OBJEXT)
++
++# Default build goals...
++#
++all: all-libs bzip2$(EXEEXT) bzip2recover$(EXEEXT)
++all-libs: libbz2.a @enable_shared@
++
++bzip2$(EXEEXT): libbz2.a bzip2.$(OBJEXT)
++	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ bzip2.$(OBJEXT) -L. -lbz2
++
++bzip2recover$(EXEEXT): bzip2recover.$(OBJEXT)
++	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
++
++libbz2.a: $(OBJS)
++	rm -f $@
++	$(AR) $(ARFLAGS) $@ $(OBJS)
++	$(RANLIB) $@
++
++blocksort.$(OBJEXT): blocksort.c
++	@cat ${srcdir}/words0
++	$(CC) $(CFLAGS) -c -o $@ $^
++
++%.$(OBJEXT): %.c
++	$(CC) $(CFLAGS) -c -o$@ $<
++
++# Building using a shared library, for dynamic linking on GNU/Linux...
++# (Invoked when configured with `--enable-shared' for a non-Win32 host).
++#
++# This is incorporated from Julian's original Makefile-libbz2_so.
++# It is reported to work successfully on x86-Linux (Red Hat 7.2), with
++# gcc-2.96 20000731 (Red Hat Linux 7.1 2.96-98); YMMV.
++#
++# Please refer to README, for important information regarding building
++# libbz2 as a shared library, in this manner.
++#
++PICFLAGS = -fpic -fPIC -Wall -Winline $(CFLAGS)
++
++all-bzip2-shared: bzip2-shared$(EXEEXT)
++bzip2-shared$(EXEEXT): bzip2.c $(SOFULL)
++	$(CC) $(PICFLAGS) -o $@ $^
++	
++$(SOFULL): $(OBJS:.$(OBJEXT)=-pic.$(OBJEXT))
++	$(CC) -shared -Wl,-soname -Wl,$(SONAME) -o $@ $^
++	rm -f $(SONAME); $(LN_S) $@ $(SONAME)
++	rm -f $(SONAME).$(SO_AGE); $(LN_S) $@ $(SONAME).$(SO_AGE)
++
++%-pic.$(OBJEXT): %.c
++	$(CC) $(PICFLAGS) -c -o $@ $<
++
++# Building using a shared library, for dynamic linking on MS-Windows
++# and cygwin...
++# (Invoked when configured with `--enable-shared' for a Win32/cygwin host)
++
++all-dll-shared: $(LIBNAME).dll.a
++
++$(LIBNAME).dll.a: $(DLLNAME)-$(DLLVER).dll
++
++$(DLLNAME)-$(DLLVER).dll: libbz2.def libbz2.a
++	$(CC) -shared -o $@ $(LDFLAGS) -Wl,--out-implib=$(LIBNAME).dll.a $^
++
++libbz2.def: libbz2.def.in
++	sed -e s,%DLLNAME%,$(DLLNAME), -e s,%DLLVER%,$(DLLVER), $^ > $@
++
++# Build validation...
++#
++check: test
++test: bzip2$(EXEEXT)
++	@cat ${srcdir}/words1
++	./bzip2$(EXEEXT) -1  < ${srcdir}/sample1.ref > sample1.rb2
++	./bzip2$(EXEEXT) -2  < ${srcdir}/sample2.ref > sample2.rb2
++	./bzip2$(EXEEXT) -3  < ${srcdir}/sample3.ref > sample3.rb2
++	./bzip2$(EXEEXT) -d  < ${srcdir}/sample1.bz2 > sample1.tst
++	./bzip2$(EXEEXT) -d  < ${srcdir}/sample2.bz2 > sample2.tst
++	./bzip2$(EXEEXT) -ds < ${srcdir}/sample3.bz2 > sample3.tst
++	cmp ${srcdir}/sample1.bz2 sample1.rb2 
++	cmp ${srcdir}/sample2.bz2 sample2.rb2
++	cmp ${srcdir}/sample3.bz2 sample3.rb2
++	cmp sample1.tst ${srcdir}/sample1.ref
++	cmp sample2.tst ${srcdir}/sample2.ref
++	cmp sample3.tst ${srcdir}/sample3.ref
++	@cat ${srcdir}/words3
++
++# GNU Standard Specifications for Installation Directories...
++#
++prefix = $(PREFIX)
++exec_prefix = @exec_prefix@
++
++bindir = @bindir@
++datarootdir = @datarootdir@
++includedir = @includedir@
++libdir = @libdir@
++
++# `man' Documentation Hierarchy, in Terms of GNU Standards...
++#
++# FIXME: Julian's original distribution wasn't fully compliant
++# with current GNU Standards; to achieve compliance, we must use
++# this autotool standard definition:
++#
++#   mandir = @mandir@
++#
++# in place of:
++#
++#   mandir = $(PREFIX)/man
++#
++# which preserves Julian's original configuration.
++#
++mandir = $(PREFIX)/share/man
++man1dir = ${mandir}/man1
++
++# Installation...
++#
++FORCE:
++${bindir} ${includedir} ${libdir} ${man1dir}: FORCE
++	test -d $@ || mkdir -p $@
++
++install: all ${bindir} ${includedir} ${libdir} ${man1dir}
++	cp -f bzip2$(EXEEXT) ${bindir}/bzip2$(EXEEXT)
++	cp -f bzip2$(EXEEXT) ${bindir}/bunzip2$(EXEEXT)
++	cp -f bzip2$(EXEEXT) ${bindir}/bzcat$(EXEEXT)
++	cp -f bzip2recover$(EXEEXT) ${bindir}/bzip2recover$(EXEEXT)
++	if test -f $(DLLNAME)-$(DLLVER).dll; \
++	then \
++	  cp -f $(DLLNAME)-$(DLLVER).dll ${bindir}/$(DLLNAME)-$(DLLVER).dll; \
++	  chmod a+rx ${bindir}/$(DLLNAME)-$(DLLVER).dll; \
++	fi
++	chmod a+x ${bindir}/bzip2$(EXEEXT)
++	chmod a+x ${bindir}/bunzip2$(EXEEXT)
++	chmod a+x ${bindir}/bzcat$(EXEEXT)
++	chmod a+x ${bindir}/bzip2recover$(EXEEXT)
++	cp -f ${srcdir}/bzlib.h ${includedir}
++	chmod a+r ${includedir}/bzlib.h
++	cp -f libbz2.a ${libdir}
++	if test -f $(LIBNAME).dll.a; \
++	then \
++	  cp -f $(LIBNAME).dll.a ${libdir}/$(LIBNAME).dll.a; \
++	  chmod a+r ${libdir}/$(LIBNAME).dll.a; \
++	fi
++	chmod a+r ${libdir}/libbz2.a
++	if test -f $(SOFULL); \
++	then \
++	  cp -f $(SOFULL) ${libdir}; \
++	  cd ${libdir}; rm -f $(SO_NAME).$(SO_AGE) $(SONAME); \
++	  $(LN_S) $(SOFULL) $(SONAME).$(SO_AGE); \
++	  $(LN_S) $(SOFULL) $(SONAME); \
++	  chmod a+r $(SOFULL); \
++	fi
++	cp -f ${srcdir}/bzgrep ${bindir}/bzgrep
++	cd ${bindir}; $(LN_S) -f bzgrep bzegrep
++	cd ${bindir}; $(LN_S) -f bzgrep bzfgrep
++	chmod a+x ${bindir}/bzgrep
++	cp -f ${srcdir}/bzmore ${bindir}/bzmore
++	cd ${bindir}; $(LN_S) -f bzmore bzless
++	chmod a+x ${bindir}/bzmore
++	cp -f ${srcdir}/bzdiff ${bindir}/bzdiff
++	cd ${bindir}; $(LN_S) -f bzdiff bzcmp
++	chmod a+x ${bindir}/bzdiff
++	cd ${srcdir}; cp -f bzip2.1 bzgrep.1 bzmore.1 bzdiff.1 ${man1dir}
++	chmod a+r ${man1dir}/bzip2.1
++	chmod a+r ${man1dir}/bzgrep.1
++	chmod a+r ${man1dir}/bzmore.1
++	chmod a+r ${man1dir}/bzdiff.1
++	echo ".so man1/bzgrep.1" > ${man1dir}/bzegrep.1
++	echo ".so man1/bzgrep.1" > ${man1dir}/bzfgrep.1
++	echo ".so man1/bzmore.1" > ${man1dir}/bzless.1
++	echo ".so man1/bzdiff.1" > ${man1dir}/bzcmp.1
++
++ldconfig:
++	ldconfig -n ${libdir}
++
++# Housekeeping...
++#
++clean: 
++	cmp > /dev/null 2>&1 ${srcdir}/libbz2.def libbz2.def \
++	  || rm -f libbz2.def
++	rm -f *.$(OBJEXT) libbz2*.a $(DLLNAME)*.dll  \
++	bzip2$(EXEEXT) bzip2recover$(EXEEXT) \
++	sample1.rb2 sample2.rb2 sample3.rb2 \
++	sample1.tst sample2.tst sample3.tst
++
++distclean: clean
++	rm -f config.status config.log Makefile
++
++# NOTE: Julian's original Makefile had these in `distclean'.
++# Since they are `distributables', that might have surprised
++# users expecting GNU standard behaviour; they rightfully
++# belong in `maintainer-clean'.
++#
++maintainer-clean: clean
++	rm -f manual.ps manual.html manual.pdf
++
++# Distribution...
++#
++DISTNAME = $(PACKAGE)-$(VERSION)
++#
++# FIXME: this method of creating a source distribution works fine
++# on systems which fully support symbolic links between directories;
++# it cannot be used reliably, on MS-Windows hosts running MSYS.
++#
++dist: manual
++	rm -f $(DISTNAME) $(DISTNAME)$(SNAPSHOT).*
++	$(LN_S) -f ${srcdir} $(DISTNAME)
++	tar cvf $(DISTNAME)$(SNAPSHOT).tar \
++	   $(DISTNAME)/aclocal.m4 \
++	   $(DISTNAME)/configure \
++	   $(DISTNAME)/configure.ac \
++	   $(DISTNAME)/Makefile.in \
++	   $(DISTNAME)/blocksort.c \
++	   $(DISTNAME)/huffman.c \
++	   $(DISTNAME)/crctable.c \
++	   $(DISTNAME)/randtable.c \
++	   $(DISTNAME)/compress.c \
++	   $(DISTNAME)/decompress.c \
++	   $(DISTNAME)/bzlib.c \
++	   $(DISTNAME)/bzip2.c \
++	   $(DISTNAME)/bzip2recover.c \
++	   $(DISTNAME)/bzlib.h \
++	   $(DISTNAME)/bzlib_private.h \
++	   $(DISTNAME)/LICENSE \
++	   $(DISTNAME)/bzip2.1 \
++	   $(DISTNAME)/bzip2.1.preformatted \
++	   $(DISTNAME)/bzip2.txt \
++	   $(DISTNAME)/words0 \
++	   $(DISTNAME)/words1 \
++	   $(DISTNAME)/words2 \
++	   $(DISTNAME)/words3 \
++	   $(DISTNAME)/sample1.ref \
++	   $(DISTNAME)/sample2.ref \
++	   $(DISTNAME)/sample3.ref \
++	   $(DISTNAME)/sample1.bz2 \
++	   $(DISTNAME)/sample2.bz2 \
++	   $(DISTNAME)/sample3.bz2 \
++	   $(DISTNAME)/dlltest.c \
++	   $(DISTNAME)/manual.html \
++	   $(DISTNAME)/manual.pdf \
++	   $(DISTNAME)/manual.ps \
++	   $(DISTNAME)/README \
++	   $(DISTNAME)/README.COMPILATION.PROBLEMS \
++	   $(DISTNAME)/README.XML.STUFF \
++	   $(DISTNAME)/CHANGES \
++	   $(DISTNAME)/libbz2.def \
++	   $(DISTNAME)/libbz2.def.in \
++	   $(DISTNAME)/libbz2.dsp \
++	   $(DISTNAME)/dlltest.dsp \
++	   $(DISTNAME)/makefile.msc \
++	   $(DISTNAME)/unzcrash.c \
++	   $(DISTNAME)/spewG.c \
++	   $(DISTNAME)/mk251.c \
++	   $(DISTNAME)/bzdiff \
++	   $(DISTNAME)/bzdiff.1 \
++	   $(DISTNAME)/bzmore \
++	   $(DISTNAME)/bzmore.1 \
++	   $(DISTNAME)/bzgrep \
++	   $(DISTNAME)/bzgrep.1 \
++	   $(DISTNAME)/Makefile-libbz2_so \
++	   $(DISTNAME)/bz-common.xsl \
++	   $(DISTNAME)/bz-fo.xsl \
++	   $(DISTNAME)/bz-html.xsl \
++	   $(DISTNAME)/bzip.css \
++	   $(DISTNAME)/entities.xml \
++	   $(DISTNAME)/manual.xml \
++	   $(DISTNAME)/format.pl \
++	   $(DISTNAME)/xmlproc.sh
++	gzip -v $(DISTNAME)$(SNAPSHOT).tar
++	rm -f $(DISTNAME)
++
++# For rebuilding the manual from sources on Julian's SuSE 9.1 box
++#
++MANUAL_SRCS  =  bz-common.xsl bz-fo.xsl bz-html.xsl bzip.css \
++		entities.xml manual.xml 
++
++manual: manual.html manual.ps manual.pdf
++
++manual.ps: $(MANUAL_SRCS)
++	${srcdir}/xmlproc.sh -ps manual.xml
++
++manual.pdf: $(MANUAL_SRCS)
++	${srcdir}/xmlproc.sh -pdf manual.xml
++
++manual.html: $(MANUAL_SRCS)
++	${srcdir}/xmlproc.sh -html manual.xml
++
++# Makefile: end of file
