@@ -1,0 +1,85 @@
+# Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+
+pkgname=('ncurses' 'ncurses-devel')
+pkgver=5.9
+pkgrel=20131027
+pkgdesc="System V Release 4.0 curses emulation library"
+arch=('i686' 'x86_64')
+groups=('base')
+url="http://www.gnu.org/software/ncurses/"
+license=('MIT')
+depends=('msys2-runtime')
+source=(http://invisible-island.net/datafiles/current/ncurses.tar.gz)
+md5sums=('4e1882b8b4968cf5a7144283635f8e48')
+
+build() {
+  cd ${srcdir}/$pkgname-$pkgver-$pkgrel
+
+  ./configure \
+    --build=${CHOST} \
+    --with-install-prefix=/usr \
+    --without-ada \
+    --with-shared \
+    --with-cxx-shared \
+    --with-normal \
+    --without-debug \
+    --disable-relink \
+    --disable-rpath \
+    --with-ticlib \
+    --without-termlib \
+    --enable-widec \
+    --enable-ext-colors \
+    --enable-ext-mouse \
+    --enable-sp-funcs \
+    --with-wrap-prefix=ncwrap_ \
+    --enable-sigwinch \
+    --enable-term-driver \
+    --enable-colorfgdg \
+    --enable-tcap-names \
+    --disable-termcap \
+    --disable-mixed-case \
+    --with-pkg-config \
+    --enable-pc-files \
+    --with-manpage-format=normal \
+    --with-manpage-aliases \
+    --with-default-terminfo-dir=/usr/share/terminfo \
+    --enable-echo \
+    --mandir=/usr/share/man \
+    --includedir=/usr/include/ncursesw \
+    --with-build-cflags=-D_XOPEN_SOURCE_EXTENDED \
+    --with-pkg-config-libdir=/usr/lib/pkgconfig
+
+  make
+  make DESTDIR=${srcdir}/dest install
+}
+
+package_ncurses() {
+  mkdir -p ${pkgdir}/usr
+  cp -rf $srcdir/dest/usr/bin ${pkgdir}/usr/
+  rm -f ${pkgdir}/usr/bin/*-config
+  mkdir -p ${pkgdir}/usr/lib
+  cp -rf $srcdir/dest/usr/lib/terminfo ${pkgdir}/usr/lib/
+  cp -rf $srcdir/dest/usr/share ${pkgdir}/usr/
+
+  # install license, rip it from the readme
+  cd ${srcdir}/$pkgname-$pkgver-$pkgrel
+  install -dm755 ${pkgdir}/usr/share/licenses/$pkgname
+  grep -B 100 '$Id' README > ${pkgdir}/usr/share/licenses/${pkgname}/license.txt
+}
+
+package_ncurses-devel() {
+  groups=('development')
+  options=(staticlibs)
+  pkgdesc="NCURSES headers and libraries"
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f $srcdir/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  cp -rf $srcdir/dest/usr/include ${pkgdir}/usr/
+  cp -rf $srcdir/dest/usr/lib ${pkgdir}/usr/
+  rm -rf ${pkgdir}/usr/lib/terminfo
+  
+  ln -s ${pkgdir}/usr/include/ncursesw ${pkgdir}/usr/include/ncurses
+  ln -s ${pkgdir}/usr/lib/libncursesw.a ${pkgdir}/usr/lib/libncurses.a
+  ln -s ${pkgdir}/usr/lib/libncursesw.dll.a ${pkgdir}/usr/lib/libncurses.dll.a
+  ln -s ${pkgdir}/usr/include/ncursesw/unctrl.h ${pkgdir}/usr/include/unctrl.h
+}
