@@ -1,0 +1,59 @@
+# Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+
+pkgname=('libiconv' 'libiconv-devel')
+pkgver=1.14
+pkgrel=1
+pkgdesc='libiconv is a conversion library'
+groups=('libraries')
+arch=('i686' 'x86_64')
+url='http://www.gnu.org/software/libiconv/'
+license=('LGPL')
+source=("http://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.gz"
+        1.14-cross-install.patch
+		libiconv-1.14-reloc.patch
+		libiconv-1.14-wchar.patch
+		msys2-libiconv-1.14.patch)
+md5sums=('e34509b1623cec449dfeb73d7ce9c6c6'
+         'a962c486a06eca0a3981546b66e34471'
+         'ef190bbd432341402aaedead8661d69b'
+         '7fe4ced6aa978f0a05b91d85daafce96'
+         '1328a33de796f36c71c14929b8c47d4e')
+options=(!libtool)
+
+prepare() {
+	cd ${srcdir}/${pkgname}-${pkgver}
+
+	patch -p2 -i ${srcdir}/1.14-cross-install.patch
+	patch -p2 -i ${srcdir}/libiconv-1.14-reloc.patch
+	patch -p2 -i ${srcdir}/libiconv-1.14-wchar.patch
+	patch -p1 -i ${srcdir}/msys2-libiconv-1.14.patch
+}
+
+build() {
+  cd $srcdir/${pkgname}-${pkgver}
+  ./configure --prefix=/usr --enable-static --enable-shared
+  make
+}
+
+check() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make check
+  make DESTDIR=${srcdir}/dest install
+}
+
+package_libiconv() {
+  mkdir -p ${pkgdir}/usr
+  cp -rf $srcdir/dest/usr/bin ${pkgdir}/usr/
+  cp -rf $srcdir/dest/usr/share ${pkgdir}/usr/
+}
+
+package_libiconv-devel() {
+  groups=('development')
+  options=(staticlibs)
+  pkgdesc="libiconv headers and libraries"
+  
+  mkdir -p ${pkgdir}/usr
+  cp -rf $srcdir/dest/usr/include ${pkgdir}/usr/
+  cp -rf $srcdir/dest/usr/lib ${pkgdir}/usr/
+  rm -f ${pkgdir}/usr/lib/charset.alias
+}
