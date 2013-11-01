@@ -1,0 +1,58 @@
+# Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+
+pkgname=('zlib' 'zlib-devel')
+pkgver=1.2.8
+pkgrel=1
+pkgdesc='Compression library implementing the deflate compression method found in gzip and PKZIP'
+arch=('i686' 'x86_64')
+groups=('libraries')
+license=('custom')
+url="http://www.zlib.net/"
+depends=('')
+source=("http://zlib.net/current/zlib-${pkgver}.tar.gz"
+        1.2.7-minizip-cygwin.patch
+        1.2.7-zlib-symbols.patch
+        zlib-1.2.8-msys2.patch)
+md5sums=('44d667c142d7cda120332623eab69f40'
+         '3d8a7892ba0c57bd4a28c37251e9b27c'
+         '33083df4081888faa2c1cdfb1022e675'
+         '4f9254af5ffd4e3fdf06c3599b5d326b')
+
+prepare() {
+	cd ${srcdir}/${pkgname}-${pkgver}
+	grep -A 24 '^  Copyright' zlib.h > LICENSE
+	
+	patch -p2 -i ${srcdir}/1.2.7-minizip-cygwin.patch
+	patch -p2 -i ${srcdir}/1.2.7-zlib-symbols.patch
+	patch -p1 -i ${srcdir}/zlib-1.2.8-msys2.patch
+}
+
+build() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  ./configure --prefix=/usr
+  make
+  make install DESTDIR="$srcdir/dest"
+}
+
+check() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make test
+}
+
+package_zlib() {
+  
+  mkdir -p ${pkgdir}/usr
+  cp -rf $srcdir/dest/usr/bin ${pkgdir}/usr/
+  cp -rf $srcdir/dest/usr/share ${pkgdir}/usr/
+  install -D -m644 ${srcdir}/${pkgname}-${pkgver}/LICENSE ${pkgdir}/usr/share/licenses/zlib/LICENSE
+}
+
+package_zlib-devel() {
+  pkgdesc="zlib headers and libraries"
+  groups=('development')
+  options=('staticlibs')  # needed by binutils testsuite
+	
+  mkdir -p ${pkgdir}/usr
+  cp -rf $srcdir/dest/usr/include ${pkgdir}/usr/
+  cp -rf $srcdir/dest/usr/lib ${pkgdir}/usr/
+}
