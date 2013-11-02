@@ -1,0 +1,50 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com
+
+pkgname=file
+pkgver=5.15
+pkgrel=1
+pkgdesc="File type identification utility"
+arch=('i686' 'x86_64')
+license=('custom')
+groups=('base' 'base-devel')
+url="http://www.darwinsys.com/file/"
+depends=('zlib')
+makedepends=('python2' 'python3' 'zlib-devel')
+options=('!libtool')
+source=(ftp://ftp.astron.com/pub/${pkgname}/${pkgname}-${pkgver}.tar.gz
+        file-5.15-msys2.patch)
+md5sums=('3f99565532f548d7540912c4642d1ede'
+         '2c18071e10474583c1bd83c28e73442e')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  patch -p1 -i ${srcdir}/file-5.15-msys2.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  ./configure --prefix=/usr --enable-fsect-man5
+  make 
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make DESTDIR=${pkgdir} install
+  
+  install -Dm644 COPYING ${pkgdir}/usr/share/licenses/${pkgname}/COPYING
+  
+  PYTHON_SITELIB=$(python2 -c 'from distutils.sysconfig import * ; print get_python_lib(0,0);')
+  PYTHON3_SITELIB=$(python3 -c 'from distutils.sysconfig import * ; print(get_python_lib(0,0));')
+
+  mkdir -p ${pkgdir}/$PYTHON_SITELIB
+  mkdir -p ${pkgdir}/$PYTHON3_SITELIB
+  cp -f ${srcdir}/${pkgname}-${pkgver}/python/magic.py ${pkgdir}/$PYTHON_SITELIB
+  cp -f ${srcdir}/${pkgname}-${pkgver}/python/magic.py ${pkgdir}/$PYTHON3_SITELIB
+
+  cat ${srcdir}/${pkgname}-${pkgver}/magic/Magdir/* > ${pkgdir}/usr/share/misc/magic
+  cp -rf ${pkgdir}/usr/share/misc/magic ${pkgdir}/usr/share/magic
+  mkdir -p ${pkgdir}/usr/share/file
+  cp -rf ${pkgdir}/usr/share/magic ${pkgdir}/usr/share/file/magic
+}
