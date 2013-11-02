@@ -1,0 +1,92 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=pacman
+pkgver=5529.57e372b
+pkgrel=1
+pkgdesc="A library-based package manager with dependency support"
+arch=('i686' 'x86_64')
+url=""
+license=('GPL')
+groups=('base' 'development')
+depends=('bash>=4.2.045' 'msys2-runtime' 'libarchive>=3.1.2' 'curl>=7.19.4'
+         'gpgme')
+checkdepends=('python2')
+makedepends=('git')
+optdepends=()
+provides=('pacman-contrib')
+conflicts=('pacman-contrib')
+replaces=('pacman-contrib')
+backup=(etc/pacman.conf etc/makepkg.conf)
+noextract=()
+source=("$pkgname"::'git://github.com/Alexpux/MSYS2-pacman.git'
+        pacman.conf.i686
+        pacman.conf.x86_64
+        makepkg.conf)
+md5sums=('SKIP'
+         '2db6c94709bb30cc614a176ecf8badb1'
+         'de74a13618347f08ae4a9637f74471c4'
+         'fa80773e7d930b43abc3ee1c58f1d705')
+
+pkgver() {
+  cd "$srcdir/$pkgname"
+  printf "%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd $srcdir/$pkgname
+  ./autogen.sh
+
+  ./configure --prefix=/usr --sysconfdir=/etc \
+    --localstatedir=/var --enable-doc \
+    --with-scriptlet-shell=/usr/bin/bash \
+	--with-pkg-ext=.pkg.tar.xz
+  make
+  make -C contrib
+}
+
+check() {
+  make -C "$pkgname" check
+}
+
+package() {
+  cd $srcdir/$pkgname
+  make DESTDIR=$pkgdir install
+  make DESTDIR=$pkgdir -C contrib install
+
+  # install Arch specific stuff
+  install -dm755 $pkgdir/etc
+  install -m644 $srcdir/pacman.conf.$CARCH $pkgdir/etc/pacman.conf
+  
+  case "$CARCH" in
+    i686)    
+      mycarch="i686"
+      mychost="i686-pc-msys"
+      myflags="-march=i686"
+      ;;
+    x86_64)
+      mycarch="x86_64"
+      mychost="x86_64-pc-msys"
+      myflags="-march=x86-64"
+      ;;
+  esac
+  install -m644 $srcdir/makepkg.conf $pkgdir/etc/
+  # set things correctly in the default conf file
+  sed -i $pkgdir/etc/makepkg.conf \
+    -e "s|@CARCH[@]|$mycarch|g" \
+    -e "s|@CHOST[@]|$mychost|g" \
+    -e "s|@CARCHFLAGS[@]|$myflags|g"
+    
+  # put bash_completion in the right location
+  install -dm755 ${pkgdir}/usr/share/bash-completion/completions
+  mv ${pkgdir}/etc/bash_completion.d/pacman \
+    ${pkgdir}/usr/share/bash-completion/completions
+  rmdir ${pkgdir}/etc/bash_completion.d
+
+  for f in makepkg pacman-key; do
+    ln -s pacman "$pkgdir/usr/share/bash-completion/completions/$f"
+  done
+  
+  # Woraroud for MSYS - place al files in usr
+  mv -f $pkgdir/etc $pkgdir/usr/
+  mv -f $pkgdir/var $pkgdir/usr/
+}
