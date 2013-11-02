@@ -1,0 +1,56 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com
+
+pkgname=('libssh2' 'libssh2-devel')
+pkgver=1.4.3
+pkgrel=2
+pkgdesc="A library implementing the SSH2 protocol as defined by Internet Drafts"
+url="http://www.libssh2.org/"
+groups=('libraries')
+arch=('i686' 'x86_64')
+license=('BSD')
+depends=('openssl' 'zlib')
+makedepends=('openssl-devel' 'zlib-devel')
+#provides=('libssh2.so')
+options=('!libtool')
+source=("http://www.libssh2.org/download/$pkgname-$pkgver.tar.gz"{,.asc}
+        1.2.7-cygwin.patch
+        libssh2-1.4.3-msys2.patch)
+md5sums=('071004c60c5d6f90354ad1b701013a0b'
+         'SKIP'
+         '1e64f6f1034004d67e95167fd63da411'
+         '11a4a628999752cc1b24311f44c4fc87')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  patch -p2 -i ${srcdir}/1.2.7-cygwin.patch
+  patch -p1 -i ${srcdir}/libssh2-1.4.3-msys2.patch
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+
+  ./configure --build=${CHOST} --prefix=/usr
+  make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+package_libssh2() {
+  pkgdesc="Multi-protocol file transfer library (runtime)"
+  depends=('ca-certificates' 'libidn' 'libmetalink' 'libssh2' 'openssl' 'zlib')
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+  install -Dm644 $srcdir/$pkgname-$pkgver/COPYING "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
+
+package_libssh2-devel() {
+  pkgdesc="Libssh2 headers and libraries"
+  options=('staticlibs')
+  groups=('development')
+  
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
