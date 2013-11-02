@@ -1,0 +1,85 @@
+# $Id$
+# Maintainer: Dave Reisner <dreisner@archlinux.org>
+# Contributor: Angel Velasquez <angvp@archlinux.org>
+# Contributor: Eric Belanger <eric@archlinux.org>
+# Contributor: Lucien Immink <l.immink@student.fnt.hvu.nl>
+# Contributor: Daniel J Griffiths <ghost1227@archlinux.us>
+
+pkgname=('curl' 'libcurl' 'libcurl-devel')
+pkgver=7.33.0
+pkgrel=1
+pkgdesc="Multi-protocol file transfer utility"
+arch=('i686' 'x86_64')
+url="http://curl.haxx.se"
+license=('MIT')
+depends=('ca-certificates' 'libidn' 'libmetalink' 'libssh2' 'openssl' 'zlib')
+makedepends=('libmetalink-devel' 'libidn-devel' 'libssh2-devel' 'openssl-devel' 'zlib-devel')
+#provides=('libcurl.so')
+options=('!libtool' 'strip' '!debug')
+source=("http://curl.haxx.se/download/$pkgname-$pkgver.tar.gz"{,.asc}
+        curl-7.32.0-msys2.patch)
+md5sums=('c8a4eaac7ce7b0d1bf458d62ccd4ef93'
+         'SKIP'
+         '255b3bf8fe8704adfb95222865589d16')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  patch -p1 -i ${srcdir}/curl-7.32.0-msys2.patch
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+
+  ./configure \
+      --build=${CHOST} \
+      --prefix=/usr \
+      --enable-debug \
+      --enable-optimize \
+      --disable-hidden-symbols \
+      --disable-ares \
+      --with-gssapi \
+      --without-krb4 \
+      --with-libidn \
+      --with-libmetalink \
+      --without-librtmp \
+      --with-libssh2 \
+      --without-spnego \
+      --with-ssl \
+      --with-zlib \
+      --with-ca-bundle=/usr/ssl/certs/ca-bundle.crt
+
+  make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+package_curl() {
+  depends=('ca-certificates' 'libcurl' 'libmetalink' 'openssl' 'zlib')
+  groups=('base')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.exe ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+
+  # license
+  install -Dm644 $srcdir/$pkgname-$pkgver/COPYING "$pkgdir/usr/share/licenses/$pkgname/COPYING"
+}
+
+package_libcurl() {
+  pkgdesc="Multi-protocol file transfer library (runtime)"
+  depends=('ca-certificates' 'libidn' 'libmetalink' 'libssh2' 'openssl' 'zlib')
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+}
+
+package_libcurl-devel() {
+  pkgdesc=""
+  options=('staticlibs')
+  groups=('development')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
