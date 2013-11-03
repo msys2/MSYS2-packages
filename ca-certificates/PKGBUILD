@@ -1,0 +1,156 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=ca-certificates
+pkgver=1.94
+pkgrel=1
+pkgdesc='Common CA certificates'
+arch=('any')
+url='http://www.mozilla.org/projects/security/certs/'
+license=('MPL' 'GPL')
+source=(certdata.txt
+        nssckbi.h
+        trust-fixes
+        certdata2pem.py
+        update-ca-trust
+        update-ca-trust.8.txt
+        README.usr
+        README.etc
+        README.extr
+        README.java
+        README.openssl
+        README.pem
+        README.src)
+depends=('bash' 'openssl' 'findutils' 'coreutils' 'sed' 'p11-kit')
+makedepends=('asciidoc' 'python2' 'xsltproc' 'sed' 'grep')
+install='ca-certificates.install'
+sha256sums=('d17cd96dfe1e5f6250cdaf537f03de1435add34103188a096b9c1147a194912a'
+            '45fda7476a60c480780776b5e8efc11783b1ef7c13b555e30c2a8bc7df55ed01'
+            '0c12a488492cc69f147606caa5cce134b3d2c6ef2c07d9f4107409903058f8ff'
+            'af13c30801a8a27623948206458432a4cf98061b75ff6e5b5e03912f93c034ee'
+            '893ca46a496fe65855d81849687283b6e9d5a287f05366bcbf94bf1fb4b59f9f'
+            'd31ac2bb5f1941aea0ac1e51861af7be224b6bb85820e30bb30793112aa785ba'
+            '0d2e90b6cf575678cd9d4f409d92258ef0d676995d4d733acdb2425309a38ff8'
+            '6c7b9287c41c171c64b358fc7331b8a9ae969fc2d00d997d88bcbf4da0de598a'
+            '146ff96c60a8ee32bbcf2da59d624d6ecfbab7ef7442529d46d8d63064d8ca58'
+            '7bb8781320fb3ff84e76c7e7e4a9c3813879c4f1943710a3b0140b31efacfd32'
+            '6c812d1ec8ce5bde2216cc42be33021d6345fbea05c14f50c52191a38c175ea9'
+            'c5825472162ab8459b9acc0bc7480866c1209ea0fef098f734938474df9c6586'
+            '86184318d451bec55d70c84e618cbfe10c8adb7dc893964ce4aaecff99d83433')
+
+prepare() {
+  mkdir -p $srcdir/$pkgname-$pkgver/
+  
+  local file=
+  for file in ${source[@]}; do
+    cp -f ${file} $srcdir/$pkgname-$pkgver/
+  done
+
+}
+
+build() {
+	cd $srcdir/$pkgname-$pkgver/
+	python2 certdata2pem.py
+	
+	(
+		cat <<EOF
+# This is a bundle of X.509 certificates of public Certificate
+# Authorities.  It was generated from the Mozilla root CA list.
+# These certificates are in the OpenSSL "TRUSTED CERTIFICATE"
+# format and have trust bits set accordingly.
+#
+# Source: mozilla/security/nss/lib/ckfw/builtins/certdata.txt
+#
+# Generated from:
+EOF
+		grep -w NSS_BUILTINS_LIBRARY_VERSION ${S}/nssckbi.h | awk '{print "# " $2 " " $3}';
+		echo '#';
+	) > ca-bundle.trust.crt
+
+	> info.trust
+	> info.notrust
+
+	local f=
+	for f in *.crt
+	do
+		echo "processing $f"
+		tbits=`sed -n '/^# openssl-trust/{s/^.*=//;p;}' $f`
+		distbits=`sed -n '/^# openssl-distrust/{s/^.*=//;p;}' $f`
+		alias=`sed -n '/^# alias=/{s/^.*=//;p;q;}' $f | sed "s/'//g" | sed 's/"//g'`
+		targs=""
+
+		if [ -n "$tbits" ]
+		then
+			for t in $tbits
+			do
+				targs="${targs} -addtrust $t"
+			done
+		fi
+		if [ -n "$distbits" ]
+		then
+			for t in $distbits
+			do
+				targs="${targs} -addreject $t"
+			done
+		fi
+		if [ -n "$targs" ]
+		then
+			echo "trust flags $targs for $f" >> info.trust
+			openssl x509 -text -in "$f" -trustout $targs -setalias "$alias" >> ca-bundle.trust.crt
+		else
+			echo "no trust flags for $f" >> tee -a info.notrust
+			openssl x509 -text -in "$f" -setalias "$alias" >> ca-bundle.neutral-trust.crt
+		fi
+	done
+	for p in *.p11-kit
+	do
+		cat $p >> ca-bundle.supplement.p11-kit
+	done
+	cat trust-fixes >> ca-bundle.supplement.p11-kit
+
+	asciidoc -v -d manpage -b docbook -o update-ca-trust.8.xml update-ca-trust.8.txt
+	xsltproc --nonet -o update-ca-trust.8 /etc/asciidoc/docbook-xsl/manpage.xsl update-ca-trust.8.xml
+}
+
+package() {
+	cd $srcdir/$pkgname-$pkgver/
+	
+	mkdir -p ${pkgdir}/usr/{etc,bin,lib,share}
+	mkdir -p ${pkgdir}/usr/share/man/man8
+	
+	cp -f update-ca-trust ${pkgdir}/usr/bin/
+	cp -f update-ca-trust.8 ${pkgdir}/usr/share/man/man8/
+
+	# for p11-kit
+	mkdir -p ${pkgdir}/usr/lib/p11-kit
+	cp -f update-ca-trust ${pkgdir}/usr/lib/p11-kit/p11-kit-extract-trust
+	
+	mkdir -p ${pkgdir}/usr/share/pki/ca-trust-source
+	for file in ca-bundle.{trust.crt,neutral-trust.crt,supplement.p11-kit}
+	do
+		cp -f $file ${pkgdir}/usr/share/pki/ca-trust-source
+	done
+	cp -f README.usr ${D}/usr/share/pki/ca-trust-source/README
+
+	# touch all files overwritten by update-ca-trust for easy cleanup
+	mkdir -p ${pkgdir}/usr/etc/pki/ca-trust/{extracted,source}
+	mkdir -p ${pkgdir}/usr/etc/pki/ca-trust/extracted/{openssl,pem,java}
+	
+	cp -f README.extr ${pkgdir}/usr/etc/pki/ca-trust/extracted/README
+
+	cp -f README.openssl ${pkgdir}/usr/etc/pki/ca-trust/extracted/openssl/README
+	touch ${pkgdir}/usr/etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt
+
+	cp -f README.pem ${pkgdir}/usr/etc/pki/ca-trust/extracted/pem/README
+	touch ${pkgdir}/usr/etc/pki/ca-trust/extracted/pem/{tls,email,objsign}-ca-bundle.pem
+
+	cp -f README.java ${pkgdir}/usr/etc/pki/ca-trust/extracted/java/README
+	touch ${pkgdir}/usr/etc/pki/ca-trust/extracted/java/cacerts
+
+	cp -f README.src ${pkgdir}/usr/etc/pki/ca-trust/source/README
+
+	# for OpenSSL and static ca-certificates consumers
+	mkdir -p ${pkgdir}/usr/ssl/certs
+	cp -f ${pkgdir}/usr/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem ${pkgdir}/usr/ssl/certs/ca-bundle.crt
+	cp -f ${pkgdir}/usr/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem ${pkgdir}/usr/ssl/cert.pem
+	cp -f ${pkgdir}/usr/etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt ${pkgdir}/usr/ssl/certs/ca-bundle.trust.crt
+}
