@@ -1,0 +1,81 @@
+From 291ec175812b7ba291d124e4cf2fbf9efec590c8 Mon Sep 17 00:00:00 2001
+From: Andreas Gruenbacher <agruen@linbit.com>
+Date: Thu, 4 Oct 2012 12:33:09 +0200
+Subject: [PATCH] Initialize data structures early enough
+
+* src/patch.c (main): Initialize data structures early enough, before error
+paths can access them.
+* tests/bad-usage: Test bad command line usage.
+* tests/Makefile.am (TESTS): Add bad-usage here.
+---
+ src/patch.c       |  8 ++++----
+ tests/Makefile.am |  1 +
+ tests/bad-usage   | 18 ++++++++++++++++++
+ 3 files changed, 23 insertions(+), 4 deletions(-)
+ create mode 100644 tests/bad-usage
+
+diff --git a/src/patch.c b/src/patch.c
+index 828943b..0255fbb 100644
+--- a/src/patch.c
++++ b/src/patch.c
+@@ -150,6 +150,10 @@ main (int argc, char **argv)
+     else if ((version_control = getenv ("VERSION_CONTROL")))
+       version_control_context = "$VERSION_CONTROL";
+ 
++    init_backup_hash_table ();
++    init_files_to_delete ();
++    init_files_to_output ();
++
+     /* parse switches */
+     Argc = argc;
+     Argv = argv;
+@@ -162,10 +166,6 @@ main (int argc, char **argv)
+     if (make_backups | backup_if_mismatch)
+       backup_type = get_version (version_control_context, version_control);
+ 
+-    init_backup_hash_table ();
+-    init_files_to_delete ();
+-    init_files_to_output ();
+-
+     init_output (&outstate);
+     if (outfile)
+       outstate.ofp = open_outfile (outfile);
+diff --git a/tests/Makefile.am b/tests/Makefile.am
+index 02fc6de..5cea52d 100644
+--- a/tests/Makefile.am
++++ b/tests/Makefile.am
+@@ -20,6 +20,7 @@ TESTS = \
+ 	asymmetric-hunks \
+ 	backup-prefix-suffix \
+ 	bad-filenames \
++	bad-usage \
+ 	concat-git-diff \
+ 	copy-rename \
+ 	corrupt-reject-files \
+diff --git a/tests/bad-usage b/tests/bad-usage
+new file mode 100644
+index 0000000..022eeda
+--- /dev/null
++++ b/tests/bad-usage
+@@ -0,0 +1,18 @@
++# Copyright (C) 2009, 2011-2012 Free Software Foundation, Inc.
++#
++# Copying and distribution of this file, with or without modification,
++# in any medium, are permitted without royalty provided the copyright
++# notice and this notice are preserved.
++
++. $srcdir/test-lib.sh
++
++require_cat
++use_local_patch
++use_tmpdir
++
++# ==============================================================
++
++check 'patch -px || echo "status: $?"' <<EOF
++$PATCH: **** strip count x is not a number
++status: 2
++EOF
+-- 
+1.8.0.3
+

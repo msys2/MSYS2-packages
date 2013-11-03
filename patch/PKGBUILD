@@ -1,0 +1,56 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=patch
+pkgver=2.7.1
+pkgrel=1
+pkgdesc="A utility to apply patch files to original sources"
+arch=('i686' 'x86_64')
+url="http://www.gnu.org/software/patch/patch.html"
+license=('GPL')
+groups=('base-devel')
+depends=('glibc')
+makedepends=('ed')
+optdepends=('ed: for patch -e functionality')
+source=(ftp://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig}
+        patch-2.7.1-initialize-data-structures-early-enough.patch
+        msys2-patch-2.7.1.patch
+        msys2-patch-manifest.patch)
+md5sums=('e9ae5393426d3ad783a300a338c09b72'
+         'SKIP'
+         'dc6367a7cd49933d4006c246789e98da'
+         '1e6764d4ab3c40e05509ca7bb239328c'
+         '418a3715d6fff5900744f6d5fa60234a')
+
+prepare() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+
+  # Fix segfault on non-numeric strip-count
+  # (also segfaults on nonexistent directory passed to -d)
+  # http://savannah.gnu.org/bugs/?37500
+  patch -Np1 -i \
+    $srcdir/patch-2.7.1-initialize-data-structures-early-enough.patch
+	
+  patch -Np1 -i $srcdir/msys2-patch-2.7.1.patch
+  patch -Np2 -i $srcdir/msys2-patch-manifest.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+
+  ./configure --build=${CHOST} \
+    --prefix=/usr \
+	ac_cv_func_setmode_dos=yes
+  make
+}
+
+check() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make check
+}
+
+package() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make DESTDIR=$pkgdir install
+}
