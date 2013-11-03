@@ -1,0 +1,46 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=make
+_ver_base=4.0
+pkgver=4.0.9d58570
+pkgrel=1
+pkgdesc="GNU make utility to maintain groups of programs"
+arch=('i686' 'x86_64')
+url="http://www.gnu.org/software/make"
+license=('GPL3')
+groups=('base-devel')
+depends=('msys2-runtime' 'sh' 'guile')
+makedepends=('gettext' 'git' 'wget')
+install=$pkgname.install
+source=("$pkgname"::'git://git.savannah.gnu.org/make.git'
+        make-autoconf.patch)
+md5sums=('SKIP'
+         'e33ecebcf51947bb5ca54309b6e86c5f')
+
+pkgver() {
+  cd "$srcdir/$pkgname"
+  printf "%s.%s" "$_ver_base" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd ${srcdir}/${pkgname}
+  patch -p1 -i ${srcdir}/make-autoconf.patch
+  autoreconf -fi
+}
+
+build() {
+  cd ${srcdir}/${pkgname}
+  ./configure --build=${CHOST} --prefix=/usr \
+    ac_cv_dos_paths=yes --without-libintl-prefix --without-libiconv-prefix
+  make scm-update do-po-update all
+}
+
+check() {
+  cd ${srcdir}/${pkgname}
+  make check
+}
+
+package() {
+  cd ${srcdir}/${pkgname}
+  make DESTDIR=${pkgdir} install
+}
