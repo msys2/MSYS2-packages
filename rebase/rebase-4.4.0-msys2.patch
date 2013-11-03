@@ -1,0 +1,303 @@
+diff -Naur rebase/build.sh rebase-msys/build.sh
+--- rebase/build.sh	2011-10-24 17:49:56.000000000 +0000
++++ rebase-msys/build.sh	2013-03-30 20:04:13.356445400 +0000
+@@ -30,7 +30,9 @@
+ 	   Prefix=/mingw
+            confargs="--with-dash --prefix=`cd $Prefix && pwd -W`"
+   ;;
+-  MSYS*)   confargs="--with-dash --prefix=$Prefix"
++  MSYS*)   CXXFLAGS="-static -static-libgcc -static-libstdc++" 
++           CFLAGS="-static -static-libgcc"
++	   confargs="--prefix=$Prefix"
+   ;;
+ esac
+ 
+diff -Naur rebase/build-aux/config.guess rebase-msys/build-aux/config.guess
+--- rebase/build-aux/config.guess	2011-07-29 13:17:44.000000000 +0000
++++ rebase-msys/build-aux/config.guess	2013-03-30 20:02:25.697265700 +0000
+@@ -843,6 +843,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur rebase/configure.ac rebase-msys/configure.ac
+--- rebase/configure.ac	2013-01-16 16:15:40.000000000 +0000
++++ rebase-msys/configure.ac	2013-03-30 20:05:44.840820400 +0000
+@@ -28,19 +28,12 @@
+ 
+ AC_CHECK_DECLS([cygwin_conv_path], [],[
+   case "$host" in
+-  *cygwin* ) AC_MSG_ERROR([At least cygwin-1.7 is required]) ;;
++  *cygwin* | *msys* ) AC_MSG_ERROR([At least cygwin-1.7 is required]) ;;
+   esac],dnl
+   [[#include <sys/cygwin.h>]])
+ 
+-LIBOBJS=
+ case "$host" in
+-  *msys* ) AC_LIBOBJ([getopt_long])
+-           AC_LIBOBJ([strtoll]) ;;
+-esac
+-AC_SUBST([LIBOBJS])
+-
+-case "$host" in
+- *mingw* | *msys* )	DEFAULT_OFFSET_VALUE=0x10000 ;;
++ *mingw* )	DEFAULT_OFFSET_VALUE=0x10000 ;;
+  *)			DEFAULT_OFFSET_VALUE=0 ;;
+ esac
+ AC_SUBST(DEFAULT_OFFSET_VALUE)
+@@ -48,7 +41,7 @@
+ case "$host" in
+  *msys*   )	EXTRA_CFLAG_OVERRIDES=
+ 		EXTRA_LDFLAG_OVERRIDES="-static-libgcc"
+-		EXTRA_CXX_LDFLAG_OVERRIDES=
++		EXTRA_CXX_LDFLAG_OVERRIDES="-static-libstdc++"
+    ;;
+  *cygwin* )	EXTRA_CFLAG_OVERRIDES=
+ 		EXTRA_LDFLAG_OVERRIDES="-static-libgcc"
+diff -Naur rebase/imagehelper/objectfile.cc rebase-msys/imagehelper/objectfile.cc
+--- rebase/imagehelper/objectfile.cc	2013-02-16 21:17:18.000000000 +0000
++++ rebase-msys/imagehelper/objectfile.cc	2013-03-30 20:21:49.756836000 +0000
+@@ -41,12 +41,6 @@
+     return L"";
+ #if !defined (__CYGWIN__)
+   MultiByteToWideChar (CP_OEMCP, 0, s, -1, w32_pbuf, 32768);
+-#elif defined(__MSYS__)
+-  {
+-    char buf[MAX_PATH];
+-    cygwin_conv_to_win32_path(s, buf);
+-    MultiByteToWideChar (CP_OEMCP, 0, buf, -1, w32_pbuf, 32768);
+-  }
+ #else
+   cygwin_conv_path (CCP_POSIX_TO_WIN_W, s, w32_pbuf, 32768 * sizeof (WCHAR));
+ #endif
+@@ -491,9 +485,11 @@
+   ObjectFile test("/bin/cygz.dll");
+   std::cout << test.getFileName() << std::endl;
+ 
+-
++#if defined (__MSYS__)
++  LinkedObjectFile test("/bin/msys-z.dll");
++#else
+   LinkedObjectFile test("/bin/cygz.dll");
+-
++#endif
+   /* FIXME: update necessary
+     char *symbol = "gzgets"; 
+     std::cerr << std::setw(20) << std::setfill(' ') << symbol << " 0x" \
+diff -Naur rebase/imagehelper/sections.h rebase-msys/imagehelper/sections.h
+--- rebase/imagehelper/sections.h	2013-02-16 21:17:18.000000000 +0000
++++ rebase-msys/imagehelper/sections.h	2013-03-30 20:22:36.584961000 +0000
+@@ -23,8 +23,8 @@
+ 
+ #include <windows.h>
+ 
+-#if !defined(__CYGWIN__) || defined(__MSYS__)
+-/* MinGW|MSYS: mingw only defines uintptr_t for        */
++#if !defined(__CYGWIN__)
++/* MinGW: mingw only defines uintptr_t for        */
+ /* MSVC 2005 or better, and MSYS doesn't have stdint.h */
+ # ifndef _UINTPTR_T_DEFINED
+ #  define _UINTPTR_T_DEFINED
+diff -Naur rebase/peflags.c rebase-msys/peflags.c
+--- rebase/peflags.c	2013-02-16 21:18:09.000000000 +0000
++++ rebase-msys/peflags.c	2013-03-30 20:06:58.012695400 +0000
+@@ -34,21 +34,10 @@
+ #if defined (__CYGWIN__) || defined (__MSYS__)
+ #include <sys/mman.h>
+ #endif
+-#if defined(__MSYS__)
+-/* MSYS has no inttypes.h */
+-# define PRIu64 "llu"
+-# define PRIx64 "llx"
+-#else
+-# include <inttypes.h>
+-#endif
++#include <inttypes.h>
+ 
+ #include <windows.h>
+ 
+-#if defined(__MSYS__)
+-/* MSYS has no strtoull */
+-unsigned long long strtoull(const char *, char **, int);
+-#endif
+-
+ /* Fix broken definitions in older w32api. */
+ #ifndef IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE
+ #define IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE IMAGE_DLL_CHARACTERISTICS_DYNAMIC_BASE
+diff -Naur rebase/peflagsall.in rebase-msys/peflagsall.in
+--- rebase/peflagsall.in	2012-04-30 13:37:15.000000000 +0000
++++ rebase-msys/peflagsall.in	2013-03-30 20:09:07.590820400 +0000
+@@ -268,7 +268,7 @@
+     do
+       find $f -type f |
+         grep -E "\.($Suffixes)\$" |
+-        sed -e '/msys-1\.0.*\.dll$/d' -e '/cygwin1\.dll$/d' \
++        sed -e '/msys-2\.0.*\.dll$/d' -e '/cygwin1\.dll$/d' \
+             -e '/cyglsa.*\.dll$/d' -e '/d?ash\.exe$/d' \
+             -e '/peflags\.exe$/d' >>"$TmpFile"
+     done
+diff -Naur rebase/rebase.c rebase-msys/rebase.c
+--- rebase/rebase.c	2013-03-19 17:33:54.000000000 +0000
++++ rebase-msys/rebase.c	2013-03-30 20:15:18.747070400 +0000
+@@ -56,11 +56,6 @@
+ int file_list_fclose (FILE *file);
+ void version ();
+ 
+-#if defined(__MSYS__)
+-/* MSYS has no strtoull */
+-unsigned long long strtoull(const char *, char **, int);
+-#endif
+-
+ #ifdef __x86_64__
+ WORD machine = IMAGE_FILE_MACHINE_AMD64;
+ #else
+@@ -109,7 +104,7 @@
+ ULONG cygwin_dll_image_size = 0;
+ #endif
+ #if defined(__MSYS__)
+-# define CYGWIN_DLL "/usr/bin/msys-1.0.dll"
++# define CYGWIN_DLL "/usr/bin/msys-2.0.dll"
+ #elif defined (__CYGWIN__)
+ # define CYGWIN_DLL "/usr/bin/cygwin1.dll"
+ #endif
+@@ -153,8 +148,25 @@
+ #if defined(__MSYS__)
+   if (machine == IMAGE_FILE_MACHINE_I386)
+     {
+-      GetImageInfos64 ("/bin/msys-1.0.dll", NULL,
+-	               &cygwin_dll_image_base, &cygwin_dll_image_size);
++      /* Fetch the MSYS DLLs data to make sure that DLLs aren't rebased
++	 into the memory area taken by the MSYS DLL. */
++      GetImageInfos64 ("/bin/msys-2.0.dll", NULL,
++		       &cygwin_dll_image_base, &cygwin_dll_image_size);
++      /* Take the up to four shared memory areas preceeding the DLL into
++      	 account. */
++      cygwin_dll_image_base -= 4 * ALLOCATION_SLOT;
++      /* Add a slack of 8 * 64K at the end of the MSYS DLL.  This leave a
++	 bit of room to install newer, bigger MSYS DLLs, as well as room to
++	 install non-optimized DLLs for debugging purposes.  Otherwise the
++	 slightest change might break fork again :-P */
++      cygwin_dll_image_size += 4 * ALLOCATION_SLOT + 8 * ALLOCATION_SLOT;
++    }
++  else
++    {
++      /* On x86_64 Cygwin, we want to keep free the whole 2 Gigs area in which
++	 the Cygwin DLL resides, no matter what. */
++      cygwin_dll_image_base = 0x180000000L;
++      cygwin_dll_image_size = 0x080000000L;
+     }
+ #elif defined(__CYGWIN__)
+   if (machine == IMAGE_FILE_MACHINE_I386)
+@@ -864,16 +876,7 @@
+   /* This back and forth from POSIX to Win32 is a way to get a full path
+      more thoroughly.  For instance, the difference between /bin and
+      /usr/bin will be eliminated. */
+-#if defined (__MSYS__)
+-  {
+-    char w32_path[MAX_PATH];
+-    char full_path[MAX_PATH];
+-    cygwin_conv_to_full_win32_path (pathname, w32_path);
+-    cygwin_conv_to_full_posix_path (w32_path, full_path);
+-    img_info_list[img_info_size].name = strdup (full_path);
+-    img_info_list[img_info_size].name_size = strlen (full_path) + 1;
+-  }
+-#elif defined (__CYGWIN__)
++#if defined (__CYGWIN__)
+   {
+     PWSTR w32_path = cygwin_create_path (CCP_POSIX_TO_WIN_W, pathname);
+     if (!w32_path)
+diff -Naur rebase/rebaseall.in rebase-msys/rebaseall.in
+--- rebase/rebaseall.in	2013-02-18 10:04:43.000000000 +0000
++++ rebase-msys/rebaseall.in	2013-03-30 20:18:53.309570400 +0000
+@@ -90,7 +90,7 @@
+ 
+ # On x86_64 Cygwin, set DefaultAddressBase to 0x4:00000000
+ case $Platform in
+-  cygwin )
++  cygwin | msys )
+     [ `uname -m` = "x86_64" ] && DefaultBaseAddress=0x400000000
+     ;;
+   * )
+@@ -235,10 +235,24 @@
+     do
+       find $f -type f |
+         grep -E "\.($Suffixes)\$" |
+-	sed -e '/\/msys-1\.0.*\.dll$/d' -e '/\/cygwin1\.dll$/d' \
++	sed -e '/\/msys-2\.0.*\.dll$/d' -e '/\/cygwin1\.dll$/d' \
+ 	    -e '/\/cyglsa.*\.dll$/d' -e '/\/d\?ash\.exe$/d' \
+ 	    -e '/\/rebase\.exe$/d' >>"$TmpFile"
+     done
++	# some interpreters include a method for installing addons outside of the
++    # package manager, such as CPAN and RubyGems.
++    for d in /usr/lib/perl5/site_perl /usr/lib/py*/site-packages \
++             /usr/lib/php /usr/lib/R/site-library /usr/lib/rub*/gems \
++             /usr/lib/octave/site
++    do
++      if [ -d $d ]
++      then
++        find $d -type f | grep -E "\.($Suffixes)\$" >>"${TmpFile}"
++      fi
++    done
++    # Unconditionally add the -n flag so rebased DLLs get the
++    # dynamicbase flag removed.
++    NoDyn='-n'
+     ;;
+ esac
+ 
+diff -Naur rebase/rebase-db.c rebase-msys/rebase-db.c
+--- rebase/rebase-db.c	2013-02-16 21:18:09.000000000 +0000
++++ rebase-msys/rebase-db.c	2013-03-30 20:10:34.700195400 +0000
+@@ -18,12 +18,7 @@
+  */
+ #include "rebase-db.h"
+ 
+-#if defined(__MSYS__)
+-/* MSYS has no inttypes.h */
+-# define PRIx64 "llx"
+-#else
+-# include <inttypes.h>
+-#endif
++#include <inttypes.h>
+ 
+ const char IMG_INFO_MAGIC[4] = "rBiI";
+ const ULONG IMG_INFO_VERSION = 1;
+diff -Naur rebase/rebase-db.h rebase-msys/rebase-db.h
+--- rebase/rebase-db.h	2012-07-13 20:13:35.000000000 +0000
++++ rebase-msys/rebase-db.h	2013-03-30 20:10:56.168945400 +0000
+@@ -21,13 +21,7 @@
+ 
+ #include <windows.h>
+ #include <stdio.h>
+-#if defined(__MSYS__)
+-/* MSYS has no inttypes.h */
+-# define PRIu64 "llu"
+-# define PRIx64 "llx"
+-#else
+-# include <inttypes.h>
+-#endif
++#include <inttypes.h>
+ 
+ #define roundup(x,y)	((((x) + ((y) - 1)) / (y)) * (y))
+ #define roundup2(x,y)	(((x) + (y) - 1) & ~((y) - 1))
+diff -Naur rebase/rebase-dump.c rebase-msys/rebase-dump.c
+--- rebase/rebase-dump.c	2013-02-16 21:18:09.000000000 +0000
++++ rebase-msys/rebase-dump.c	2013-03-30 20:11:26.997070400 +0000
+@@ -32,12 +32,7 @@
+ #include <locale.h>
+ #include <getopt.h>
+ #include <string.h>
+-#if defined(__MSYS__)
+-/* MSYS has no inttypes.h */
+-# define PRIx64 "llx"
+-#else
+-# include <inttypes.h>
+-#endif
++#include <inttypes.h>
+ #include <errno.h>
+ #include <windows.h>
+ #include "rebase-db.h"
