@@ -1,0 +1,68 @@
+diff -Naur bison-3.0-orig/lib/fpending.h bison-3.0/lib/fpending.h
+--- bison-3.0-orig/lib/fpending.h	2013-01-04 19:25:21.000000000 +0400
++++ bison-3.0/lib/fpending.h	2013-11-02 01:37:46.407000000 +0400
+@@ -20,11 +20,10 @@
+ 
+ #include <stddef.h>
+ #include <stdio.h>
++#if HAVE_STDIO_EXT_H
++# include <stdio_ext.h>
++#endif
+ 
+-#if HAVE_DECL___FPENDING
+-# if HAVE_STDIO_EXT_H
+-#  include <stdio_ext.h>
+-# endif
+-#else
++#ifndef __fpending
+ size_t __fpending (FILE *);
+ #endif
+diff -Naur bison-3.0-orig/m4/fpending.m4 bison-3.0/m4/fpending.m4
+--- bison-3.0-orig/m4/fpending.m4	2013-01-04 19:25:22.000000000 +0400
++++ bison-3.0/m4/fpending.m4	2013-11-02 01:37:46.407000000 +0400
+@@ -1,4 +1,4 @@
+-# serial 19
++# serial 20
+ 
+ # Copyright (C) 2000-2001, 2004-2013 Free Software Foundation, Inc.
+ # This file is free software; the Free Software Foundation
+@@ -16,14 +16,19 @@
+ AC_DEFUN([gl_FUNC_FPENDING],
+ [
+   AC_CHECK_HEADERS_ONCE([stdio_ext.h])
+-  AC_CHECK_FUNCS_ONCE([__fpending])
+-  fp_headers='
+-#     include <stdio.h>
+-#     if HAVE_STDIO_EXT_H
+-#      include <stdio_ext.h>
+-#     endif
+-'
+-  AC_CHECK_DECLS([__fpending], , , $fp_headers)
++  AC_CACHE_CHECK([for __fpending], [gl_cv_func___fpending],
++    [
++      AC_LINK_IFELSE(
++        [AC_LANG_PROGRAM(
++           [[#include <stdio.h>
++             #if HAVE_STDIO_EXT_H
++             # include <stdio_ext.h>
++             #endif
++           ]],
++           [[return ! __fpending (stdin);]])],
++        [gl_cv_func___fpending=yes],
++        [gl_cv_func___fpending=no])
++    ])
+ ])
+ 
+ AC_DEFUN([gl_PREREQ_FPENDING],
+diff -Naur bison-3.0-orig/m4/gnulib-comp.m4 bison-3.0/m4/gnulib-comp.m4
+--- bison-3.0-orig/m4/gnulib-comp.m4	2013-07-25 15:37:23.000000000 +0400
++++ bison-3.0/m4/gnulib-comp.m4	2013-11-02 01:37:46.407000000 +0400
+@@ -314,7 +314,7 @@
+   gl_STDIO_MODULE_INDICATOR([fopen])
+   gl_MODULE_INDICATOR([fopen-safer])
+   gl_FUNC_FPENDING
+-  if test $ac_cv_func___fpending = no; then
++  if test $gl_cv_func___fpending = no; then
+     AC_LIBOBJ([fpending])
+     gl_PREREQ_FPENDING
+   fi
