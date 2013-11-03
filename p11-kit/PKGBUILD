@@ -1,0 +1,71 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('p11-kit' 'libp11-kit' 'libp11-kit-devel')
+pkgver=0.20.1
+pkgrel=1
+pkgdesc="Library to work with PKCS#11 modules"
+arch=(i686 x86_64)
+url="http://p11-glue.freedesktop.org"
+license=('BSD')
+depends=('libiconv' 'libintl' 'libtasn1' 'libffi')
+makedepends=('gettext-devel' 'libiconv-devel' 'libtasn1-devel' 'libffi-devel')
+source=($url/releases/$pkgname-$pkgver.tar.gz{,.sig}
+        0.19.1-trust-shrext.patch
+        p11-kit-0.18.7-msys2.patch
+        p11-kit-fix-readlink.patch)
+md5sums=('88c651137f76a167336639371eafd8cc'
+         'SKIP'
+         '4a1d9752bb1d3776b2dbc73504915912'
+         '4b568d3ef38b69f52571140f4d744dd9'
+         '32ac86a2d9f8b0bd5c9ac72a060bdcf7')
+
+prepare() {
+  cd $pkgname-$pkgver
+  
+  patch -p2 -i $srcdir/0.19.1-trust-shrext.patch
+  patch -p1 -i $srcdir/p11-kit-0.18.7-msys2.patch
+  patch -p1 -i $srcdir/p11-kit-fix-readlink.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd $pkgname-$pkgver
+  ./configure --build=${CHOST} --prefix=/usr \
+    --with-trust-paths=/etc/pki/ca-trust/source:/usr/share/pki/ca-trust-source \
+    --without-libiconv-prefix --without-libintl-prefix
+  make
+  
+  make DESTDIR="$srcdir/dest" install
+  install -Dm644 COPYING $srcdir/dest/usr/share/licenses/$pkgname/COPYING
+}
+
+check() {
+  cd $pkgname-$pkgver
+  make check
+}
+
+package_p11-kit() {
+  mkdir -p $pkgdir/usr/{bin,lib,share}
+  cp -f $srcdir/dest/usr/bin/*.exe $pkgdir/usr/bin/
+  mkdir -p $pkgdir/usr/lib/pkcs11
+  mkdir -p $pkgdir/usr/share/p11-kit/modules
+  cp -f $srcdir/dest/usr/lib/pkcs11/*trust.so $pkgdir/usr/lib/pkcs11/
+  cp -f $srcdir/dest/usr/share/p11-kit/modules/*trust* $pkgdir/usr/share/p11-kit/modules/
+}
+
+package_libp11-kit() {
+  groups=('libraries') 
+  mkdir -p $pkgdir/usr/bin
+  cp -f $srcdir/dest/usr/bin/*.dll $pkgdir/usr/bin/
+}
+
+package_libp11-kit-devel() {
+  pkgdesc="Libp11-kit headers and libraries"
+  groups=('development')
+  
+  mkdir -p $pkgdir/usr/lib
+  cp -rf $srcdir/dest/usr/include $pkgdir/usr/
+  cp -rf $srcdir/dest/usr/lib/pkgconfig $pkgdir/usr/lib/
+  cp -f $srcdir/dest/usr/lib/*.a $pkgdir/usr/lib/
+}
