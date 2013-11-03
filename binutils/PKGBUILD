@@ -1,0 +1,81 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=binutils
+_basever=2.24.51
+pkgver=${_basever}.20131102
+pkgrel=1
+pkgdesc="A set of programs to assemble and manipulate binary and object files"
+arch=('i686' 'x86_64')
+url="http://www.gnu.org/software/binutils/"
+license=('GPL')
+groups=('base-devel')
+depends=('libiconv' 'libintl' 'zlib')
+checkdepends=('dejagnu' 'bc')
+makedepends=('libiconv-devel' 'libintl-devel' 'zlib-devel')
+options=('staticlibs' '!distcc' '!ccache')
+install=binutils.install
+source=(http://sourceware.mirrors.tds.net/pub/sourceware.org/binutils/snapshots/binutils-${_basever}.tar.bz2
+        # ftp://ftp.gnu.org/gnu/binutils/binutils-${_basever}.tar.bz2{,.sig}
+        #binutils-2.23.2-texinfo-5.0.patch
+        01-w32api-sysroot.patch
+        02-x86-64-pc32-relocs.patch
+        binutils-trunk-msys2.patch)
+md5sums=('7540b7c95820e0a261049635fff63746'
+         'f13f153ee918273f99467150b981a8ff'
+         'e7e91814b32f4c4c63d4c777f5eabf7f'
+         '6f7175b7ed29bc597f0d300500e2b651')
+
+prepare() {
+  cd ${srcdir}/binutils-${_basever}
+
+  # http://sourceware.org/git/?p=binutils.git;a=patch;h=e02bf935
+  # http://sourceware.org/git/?p=binutils.git;a=patch;h=935f8542
+  #patch -p1 -i ${srcdir}/binutils-2.23.2-texinfo-5.0.patch
+
+  patch -p2 -i $srcdir/01-w32api-sysroot.patch
+  if [ "${CARCH}" == 'x86_64' ]; then
+  echo "yyyyyyyyyyyyyyyeeeeeeeeeeeeaaahhhhhh"
+		patch -p0 -i $srcdir/02-x86-64-pc32-relocs.patch
+  fi
+  patch -p1 -i $srcdir/binutils-trunk-msys2.patch
+  
+  # hack! - libiberty configure tests for header files using "$CPP $CPPFLAGS"
+  sed -i "/ac_cpp=/s/\$CPPFLAGS/\$CPPFLAGS -O2/" libiberty/configure
+
+  mkdir ${srcdir}/binutils-build
+}
+
+build() {
+  cd ${srcdir}/binutils-build
+
+  if [ "${CARCH}" == 'x86_64' ]; then
+    local _conf='--enable-64-bit-bfd'
+  else
+    local _conf=''
+  fi
+  ${srcdir}/binutils-${_basever}/configure --build=${CHOST} \
+    --prefix=/usr \
+    --disable-werror \
+	$_conf \
+    --without-libiconv-prefix \
+    --without-libintl-prefix
+
+  make
+}
+
+check() {
+  cd ${srcdir}/binutils-build
+  
+  # unset LDFLAGS as testsuite makes assumptions about which ones are active
+  # do not abort on errors - manually check log files
+  make LDFLAGS="" -k check || true
+}
+
+package() {
+  cd ${srcdir}/binutils-build
+  make DESTDIR=${pkgdir} install
+  
+  # Add some useful headers
+  #install -m644 ${srcdir}/binutils-${_basever}/include/libiberty.h ${pkgdir}/usr/include
+  #install -m644 ${srcdir}/binutils-${_basever}/include/demangle.h ${pkgdir}/usr/include
+}
