@@ -1,0 +1,60 @@
+# $Id$
+# Maintainer: Allan McRae <allan@archlinux.org>
+
+pkgname=('cloog' 'cloog-devel')
+pkgver=0.18.1
+pkgrel=1
+groups=('libraries')
+pkgdesc="Library that generates loops for scanning polyhedra"
+arch=('i686' 'x86_64')
+url="http://www.bastoul.net/cloog/"
+license=('GPL')
+depends=('isl')
+makedepends=('isl-devel')
+source=(http://www.bastoul.net/cloog/pages/download/$pkgname-$pkgver.tar.gz
+        cloog-0.18.0-msys2.patch
+        cloog-0.18.1-no-undefined.patch)
+md5sums=('e34fca0540d840e5d0f6427e98c92252'
+         '228877a7c89cd2ed3d3de936a90690d6'
+         'b976d088b7fab0471431655f561e679f')
+
+prepare() {
+  cd "$srcdir/${pkgname}-$pkgver"
+  patch -p1 -i ${srcdir}/cloog-0.18.0-msys2.patch
+  patch -p1 -i ${srcdir}/cloog-0.18.1-no-undefined.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd $srcdir/$pkgname-$pkgver
+  ./configure --prefix=/usr \
+      --enable-shared \
+      --disable-static \
+      --with-isl=system \
+      --with-bits=gmp \
+      --program-suffix=-isl
+  make
+  make DESTDIR=$srcdir/dest install
+}
+
+check() {
+  cd $srcdir/$pkgname-$pkgver
+  make check
+}
+
+package_cloog() {
+  mkdir -p $pkgdir/usr/bin
+  
+  cp -f $srcdir/dest/usr/bin/*.dll $pkgdir/usr/bin
+}
+
+package_cloog-devel() {
+  pkgdesc="CLOOG headers and libraries"
+  groups=('development')
+  
+  mkdir -p $pkgdir/usr
+  
+  cp -rf $srcdir/dest/usr/include $pkgdir/usr/
+  cp -rf $srcdir/dest/usr/lib $pkgdir/usr/
+}
