@@ -1,0 +1,60 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=wget
+pkgver=1.14
+pkgrel=1
+pkgdesc="A network utility to retrieve files from the Web"
+arch=('i686' 'x86_64')
+url="http://www.gnu.org/software/wget/wget.html"
+license=('GPL3')
+depends=('openssl' 'libidn')
+checkdepends=('perl-http-daemon' 'perl-io-socket-ssl')
+optdepends=('ca-certificates: HTTPS downloads')
+backup=('etc/wgetrc')
+install=wget.install
+source=(ftp://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig}
+        1.13.4-sysconfdir.patch
+        wget-pod-fixes.patch
+        wget-1.14-msys2.patch)
+sha1sums=('cfa0906e6f72c1c902c29b52d140c22ecdcd617e'
+          'SKIP'
+          'da9a76951c305b456931c7ed462c12b99fd94d79'
+          'aae4be72657c7a8e9dbedb7109cd2d8562a325d2'
+          'ffdba68b87e1ffd59a6bd71075c6f554d0d13d3e')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  patch -p2 -i "${srcdir}/1.13.4-sysconfdir.patch"
+  patch -p1 -i "${srcdir}/wget-pod-fixes.patch"
+  patch -p1 -i "${srcdir}/wget-1.14-msys2.patch"
+  cat >> doc/sample.wgetrc <<EOF
+
+# default root certs location
+ca_certificate=/usr/ssl/certs/ca-bundle.crt
+EOF
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  ./configure --build=${CHOST} \
+  --prefix=/usr \
+  --with-ssl=openssl \
+  --without-libiconv-prefix \
+  --without-libintl-prefix \
+  --without-libpth-prefix \
+  --without-libssl-prefix \
+  --without-libgnutls-prefix \
+  ac_cv_header_spawn_h=no
+  
+  make
+}
+
+check() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make check
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make DESTDIR="${pkgdir}" install
+}

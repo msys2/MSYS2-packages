@@ -1,0 +1,265 @@
+diff -Naur wget-1.14-orig/build-aux/compile wget-1.14/build-aux/compile
+--- wget-1.14-orig/build-aux/compile	2012-08-06 00:17:15.000000000 +0400
++++ wget-1.14/build-aux/compile	2013-07-18 11:12:55.990234400 +0400
+@@ -54,7 +54,7 @@
+ 	  MINGW*)
+ 	    file_conv=mingw
+ 	    ;;
+-	  CYGWIN*)
++	  CYGWIN*|MSYS*)
+ 	    file_conv=cygwin
+ 	    ;;
+ 	  *)
+@@ -68,7 +68,7 @@
+ 	mingw/*)
+ 	  file=`cmd //C echo "$file " | sed -e 's/"\(.*\) " *$/\1/'`
+ 	  ;;
+-	cygwin/*)
++	cygwin/*|msys/*)
+ 	  file=`cygpath -m "$file" || echo "$file"`
+ 	  ;;
+ 	wine/*)
+diff -Naur wget-1.14-orig/build-aux/config.guess wget-1.14/build-aux/config.guess
+--- wget-1.14-orig/build-aux/config.guess	2012-08-06 00:15:33.000000000 +0400
++++ wget-1.14/build-aux/config.guess	2013-07-18 11:13:39.849609400 +0400
+@@ -851,6 +851,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur wget-1.14-orig/build-aux/config.rpath wget-1.14/build-aux/config.rpath
+--- wget-1.14-orig/build-aux/config.rpath	2012-02-26 17:16:16.000000000 +0400
++++ wget-1.14/build-aux/config.rpath	2013-07-18 11:10:14.458007800 +0400
+@@ -57,7 +57,7 @@
+     aix*)
+       wl='-Wl,'
+       ;;
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | *msys | pw32* | os2* | cegcc*)
+       ;;
+     hpux9* | hpux10* | hpux11*)
+       wl='-Wl,'
+@@ -149,7 +149,7 @@
+ hardcode_minus_L=no
+ 
+ case "$host_os" in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | *msys | mingw* | pw32* | cegcc*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -198,7 +198,7 @@
+         ld_shlibs=no
+       fi
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | *msys | mingw* | pw32* | cegcc*)
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+       # no search path for DLLs.
+       hardcode_libdir_flag_spec='-L$libdir'
+@@ -348,7 +348,7 @@
+       ;;
+     bsdi[45]*)
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | *msys | mingw* | pw32* | cegcc*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -537,7 +537,7 @@
+   bsdi[45]*)
+     library_names_spec='$libname$shrext'
+     ;;
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | *msys | mingw* | pw32* | cegcc*)
+     shrext=.dll
+     library_names_spec='$libname.dll.a $libname.lib'
+     ;;
+diff -Naur wget-1.14-orig/configure wget-1.14/configure
+--- wget-1.14-orig/configure	2012-08-06 00:17:11.000000000 +0400
++++ wget-1.14/configure	2013-07-18 11:12:30.333984400 +0400
+@@ -6239,7 +6239,7 @@
+      else
+        case "$host_os" in
+                                                                osf*) gl_use_threads=no ;;
+-         cygwin*)
++         cygwin* | msys*)
+                case `uname -r` in
+                  1.[0-5].*) gl_use_threads=no ;;
+                  *)         gl_use_threads=yes ;;
+@@ -11081,7 +11081,7 @@
+         # special semantics and is distinct from /, please report it to
+         # <bug-gnulib@gnu.org>.
+         case $host in
+-          *-cygwin | i370-ibm-openedition)
++          *-cygwin | *-msys | i370-ibm-openedition)
+             gl_cv_double_slash_root=yes ;;
+           *)
+             # Be optimistic and assume that / and // are the same when we
+@@ -20515,7 +20515,7 @@
+ 
+            case "$host_os" in
+                       # Guess no on Cygwin.
+-             cygwin*) gl_cv_func_btowc_nul="guessing no" ;;
++             cygwin* | msys*) gl_cv_func_btowc_nul="guessing no" ;;
+                       # Guess yes otherwise.
+              *)       gl_cv_func_btowc_nul="guessing yes" ;;
+            esac
+@@ -20897,7 +20897,7 @@
+         # special semantics and is distinct from /, please report it to
+         # <bug-gnulib@gnu.org>.
+         case $host in
+-          *-cygwin | i370-ibm-openedition)
++          *-cygwin | *-msys | i370-ibm-openedition)
+             gl_cv_double_slash_root=yes ;;
+           *)
+             # Be optimistic and assume that / and // are the same when we
+@@ -20939,7 +20939,7 @@
+   case "$host_os" in
+            mingw*) # on this platform, dup2 always returns 0 for success
+              gl_cv_func_dup2_works="guessing no" ;;
+-           cygwin*) # on cygwin 1.5.x, dup2(1,1) returns 0
++           cygwin* | msys*) # on cygwin 1.5.x, dup2(1,1) returns 0
+              gl_cv_func_dup2_works="guessing no" ;;
+            linux*) # On linux between 2008-07-27 and 2009-05-11, dup2 of a
+                    # closed fd may yield -EBADF instead of -1 / errno=EBADF.
+@@ -24615,7 +24615,7 @@
+   case "$host_os" in
+           # Guess yes on platforms where we know the result.
+           *-gnu* | freebsd* | netbsd* | openbsd* \
+-          | hpux* | solaris* | cygwin* | mingw*)
++          | hpux* | solaris* | cygwin* | msys* | mingw*)
+             ac_cv_func_malloc_0_nonnull=yes ;;
+           # If we don't know, assume the worst.
+           *) ac_cv_func_malloc_0_nonnull=no ;;
+diff -Naur wget-1.14-orig/lib/Makefile.am wget-1.14/lib/Makefile.am
+--- wget-1.14-orig/lib/Makefile.am	2012-08-06 00:16:46.000000000 +0400
++++ wget-1.14/lib/Makefile.am	2013-07-18 11:14:12.365234400 +0400
+@@ -759,7 +759,7 @@
+ 	  case '$(host_os)' in \
+ 	    darwin[56]*) \
+ 	      need_charset_alias=true ;; \
+-	    darwin* | cygwin* | mingw* | pw32* | cegcc*) \
++	    darwin* | cygwin* | msys* | mingw* | pw32* | cegcc*) \
+ 	      need_charset_alias=false ;; \
+ 	    *) \
+ 	      need_charset_alias=true ;; \
+diff -Naur wget-1.14-orig/lib/Makefile.in wget-1.14/lib/Makefile.in
+--- wget-1.14-orig/lib/Makefile.in	2012-08-06 00:17:16.000000000 +0400
++++ wget-1.14/lib/Makefile.in	2013-07-18 11:10:14.520507800 +0400
+@@ -2088,7 +2088,7 @@
+ 	  case '$(host_os)' in \
+ 	    darwin[56]*) \
+ 	      need_charset_alias=true ;; \
+-	    darwin* | cygwin* | mingw* | pw32* | cegcc*) \
++	    darwin* | cygwin* | msys* | mingw* | pw32* | cegcc*) \
+ 	      need_charset_alias=false ;; \
+ 	    *) \
+ 	      need_charset_alias=true ;; \
+diff -Naur wget-1.14-orig/m4/btowc.m4 wget-1.14/m4/btowc.m4
+--- wget-1.14-orig/m4/btowc.m4	2012-07-14 15:09:25.000000000 +0400
++++ wget-1.14/m4/btowc.m4	2013-07-18 11:14:48.240234400 +0400
+@@ -49,7 +49,7 @@
+ changequote(,)dnl
+            case "$host_os" in
+                       # Guess no on Cygwin.
+-             cygwin*) gl_cv_func_btowc_nul="guessing no" ;;
++             cygwin* | msys*) gl_cv_func_btowc_nul="guessing no" ;;
+                       # Guess yes otherwise.
+              *)       gl_cv_func_btowc_nul="guessing yes" ;;
+            esac
+diff -Naur wget-1.14-orig/m4/double-slash-root.m4 wget-1.14/m4/double-slash-root.m4
+--- wget-1.14-orig/m4/double-slash-root.m4	2012-07-14 15:09:25.000000000 +0400
++++ wget-1.14/m4/double-slash-root.m4	2013-07-18 11:10:51.894531300 +0400
+@@ -16,7 +16,7 @@
+         # special semantics and is distinct from /, please report it to
+         # <bug-gnulib@gnu.org>.
+         case $host in
+-          *-cygwin | i370-ibm-openedition)
++          *-cygwin | *-msys | i370-ibm-openedition)
+             gl_cv_double_slash_root=yes ;;
+           *)
+             # Be optimistic and assume that / and // are the same when we
+diff -Naur wget-1.14-orig/m4/dup2.m4 wget-1.14/m4/dup2.m4
+--- wget-1.14-orig/m4/dup2.m4	2012-07-14 15:09:25.000000000 +0400
++++ wget-1.14/m4/dup2.m4	2013-07-18 11:15:06.724609400 +0400
+@@ -46,7 +46,7 @@
+         [case "$host_os" in
+            mingw*) # on this platform, dup2 always returns 0 for success
+              gl_cv_func_dup2_works="guessing no" ;;
+-           cygwin*) # on cygwin 1.5.x, dup2(1,1) returns 0
++           cygwin* | msys*) # on cygwin 1.5.x, dup2(1,1) returns 0
+              gl_cv_func_dup2_works="guessing no" ;;
+            linux*) # On linux between 2008-07-27 and 2009-05-11, dup2 of a
+                    # closed fd may yield -EBADF instead of -1 / errno=EBADF.
+diff -Naur wget-1.14-orig/m4/malloc.m4 wget-1.14/m4/malloc.m4
+--- wget-1.14-orig/m4/malloc.m4	2012-07-14 15:09:26.000000000 +0400
++++ wget-1.14/m4/malloc.m4	2013-07-18 11:15:34.568359400 +0400
+@@ -30,7 +30,7 @@
+        [case "$host_os" in
+           # Guess yes on platforms where we know the result.
+           *-gnu* | freebsd* | netbsd* | openbsd* \
+-          | hpux* | solaris* | cygwin* | mingw*)
++          | hpux* | solaris* | cygwin* | msys* | mingw*)
+             ac_cv_func_malloc_0_nonnull=yes ;;
+           # If we don't know, assume the worst.
+           *) ac_cv_func_malloc_0_nonnull=no ;;
+diff -Naur wget-1.14-orig/m4/printf.m4 wget-1.14/m4/printf.m4
+--- wget-1.14-orig/m4/printf.m4	2012-07-14 15:09:26.000000000 +0400
++++ wget-1.14/m4/printf.m4	2013-07-18 11:10:51.910156300 +0400
+@@ -735,7 +735,7 @@
+            openbsd*)        gl_cv_func_printf_directive_ls="guessing no";;
+            irix*)           gl_cv_func_printf_directive_ls="guessing no";;
+            solaris*)        gl_cv_func_printf_directive_ls="guessing no";;
+-           cygwin*)         gl_cv_func_printf_directive_ls="guessing no";;
++           cygwin* | msys*)         gl_cv_func_printf_directive_ls="guessing no";;
+            beos* | haiku*)  gl_cv_func_printf_directive_ls="guessing no";;
+            *)               gl_cv_func_printf_directive_ls="guessing yes";;
+          esac
+@@ -812,7 +812,7 @@
+         [
+ changequote(,)dnl
+          case "$host_os" in
+-           cygwin*)      gl_cv_func_printf_flag_grouping="guessing no";;
++           cygwin* | msys*)      gl_cv_func_printf_flag_grouping="guessing no";;
+            netbsd*)      gl_cv_func_printf_flag_grouping="guessing no";;
+            mingw* | pw*) gl_cv_func_printf_flag_grouping="guessing no";;
+            *)            gl_cv_func_printf_flag_grouping="guessing yes";;
+@@ -1464,7 +1464,7 @@
+            darwin[1-6].*)        gl_cv_func_vsnprintf_zerosize_c99="guessing no";;
+            darwin*)              gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
+                                  # Guess yes on Cygwin.
+-           cygwin*)              gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
++           cygwin* | msys*)              gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
+                                  # Guess yes on Solaris >= 2.6.
+            solaris2.[0-5] | solaris2.[0-5].*)
+                                  gl_cv_func_vsnprintf_zerosize_c99="guessing no";;
+diff -Naur wget-1.14-orig/m4/realloc.m4 wget-1.14/m4/realloc.m4
+--- wget-1.14-orig/m4/realloc.m4	2012-07-14 15:09:26.000000000 +0400
++++ wget-1.14/m4/realloc.m4	2013-07-18 11:15:54.646484400 +0400
+@@ -30,7 +30,7 @@
+        [case "$host_os" in
+           # Guess yes on platforms where we know the result.
+           *-gnu* | freebsd* | netbsd* | openbsd* \
+-          | hpux* | solaris* | cygwin* | mingw*)
++          | hpux* | solaris* | cygwin* | msys* | mingw*)
+             ac_cv_func_realloc_0_nonnull=yes ;;
+           # If we don't know, assume the worst.
+           *) ac_cv_func_realloc_0_nonnull=no ;;
+diff -Naur wget-1.14-orig/m4/threadlib.m4 wget-1.14/m4/threadlib.m4
+--- wget-1.14-orig/m4/threadlib.m4	2012-07-14 15:09:26.000000000 +0400
++++ wget-1.14/m4/threadlib.m4	2013-07-18 11:10:51.910156300 +0400
+@@ -68,7 +68,7 @@
+          dnl bugs that lead to endless loops or crashes. See
+          dnl <http://cygwin.com/ml/cygwin/2009-08/msg00283.html>.
+          osf*) gl_use_threads=no ;;
+-         cygwin*)
++         cygwin* | msys*)
+                case `uname -r` in
+                  1.[0-5].*) gl_use_threads=no ;;
+                  *)         gl_use_threads=yes ;;
