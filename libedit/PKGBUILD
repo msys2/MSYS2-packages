@@ -1,0 +1,56 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('libedit' 'libedit-devel')
+pkgver=3.1
+pkgrel=20130712
+pkgdesc="Libedit is an autotool- and libtoolized port of the NetBSD Editline library."
+groups=('libraries')
+arch=('i686' 'x86_64')
+license=('BSD')
+url="http://www.thrysoee.dk/editline/"
+depends=('msys2-runtime' 'ncurses' 'sh')
+makedepends=('ncurses-devel')
+source=(http://www.thrysoee.dk/editline/${pkgname}-${pkgrel}-${pkgver}.tar.gz
+        libedit-20130712-1.src.patch
+        libedit-3.0-20120311-msys2.patch)
+sha1sums=('6bb65d88244a89680cec73682093f66c01a8a9b9'
+          '2303511b2c09f941da16606521a3e7d88e3d2f13'
+          'a7bb2100e6f6865b39d7d9cdaf2026fb17caf93c')
+
+prepare() {
+  cd "$srcdir/${pkgname}-${pkgrel}-${pkgver}"
+  
+  patch -p2 -i $srcdir/libedit-20130712-1.src.patch
+  patch -p1 -i $srcdir/libedit-3.0-20120311-msys2.patch
+  autoreconf -fi
+}
+
+build() {
+  cd "$srcdir/${pkgname}-${pkgrel}-${pkgver}"
+  
+  ./configure --build=${CHOST} --prefix=/usr \
+    --enable-widec \
+    CPPFLAGS="$CPPFLAGS -I/usr/include/ncursesw" \
+	LDFLAGS="$LDFLAGS -L/usr/lib/ncursesw"
+  make
+  
+  make DESTDIR=${srcdir}/dest install
+}
+
+package_libedit() {
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+}
+
+package_libedit-devel() {
+  pkgdesc="libedit headers and libraries"
+  groups=('development')
+  options=('staticlibs')
+ 
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
