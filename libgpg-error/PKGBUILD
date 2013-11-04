@@ -1,0 +1,59 @@
+# Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+
+pkgname=('libgpg-error' 'libgpg-error-devel') # 'gpg-error'
+pkgver=1.12
+pkgrel=1
+pkgdesc="Support library for libgcrypt"
+arch=(i686 x86_64)
+url="http://www.gnupg.org"
+license=('LGPL')
+depends=('msys2-runtime' 'sh' 'libiconv' 'libintl')
+source=(ftp://ftp.gnupg.org/gcrypt/libgpg-error/${pkgname}-${pkgver}.tar.bz2{,.sig}
+	#ftp://ftp.franken.de/pub/crypt/mirror/ftp.gnupg.org/gcrypt/libgpg-error/${pkgname}-${pkgver}.tar.bz2
+        libgpg-error-1.12-msys2.patch)
+sha1sums=('259f359cd1440b21840c3a78e852afd549c709b8'
+          'SKIP'
+          'c99b2954b9a4c93e4a299ad900b7f942d5bd146e')
+
+prepare() {
+  cd "$srcdir/$pkgname-$pkgver"
+  
+  patch -p1 -i ${srcdir}/libgpg-error-1.12-msys2.patch
+  autoreconf -fi
+}
+
+build() {
+  cd "${srcdir}"/${pkgname}-${pkgver}
+  ./configure --build=${CHOST} \
+    --prefix=/usr \
+	--without-libiconv-prefix --without-libintl-prefix
+  make no_undefined=-no-undefined
+  make DESTDIR="${srcdir}/dest" install
+}
+
+check() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make check
+}
+
+package_libgpg-error() {
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/share
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  rm -f ${pkgdir}/usr/bin/*-config
+  cp -rf ${srcdir}/dest/usr/share/locale ${pkgdir}/usr/share/
+}
+
+package_libgpg-error-devel() {
+  pkgdesc="Libgpg-error headers and libraries"
+  groups=('development')
+  options=('staticlibs')
+ 
+  mkdir -p ${pkgdir}/usr/{bin,share}
+  cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/common-lisp ${pkgdir}/usr/share/
+}
