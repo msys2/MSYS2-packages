@@ -1,0 +1,66 @@
+#!/bin/sh
+
+# The default perl modules are properly rebased, a rebase clash is very unlikely.
+# However with more and more CPAN XS extensions being added over time to site_perl,
+# *** fatal error - unable to remap some.dll to same address as parent
+# will become more likely, and those new DLLs are not rebased by a normal rebaseall.
+# perlrebase starts afresh all perl DLLs from a pretty low base upwards.
+
+suff=$1
+suff=${suff:=5.18.0}
+baseaddr=$2
+# use a rather low base and go upwards, might clash with some Win7 system dlls
+baseaddr=${baseaddr:=0x58000000}
+perl=/usr/local/bin/perl$suff.exe
+if [ ! -f $perl ]; then
+  perl=/usr/bin/perl$suff.exe
+  if [ ! -f $perl ]; then
+    echo "$perl and /usr/local/bin/perl$suff.exe not found"
+    echo "usage: perlrebase [$suff [baseaddr]]"
+    exit
+  fi
+fi
+dll=$(ldd $perl | $perl -anle 'print $F[2] if /msys-perl/')
+# ldd was broken in 1.7.6
+if [ -z $dll ]; then
+  cygcheck $perl | $perl -anle 'print $F[0] if /msys-perl/' >/tmp/$$
+  dll=$(cygpath `cat /tmp/$$`)
+  rm /tmp/$$
+fi
+prefix=$($perl -MConfig -e'print $Config{prefix}')
+arch=$($perl -MConfig -MFile::Basename -e'print basename($Config{archlib})')
+archlib=$($perl -MConfig -e'print $Config{archlib}')
+ver=$($perl -MConfig -MFile::Basename -e'print basename(dirname $Config{archlib})')
+# write to a temp. .lst to be able to re-order dlls locally
+result="/tmp/_rebase$suff.rst"
+lst="/tmp/_rebase$suff.lst"
+dotrebasedir="/usr/lib/perl5/vendor_perl/$ver/$arch/auto"
+if [ ! -d $dotrebasedir ]; then
+  dotrebasedir="$prefix/lib/perl5/site_perl/$ver/$arch/auto"
+fi
+dotrebase="$dotrebasedir/.rebase"
+/usr/bin/rebase -b0x40000000 $perl
+[ -n $? ] || exit
+if [ ! -d $archlib/auto ]; then
+  echo "no archlib found for $perl"
+  exit
+fi
+if [ ! -e /usr/bin/rebase.exe ]; then
+  echo "/usr/bin/rebase.exe not found. Install the rebase package"
+  exit
+fi
+echo $dll > $lst
+/usr/bin/find $prefix/lib/perl5/{,vendor_perl/,site_perl/}$ver/$arch/auto/ -name \*.dll >> $lst
+/usr/bin/cat $lst | /usr/bin/xargs chmod ug+w 
+[ -e /usr/bin/peflags.exe ] && /usr/bin/peflags -t $perl 
+/usr/bin/rebase -v -b $baseaddr -T $lst | /usr/bin/tee $result
+stat=$?
+echo $stat
+[ -n $stat ] || exit
+[ -e /usr/bin/peflags.exe ] && /usr/bin/grep .dll $lst | /usr/bin/peflags -d0 -T - >/dev/null
+/usr/bin/cat $lst | /usr/bin/xargs chmod g-w
+test -d $dotrebasedir || mkdir -p $dotrebasedir
+/usr/bin/tail -n1 $result | \
+  $perl -ne'/new base = (.+), new size = (.+)/ && printf("%x\n",hex($1)+hex($2));' \
+    > $dotrebase
+/bin/cat $dotrebase
