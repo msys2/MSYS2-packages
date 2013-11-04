@@ -1,0 +1,168 @@
+From dcc19503193c71596278a252064a8ce66331b3cd Mon Sep 17 00:00:00 2001
+From: Daniel Veillard <veillard@redhat.com>
+Date: Wed, 22 May 2013 22:56:45 +0200
+Subject: [PATCH] Fix a parsing bug on non-ascii element and CR/LF usage
+
+https://bugzilla.gnome.org/show_bug.cgi?id=698550
+
+Somehow the behaviour of the internal parser routine changed
+slightly when encountering CR/LF, which led to a bug when
+parsing document with non-ascii Names
+---
+ parser.c                   |  6 +++++-
+ result/japancrlf.xml       |  4 ++++
+ result/japancrlf.xml.rde   |  7 +++++++
+ result/japancrlf.xml.rdr   |  7 +++++++
+ result/japancrlf.xml.sax   | 11 +++++++++++
+ result/japancrlf.xml.sax2  | 11 +++++++++++
+ result/noent/japancrlf.xml |  4 ++++
+ test/japancrlf.xml         |  6 ++++++
+ 8 files changed, 55 insertions(+), 1 deletion(-)
+ create mode 100644 result/japancrlf.xml
+ create mode 100644 result/japancrlf.xml.rde
+ create mode 100644 result/japancrlf.xml.rdr
+ create mode 100644 result/japancrlf.xml.sax
+ create mode 100644 result/japancrlf.xml.sax2
+ create mode 100644 result/noent/japancrlf.xml
+ create mode 100644 test/japancrlf.xml
+
+diff --git a/parser.c b/parser.c
+index 4a442bb..4739add 100644
+--- a/parser.c
++++ b/parser.c
+@@ -3404,6 +3404,7 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+     int len = 0, l;
+     int c;
+     int count = 0;
++    const xmlChar *end; /* needed because CUR_CHAR() can move cur on \r\n */
+ 
+ #ifdef DEBUG
+     nbParseNCNameComplex++;
+@@ -3413,6 +3414,7 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+      * Handler for more complex cases
+      */
+     GROW;
++    end = ctxt->input->cur;
+     c = CUR_CHAR(l);
+     if ((c == ' ') || (c == '>') || (c == '/') || /* accelerators */
+ 	(!xmlIsNameStartChar(ctxt, c) || (c == ':'))) {
+@@ -3434,12 +3436,14 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+ 	}
+ 	len += l;
+ 	NEXTL(l);
++	end = ctxt->input->cur;
+ 	c = CUR_CHAR(l);
+ 	if (c == 0) {
+ 	    count = 0;
+ 	    GROW;
+             if (ctxt->instate == XML_PARSER_EOF)
+                 return(NULL);
++	    end = ctxt->input->cur;
+ 	    c = CUR_CHAR(l);
+ 	}
+     }
+@@ -3448,7 +3452,7 @@ xmlParseNCNameComplex(xmlParserCtxtPtr ctxt) {
+         xmlFatalErr(ctxt, XML_ERR_NAME_TOO_LONG, "NCName");
+         return(NULL);
+     }
+-    return(xmlDictLookup(ctxt->dict, ctxt->input->cur - len, len));
++    return(xmlDictLookup(ctxt->dict, end - len, len));
+ }
+ 
+ /**
+diff --git a/result/japancrlf.xml b/result/japancrlf.xml
+new file mode 100644
+index 0000000..60b307c
+--- /dev/null
++++ b/result/japancrlf.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0"?>
++<入力メッセージ xmlns="http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826">
++	<c8c:Ele xmlns:c8c="http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826"/>
++</入力メッセージ>
+diff --git a/result/japancrlf.xml.rde b/result/japancrlf.xml.rde
+new file mode 100644
+index 0000000..0bc5af7
+--- /dev/null
++++ b/result/japancrlf.xml.rde
+@@ -0,0 +1,7 @@
++0 1 入力メッセージ 0 0
++1 14 #text 0 1 
++	
++1 1 c8c:Ele 1 0
++1 14 #text 0 1 
++
++0 15 入力メッセージ 0 0
+diff --git a/result/japancrlf.xml.rdr b/result/japancrlf.xml.rdr
+new file mode 100644
+index 0000000..0bc5af7
+--- /dev/null
++++ b/result/japancrlf.xml.rdr
+@@ -0,0 +1,7 @@
++0 1 入力メッセージ 0 0
++1 14 #text 0 1 
++	
++1 1 c8c:Ele 1 0
++1 14 #text 0 1 
++
++0 15 入力メッセージ 0 0
+diff --git a/result/japancrlf.xml.sax b/result/japancrlf.xml.sax
+new file mode 100644
+index 0000000..c3bbdc6
+--- /dev/null
++++ b/result/japancrlf.xml.sax
+@@ -0,0 +1,11 @@
++SAX.setDocumentLocator()
++SAX.startDocument()
++SAX.startElement(入力メッセージ, xmlns='http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826')
++SAX.characters(
++	, 2)
++SAX.startElement(c8c:Ele, xmlns:c8c='http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826')
++SAX.endElement(c8c:Ele)
++SAX.characters(
++, 1)
++SAX.endElement(入力メッセージ)
++SAX.endDocument()
+diff --git a/result/japancrlf.xml.sax2 b/result/japancrlf.xml.sax2
+new file mode 100644
+index 0000000..878eae4
+--- /dev/null
++++ b/result/japancrlf.xml.sax2
+@@ -0,0 +1,11 @@
++SAX.setDocumentLocator()
++SAX.startDocument()
++SAX.startElementNs(入力メッセージ, NULL, 'http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826', 1, xmlns='http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826', 0, 0)
++SAX.characters(
++	, 2)
++SAX.startElementNs(Ele, c8c, 'http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826', 1, xmlns:c8c='http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826', 0, 0)
++SAX.endElementNs(Ele, c8c, 'http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826')
++SAX.characters(
++, 1)
++SAX.endElementNs(入力メッセージ, NULL, 'http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826')
++SAX.endDocument()
+diff --git a/result/noent/japancrlf.xml b/result/noent/japancrlf.xml
+new file mode 100644
+index 0000000..60b307c
+--- /dev/null
++++ b/result/noent/japancrlf.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0"?>
++<入力メッセージ xmlns="http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826">
++	<c8c:Ele xmlns:c8c="http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826"/>
++</入力メッセージ>
+diff --git a/test/japancrlf.xml b/test/japancrlf.xml
+new file mode 100644
+index 0000000..480cb2d
+--- /dev/null
++++ b/test/japancrlf.xml
+@@ -0,0 +1,6 @@
++﻿<入力メッセージ
++	xmlns="http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826">
++	<c8c:Ele
++		xmlns:c8c="http://schemas.cordys.com/webapps/1.0/bpm/c8c8b82a-0ac0-3d19-01e2-bda74af9b826"
++	/>
++</入力メッセージ>
+\ No newline at end of file
+-- 
+1.8.3.2
+

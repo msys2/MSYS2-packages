@@ -1,0 +1,99 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('libxml2' 'libxml2-devel')
+pkgver=2.9.1
+pkgrel=1
+pkgdesc="XML parsing library, version 2"
+arch=(i686 x86_64)
+license=('MIT')
+depends=('zlib' 'libreadline' 'ncurses' 'liblzma')
+makedepends=('python2' 'python3')
+install=libxml2.install
+url="http://www.xmlsoft.org/"
+source=(ftp://ftp.xmlsoft.org/${pkgname}/${pkgname}-${pkgver}.tar.gz
+        http://www.w3.org/XML/Test/xmlts20080827.tar.gz
+        libxml2-2.9.0-do-not-check-crc.patch
+        2.7.3-doc-install.patch
+        libxml2-2.8.0_rc1-winnt.patch
+        libxml2-2.9.1-compression-detection.patch
+        libxml2-2.9.1-missing-break.patch
+        libxml2-2.9.1-msys2.patch
+        libxml2-2.9.1-non-ascii-cr-lf.patch
+        libxml2-2.9.1-python-2.6.patch
+        libxml2-2.9.1-python3.patch
+        libxml2-2.9.1-python3a.patch)
+md5sums=('9c0cfef285d5c4a5c80d00904ddab380'
+         'ae3d1ebe000a3972afa104ca7f0e1b4a'
+         '08e92a1d05827f4152ab30bd56655fdd'
+         'f55c43ccb3ec01a61c1436b0bcd1a4ca'
+         '2a38e25bead58e4b4dc4550317369c90'
+         'e5e9b6425531b8f757d77dfd96280dc0'
+         '459e4b2b3f37113df6c731598b91e2b7'
+         '3bbefa352e2f560f630b5d5fae1d645a'
+         'a73813838ec20f8b7eb47db9cb96f09e'
+         'efc796f7fa5aa9678b61bb5cb7d87561'
+         '1fbd4215c81ca3286873bfb2a3f101f3'
+         'c024dbf5eb208fad6dde89dc9819bc90')
+
+prepare() {
+  cd ${srcdir}
+  mv xmlconf -t ${pkgname}-${pkgver}
+
+  cd ${pkgname}-${pkgver}
+  
+  patch -p1 -i ${srcdir}/libxml2-2.9.0-do-not-check-crc.patch
+  patch -p1 -i ${srcdir}/2.7.3-doc-install.patch
+  patch -p1 -i ${srcdir}/libxml2-2.8.0_rc1-winnt.patch
+  patch -p1 -i ${srcdir}/libxml2-2.9.1-compression-detection.patch
+  patch -p1 -i ${srcdir}/libxml2-2.9.1-missing-break.patch
+  patch -p1 -i ${srcdir}/libxml2-2.9.1-non-ascii-cr-lf.patch
+  patch -p1 -i ${srcdir}/libxml2-2.9.1-python-2.6.patch
+  patch -p1 -i ${srcdir}/libxml2-2.9.1-python3.patch
+  patch -p1 -i ${srcdir}/libxml2-2.9.1-python3a.patch
+  patch -p1 -i ${srcdir}/libxml2-2.9.1-msys2.patch
+
+  sed -e 's|/usr/bin/python -u|/usr/bin/python2 -u|g' -e 's|/usr/bin/python$|/usr/bin/python2|g' -i python/tests/*.py
+  
+  autoreconf -fi
+}
+
+build() {
+  cd ${pkgname}-${pkgver}
+  ./configure --build=${CHOST} --host=${CHOST} --target=${CHOST} \
+    --prefix=/usr \
+    --enable-ipv6 \
+    --with-history \
+    --with-html-dir=/usr/share/doc \
+    --with-html-subdir=libxml2/html
+  make
+  make DESTDIR=${srcdir}/dest install
+}
+
+check() {
+  cd ${pkgname}-${pkgver}
+  make check
+}
+
+package_libxml2() {
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/share
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  rm -f ${pkgdir}/usr/bin/*-config
+  cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
+  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/COPYING "${pkgdir}/usr/share/licenses/${pkgname}/COPYING"
+}
+
+package_libxml2-devel() {
+  pkgdesc="Libxml2 headers and libraries"
+  groups=('development')
+  options=('staticlibs')
+ 
+  mkdir -p ${pkgdir}/usr/{bin,share}
+  cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/doc ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/gtk-doc ${pkgdir}/usr/share/
+}
