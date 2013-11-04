@@ -1,0 +1,94 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('libxslt' 'libxslt-devel' 'libxslt-python')
+pkgver=1.1.28
+pkgrel=1
+pkgdesc="XML stylesheet transformation library"
+arch=('i686' 'x86_64')
+url="http://xmlsoft.org/XSLT/"
+license=('custom')
+depends=('libxml2' 'libgcrypt')
+makedepends=('python2')
+checkdepends=('docbook-xml')
+options=('!libtool')
+source=(ftp://xmlsoft.org/libxslt/${pkgname}-${pkgver}.tar.gz
+        libxslt-1.1.28-msys2.patch
+        libxslt.m4-libxslt-1.1.26.patch)
+md5sums=('9667bf6f9310b957254fdcf6596600b7'
+         '24c5ea3254ec2686c8a994e525954cd8'
+         '61b520bbd42006c16bbfc85bc5342b96')
+
+PYTHON_SITELIB=/usr/lib/python2.7/site-packages
+PYTHON_LIB=/usr/lib/python2.7
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  
+  #patch -p1 -i ${srcdir}/libxslt-1.1.28-doc-utf8.patch
+  patch -p1 -i ${srcdir}/libxslt.m4-libxslt-1.1.26.patch
+  patch -p1 -i ${srcdir}/libxslt-1.1.28-msys2.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  sed -e 's|/usr/bin/python -u|/usr/bin/python2 -u|g' -e 's|/usr/bin/python$|/usr/bin/python2|g' -i python/tests/*.py
+  ./configure --build=${CHOST} --host=${CHOST} --target=${CHOST} \
+    --prefix=/usr \
+    --with-crypto \
+    --with-debugger \
+    --with-html-dir=/usr/share/doc/${NAME} \
+    --with-html-subdir=html \
+    --with-python=/usr/bin/python2
+
+  make
+  make DESTDIR=${srcdir}/dest install
+  
+  mv ${srcdir}/dest${PYTHON_SITELIB}/${pkgname/lib/msys-}mod.dll ${srcdir}/dest${PYTHON_SITELIB}/${pkgname}mod.dll
+  sed -i -e "s:${pkgname/lib/msys-}mod:${PN}mod:g" ${srcdir}/dest${PYTHON_SITELIB}/${pkgname}mod.la
+
+  mv ${srcdir}/dest/usr/share/doc/${pkgname}-python-${pkgver} ${srcdir}/dest/usr/share/doc/python-${pkgname}
+  # rm -f ${srcdir}/dest/usr/lib/python*/site-packages/*.a
+}
+
+check() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make check
+}
+
+package_libxslt() {
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/share
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  rm -f ${pkgdir}/usr/bin/*-config
+  cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
+  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/COPYING "${pkgdir}/usr/share/licenses/${pkgname}/COPYING"
+}
+
+package_libxslt-devel() {
+  pkgdesc="Libxslt headers and libraries"
+  groups=('development')
+  options=('staticlibs')
+ 
+  mkdir -p ${pkgdir}/usr/{bin,share}
+  cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+  rm -rf ${pkgdir}${PYTHON_SITELIB}
+  cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/doc ${pkgdir}/usr/share/
+}
+
+package_libxslt-python() {
+  pkgdesc="Libxslt python modules"
+  groups=('python-modules')
+  options=('staticlibs')
+  install=libxslt-python.install
+ 
+  mkdir -p ${pkgdir}/${PYTHON_SITELIB}
+  mkdir -p ${pkgdir}/usr/share/doc
+  cp -rf ${srcdir}/dest${PYTHON_SITELIB}/* ${pkgdir}${PYTHON_SITELIB}/
+  cp -rf ${srcdir}/dest/usr/share/doc/python-libxslt ${pkgdir}/usr/share/doc/
+}
