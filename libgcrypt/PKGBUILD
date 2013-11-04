@@ -1,0 +1,62 @@
+# Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+
+pkgname=('libgcrypt' 'libgcrypt-devel')
+pkgver=1.5.3
+pkgrel=1
+pkgdesc="General purpose cryptographic library based on the code from GnuPG"
+arch=(i686 x86_64)
+url="http://www.gnupg.org"
+license=('LGPL')
+depends=('libgpg-error>=1.10-2')
+options=('!emptydirs')
+source=(ftp://ftp.gnupg.org/gcrypt/${pkgname}/${pkgname}-${pkgver}.tar.bz2
+	#ftp://ftp.franken.de/pub/crypt/mirror/ftp.gnupg.org/gcrypt/libgcrypt/${pkgname}-${pkgver}.tar.bz2
+        1.5.0-win64.patch
+        libgcrypt-1.5.1-msys2.patch)
+sha1sums=('2c6553cc17f2a1616d512d6870fe95edf6b0e26e'
+          '76b32927c4592f19807bdaba14e1519a5edf2510'
+          '73d574e15e7e127db39c041ef687ff0992bc2137')
+
+prepare() {
+  cd "$srcdir/$pkgname-$pkgver"
+  
+  patch -p2 -i ${srcdir}/1.5.0-win64.patch
+  patch -p1 -i ${srcdir}/libgcrypt-1.5.1-msys2.patch
+  autoreconf -fi
+}
+
+build() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  ./configure --build=${CHOST} --prefix=/usr \
+	--disable-static
+
+  make no_undefined=-no-undefined
+  make DESTDIR=${srcdir}/dest install
+}
+
+check() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make check
+}
+
+package_libgcrypt() {
+  groups=('libraries')
+  install=$pkgname.install
+
+  mkdir -p ${pkgdir}/usr/share
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  rm -f ${pkgdir}/usr/bin/*-config
+  cp -rf ${srcdir}/dest/usr/share/info ${pkgdir}/usr/share/
+}
+
+package_libgcrypt-devel() {
+  pkgdesc="Libgcrypt headers and libraries"
+  groups=('development')
+  options=('staticlibs')
+ 
+  mkdir -p ${pkgdir}/usr/{bin,share}
+  cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
+}
