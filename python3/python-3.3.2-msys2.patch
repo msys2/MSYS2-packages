@@ -1,0 +1,1546 @@
+diff -Naur Python-3.3.2-cygwin/config.guess Python-3.3.2/config.guess
+--- Python-3.3.2-cygwin/config.guess	2013-05-15 20:33:00.000000000 +0400
++++ Python-3.3.2/config.guess	2013-08-02 01:07:06.233398400 +0400
+@@ -849,6 +849,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur Python-3.3.2-cygwin/configure Python-3.3.2/configure
+--- Python-3.3.2-cygwin/configure	2013-05-15 20:33:00.000000000 +0400
++++ Python-3.3.2/configure	2013-08-02 00:57:16.847656200 +0400
+@@ -3264,6 +3264,9 @@
+ 	*-*-cygwin*)
+ 		ac_sys_system=Cygwin
+ 		;;
++	*-*-msys*)
++		ac_sys_system=Msys
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -3288,6 +3291,7 @@
+     case $MACHDEP in
+ 	linux*) MACHDEP="linux";;
+ 	cygwin*) MACHDEP="cygwin";;
++	msys*)   MACHDEP="msys";;
+ 	darwin*) MACHDEP="darwin";;
+ 	irix646) MACHDEP="irix6";;
+ 	'')	MACHDEP="unknown";;
+@@ -3309,6 +3313,9 @@
+ 	*-*-cygwin*)
+ 		_host_cpu=
+ 		;;
++	*-*-msys*)
++		_host_cpu=
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -5514,7 +5521,7 @@
+ if test -z "$enable_shared"
+ then
+   case $ac_sys_system in
+-  CYGWIN*)
++  CYGWIN*|MSYS*)
+     enable_shared="yes";;
+   *)
+     enable_shared="no";;
+@@ -5584,6 +5591,10 @@
+           LDLIBRARY='libpython$(LDVERSION).dll.a'
+           DLLLIBRARY='libpython$(LDVERSION).dll'
+           ;;
++    MSYS*)
++          LDLIBRARY='libpython$(LDVERSION).dll.a'
++          DLLLIBRARY='msys-python$(LDVERSION).dll'
++          ;;
+     SunOS*)
+ 	  LDLIBRARY='libpython$(LDVERSION).so'
+ 	  BLDLIBRARY='-Wl,-R,$(LIBDIR) -L. -lpython$(LDVERSION)'
+@@ -5634,7 +5645,7 @@
+   esac
+ else # shared is disabled
+   case $ac_sys_system in
+-    CYGWIN*)
++    CYGWIN*|MSYS*)
+           BLDLIBRARY='$(LIBRARY)'
+           LDLIBRARY='libpython$(LDVERSION).dll.a'
+           ;;
+@@ -6157,7 +6168,7 @@
+ 
+ if test -z "$LN" ; then
+ 	case $ac_sys_system in
+-		CYGWIN*) LN="ln -s";;
++		CYGWIN*|MSYS*) LN="ln -s";;
+ 		*) LN=ln;;
+ 	esac
+ fi
+@@ -8405,7 +8416,7 @@
+ 	  		*)    SHLIB_SUFFIX=.sl;;
+ 		esac
+ 		;;
+-	CYGWIN*)   SHLIB_SUFFIX=.dll;;
++	CYGWIN*|MSYS*)   SHLIB_SUFFIX=.dll;;
+ 	*)	   SHLIB_SUFFIX=.so;;
+ 	esac
+ fi
+@@ -8541,7 +8552,7 @@
+ 	SCO_SV*)
+ 		LDSHARED='$(CC) -Wl,-G,-Bexport'
+ 		LDCXXSHARED='$(CXX) -Wl,-G,-Bexport';;
+-	CYGWIN*)
++	CYGWIN*|MSYS*)
+ 		LDSHARED="gcc -shared -Wl,--enable-auto-image-base"
+ 		LDCXXSHARED="g++ -shared -Wl,--enable-auto-image-base";;
+ 	*)	LDSHARED="ld";;
+@@ -8625,7 +8636,7 @@
+ 			LINKFORSHARED="-Xlinker --export-dynamic"
+ 		    fi;;
+ 		  esac;;
+-	CYGWIN*)
++	CYGWIN*|MSYS*)
+ 		if test $enable_shared = "no"
+ 		then
+ 			LINKFORSHARED='-Wl,--out-implib=$(LDLIBRARY)'
+@@ -8649,7 +8660,7 @@
+ if test ! "$LIBRARY" = "$LDLIBRARY"
+ then
+ 	case $ac_sys_system in
+-	CYGWIN*)
++	CYGWIN*|MSYS*)
+ 		# Cygwin needs CCSHARED when building extension DLLs
+ 		# but not when building the interpreter DLL.
+ 		CFLAGSFORSHARED='';;
+@@ -9785,7 +9796,7 @@
+ #define HAVE_PTHREAD_SIGMASK 1
+ _ACEOF
+  case $ac_sys_system in
+-        CYGWIN*)
++        CYGWIN*|MSYS*)
+ 
+ $as_echo "#define HAVE_BROKEN_PTHREAD_SIGMASK 1" >>confdefs.h
+ 
+diff -Naur Python-3.3.2-cygwin/configure.ac Python-3.3.2/configure.ac
+--- Python-3.3.2-cygwin/configure.ac	2013-08-02 00:35:10.071289000 +0400
++++ Python-3.3.2/configure.ac	2013-08-02 00:56:22.894531200 +0400
+@@ -364,6 +364,9 @@
+ 	*-*-cygwin*)
+ 		ac_sys_system=Cygwin
+ 		;;
++	*-*-msys*)
++		ac_sys_system=Msys
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -388,6 +391,7 @@
+     case $MACHDEP in
+ 	linux*) MACHDEP="linux";;
+ 	cygwin*) MACHDEP="cygwin";;
++	msys*)   MACHDEP="msys";;
+ 	darwin*) MACHDEP="darwin";;
+ 	irix646) MACHDEP="irix6";;
+ 	'')	MACHDEP="unknown";;
+@@ -409,6 +413,9 @@
+ 	*-*-cygwin*)
+ 		_host_cpu=
+ 		;;
++	*-*-msys*)
++		_host_cpu=
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -870,7 +877,7 @@
+ if test -z "$enable_shared"
+ then 
+   case $ac_sys_system in
+-  CYGWIN*)
++  CYGWIN*|MSYS*)
+     enable_shared="yes";;
+   *)
+     enable_shared="no";;
+@@ -924,6 +931,11 @@
+           BLDLIBRARY='-L. -lpython$(LDVERSION)'
+           DLLLIBRARY='libpython$(LDVERSION).dll'
+           ;;
++    MSYS*)
++          LDLIBRARY='libpython$(LDVERSION).dll.a'
++          BLDLIBRARY='-L. -lpython$(LDVERSION)'
++          DLLLIBRARY='msys-python$(LDVERSION).dll'
++          ;;
+     SunOS*)
+ 	  LDLIBRARY='libpython$(LDVERSION).so'
+ 	  BLDLIBRARY='-Wl,-R,$(LIBDIR) -L. -lpython$(LDVERSION)'
+@@ -974,7 +986,7 @@
+   esac
+ else # shared is disabled
+   case $ac_sys_system in
+-    CYGWIN*)
++    CYGWIN*|MSYS*)
+           BLDLIBRARY='$(LIBRARY)'
+           LDLIBRARY='libpython$(LDVERSION).dll.a'
+           ;;
+@@ -1032,7 +1044,7 @@
+ AC_SUBST(LN)
+ if test -z "$LN" ; then
+ 	case $ac_sys_system in
+-		CYGWIN*) LN="ln -s";;
++		CYGWIN*|MSYS*) LN="ln -s";;
+ 		*) LN=ln;;
+ 	esac
+ fi
+@@ -1915,7 +1927,7 @@
+ 	  		*)    SHLIB_SUFFIX=.sl;;
+ 		esac
+ 		;;
+-	CYGWIN*)   SHLIB_SUFFIX=.dll;;
++	CYGWIN*|MSYS*)   SHLIB_SUFFIX=.dll;;
+ 	*)	   SHLIB_SUFFIX=.so;;
+ 	esac
+ fi
+@@ -2049,7 +2061,7 @@
+ 	SCO_SV*)
+ 		LDSHARED='$(CC) -Wl,-G,-Bexport'
+ 		LDCXXSHARED='$(CXX) -Wl,-G,-Bexport';;
+-	CYGWIN*)
++	CYGWIN*|MSYS*)
+ 		LDSHARED="gcc -shared -Wl,--enable-auto-image-base"
+ 		LDCXXSHARED="g++ -shared -Wl,--enable-auto-image-base";;
+ 	*)	LDSHARED="ld";;
+@@ -2129,7 +2141,7 @@
+ 			LINKFORSHARED="-Xlinker --export-dynamic"
+ 		    fi;;
+ 		  esac;;
+-	CYGWIN*)
++	CYGWIN*|MSYS*)
+ 		if test $enable_shared = "no"
+ 		then
+ 			LINKFORSHARED='-Wl,--out-implib=$(LDLIBRARY)'
+@@ -2151,7 +2163,7 @@
+ if test ! "$LIBRARY" = "$LDLIBRARY"
+ then
+ 	case $ac_sys_system in
+-	CYGWIN*)
++	CYGWIN*|MSYS*)
+ 		# Cygwin needs CCSHARED when building extension DLLs
+ 		# but not when building the interpreter DLL.
+ 		CFLAGSFORSHARED='';;
+@@ -2496,7 +2508,7 @@
+       fi
+       AC_CHECK_FUNCS(pthread_sigmask,
+         [case $ac_sys_system in
+-        CYGWIN*)
++        CYGWIN*|MSYS*)
+           AC_DEFINE(HAVE_BROKEN_PTHREAD_SIGMASK, 1,
+             [Define if pthread_sigmask() does not work on your system.])
+             ;;
+@@ -3945,7 +3957,7 @@
+ 
+ AC_SUBST(EXT_SUFFIX)
+ case $ac_sys_system in
+-    Linux*|GNU*|CYGWIN*)
++    Linux*|GNU*|CYGWIN*|MSYS*)
+ 	EXT_SUFFIX=.${SOABI}${SHLIB_SUFFIX};;
+     *)
+ 	EXT_SUFFIX=${SHLIB_SUFFIX};;
+diff -Naur Python-3.3.2-cygwin/Lib/ctypes/__init__.py Python-3.3.2/Lib/ctypes/__init__.py
+--- Python-3.3.2-cygwin/Lib/ctypes/__init__.py	2013-08-02 01:03:18.542968700 +0400
++++ Python-3.3.2/Lib/ctypes/__init__.py	2013-08-02 01:01:40.130859300 +0400
+@@ -1,6 +1,6 @@
+ """create and manipulate C data types in Python"""
+ 
+-import os as _os, sys as _sys
++import os as _os, sys as _sys, sysconfig as _sysconfig
+ 
+ __version__ = "1.1.0"
+ 
+@@ -435,9 +435,8 @@
+ 
+ if _os.name in ("nt", "ce"):
+     pythonapi = PyDLL("python dll", None, _sys.dllhandle)
+-elif _sys.platform == "cygwin":
+-    pythonapi = PyDLL("libpython%d.%d%s.dll" % \
+-                      (_sys.version_info[:2] + tuple(_sys.abiflags)))
++elif _sys.platform in ['cygwin', 'msys']:
++    pythonapi = PyDLL(_sysconfig.get_config_var('DLLLIBRARY'))
+ else:
+     pythonapi = PyDLL(None)
+ 
+diff -Naur Python-3.3.2-cygwin/Lib/ctypes/test/test_loading.py Python-3.3.2/Lib/ctypes/test/test_loading.py
+--- Python-3.3.2-cygwin/Lib/ctypes/test/test_loading.py	2013-05-15 20:32:54.000000000 +0400
++++ Python-3.3.2/Lib/ctypes/test/test_loading.py	2013-08-02 00:54:20.406250000 +0400
+@@ -11,6 +11,8 @@
+     libc_name = "coredll"
+ elif sys.platform == "cygwin":
+     libc_name = "cygwin1.dll"
++elif sys.platform == "msys":
++    libc_name = "msys-2.0.dll"
+ else:
+     libc_name = find_library("c")
+ 
+diff -Naur Python-3.3.2-cygwin/Lib/ctypes/util.py Python-3.3.2/Lib/ctypes/util.py
+--- Python-3.3.2-cygwin/Lib/ctypes/util.py	2013-08-01 23:57:43.715820300 +0400
++++ Python-3.3.2/Lib/ctypes/util.py	2013-08-02 00:54:20.406250000 +0400
+@@ -83,7 +83,7 @@
+                 continue
+         return None
+ 
+-elif sys.platform == "cygwin":
++elif sys.platform in ["cygwin", "msys"]:
+     def find_library(name):
+         for libdir in ['/usr/lib', '/usr/local/lib']:
+             for libext in ['lib%s.dll.a' % name, 'lib%s.a' % name]:
+@@ -279,6 +279,10 @@
+             print(cdll.LoadLibrary("cygbz2-1.dll"))
+             print(find_library("crypt"))
+             print(cdll.LoadLibrary("cygcrypt-0.dll"))
++        elif sys.platform == "msys":
++            print(cdll.LoadLibrary("msys-bz2-1.dll"))
++            print(find_library("crypt"))
++            print(cdll.LoadLibrary("msys-crypt-0.dll"))
+         else:
+             print(cdll.LoadLibrary("libm.so"))
+             print(cdll.LoadLibrary("libcrypt.so"))
+diff -Naur Python-3.3.2-cygwin/Lib/distutils/ccompiler.py Python-3.3.2/Lib/distutils/ccompiler.py
+--- Python-3.3.2-cygwin/Lib/distutils/ccompiler.py	2013-05-15 20:32:54.000000000 +0400
++++ Python-3.3.2/Lib/distutils/ccompiler.py	2013-08-02 00:54:20.406250000 +0400
+@@ -926,6 +926,7 @@
+     # on a cygwin built python we can use gcc like an ordinary UNIXish
+     # compiler
+     ('cygwin.*', 'unix'),
++    ('msys.*', 'unix'),
+     ('os2emx', 'emx'),
+ 
+     # OS name mappings
+@@ -964,6 +965,8 @@
+                                "Microsoft Visual C++"),
+                    'cygwin':  ('cygwinccompiler', 'CygwinCCompiler',
+                                "Cygwin port of GNU C Compiler for Win32"),
++                   'msys':    ('cygwinccompiler', 'CygwinCCompiler',
++                               "Cygwin port of GNU C Compiler for Win32"),
+                    'mingw32': ('cygwinccompiler', 'Mingw32CCompiler',
+                                "Mingw32 port of GNU C Compiler for Win32"),
+                    'bcpp':    ('bcppcompiler', 'BCPPCompiler',
+diff -Naur Python-3.3.2-cygwin/Lib/distutils/command/build_ext.py Python-3.3.2/Lib/distutils/command/build_ext.py
+--- Python-3.3.2-cygwin/Lib/distutils/command/build_ext.py	2013-08-02 00:15:05.345703100 +0400
++++ Python-3.3.2/Lib/distutils/command/build_ext.py	2013-08-02 00:54:20.421875000 +0400
+@@ -237,7 +237,7 @@
+ 
+         # for extensions under Cygwin and AtheOS Python's library directory must be
+         # appended to library_dirs
+-        if sys.platform[:6] == 'cygwin' or sys.platform[:6] == 'atheos':
++        if sys.platform[:6] == 'cygwin' or sys.platform[:4] == 'msys' or sys.platform[:6] == 'atheos':
+             if sys.executable.startswith(os.path.join(sys.exec_prefix, "bin")):
+                 # building third party extensions
+                 self.library_dirs.append(os.path.join(sys.prefix, "lib",
+@@ -729,7 +729,7 @@
+             # don't extend ext.libraries, it may be shared with other
+             # extensions, it is a reference to the original list
+             return ext.libraries + [pythonlib]
+-        elif sys.platform[:6] == "cygwin":
++        elif sys.platform[:6] == "cygwin" or sys.platform[:4] == "msys":
+             template = "python%d.%d%s"
+             pythonlib = (template %
+                    (sys.hexversion >> 24, (sys.hexversion >> 16) & 0xff, sys.abiflags))
+diff -Naur Python-3.3.2-cygwin/Lib/distutils/tests/support.py Python-3.3.2/Lib/distutils/tests/support.py
+--- Python-3.3.2-cygwin/Lib/distutils/tests/support.py	2013-05-15 20:32:54.000000000 +0400
++++ Python-3.3.2/Lib/distutils/tests/support.py	2013-08-02 00:54:20.421875000 +0400
+@@ -64,7 +64,7 @@
+         super().tearDown()
+         while self.tempdirs:
+             d = self.tempdirs.pop()
+-            shutil.rmtree(d, os.name in ('nt', 'cygwin'))
++            shutil.rmtree(d, os.name in ('nt', 'cygwin', 'msys'))
+ 
+     def mkdtemp(self):
+         """Create a temporary directory that will be cleaned up.
+diff -Naur Python-3.3.2-cygwin/Lib/distutils/unixccompiler.py Python-3.3.2/Lib/distutils/unixccompiler.py
+--- Python-3.3.2-cygwin/Lib/distutils/unixccompiler.py	2013-08-02 00:25:54.459960900 +0400
++++ Python-3.3.2/Lib/distutils/unixccompiler.py	2013-08-02 00:54:20.421875000 +0400
+@@ -77,7 +77,7 @@
+     shared_lib_extension = ".so"
+     dylib_lib_extension = ".dylib"
+     static_lib_format = shared_lib_format = dylib_lib_format = "lib%s%s"
+-    if sys.platform == "cygwin":
++    if sys.platform in ["cygwin", "msys"]:
+         exe_extension = ".exe"
+         dylib_lib_extension = ".dll.a"
+ 
+@@ -223,7 +223,7 @@
+         # the configuration data stored in the Python installation, so
+         # we use this hack.
+         compiler = os.path.basename(sysconfig.get_config_var("CC"))
+-        if sys.platform[:6] == "darwin" or sys.platform[:6] == "cygwin":
++        if sys.platform[:6] == "darwin" or sys.platform[:6] == "cygwin" or sys.platform[:4] == "msys":
+             # MacOSX's linker doesn't understand the -R flag at all
+             return "-L" + dir
+         elif sys.platform[:5] == "hp-ux":
+diff -Naur Python-3.3.2-cygwin/Lib/distutils/util.py Python-3.3.2/Lib/distutils/util.py
+--- Python-3.3.2-cygwin/Lib/distutils/util.py	2013-05-15 20:32:54.000000000 +0400
++++ Python-3.3.2/Lib/distutils/util.py	2013-08-02 00:54:20.437500000 +0400
+@@ -97,6 +97,12 @@
+         m = rel_re.match(release)
+         if m:
+             release = m.group()
++    elif osname[:4] == "msys":
++        osname = "msys"
++        rel_re = re.compile (r'[\d.]+', re.ASCII)
++        m = rel_re.match(release)
++        if m:
++            release = m.group()
+     elif osname[:6] == "darwin":
+         import _osx_support, distutils.sysconfig
+         osname, release, machine = _osx_support.get_platform_osx(
+diff -Naur Python-3.3.2-cygwin/Lib/importlib/_bootstrap.py Python-3.3.2/Lib/importlib/_bootstrap.py
+--- Python-3.3.2-cygwin/Lib/importlib/_bootstrap.py	2013-05-15 20:32:54.000000000 +0400
++++ Python-3.3.2/Lib/importlib/_bootstrap.py	2013-08-02 01:10:19.545898400 +0400
+@@ -26,7 +26,7 @@
+ 
+ # Bootstrap-related code ######################################################
+ 
+-_CASE_INSENSITIVE_PLATFORMS = 'win', 'cygwin', 'darwin'
++_CASE_INSENSITIVE_PLATFORMS = 'win', 'cygwin', 'msys', 'darwin'
+ 
+ 
+ def _make_relax_case():
+diff -Naur Python-3.3.2-cygwin/Lib/sysconfig.py Python-3.3.2/Lib/sysconfig.py
+--- Python-3.3.2-cygwin/Lib/sysconfig.py	2013-05-15 20:32:55.000000000 +0400
++++ Python-3.3.2/Lib/sysconfig.py	2013-08-02 00:54:27.156250000 +0400
+@@ -683,6 +683,12 @@
+         m = rel_re.match(release)
+         if m:
+             release = m.group()
++    elif osname[:4] == "msys":
++        osname = "msys"
++        rel_re = re.compile (r'[\d.]+')
++        m = rel_re.match(release)
++        if m:
++            release = m.group()
+     elif osname[:6] == "darwin":
+         import _osx_support
+         osname, release, machine = _osx_support.get_platform_osx(
+diff -Naur Python-3.3.2-cygwin/Lib/tempfile.py Python-3.3.2/Lib/tempfile.py
+--- Python-3.3.2-cygwin/Lib/tempfile.py	2013-05-15 20:32:55.000000000 +0400
++++ Python-3.3.2/Lib/tempfile.py	2013-08-02 00:54:27.156250000 +0400
+@@ -442,7 +442,7 @@
+ 
+     return _TemporaryFileWrapper(file, name, delete)
+ 
+-if _os.name != 'posix' or _os.sys.platform == 'cygwin':
++if _os.name != 'posix' or _os.sys.platform == 'cygwin' or _os.sys.platform == 'msys':
+     # On non-POSIX and Cygwin systems, assume that we cannot unlink a file
+     # while it is open.
+     TemporaryFile = NamedTemporaryFile
+diff -Naur Python-3.3.2-cygwin/Lib/test/regrtest.py Python-3.3.2/Lib/test/regrtest.py
+--- Python-3.3.2-cygwin/Lib/test/regrtest.py	2013-05-15 20:32:55.000000000 +0400
++++ Python-3.3.2/Lib/test/regrtest.py	2013-08-02 01:04:50.530273400 +0400
+@@ -1621,6 +1621,19 @@
+         test_ossaudiodev
+         test_socketserver
+         """),
++    ('msys',
++        """
++        test_curses
++        test_dbm
++        test_devpoll
++        test_epoll
++        test_ioctl
++        test_kqueue
++        test_largefile
++        test_locale
++        test_ossaudiodev
++        test_socketserver
++        """),
+     ('os2emx',
+         """
+         test_audioop
+diff -Naur Python-3.3.2-cygwin/Lib/test/test_curses.py Python-3.3.2/Lib/test/test_curses.py
+--- Python-3.3.2-cygwin/Lib/test/test_curses.py	2013-05-15 20:32:55.000000000 +0400
++++ Python-3.3.2/Lib/test/test_curses.py	2013-08-02 00:54:27.171875000 +0400
+@@ -29,7 +29,7 @@
+ if not term or term == 'unknown':
+     raise unittest.SkipTest("$TERM=%r, calling initscr() may cause exit" % term)
+ 
+-if sys.platform == "cygwin":
++if sys.platform in ["cygwin", "msys"]:
+     raise unittest.SkipTest("cygwin's curses mostly just hangs")
+ 
+ def window_funcs(stdscr):
+diff -Naur Python-3.3.2-cygwin/Lib/test/test_importlib/util.py Python-3.3.2/Lib/test/test_importlib/util.py
+--- Python-3.3.2-cygwin/Lib/test/test_importlib/util.py	2013-05-15 20:32:56.000000000 +0400
++++ Python-3.3.2/Lib/test/test_importlib/util.py	2013-08-02 01:11:15.795898400 +0400
+@@ -9,7 +9,7 @@
+ CASE_INSENSITIVE_FS = True
+ # Windows is the only OS that is *always* case-insensitive
+ # (OS X *can* be case-sensitive).
+-if sys.platform not in ('win32', 'cygwin'):
++if sys.platform not in ('win32', 'cygwin', 'msys'):
+     changed_name = __file__.upper()
+     if changed_name == __file__:
+         changed_name = __file__.lower()
+diff -Naur Python-3.3.2-cygwin/Lib/test/test_mailbox.py Python-3.3.2/Lib/test/test_mailbox.py
+--- Python-3.3.2-cygwin/Lib/test/test_mailbox.py	2013-05-15 20:32:56.000000000 +0400
++++ Python-3.3.2/Lib/test/test_mailbox.py	2013-08-02 00:54:27.171875000 +0400
+@@ -596,7 +596,7 @@
+ 
+     def setUp(self):
+         TestMailbox.setUp(self)
+-        if os.name in ('nt', 'os2') or sys.platform == 'cygwin':
++        if os.name in ('nt', 'os2') or sys.platform == 'cygwin' or sys.platform == 'msys':
+             self._box.colon = '!'
+ 
+     def assertMailboxEmpty(self):
+diff -Naur Python-3.3.2-cygwin/Lib/test/test_netrc.py Python-3.3.2/Lib/test/test_netrc.py
+--- Python-3.3.2-cygwin/Lib/test/test_netrc.py	2013-05-15 20:32:56.000000000 +0400
++++ Python-3.3.2/Lib/test/test_netrc.py	2013-08-02 00:54:27.187500000 +0400
+@@ -11,7 +11,7 @@
+     def make_nrc(self, test_data):
+         test_data = textwrap.dedent(test_data)
+         mode = 'w'
+-        if sys.platform != 'cygwin':
++        if sys.platform not in ['cygwin', 'msys']:
+             mode += 't'
+         with open(temp_filename, mode) as fp:
+             fp.write(test_data)
+diff -Naur Python-3.3.2-cygwin/Lib/test/test_shutil.py Python-3.3.2/Lib/test/test_shutil.py
+--- Python-3.3.2-cygwin/Lib/test/test_shutil.py	2013-05-15 20:32:56.000000000 +0400
++++ Python-3.3.2/Lib/test/test_shutil.py	2013-08-02 00:54:27.187500000 +0400
+@@ -96,7 +96,7 @@
+         super(TestShutil, self).tearDown()
+         while self.tempdirs:
+             d = self.tempdirs.pop()
+-            shutil.rmtree(d, os.name in ('nt', 'cygwin'))
++            shutil.rmtree(d, os.name in ('nt', 'cygwin', 'msys'))
+ 
+ 
+     def mkdtemp(self):
+@@ -196,7 +196,7 @@
+ 
+     # See bug #1071513 for why we don't run this on cygwin
+     # and bug #1076467 for why we don't run this as root.
+-    if (hasattr(os, 'chmod') and sys.platform[:6] != 'cygwin'
++    if (hasattr(os, 'chmod') and sys.platform[:6] != 'cygwin' and sys.platform[:4] != 'msys'
+         and not (hasattr(os, 'geteuid') and os.geteuid() == 0)):
+         def test_on_error(self):
+             self.errorState = 0
+diff -Naur Python-3.3.2-cygwin/Lib/tkinter/test/test_tkinter/test_loadtk.py Python-3.3.2/Lib/tkinter/test/test_tkinter/test_loadtk.py
+--- Python-3.3.2-cygwin/Lib/tkinter/test/test_tkinter/test_loadtk.py	2013-05-15 20:32:56.000000000 +0400
++++ Python-3.3.2/Lib/tkinter/test/test_tkinter/test_loadtk.py	2013-08-02 00:54:27.187500000 +0400
+@@ -18,7 +18,7 @@
+ 
+     def testLoadTkFailure(self):
+         old_display = None
+-        if sys.platform.startswith(('win', 'darwin', 'cygwin')):
++        if sys.platform.startswith(('win', 'darwin', 'cygwin', 'msys')):
+             # no failure possible on windows?
+ 
+             # XXX Maybe on tk older than 8.4.13 it would be possible,
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/acinclude.m4 Python-3.3.2/Modules/_ctypes/libffi/acinclude.m4
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/acinclude.m4	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/acinclude.m4	2013-08-02 00:54:27.203125000 +0400
+@@ -37,7 +37,7 @@
+    # Systems known to be in this category are Windows (all variants),
+    # VMS, and Darwin.
+    case "$host_os" in
+-     vms* | cygwin* | pe | mingw* | darwin* | ultrix* | hpux10* | hpux11.00)
++     vms* | cygwin* | msys* | pe | mingw* | darwin* | ultrix* | hpux10* | hpux11.00)
+ 	ac_cv_func_mmap_dev_zero=no ;;
+      *)
+ 	ac_cv_func_mmap_dev_zero=yes;;
+@@ -69,7 +69,7 @@
+    # above for use of /dev/zero.
+    # Systems known to be in this category are Windows, VMS, and SCO Unix.
+    case "$host_os" in
+-     vms* | cygwin* | pe | mingw* | sco* | udk* )
++     vms* | cygwin* | msys* | pe | mingw* | sco* | udk* )
+ 	ac_cv_func_mmap_anon=no ;;
+      *)
+ 	ac_cv_func_mmap_anon=yes;;
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/aclocal.m4 Python-3.3.2/Modules/_ctypes/libffi/aclocal.m4
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/aclocal.m4	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/aclocal.m4	2013-08-02 00:54:27.203125000 +0400
+@@ -724,7 +724,7 @@
+ beos*)
+   LT_DLLOADERS="$LT_DLLOADERS ${lt_dlopen_dir+$lt_dlopen_dir/}load_add_on.la"
+   ;;
+-cygwin* | mingw* | os2* | pw32*)
++cygwin* | msys* | mingw* | os2* | pw32*)
+   AC_CHECK_DECLS([cygwin_conv_path], [], [], [[#include <sys/cygwin.h>]])
+   LT_DLLOADERS="$LT_DLLOADERS ${lt_dlopen_dir+$lt_dlopen_dir/}loadlibrary.la"
+   ;;
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/config.guess Python-3.3.2/Modules/_ctypes/libffi/config.guess
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/config.guess	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/config.guess	2013-08-02 00:54:27.203125000 +0400
+@@ -849,6 +849,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/configure Python-3.3.2/Modules/_ctypes/libffi/configure
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/configure	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/configure	2013-08-02 00:54:27.218750000 +0400
+@@ -5291,7 +5291,7 @@
+     lt_cv_sys_max_cmd_len=-1;
+     ;;
+ 
+-  cygwin* | mingw* | cegcc*)
++  cygwin* | msys* | mingw* | cegcc*)
+     # On Win9x/ME, this test blows up -- it succeeds, but takes
+     # about 5 minutes as the teststring grows exponentially.
+     # Worse, since 9x/ME are not pre-emptively multitasking,
+@@ -5481,7 +5481,7 @@
+       *-*-mingw* ) # actually msys
+         lt_cv_to_host_file_cmd=func_convert_file_msys_to_w32
+         ;;
+-      *-*-cygwin* )
++      *-*-cygwin* | *-*-msys* )
+         lt_cv_to_host_file_cmd=func_convert_file_cygwin_to_w32
+         ;;
+       * ) # otherwise, assume *nix
+@@ -5489,12 +5489,12 @@
+         ;;
+     esac
+     ;;
+-  *-*-cygwin* )
++  *-*-cygwin* | *-*-msys* )
+     case $build in
+       *-*-mingw* ) # actually msys
+         lt_cv_to_host_file_cmd=func_convert_file_msys_to_cygwin
+         ;;
+-      *-*-cygwin* )
++      *-*-cygwin* | *-*-msys* )
+         lt_cv_to_host_file_cmd=func_convert_file_noop
+         ;;
+       * ) # otherwise, assume *nix
+@@ -5560,7 +5560,7 @@
+ esac
+ reload_cmds='$LD$reload_flag -o $output$reload_objs'
+ case $host_os in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     if test "$GCC" != yes; then
+       reload_cmds=false
+     fi
+@@ -5718,7 +5718,7 @@
+   lt_cv_file_magic_test_file=/shlib/libc.so
+   ;;
+ 
+-cygwin*)
++cygwin* | msys*)
+   # func_win32_libid is a shell function defined in ltmain.sh
+   lt_cv_deplibs_check_method='file_magic ^x86 archive import|^x86 DLL'
+   lt_cv_file_magic_cmd='func_win32_libid'
+@@ -6039,7 +6039,7 @@
+   lt_cv_sharedlib_from_linklib_cmd='unknown'
+ 
+ case $host_os in
+-cygwin* | mingw* | pw32* | cegcc*)
++cygwin* | msys* | mingw* | pw32* | cegcc*)
+   # two different shell functions defined in ltmain.sh
+   # decide which to use based on capabilities of $DLLTOOL
+   case `$DLLTOOL --help 2>&1` in
+@@ -6532,7 +6532,7 @@
+ aix*)
+   symcode='[BCDT]'
+   ;;
+-cygwin* | mingw* | pw32* | cegcc*)
++cygwin* | msys* | mingw* | pw32* | cegcc*)
+   symcode='[ABCDGISTW]'
+   ;;
+ hpux*)
+@@ -8629,7 +8629,7 @@
+       # PIC is the default for these OSes.
+       ;;
+ 
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       # Although the cygwin gcc ignores -fPIC, still need this for old-style
+@@ -8713,7 +8713,7 @@
+       fi
+       ;;
+ 
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       lt_prog_compiler_pic='-DDLL_EXPORT'
+@@ -9204,7 +9204,7 @@
+   extract_expsyms_cmds=
+ 
+   case $host_os in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -9319,7 +9319,7 @@
+       fi
+       ;;
+ 
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # _LT_TAGVAR(hardcode_libdir_flag_spec, ) is actually meaningless,
+       # as there is no search path for DLLs.
+       hardcode_libdir_flag_spec='-L$libdir'
+@@ -9776,7 +9776,7 @@
+       export_dynamic_flag_spec=-rdynamic
+       ;;
+ 
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -10729,7 +10729,7 @@
+   # libtool to hard-code these into programs
+   ;;
+ 
+-cygwin* | mingw* | pw32* | cegcc*)
++cygwin* | msys* | mingw* | pw32* | cegcc*)
+   version_type=windows
+   shrext_cmds=".dll"
+   need_version=no
+@@ -10761,6 +10761,12 @@
+ 
+       sys_lib_search_path_spec="$sys_lib_search_path_spec /usr/lib/w32api"
+       ;;
++    msys*)
++      # MSYS DLLs use 'msys-' prefix rather than 'lib'
++      soname_spec='`echo ${libname} | sed -e 's/^lib/msys-/'``echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
++
++      sys_lib_search_path_spec="$sys_lib_search_path_spec /usr/lib/w32api"
++      ;;
+     mingw* | cegcc*)
+       # MinGW DLLs use traditional 'lib' prefix
+       soname_spec='${libname}`echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
+@@ -10795,7 +10801,7 @@
+       # Convert to MSYS style.
+       sys_lib_search_path_spec=`$ECHO "$sys_lib_search_path_spec" | sed -e 's|\\\\|/|g' -e 's| \\([a-zA-Z]\\):| /\\1|g' -e 's|^ ||'`
+       ;;
+-    cygwin*)
++    cygwin* | msys*)
+       # Convert to unix form, then to dos form, then back to unix form
+       # but this time dos style (no spaces!) so that the unix form looks
+       # like /cygdrive/c/PROGRA~1:/cygdr...
+@@ -11460,7 +11466,7 @@
+     lt_cv_dlopen_libs=
+     ;;
+ 
+-  cygwin*)
++  cygwin* | msys*)
+     lt_cv_dlopen="dlopen"
+     lt_cv_dlopen_libs=
+     ;;
+@@ -13193,7 +13199,7 @@
+    # Systems known to be in this category are Windows (all variants),
+    # VMS, and Darwin.
+    case "$host_os" in
+-     vms* | cygwin* | pe | mingw* | darwin* | ultrix* | hpux10* | hpux11.00)
++     vms* | cygwin* | msys* | pe | mingw* | darwin* | ultrix* | hpux10* | hpux11.00)
+ 	ac_cv_func_mmap_dev_zero=no ;;
+      *)
+ 	ac_cv_func_mmap_dev_zero=yes;;
+@@ -13250,7 +13256,7 @@
+    # above for use of /dev/zero.
+    # Systems known to be in this category are Windows, VMS, and SCO Unix.
+    case "$host_os" in
+-     vms* | cygwin* | pe | mingw* | sco* | udk* )
++     vms* | cygwin* | msys* | pe | mingw* | sco* | udk* )
+ 	ac_cv_func_mmap_anon=no ;;
+      *)
+ 	ac_cv_func_mmap_anon=yes;;
+@@ -13344,7 +13350,7 @@
+   i?86-*-freebsd* | i?86-*-openbsd*)
+ 	TARGET=X86_FREEBSD; TARGETDIR=x86
+ 	;;
+-  i?86-win32* | i?86-*-cygwin* | i?86-*-mingw* | i?86-*-os2* | i?86-*-interix*)
++  i?86-win32* | i?86-*-cygwin* | i?86-*-msys* | i?86-*-mingw* | i?86-*-os2* | i?86-*-interix*)
+ 	TARGET=X86_WIN32; TARGETDIR=x86
+ 	# All mingw/cygwin/win32 builds require -no-undefined for sharedlib.
+ 	# We must also check with_cross_host to decide if this is a native
+@@ -13376,7 +13382,7 @@
+ 	TARGET=X86_DARWIN; TARGETDIR=x86
+ 	;;
+ 
+-  x86_64-*-cygwin* | x86_64-*-mingw*)
++  x86_64-*-cygwin* | x86_64-*-msys* | x86_64-*-mingw*)
+ 	TARGET=X86_WIN64; TARGETDIR=x86
+ 	# All mingw/cygwin/win32 builds require -no-undefined for sharedlib.
+ 	# We must also check with_cross_host to decide if this is a native
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/configure.ac Python-3.3.2/Modules/_ctypes/libffi/configure.ac
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/configure.ac	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/configure.ac	2013-08-02 00:54:27.250000000 +0400
+@@ -125,7 +125,7 @@
+   i?86-*-freebsd* | i?86-*-openbsd*)
+ 	TARGET=X86_FREEBSD; TARGETDIR=x86
+ 	;;
+-  i?86-win32* | i?86-*-cygwin* | i?86-*-mingw* | i?86-*-os2* | i?86-*-interix*)
++  i?86-win32* | i?86-*-cygwin* | i?86-*-msys* | i?86-*-mingw* | i?86-*-os2* | i?86-*-interix*)
+ 	TARGET=X86_WIN32; TARGETDIR=x86
+ 	# All mingw/cygwin/win32 builds require -no-undefined for sharedlib.
+ 	# We must also check with_cross_host to decide if this is a native
+@@ -157,7 +157,7 @@
+ 	TARGET=X86_DARWIN; TARGETDIR=x86
+ 	;;
+ 
+-  x86_64-*-cygwin* | x86_64-*-mingw*)
++  x86_64-*-cygwin* | x86_64-*-msys* | x86_64-*-mingw*)
+ 	TARGET=X86_WIN64; TARGETDIR=x86
+ 	# All mingw/cygwin/win32 builds require -no-undefined for sharedlib.
+ 	# We must also check with_cross_host to decide if this is a native
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/ltmain.sh Python-3.3.2/Modules/_ctypes/libffi/ltmain.sh
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/ltmain.sh	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/ltmain.sh	2013-08-02 00:54:27.265625000 +0400
+@@ -1180,7 +1180,7 @@
+   test "$opt_debug" = : || func_append preserve_args " --debug"
+ 
+   case $host in
+-    *cygwin* | *mingw* | *pw32* | *cegcc*)
++    *cygwin* | *msys* | *mingw* | *pw32* | *cegcc*)
+       # don't eliminate duplications in $postdeps and $predeps
+       opt_duplicate_compiler_generated_deps=:
+       ;;
+@@ -2123,7 +2123,7 @@
+ 
+     # On Cygwin there's no "real" PIC flag so we must build both object types
+     case $host_os in
+-    cygwin* | mingw* | pw32* | os2* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | os2* | cegcc*)
+       pic_mode=default
+       ;;
+     esac
+@@ -2992,7 +2992,7 @@
+ 	      'exit $?'
+ 	  tstripme="$stripme"
+ 	  case $host_os in
+-	  cygwin* | mingw* | pw32* | cegcc*)
++	  cygwin* | msys* | mingw* | pw32* | cegcc*)
+ 	    case $realname in
+ 	    *.dll.a)
+ 	      tstripme=""
+@@ -3098,7 +3098,7 @@
+ 
+ 	# Do a test to see if this is really a libtool program.
+ 	case $host in
+-	*cygwin* | *mingw*)
++	*cygwin* | *msys* | *mingw*)
+ 	    if func_ltwrapper_executable_p "$file"; then
+ 	      func_ltwrapper_scriptname "$file"
+ 	      wrapper=$func_ltwrapper_scriptname_result
+@@ -3173,7 +3173,7 @@
+ 	# remove .exe since cygwin /usr/bin/install will append another
+ 	# one anyway
+ 	case $install_prog,$host in
+-	*/usr/bin/install*,*cygwin*)
++	*/usr/bin/install*,*cygwin*|*/usr/bin/install*,*msys*)
+ 	  case $file:$destfile in
+ 	  *.exe:*.exe)
+ 	    # this is ok
+@@ -3323,7 +3323,7 @@
+ 	      $RM $export_symbols
+ 	      eval "${SED} -n -e '/^: @PROGRAM@ $/d' -e 's/^.* \(.*\)$/\1/p' "'< "$nlist" > "$export_symbols"'
+ 	      case $host in
+-	      *cygwin* | *mingw* | *cegcc* )
++	      *cygwin* | *msys* | *mingw* | *cegcc* )
+                 eval "echo EXPORTS "'> "$output_objdir/$outputname.def"'
+                 eval 'cat "$export_symbols" >> "$output_objdir/$outputname.def"'
+ 	        ;;
+@@ -3335,7 +3335,7 @@
+ 	      eval '$GREP -f "$output_objdir/$outputname.exp" < "$nlist" > "$nlist"T'
+ 	      eval '$MV "$nlist"T "$nlist"'
+ 	      case $host in
+-	        *cygwin* | *mingw* | *cegcc* )
++	        *cygwin* | *msys* | *mingw* | *cegcc* )
+ 	          eval "echo EXPORTS "'> "$output_objdir/$outputname.def"'
+ 	          eval 'cat "$nlist" >> "$output_objdir/$outputname.def"'
+ 	          ;;
+@@ -3349,7 +3349,7 @@
+ 	  func_basename "$dlprefile"
+ 	  name="$func_basename_result"
+           case $host in
+-	    *cygwin* | *mingw* | *cegcc* )
++	    *cygwin* | *msys* | *mingw* | *cegcc* )
+ 	      # if an import library, we need to obtain dlname
+ 	      if func_win32_import_lib_p "$dlprefile"; then
+ 	        func_tr_sh "$dlprefile"
+@@ -3502,7 +3502,7 @@
+ 	# Transform the symbol file into the correct name.
+ 	symfileobj="$output_objdir/${my_outputname}S.$objext"
+ 	case $host in
+-	*cygwin* | *mingw* | *cegcc* )
++	*cygwin* | *msys* | *mingw* | *cegcc* )
+ 	  if test -f "$output_objdir/$my_outputname.def"; then
+ 	    compile_command=`$ECHO "$compile_command" | $SED "s%@SYMFILE@%$output_objdir/$my_outputname.def $symfileobj%"`
+ 	    finalize_command=`$ECHO "$finalize_command" | $SED "s%@SYMFILE@%$output_objdir/$my_outputname.def $symfileobj%"`
+@@ -4375,7 +4375,7 @@
+ 	{
+ EOF
+ 	    case "$host" in
+-	      *mingw* | *cygwin* )
++	      *mingw* | *cygwin* | *msys* )
+ 		# make stdout use "unix" line endings
+ 		echo "          setmode(1,_O_BINARY);"
+ 		;;
+@@ -5094,7 +5094,7 @@
+ {
+     $opt_debug
+     case $host in
+-    *-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-cegcc*)
++    *-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-cegcc*)
+       # It is impossible to link a dll without this setting, and
+       # we shouldn't force the makefile maintainer to figure out
+       # which system we are compiling for in order to pass an extra
+@@ -5581,7 +5581,7 @@
+ 	  ;;
+ 	esac
+ 	case $host in
+-	*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-cegcc*)
++	*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-cegcc*)
+ 	  testbindir=`$ECHO "$dir" | $SED 's*/lib$*/bin*'`
+ 	  case :$dllsearchpath: in
+ 	  *":$dir:"*) ;;
+@@ -5601,7 +5601,7 @@
+       -l*)
+ 	if test "X$arg" = "X-lc" || test "X$arg" = "X-lm"; then
+ 	  case $host in
+-	  *-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-beos* | *-cegcc* | *-*-haiku*)
++	  *-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-beos* | *-cegcc* | *-*-haiku*)
+ 	    # These systems don't actually have a C or math library (as such)
+ 	    continue
+ 	    ;;
+@@ -5679,7 +5679,7 @@
+ 
+       -no-install)
+ 	case $host in
+-	*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-*-darwin* | *-cegcc*)
++	*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-*-darwin* | *-cegcc*)
+ 	  # The PATH hackery in wrapper scripts is required on Windows
+ 	  # and Darwin in order for the loader to find any dlls it needs.
+ 	  func_warning "\`-no-install' is ignored for $host"
+@@ -6545,7 +6545,7 @@
+ 	  fi
+ 	  case "$host" in
+ 	    # special handling for platforms with PE-DLLs.
+-	    *cygwin* | *mingw* | *cegcc* )
++	    *cygwin* | *msys* | *mingw* | *cegcc* )
+ 	      # Linker will automatically link against shared library if both
+ 	      # static and shared are present.  Therefore, ensure we extract
+ 	      # symbols from the import library if a shared library is present
+@@ -6689,7 +6689,7 @@
+ 	if test -n "$library_names" &&
+ 	   { test "$use_static_libs" = no || test -z "$old_library"; }; then
+ 	  case $host in
+-	  *cygwin* | *mingw* | *cegcc*)
++	  *cygwin* | *msys* | *mingw* | *cegcc*)
+ 	      # No point in relinking DLLs because paths are not encoded
+ 	      func_append notinst_deplibs " $lib"
+ 	      need_relink=no
+@@ -6759,7 +6759,7 @@
+ 	    elif test -n "$soname_spec"; then
+ 	      # bleh windows
+ 	      case $host in
+-	      *cygwin* | mingw* | *cegcc*)
++	      *cygwin* | *msys* | mingw* | *cegcc*)
+ 	        func_arith $current - $age
+ 		major=$func_arith_result
+ 		versuffix="-$major"
+@@ -7620,7 +7620,7 @@
+       if test "$build_libtool_libs" = yes; then
+ 	if test -n "$rpath"; then
+ 	  case $host in
+-	  *-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-*-beos* | *-cegcc* | *-*-haiku*)
++	  *-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-*-beos* | *-cegcc* | *-*-haiku*)
+ 	    # these systems don't actually have a c library (as such)!
+ 	    ;;
+ 	  *-*-rhapsody* | *-*-darwin1.[012])
+@@ -8134,7 +8134,7 @@
+ 
+ 	orig_export_symbols=
+ 	case $host_os in
+-	cygwin* | mingw* | cegcc*)
++	cygwin* | msys* | mingw* | cegcc*)
+ 	  if test -n "$export_symbols" && test -z "$export_symbols_regex"; then
+ 	    # exporting using user supplied symfile
+ 	    if test "x`$SED 1q $export_symbols`" != xEXPORTS; then
+@@ -8690,7 +8690,7 @@
+ 
+     prog)
+       case $host in
+-	*cygwin*) func_stripname '' '.exe' "$output"
++	*cygwin* | *msys*) func_stripname '' '.exe' "$output"
+ 	          output=$func_stripname_result.exe;;
+       esac
+       test -n "$vinfo" && \
+@@ -8803,7 +8803,7 @@
+ 	  esac
+ 	fi
+ 	case $host in
+-	*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-cegcc*)
++	*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-cegcc*)
+ 	  testbindir=`${ECHO} "$libdir" | ${SED} -e 's*/lib$*/bin*'`
+ 	  case :$dllsearchpath: in
+ 	  *":$libdir:"*) ;;
+@@ -8881,7 +8881,7 @@
+         # Disable wrappers for cegcc and mingw32ce hosts, we are cross compiling anyway.
+         wrappers_required=no
+         ;;
+-      *cygwin* | *mingw* )
++      *cygwin* | *msys* | *mingw* )
+         if test "$build_libtool_libs" != yes; then
+           wrappers_required=no
+         fi
+@@ -9028,14 +9028,14 @@
+ 	esac
+ 	# test for cygwin because mv fails w/o .exe extensions
+ 	case $host in
+-	  *cygwin*)
++	  *cygwin* | *msys*)
+ 	    exeext=.exe
+ 	    func_stripname '' '.exe' "$outputname"
+ 	    outputname=$func_stripname_result ;;
+ 	  *) exeext= ;;
+ 	esac
+ 	case $host in
+-	  *cygwin* | *mingw* )
++	  *cygwin* | *msys* | *mingw* )
+ 	    func_dirname_and_basename "$output" "" "."
+ 	    output_name=$func_basename_result
+ 	    output_path=$func_dirname_result
+@@ -9365,7 +9365,7 @@
+ 	  # tests/bindir.at for full details.
+ 	  tdlname=$dlname
+ 	  case $host,$output,$installed,$module,$dlname in
+-	    *cygwin*,*lai,yes,no,*.dll | *mingw*,*lai,yes,no,*.dll | *cegcc*,*lai,yes,no,*.dll)
++	    *cygwin*,*lai,yes,no,*.dll | *msys*,*lai,yes,no,*.dll | *mingw*,*lai,yes,no,*.dll | *cegcc*,*lai,yes,no,*.dll)
+ 	      # If a -bindir argument was supplied, place the dll there.
+ 	      if test "x$bindir" != x ;
+ 	      then
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/m4/libtool.m4 Python-3.3.2/Modules/_ctypes/libffi/m4/libtool.m4
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/m4/libtool.m4	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/m4/libtool.m4	2013-08-02 00:54:27.281250000 +0400
+@@ -1623,7 +1623,7 @@
+     lt_cv_sys_max_cmd_len=-1;
+     ;;
+ 
+-  cygwin* | mingw* | cegcc*)
++  cygwin* | msys* | mingw* | cegcc*)
+     # On Win9x/ME, this test blows up -- it succeeds, but takes
+     # about 5 minutes as the teststring grows exponentially.
+     # Worse, since 9x/ME are not pre-emptively multitasking,
+@@ -1871,7 +1871,7 @@
+     lt_cv_dlopen_libs=
+     ;;
+ 
+-  cygwin*)
++  cygwin* | msys*)
+     lt_cv_dlopen="dlopen"
+     lt_cv_dlopen_libs=
+     ;;
+@@ -2342,7 +2342,7 @@
+   # libtool to hard-code these into programs
+   ;;
+ 
+-cygwin* | mingw* | pw32* | cegcc*)
++cygwin* | msys* | mingw* | pw32* | cegcc*)
+   version_type=windows
+   shrext_cmds=".dll"
+   need_version=no
+@@ -2374,6 +2374,12 @@
+ m4_if([$1], [],[
+       sys_lib_search_path_spec="$sys_lib_search_path_spec /usr/lib/w32api"])
+       ;;
++    msys*)
++      # MSYS DLLs use 'msys-' prefix rather than 'lib'
++      soname_spec='`echo ${libname} | sed -e 's/^lib/msys-/'``echo ${release} | $SED -e 's/[[.]]/-/g'`${versuffix}${shared_ext}'
++m4_if([$1], [],[
++      sys_lib_search_path_spec="$sys_lib_search_path_spec /usr/lib/w32api"])
++      ;;
+     mingw* | cegcc*)
+       # MinGW DLLs use traditional 'lib' prefix
+       soname_spec='${libname}`echo ${release} | $SED -e 's/[[.]]/-/g'`${versuffix}${shared_ext}'
+@@ -2408,7 +2414,7 @@
+       # Convert to MSYS style.
+       sys_lib_search_path_spec=`$ECHO "$sys_lib_search_path_spec" | sed -e 's|\\\\|/|g' -e 's| \\([[a-zA-Z]]\\):| /\\1|g' -e 's|^ ||'`
+       ;;
+-    cygwin*)
++    cygwin* | msys*)
+       # Convert to unix form, then to dos form, then back to unix form
+       # but this time dos style (no spaces!) so that the unix form looks
+       # like /cygdrive/c/PROGRA~1:/cygdr...
+@@ -3152,7 +3158,7 @@
+ esac
+ reload_cmds='$LD$reload_flag -o $output$reload_objs'
+ case $host_os in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     if test "$GCC" != yes; then
+       reload_cmds=false
+     fi
+@@ -3208,7 +3214,7 @@
+   lt_cv_file_magic_test_file=/shlib/libc.so
+   ;;
+ 
+-cygwin*)
++cygwin* | msys*)
+   # func_win32_libid is a shell function defined in ltmain.sh
+   lt_cv_deplibs_check_method='file_magic ^x86 archive import|^x86 DLL'
+   lt_cv_file_magic_cmd='func_win32_libid'
+@@ -3518,7 +3524,7 @@
+ [lt_cv_sharedlib_from_linklib_cmd='unknown'
+ 
+ case $host_os in
+-cygwin* | mingw* | pw32* | cegcc*)
++cygwin* | msys* | mingw* | pw32* | cegcc*)
+   # two different shell functions defined in ltmain.sh
+   # decide which to use based on capabilities of $DLLTOOL
+   case `$DLLTOOL --help 2>&1` in
+@@ -3573,7 +3579,7 @@
+ [AC_REQUIRE([AC_CANONICAL_HOST])dnl
+ LIBM=
+ case $host in
+-*-*-beos* | *-*-cegcc* | *-*-cygwin* | *-*-haiku* | *-*-pw32* | *-*-darwin*)
++*-*-beos* | *-*-cegcc* | *-*-cygwin* | *-*-msys* | *-*-haiku* | *-*-pw32* | *-*-darwin*)
+   # These system don't have libm, or don't need it
+   ;;
+ *-ncr-sysv4.3*)
+@@ -3648,7 +3654,7 @@
+ aix*)
+   symcode='[[BCDT]]'
+   ;;
+-cygwin* | mingw* | pw32* | cegcc*)
++cygwin* | msys* | mingw* | pw32* | cegcc*)
+   symcode='[[ABCDGISTW]]'
+   ;;
+ hpux*)
+@@ -3916,7 +3922,7 @@
+     beos* | irix5* | irix6* | nonstopux* | osf3* | osf4* | osf5*)
+       # PIC is the default for these OSes.
+       ;;
+-    mingw* | cygwin* | os2* | pw32* | cegcc*)
++    mingw* | cygwin* | msys* | os2* | pw32* | cegcc*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       # Although the cygwin gcc ignores -fPIC, still need this for old-style
+@@ -3987,7 +3993,7 @@
+ 	  ;;
+ 	esac
+ 	;;
+-      mingw* | cygwin* | os2* | pw32* | cegcc*)
++      mingw* | cygwin* | msys* | os2* | pw32* | cegcc*)
+ 	# This hack is so that the source file can tell whether it is being
+ 	# built for inclusion in a dll (and should export symbols for example).
+ 	m4_if([$1], [GCJ], [],
+@@ -4234,7 +4240,7 @@
+       # PIC is the default for these OSes.
+       ;;
+ 
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       # Although the cygwin gcc ignores -fPIC, still need this for old-style
+@@ -4319,7 +4325,7 @@
+       fi
+       ;;
+ 
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       m4_if([$1], [GCJ], [],
+@@ -4579,7 +4585,7 @@
+   pw32*)
+     _LT_TAGVAR(export_symbols_cmds, $1)="$ltdll_cmds"
+     ;;
+-  cygwin* | mingw* | cegcc*)
++  cygwin* | msys* | mingw* | cegcc*)
+     case $cc_basename in
+     cl*)
+       _LT_TAGVAR(exclude_expsyms, $1)='_NULL_IMPORT_DESCRIPTOR|_IMPORT_DESCRIPTOR_.*'
+@@ -4637,7 +4643,7 @@
+   extract_expsyms_cmds=
+ 
+   case $host_os in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -4752,7 +4758,7 @@
+       fi
+       ;;
+ 
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # _LT_TAGVAR(hardcode_libdir_flag_spec, $1) is actually meaningless,
+       # as there is no search path for DLLs.
+       _LT_TAGVAR(hardcode_libdir_flag_spec, $1)='-L$libdir'
+@@ -5125,7 +5131,7 @@
+       _LT_TAGVAR(export_dynamic_flag_spec, $1)=-rdynamic
+       ;;
+ 
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -6126,7 +6132,7 @@
+         esac
+         ;;
+ 
+-      cygwin* | mingw* | pw32* | cegcc*)
++      cygwin* | msys* | mingw* | pw32* | cegcc*)
+ 	case $GXX,$cc_basename in
+ 	,cl* | no,cl*)
+ 	  # Native MSVC
+@@ -7942,7 +7948,7 @@
+       *-*-mingw* ) # actually msys
+         lt_cv_to_host_file_cmd=func_convert_file_msys_to_w32
+         ;;
+-      *-*-cygwin* )
++      *-*-cygwin* | *-*-msys* )
+         lt_cv_to_host_file_cmd=func_convert_file_cygwin_to_w32
+         ;;
+       * ) # otherwise, assume *nix
+@@ -7950,12 +7956,12 @@
+         ;;
+     esac
+     ;;
+-  *-*-cygwin* )
++  *-*-cygwin* | *-*-msys* )
+     case $build in
+       *-*-mingw* ) # actually msys
+         lt_cv_to_host_file_cmd=func_convert_file_msys_to_cygwin
+         ;;
+-      *-*-cygwin* )
++      *-*-cygwin* | *-*-msys* )
+         lt_cv_to_host_file_cmd=func_convert_file_noop
+         ;;
+       * ) # otherwise, assume *nix
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/m4/ltoptions.m4 Python-3.3.2/Modules/_ctypes/libffi/m4/ltoptions.m4
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/m4/ltoptions.m4	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/m4/ltoptions.m4	2013-08-02 00:54:27.281250000 +0400
+@@ -126,7 +126,7 @@
+ [enable_win32_dll=yes
+ 
+ case $host in
+-*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-cegcc*)
++*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-cegcc*)
+   AC_CHECK_TOOL(AS, as, false)
+   AC_CHECK_TOOL(DLLTOOL, dlltool, false)
+   AC_CHECK_TOOL(OBJDUMP, objdump, false)
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/lib/target-libpath.exp Python-3.3.2/Modules/_ctypes/libffi/testsuite/lib/target-libpath.exp
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/lib/target-libpath.exp	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/lib/target-libpath.exp	2013-08-02 00:54:27.281250000 +0400
+@@ -175,7 +175,7 @@
+   } else {
+     setenv DYLD_LIBRARY_PATH "$ld_library_path"
+   }
+-  if { [istarget *-*-cygwin*] || [istarget *-*-mingw*] } {
++  if { [istarget *-*-cygwin*] || [istarget *-*-msys*] || [istarget *-*-mingw*] } {
+     if { $orig_path_saved } {
+       setenv PATH "$ld_library_path:$orig_path"
+     } else {
+@@ -271,7 +271,7 @@
+ 
+     if { [ istarget *-*-darwin* ] } {
+ 	set shlib_ext "dylib"
+-    } elseif { [ istarget *-*-cygwin* ] || [ istarget *-*-mingw* ] } {
++    } elseif { [ istarget *-*-cygwin* ] || [istarget *-*-msys*] || [ istarget *-*-mingw* ] } {
+ 	set shlib_ext "dll"
+     } elseif { [ istarget hppa*-*-hpux* ] } {
+ 	set shlib_ext "sl"
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/closure_stdcall.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/closure_stdcall.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/closure_stdcall.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/closure_stdcall.c	2013-08-02 00:54:27.281250000 +0400
+@@ -4,7 +4,7 @@
+    PR:		none.
+    Originator:	<twalljava@dev.java.net> */
+ 
+-/* { dg-do run { target i?86-*-cygwin* i?86-*-mingw* } } */
++/* { dg-do run { target i?86-*-cygwin* i?86-*-msys* i?86-*-mingw* } } */
+ #include "ffitest.h"
+ 
+ static void
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/closure_thiscall.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/closure_thiscall.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/closure_thiscall.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/closure_thiscall.c	2013-08-02 00:54:27.296875000 +0400
+@@ -4,7 +4,7 @@
+    PR:		none.
+    Originator:	<ktietz@redhat.com> */
+ 
+-/* { dg-do run { target i?86-*-cygwin* i?86-*-mingw* } } */
++/* { dg-do run { target i?86-*-cygwin* i?86-*-msys* i?86-*-mingw* } } */
+ #include "ffitest.h"
+ 
+ static void
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/cls_align_longdouble_split.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/cls_align_longdouble_split.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/cls_align_longdouble_split.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/cls_align_longdouble_split.c	2013-08-02 00:54:27.296875000 +0400
+@@ -4,10 +4,10 @@
+    PR:		none.
+    Originator:	<hos@tamanegi.org> 20031203	 */
+ 
+-/* { dg-excess-errors "no long double format" { xfail x86_64-*-mingw* x86_64-*-cygwin* } } */
++/* { dg-excess-errors "no long double format" { xfail x86_64-*-mingw* x86_64-*-cygwin* x86_64-*-msys* } } */
+ /* { dg-do run { xfail strongarm*-*-* xscale*-*-* } } */
+ /* { dg-options -mlong-double-128 { target powerpc64*-*-linux* } } */
+-/* { dg-output "" { xfail x86_64-*-mingw* x86_64-*-cygwin* } } */
++/* { dg-output "" { xfail x86_64-*-mingw* x86_64-*-cygwin* x86_64-*-msys* } } */
+ 
+ #include "ffitest.h"
+ 
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/cls_align_longdouble_split2.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/cls_align_longdouble_split2.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/cls_align_longdouble_split2.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/cls_align_longdouble_split2.c	2013-08-02 00:54:27.296875000 +0400
+@@ -5,10 +5,10 @@
+ 	Originator:		Blake Chaffin	6/18/2007
+ */
+ 
+-/* { dg-excess-errors "no long double format" { xfail x86_64-*-mingw* x86_64-*-cygwin* } } */
++/* { dg-excess-errors "no long double format" { xfail x86_64-*-mingw* x86_64-*-cygwin* x86_64-*-msys* } } */
+ /* { dg-do run { xfail strongarm*-*-* } } */
+ /* { dg-options -mlong-double-128 { target powerpc64*-*-linux* } } */
+-/* { dg-output "" { xfail x86_64-*-mingw* x86_64-*-cygwin* } } */
++/* { dg-output "" { xfail x86_64-*-mingw* x86_64-*-cygwin* x86_64-*-msys* } } */
+ 
+ #include "ffitest.h"
+ 
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/cls_longdouble.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/cls_longdouble.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/cls_longdouble.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/cls_longdouble.c	2013-08-02 00:54:27.312500000 +0400
+@@ -4,12 +4,12 @@
+    PR:			none.
+    Originator:	Blake Chaffin	*/
+ 
+-/* { dg-excess-errors "no long double format" { xfail x86_64-*-mingw* x86_64-*-cygwin* } } */
++/* { dg-excess-errors "no long double format" { xfail x86_64-*-mingw* x86_64-*-cygwin* x86_64-*-msys* } } */
+ /* This test is known to PASS on armv7l-unknown-linux-gnueabihf, so I have
+    remove the xfail for arm*-*-* below, until we know more.  */
+ /* { dg-do run { xfail strongarm*-*-* xscale*-*-* } } */
+ /* { dg-options -mlong-double-128 { target powerpc64*-*-linux* } } */
+-/* { dg-output "" { xfail x86_64-*-mingw* x86_64-*-cygwin* } } */
++/* { dg-output "" { xfail x86_64-*-mingw* x86_64-*-cygwin* x86_64-*-msys* } } */
+ 
+ #include "ffitest.h"
+ 
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/fastthis1_win32.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/fastthis1_win32.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/fastthis1_win32.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/fastthis1_win32.c	2013-08-02 00:54:27.312500000 +0400
+@@ -4,7 +4,7 @@
+    PR:		none.
+    Originator:	From the original ffitest.c  */
+ 
+-/* { dg-do run { target i?86-*-cygwin* i?86-*-mingw* } } */
++/* { dg-do run { target i?86-*-cygwin* i?86-*-msys* i?86-*-mingw* } } */
+ 
+ #include "ffitest.h"
+ 
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/fastthis2_win32.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/fastthis2_win32.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/fastthis2_win32.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/fastthis2_win32.c	2013-08-02 00:54:27.312500000 +0400
+@@ -4,7 +4,7 @@
+    PR:		none.
+    Originator:	From the original ffitest.c  */
+ 
+-/* { dg-do run { target i?86-*-cygwin* i?86-*-mingw* } } */
++/* { dg-do run { target i?86-*-cygwin* i?86-*-msys* i?86-*-mingw* } } */
+ 
+ #include "ffitest.h"
+ 
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/fastthis3_win32.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/fastthis3_win32.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/fastthis3_win32.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/fastthis3_win32.c	2013-08-02 00:54:27.328125000 +0400
+@@ -4,7 +4,7 @@
+    PR:		none.
+    Originator:	From the original ffitest.c  */
+ 
+-/* { dg-do run { target i?86-*-cygwin* i?86-*-mingw* } } */
++/* { dg-do run { target i?86-*-cygwin* i?86-*-msys* i?86-*-mingw* } } */
+ 
+ #include "ffitest.h"
+ 
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/float2.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/float2.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/float2.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/float2.c	2013-08-02 00:54:27.328125000 +0400
+@@ -4,8 +4,8 @@
+    PR:		none.
+    Originator:	From the original ffitest.c  */
+ 
+-/* { dg-excess-errors "fails" { target x86_64-*-mingw* x86_64-*-cygwin* } } */
+-/* { dg-do run { xfail x86_64-*-mingw* x86_64-*-cygwin* } } */
++/* { dg-excess-errors "fails" { target x86_64-*-mingw* x86_64-*-cygwin* x86_64-*-msys* } } */
++/* { dg-do run { xfail x86_64-*-mingw* x86_64-*-cygwin* x86_64-*-msys* } } */
+ 
+ #include "ffitest.h"
+ #include "float.h"
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/huge_struct.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/huge_struct.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/huge_struct.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/huge_struct.c	2013-08-02 00:54:27.328125000 +0400
+@@ -5,11 +5,11 @@
+ 	Originator:		Blake Chaffin	6/18/2007
+ */
+ 
+-/* { dg-excess-errors "" { target x86_64-*-mingw* x86_64-*-cygwin* } } */
++/* { dg-excess-errors "" { target x86_64-*-mingw* x86_64-*-cygwin* x86_64-*-msys* } } */
+ /* { dg-do run { xfail strongarm*-*-* xscale*-*-* } } */
+ /* { dg-options -mlong-double-128 { target powerpc64*-*-linux* } } */
+ /* { dg-options -Wformat=0 { target moxie*-*-elf } } */
+-/* { dg-output "" { xfail x86_64-*-mingw* x86_64-*-cygwin* } } */
++/* { dg-output "" { xfail x86_64-*-mingw* x86_64-*-cygwin* x86_64-*-msys* } } */
+ 
+ #include "ffitest.h"
+ 
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/many_win32.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/many_win32.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/many_win32.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/many_win32.c	2013-08-02 00:54:27.328125000 +0400
+@@ -4,7 +4,7 @@
+    PR:		none.
+    Originator:	From the original ffitest.c  */
+ 
+-/* { dg-do run { target i?86-*-cygwin* i?86-*-mingw* } } */
++/* { dg-do run { target i?86-*-cygwin* i?86-*-msys* i?86-*-mingw* } } */
+ 
+ #include "ffitest.h"
+ #include <float.h>
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/many2_win32.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/many2_win32.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/many2_win32.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/many2_win32.c	2013-08-02 00:54:27.343750000 +0400
+@@ -4,7 +4,7 @@
+    PR:		none.
+    Originator:	From the original ffitest.c  */
+ 
+-/* { dg-do run { target i?86-*-cygwin* i?86-*-mingw* } } */
++/* { dg-do run { target i?86-*-cygwin* i?86-*-msys* i?86-*-mingw* } } */
+ 
+ #include "ffitest.h"
+ #include <float.h>
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/return_ldl.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/return_ldl.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/return_ldl.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/return_ldl.c	2013-08-02 00:54:27.343750000 +0400
+@@ -4,7 +4,7 @@
+    PR:		none.
+    Originator:	<andreast@gcc.gnu.org> 20071113  */
+ 
+-/* { dg-do run { xfail x86_64-*-mingw* x86_64-*-cygwin* } } */
++/* { dg-do run { xfail x86_64-*-mingw* x86_64-*-cygwin* x86_64-*-msys* } } */
+ #include "ffitest.h"
+ 
+ static long double return_ldl(long double ldl)
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/strlen_win32.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/strlen_win32.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/strlen_win32.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/strlen_win32.c	2013-08-02 00:54:27.343750000 +0400
+@@ -4,7 +4,7 @@
+    PR:		none.
+    Originator:	From the original ffitest.c  */
+ 
+-/* { dg-do run { target i?86-*-cygwin* i?86-*-mingw* } } */
++/* { dg-do run { target i?86-*-cygwin* i?86-*-msys* i?86-*-mingw* } } */
+ 
+ #include "ffitest.h"
+ 
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/strlen2_win32.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/strlen2_win32.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/strlen2_win32.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/strlen2_win32.c	2013-08-02 00:54:27.343750000 +0400
+@@ -4,7 +4,7 @@
+    PR:		none.
+    Originator:	From the original ffitest.c  */
+ 
+-/* { dg-do run { target i?86-*-cygwin* i?86-*-mingw* } } */
++/* { dg-do run { target i?86-*-cygwin* i?86-*-msys* i?86-*-mingw* } } */
+ 
+ #include "ffitest.h"
+ 
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/struct1_win32.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/struct1_win32.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/struct1_win32.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/struct1_win32.c	2013-08-02 00:54:27.359375000 +0400
+@@ -4,7 +4,7 @@
+    PR:		none.
+    Originator:	From the original ffitest.c  */
+ 
+-/* { dg-do run { target i?86-*-cygwin* i?86-*-mingw* } } */
++/* { dg-do run { target i?86-*-cygwin* i?86-*-msys* i?86-*-mingw* } } */
+ #include "ffitest.h"
+ 
+ typedef struct
+diff -Naur Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/struct2_win32.c Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/struct2_win32.c
+--- Python-3.3.2-cygwin/Modules/_ctypes/libffi/testsuite/libffi.call/struct2_win32.c	2013-05-15 20:32:57.000000000 +0400
++++ Python-3.3.2/Modules/_ctypes/libffi/testsuite/libffi.call/struct2_win32.c	2013-08-02 00:54:27.359375000 +0400
+@@ -4,7 +4,7 @@
+    PR:		none.
+    Originator:	From the original ffitest.c  */
+ 
+-/* { dg-do run { target i?86-*-cygwin* i?86-*-mingw* } } */
++/* { dg-do run { target i?86-*-cygwin* i?86-*-msys* i?86-*-mingw* } } */
+ #include "ffitest.h"
+ 
+ typedef struct
+diff -Naur Python-3.3.2-cygwin/Modules/makesetup Python-3.3.2/Modules/makesetup
+--- Python-3.3.2-cygwin/Modules/makesetup	2013-08-02 00:17:46.703125000 +0400
++++ Python-3.3.2/Modules/makesetup	2013-08-02 00:54:27.359375000 +0400
+@@ -85,7 +85,7 @@
+ # Setup to link with extra libraries when makeing shared extensions.
+ # Currently, only Cygwin needs this baggage.
+ case `uname -s` in
+-CYGWIN*) if test $libdir = .
++CYGWIN*|MSYS*) if test $libdir = .
+ 	 then
+ 	 	ExtraLibDir=.
+ 	 else
+diff -Naur Python-3.3.2-cygwin/Modules/zlib/configure Python-3.3.2/Modules/zlib/configure
+--- Python-3.3.2-cygwin/Modules/zlib/configure	2013-05-15 20:32:59.000000000 +0400
++++ Python-3.3.2/Modules/zlib/configure	2013-08-02 01:12:14.749023400 +0400
+@@ -121,6 +121,8 @@
+   Linux* | linux* | GNU | GNU/* | *BSD | DragonFly) LDSHARED=${LDSHARED-"$cc -shared -Wl,-soname,libz.so.1,--version-script,zlib.map"} ;;
+   CYGWIN* | Cygwin* | cygwin* | OS/2*)
+         EXE='.exe' ;;
++  MSYS* | Msys* | msys* )
++        EXE='.exe' ;;
+   MINGW*|mingw*)
+ # temporary bypass
+         rm -f $test.[co] $test $test$shared_ext
+diff -Naur Python-3.3.2-cygwin/setup.py Python-3.3.2/setup.py
+--- Python-3.3.2-cygwin/setup.py	2013-08-01 23:54:03.430664000 +0400
++++ Python-3.3.2/setup.py	2013-08-02 00:59:36.160156200 +0400
+@@ -308,7 +308,7 @@
+ 
+         # Workaround for Cygwin: Cygwin currently has fork issues when many
+         # modules have been imported
+-        if host_platform == 'cygwin':
++        if host_platform in ['cygwin', 'msys']:
+             self.announce('WARNING: skipping import check for Cygwin-based "%s"'
+                 % ext.name)
+             return
+@@ -1235,7 +1235,7 @@
+             exts.append( Extension('resource', ['resource.c']) )
+ 
+             # Sun yellow pages. Some systems have the functions in libc.
+-            if (host_platform not in ['cygwin', 'qnx6'] and
++            if (host_platform not in ['cygwin', 'msys', 'qnx6'] and
+                 find_file('rpcsvc/yp_prot.h', inc_dirs, []) is not None):
+                 if (self.compiler.find_library_file(lib_dirs, 'nsl')):
+                     libs = ['nsl']
+@@ -1470,6 +1470,10 @@
+             macros = dict()
+             libraries = []
+ 
++        elif host_platform == 'msys':     # MSYS
++            macros = dict()
++            libraries = []
++
+         elif host_platform in ('freebsd4', 'freebsd5', 'freebsd6', 'freebsd7', 'freebsd8'):
+             # FreeBSD's P1003.1b semaphore support is very experimental
+             # and has many known problems. (as of June 2008)
