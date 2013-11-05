@@ -1,0 +1,157 @@
+# Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+
+pkgname=python2
+pkgver=2.7.5
+pkgrel=1
+_pybasever=2.7
+pkgdesc="A high-level scripting language"
+arch=('i686' 'x86_64')
+license=('PSF')
+url="http://www.python.org/"
+depends=('bzip2' 'openssl' 'zlib' 'expat' 'sqlite' 'libffi')
+#makedepends=('tk>=8.6.0')
+optdepends=('tk: for IDLE')
+conflicts=('python<3')
+options=('!makeflags')
+source=(http://www.python.org/ftp/python/${pkgver%rc?}/Python-${pkgver}.tar.xz
+		python-2.7.5-CVE-2013-4238.patch
+		uuid.patch
+		Python-2.7.5-reorder-bininstall-ln-symlink-creation.patch
+		python-2.7.5-msys2.patch
+		Python-2.7.5-fix-sqlite-module.patch
+		2.7.5-tkinter-x11.patch
+		2.7.5-ssl-threads.patch
+		2.7.5-no-libm.patch
+		2.7.5-ncurses-abi6.patch
+		2.7.5-getpath-exe-extension.patch
+		2.7.5-FD_SETSIZE.patch
+		2.7.5-export-PySignal_SetWakeupFd.patch
+		2.7.5-export-PyNode_SizeOf.patch
+		2.7.5-dylib.patch
+		2.7.5-dbm.patch
+		2.7.5-ctypes-util-find_library.patch
+		2.7.5-allow-windows-paths-for-executable.patch)
+sha1sums=('b7389791f789625c2ba9d897aa324008ff482daf'
+          'fb1f95ca21d9c00eaaea5a58236d1d97300482d7'
+          '589f93f70c9d51f8ed025d0546ea38312c430d21'
+          '76474752d5b84ad78d53f418d554b5c706fcbca7'
+          '2b5f115573d089801f023c16bacc08963f039272'
+          '6e842d2ac2ef6dae07ca14c75348addf6621bf24'
+          '53a3a7c2cd5412bc382d94043983362da80aed03'
+          '7dfd15538406481a1e87edc6d1ad5480c997201a'
+          '91ed9faad8f4ae97b5a69bfb8690401047f0178f'
+          'dbbf0ebb32663740062106bb232157af262767ae'
+          'e9764f8c852d7f19a995f2f1cc38d94ba036e007'
+          'de7bb49c1e6a34bf3abee109f69bedb4e4e686a9'
+          'cfce9aa371d876c7bf47732a4271f1201028ce7a'
+          'eee4ce3f7c26b5c69729d2a5033d2f5277bc6868'
+          'eaf864af38e8b2bd3952ca9e7fbb6efb6191b792'
+          'f6e392723ed2a4b7fe0138522baa0e0f7b8b3660'
+          'efbee46e7f1485985409db0f25adbb18ecb4a4ae'
+          'fb78069fadcf5394ba380e26e371ad687d344415')
+
+prepare() {
+  cd "${srcdir}/Python-${pkgver}"
+
+  # http://bugs.python.org/issue18709
+  patch -Np1 -i ${srcdir}/python-2.7.5-CVE-2013-4238.patch
+
+  patch -p1 -i ${srcdir}/2.7.5-ctypes-util-find_library.patch
+  patch -p1 -i ${srcdir}/2.7.5-tkinter-x11.patch
+  patch -p1 -i ${srcdir}/2.7.5-ssl-threads.patch
+  patch -p1 -i ${srcdir}/2.7.5-FD_SETSIZE.patch
+  patch -p1 -i ${srcdir}/2.7.5-export-PySignal_SetWakeupFd.patch
+  patch -p1 -i ${srcdir}/2.7.5-ncurses-abi6.patch
+  patch -p1 -i ${srcdir}/2.7.5-dbm.patch
+  patch -p1 -i ${srcdir}/2.7.5-dylib.patch
+  patch -p1 -i ${srcdir}/2.7.5-getpath-exe-extension.patch
+  patch -p1 -i ${srcdir}/2.7.5-no-libm.patch
+  patch -p1 -i ${srcdir}/2.7.5-export-PyNode_SizeOf.patch
+  patch -p1 -i ${srcdir}/Python-2.7.5-fix-sqlite-module.patch
+  patch -p1 -i ${srcdir}/python-2.7.5-msys2.patch
+  patch -p1 -i ${srcdir}/Python-2.7.5-reorder-bininstall-ln-symlink-creation.patch
+  patch -p1 -i ${srcdir}/uuid.patch
+  
+  # Incomplete patch from Ray Donnelly
+  # patch -p1 -i ${srcdir}/2.7.5-allow-windows-paths-for-executable.patch
+	
+  # Temporary workaround for FS#22322
+  # See http://bugs.python.org/issue10835 for upstream report
+  sed -i "/progname =/s/python/python${_pybasever}/" Python/pythonrun.c
+
+  # Enable built-in SQLite module to load extensions (fix FS#22122)
+  sed -i "/SQLITE_OMIT_LOAD_EXTENSION/d" setup.py
+
+  # FS#23997
+  sed -i -e "s|^#.* /usr/local/bin/python|#!/usr/bin/python2|" Lib/cgi.py
+
+  sed -i "s/python2.3/python2/g" Lib/distutils/tests/test_build_scripts.py \
+     Lib/distutils/tests/test_install_scripts.py Tools/scripts/gprof2html.py
+
+  # Ensure that we are using the system copy of various libraries (expat, zlib and libffi),
+  # rather than copies shipped in the tarball
+  rm -r Modules/expat
+  rm -r Modules/zlib
+  rm -r Modules/_ctypes/{darwin,libffi}*
+}
+
+build() {
+  cd "${srcdir}/Python-${pkgver}"
+
+  export OPT="${CFLAGS}"
+  ./configure --build=${CHOST} \
+		--prefix=/usr \
+		--enable-shared \
+		--enable-ipv6 \
+		--with-libc= \
+		--with-libm= \
+		--with-system-expat \
+		--with-system-ffi \
+		--with-threads \
+		ac_cv_func_bind_textdomain_codeset=yes \
+		CPPFLAGS="${CPPFLAGS} -I/usr/include/ncursesw" \
+		LDFLAGS="${LDFLAGS} -L."
+
+  make
+}
+
+package() {
+  cd "${srcdir}/Python-${pkgver}"
+  make DESTDIR="${pkgdir}" altinstall maninstall
+  
+  rm "${pkgdir}"/usr/share/man/man1/python.1
+
+  ln -sf python${_pybasever}        "${pkgdir}"/usr/bin/python2.exe
+  ln -sf python${_pybasever}-config "${pkgdir}"/usr/bin/python2-config
+  ln -sf python${_pybasever}.1      "${pkgdir}"/usr/share/man/man1/python2.1
+
+  # FS#33954
+  ln -sf python-${_pybasever}.pc    "${pkgdir}"/usr/lib/pkgconfig/python2.pc
+
+  cp -f "${pkgdir}"/usr/lib/python${_pybasever}/config/libpython${_pybasever}.dll.a "${pkgdir}"/usr/lib/libpython${_pybasever}.dll.a
+
+  mv "${pkgdir}"/usr/bin/smtpd.py "${pkgdir}"/usr/lib/python${_pybasever}/
+
+  # some useful "stuff"
+  install -dm755 "${pkgdir}"/usr/lib/python${_pybasever}/Tools/{i18n,scripts}
+  install -m755 Tools/i18n/{msgfmt,pygettext}.py "${pkgdir}"/usr/lib/python${_pybasever}/Tools/i18n/
+  install -m755 Tools/scripts/{README,*py} "${pkgdir}"/usr/lib/python${_pybasever}/Tools/scripts/
+
+  # fix conflicts with python
+  mv "${pkgdir}"/usr/bin/idle{,2}
+  mv "${pkgdir}"/usr/bin/pydoc{,2}
+  mv "${pkgdir}"/usr/bin/2to3{,-2.7}
+
+  # clean up #!s
+  find "${pkgdir}"/usr/lib/python${_pybasever}/ -name '*.py' | \
+    xargs sed -i "s|#[ ]*![ ]*/usr/bin/env python$|#!/usr/bin/env python2|"
+
+  # clean-up reference to build directory
+  sed -i "s#${srcdir}/Python-${pkgver}:##" "${pkgdir}"/usr/lib/python${_pybasever}/config/Makefile
+
+  # license
+  install -Dm644 LICENSE "${pkgdir}"/usr/share/licenses/${pkgname}/LICENSE
+  
+  # fix permissons
+  find ${pkgdir}/usr -type f \( -name *.dll -o -name *.exe \) | xargs chmod 0755
+}

@@ -1,0 +1,129 @@
+diff -urN a/Modules/getpath.c b/Modules/getpath.c
+--- a/Modules/getpath.c	2013-10-21 11:14:32.295032500 +0100
++++ b/Modules/getpath.c	2013-10-21 12:23:00.165259900 +0100
+@@ -10,6 +10,10 @@
+ #include <mach-o/dyld.h>
+ #endif
+ 
++#if defined(MS_WINDOWS) || defined(__CYGWIN__)
++#include <windows.h>
++#endif
++
+ /* Search in some common locations for the associated Python libraries.
+  *
+  * Two directories must be found, the platform independent directory
+@@ -127,7 +131,11 @@
+ 
+ static char prefix[MAXPATHLEN+1];
+ static char exec_prefix[MAXPATHLEN+1];
+-static char progpath[MAXPATHLEN+1];
++static char progpath[MAXPATHLEN+1] = {'\0'};
++#if defined(MS_WINDOWS) || defined(__CYGWIN__)
++static char dllpath[MAXPATHLEN+1] = {'\0'};
++extern HANDLE PyWin_DLLhModule;
++#endif
+ static char *module_search_path = NULL;
+ static char lib_python[] = "lib/python" VERSION;
+ 
+@@ -208,7 +216,11 @@
+ joinpath(char *buffer, char *stuff)
+ {
+     size_t n, k;
++#if defined(MS_WINDOWS) || defined(__CYGWIN__)
++    if (stuff[0] == SEP || (strlen(stuff)>=2 && stuff[0] != 0 && stuff[1] == ':'))
++#else
+     if (stuff[0] == SEP)
++#endif
+         n = 0;
+     else {
+         n = strlen(buffer);
+@@ -222,6 +234,13 @@
+         k = MAXPATHLEN - n;
+     strncpy(buffer+n, stuff, k);
+     buffer[n+k] = '\0';
++#if defined(__CYGWIN__)
++    /* MSYS specific: Turn C:* into /c* */
++    if (strlen(buffer)>2 && buffer[0] != 0 && buffer[1] == ':') {
++        buffer[1]=buffer[0]|32;
++        buffer[0]='/';
++    }
++#endif
+ }
+ 
+ /* copy_absolute requires that path be allocated at least
+@@ -229,8 +248,21 @@
+ static void
+ copy_absolute(char *path, char *p)
+ {
++#if defined(MS_WINDOWS) || defined(__CYGWIN__)
++    if (p[0] == SEP || (strlen(p)>=2 && p[0] != 0 && p[1] == ':'))
++#else
+     if (p[0] == SEP)
++#endif
++    {
+         strcpy(path, p);
++#if defined(__CYGWIN__)
++        /* MSYS specific: Turn C:* into /c* */
++        if (strlen(path)>2 && path[0] != 0 && path[1] == ':') {
++            path[1]=path[0]|32;
++            path[0]='/';
++        }
++#endif
++    }
+     else {
+         if (!getcwd(path, MAXPATHLEN)) {
+             /* unable to get the current directory */
+@@ -382,6 +414,42 @@
+ }
+ 
+ 
++#if defined(MS_WINDOWS) || defined(__CYGWIN__)
++/* Calculates dllpath and progpath, replacing \\ with / */
++int GetWindowsModulePaths()
++{
++    int result = 0;
++    char* seps;
++    result = GetModuleFileNameA(NULL, progpath, MAXPATHLEN);
++    seps = strchr(progpath, '\\');
++    while(seps) {
++        *seps = '/';
++        seps = strchr(seps, '\\');
++    }
++    dllpath[0] = '\0';
++#if defined(Py_ENABLE_SHARED) && !defined(__CYGWIN__)
++    // Hmm, cygwin/MSYS2 replacement for PyWin_DLLhModule is needed.
++    if (PyWin_DLLhModule) {
++        if((GetModuleFileNameA(PyWin_DLLhModule, dllpath, MAXPATHLEN) > 0)) {
++            result = 1;
++            seps = strchr(dllpath, '\\');
++            while(seps) {
++                *seps = '/';
++                seps = strchr(seps, '\\');
++            }
++        }
++    }
++#endif
++
++    /* Just so that 'MSYS specific: Turn C:* into /c*'
++       is done. */
++    absolutize(progpath);
++    absolutize(dllpath);
++
++    return result;
++}
++#endif /* MS_WINDOWS */
++
+ static void
+ calculate_path(void)
+ {
+@@ -433,6 +501,10 @@
+      else if(0 == _NSGetExecutablePath(progpath, &nsexeclength) && progpath[0] == SEP)
+        ;
+ #endif /* __APPLE__ */
++#if defined(MS_WINDOWS) || defined(__CYGWIN__)
++     else if(GetWindowsModulePaths()) {
++     }
++#endif /* MS_WINDOWS */
+         else if (path) {
+                 while (1) {
+                         char *delim = strchr(path, DELIM);
