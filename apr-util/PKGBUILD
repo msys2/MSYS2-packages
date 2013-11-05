@@ -1,0 +1,64 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('apr-util' 'apr-util-devel')
+pkgver=1.5.2
+pkgrel=1
+pkgdesc="The Apache Portable Runtime"
+arch=('i686' 'x86_64')
+url="http://apr.apache.org/"
+depends=('apr' 'expat')
+options=('!libtool')
+license=('APACHE')
+source=("http://www.apache.org/dist/apr/apr-util-${pkgver}.tar.bz2"
+        apr-util-1.5.2-msys2.patch
+        plugins.patch)
+md5sums=('89c1348aa79e898d7c34a6206311c9c2'
+         '4fabcb20add9e5c977a0c8dc497b8805'
+         '35734891d5c00414e3cd7473ec7c1058')
+
+prepare() {
+  cd "${srcdir}/apr-util-${pkgver}"
+  
+  patch -p1 -i ${srcdir}/plugins.patch
+  patch -p1 -i ${srcdir}/apr-util-1.5.2-msys2.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd "${srcdir}/apr-util-${pkgver}"
+  ./configure --build=${CHOST} \
+    --prefix=/usr \
+    --with-apr=/usr \
+    --with-expat=/usr \
+    --without-gdbm \
+    --without-ldap \
+    --without-pgsql \
+    --with-sqlite3=/usr
+  
+  make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+check() {
+  cd "${srcdir}/apr-util-${pkgver}"
+  make -j1 check
+}
+
+package_apr-util() {
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+}
+
+package_apr-util-devel() {
+  pkgdesc="Libapr-util headers and libraries"
+  groups=('development')
+  options=('staticlibs')
+ 
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
