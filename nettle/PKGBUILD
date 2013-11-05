@@ -1,0 +1,75 @@
+# Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+
+pkgname=('nettle' 'libnettle' 'libhogweed' 'libnettle-devel')
+pkgver=2.7.1
+pkgrel=1
+pkgdesc="A low-level cryptographic library"
+arch=('i686' 'x86_64')
+url="http://www.lysator.liu.se/~nisse/nettle/"
+license=('GPL2')
+install=$pkgname.install
+depends=('gmp')
+source=(http://ftp.gnu.org/gnu/$pkgname/$pkgname-$pkgver.tar.gz{,.sig}
+	    2.6-soname.patch
+        nettle-2.6-msys2.patch)
+md5sums=('003d5147911317931dd453520eb234a5'
+         'SKIP'
+         '3c2d04c506a4eb916e84dd654455bf33'
+         '350a89145c94f33054a403d213f2525b')
+
+prepare() {
+  cd "$srcdir/$pkgname-$pkgver"
+  
+  patch -p2 -i ${srcdir}/2.6-soname.patch
+  patch -p1 -i ${srcdir}/nettle-2.6-msys2.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  ./configure --build=${CHOST} --prefix=/usr --libdir=/usr/lib \
+	--enable-shared --disable-assembler
+
+  make
+  
+  make DESTDIR="$srcdir/dest" install
+}
+
+check() {
+  cd "$srcdir/$pkgname-$pkgver"
+  make -k check
+}
+
+package_nettle() {
+  depends=('libnettle')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -rf ${srcdir}/dest/usr/bin/*.exe ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+}
+
+package_libnettle() {
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -rf ${srcdir}/dest/usr/bin/*nettle*.dll ${pkgdir}/usr/bin/
+}
+
+package_libhogweed() {
+  groups=('libraries')
+  depends=('gmp' 'libnettle')
+  
+  mkdir -p ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/bin/*hogweed*.dll ${pkgdir}/usr/bin/
+}
+
+package_libnettle-devel() {
+  pkgdesc="Libnettle headers and libraries"
+  groups=('development')
+  options=('staticlibs')
+ 
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
