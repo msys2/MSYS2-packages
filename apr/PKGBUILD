@@ -1,0 +1,80 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('apr' 'apr-devel')
+pkgver=1.4.8
+pkgrel=1
+pkgdesc="The Apache Portable Runtime"
+arch=('i686' 'x86_64')
+url="http://apr.apache.org/"
+depends=('libcrypt')
+options=('!libtool')
+license=('APACHE')
+source=(http://www.apache.org/dist/apr/apr-${pkgver}.tar.bz2
+		apr-1.4.8-msys2.patch
+		binary-copy.patch
+		no-undefined.patch
+		tests-disable_testproc.patch
+		tests-fix_paths.patch
+		tests.patch
+		fix-debian-layout.patch)
+md5sums=('ce2ab01a0c3cdb71cf0a6326b8654f41'
+         '6e42ea624a137cf8846c96a807a00491'
+         'b2815ff4d642ff19fc659b36cb243eed'
+         '05e21f412debfdac21599f3f1369f56d'
+         '678d0d714f063e67b0f537d472e14d11'
+         'b6671ff8d5051160e7bf1901d7d6c2e9'
+         'c485befb8f43b5471af01a8bd8def669'
+         '7e5d21ea2948914d23f73dd49dc5d04f')
+
+prepare() {
+  cd "${srcdir}/apr-${pkgver}"
+  
+  patch -p1 -i ${srcdir}/binary-copy.patch
+  patch -p1 -i ${srcdir}/no-undefined.patch
+  patch -p1 -i ${srcdir}/tests-disable_testproc.patch
+  patch -p1 -i ${srcdir}/tests.patch
+  patch -p1 -i ${srcdir}/tests-fix_paths.patch
+  patch -p1 -i ${srcdir}/apr-1.4.8-msys2.patch
+  patch -p1 -i ${srcdir}/fix-debian-layout.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd "${srcdir}/apr-${pkgver}"
+  ./configure --build=${CHOST} \
+    --prefix=/usr \
+	--libexecdir=/usr/lib/apr/modules \
+    --datadir=/usr/share/apr \
+    --enable-layout=Debian \
+    ac_cv_header_windows_h=no \
+    ac_cv_header_winsock2_h=no
+
+  make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+check() {
+  cd "${srcdir}/apr-${pkgver}"
+  make -j1 check
+}
+
+package_apr() {
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/{bin,share}
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+  #cp -rf ${srcdir}/dest/usr/share/doc ${pkgdir}/usr/share/
+}
+
+package_apr-devel() {
+  pkgdesc="Libapr headers and libraries"
+  groups=('development')
+  options=('staticlibs')
+ 
+  mkdir -p ${pkgdir}/usr/{bin,share}
+  cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/share/apr ${pkgdir}/usr/share/
+}
