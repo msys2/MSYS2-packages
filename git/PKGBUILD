@@ -1,0 +1,112 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=git
+pkgver=1.8.4.2
+pkgrel=1
+pkgdesc="the fast distributed version control system"
+arch=(i686 x86_64)
+url="http://git-scm.com/"
+license=('GPL2')
+depends=('curl' 'expat>=2.0' 'perl-error' 'perl>=5.14.0' 'openssl' 'libpcre' 'vim')
+makedepends=('python2' 'less' 'openssh' 'rsync')
+optdepends=('tk: gitk and git gui'
+            'perl-libwww: git svn'
+            'perl-term-readkey: git svn'
+            'perl-mime-tools: git send-email'
+            'perl-net-smtp-ssl: git send-email TLS support'
+            'perl-authen-sasl: git send-email TLS support'
+            'python2: various helper scripts'
+            'subversion: git svn'
+            'cvsps: git cvsimport')
+replaces=('git-core')
+provides=('git-core')
+source=("http://git-core.googlecode.com/files/git-$pkgver.tar.gz"
+        "http://git-core.googlecode.com/files/git-manpages-$pkgver.tar.gz"
+        1.7.9-cygwin.patch
+        git-1.8.4-manifest-msys2.patch
+        git-1.8.4-msys2.patch)
+md5sums=('6f63d103465b86ca0ebe4189ea54731c'
+         '2b4719ec820d845134b689247abe65e8'
+         'c33c9dfa2944a0de9151a7af7a63a27b'
+         '125adf2d320554323b0157430497cd1a'
+         '9f9170a30dfb7643df4948cdae5bb864')
+
+prepare() {
+  cd "$srcdir/$pkgname-$pkgver"
+  
+  patch -p2 -i ${srcdir}/1.7.9-cygwin.patch
+  patch -p1 -i ${srcdir}/git-1.8.4-manifest-msys2.patch
+  patch -p1 -i ${srcdir}/git-1.8.4-msys2.patch
+  
+  make configure
+}
+
+build() {
+  export PYTHON_PATH='/usr/bin/python2'
+  cd "$srcdir/$pkgname-$pkgver"
+  
+  ./configure --build=${CHOST} \
+    --prefix=/usr \
+	--libexecdir=/usr/lib \
+	--with-libpcre \
+	--with-editor=vim \
+	--htmldir=/usr/share/doc/git/html \
+	--mandir=/usr/share/man
+
+  make INSTALLDIRS=vendor all
+}
+
+check() {
+  export PYTHON_PATH='/usr/bin/python2'
+  cd "$srcdir/$pkgname-$pkgver"
+  local jobs
+  jobs=$(expr "$MAKEFLAGS" : '.*\(-j[0-9]*\).*')
+  mkdir -p /dev/shm/git-test
+  # We used to use this, but silly git regressions:
+  #GIT_TEST_OPTS="--root=/dev/shm/" \
+  # http://comments.gmane.org/gmane.comp.version-control.git/202020
+  make \
+    NO_SVN_TESTS=y \
+    DEFAULT_TEST_TARGET=prove \
+    GIT_PROVE_OPTS="$jobs -Q" \
+    GIT_TEST_OPTS="--root=/dev/shm/git-test" \
+    test
+}
+
+package() {
+  export PYTHON_PATH='/usr/bin/python2'
+  cd "$srcdir/$pkgname-$pkgver"
+  make INSTALLDIRS=vendor DESTDIR="$pkgdir" install
+
+  # bash completion
+  mkdir -p "$pkgdir"/usr/share/bash-completion/completions/
+  install -m644 ./contrib/completion/git-completion.bash "$pkgdir"/usr/share/bash-completion/completions/git
+  # fancy git prompt
+  mkdir -p "$pkgdir"/usr/share/git/
+  install -m644 ./contrib/completion/git-prompt.sh "$pkgdir"/usr/share/git/git-prompt.sh
+
+  # the rest of the contrib stuff
+  cp -a ./contrib/* $pkgdir/usr/share/git/
+
+  # scripts are for python 2.x
+  sed -i 's|#![ ]*/usr/bin/env python$|#!/usr/bin/env python2|' \
+    $(find "$pkgdir" -name '*.py') \
+    "$pkgdir"/usr/lib/git-core/git-p4 \
+    "$pkgdir"/usr/share/git/gitview/gitview \
+    "$pkgdir"/usr/share/git/remote-helpers/git-remote-bzr \
+    "$pkgdir"/usr/share/git/remote-helpers/git-remote-hg
+  sed -i 's|#![ ]*/usr/bin/python$|#!/usr/bin/python2|' \
+    "$pkgdir"/usr/share/git/svn-fe/svnrdump_sim.py
+
+
+  # how 'bout some manpages?
+  for mansect in man1 man5 man7; do
+    for manpage in "$srcdir"/$mansect/*; do
+      install -D -m644 $manpage "$pkgdir"/usr/share/man/$mansect/$(basename $manpage)
+    done
+  done
+
+  # remove perllocal.pod, .packlist, and empty directories.
+  find $pkgdir/usr/lib/perl5 -name *.pod -delete
+  find $pkgdir/usr/lib/perl5 -name .packlist -delete
+}

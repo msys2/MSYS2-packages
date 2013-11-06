@@ -1,0 +1,212 @@
+On Windows Vista, not having an application manifest with a
+requestedExecutionLevel can cause several kinds of confusing behavior.
+
+The first and more obvious is Installer Detection, where sometimes
+Windows decides (by looking at things like the file name and even
+sequences of bytes within the executable) that an executable is an
+installer and should run elevated (causing the well-known popup dialog
+to appear). On git, this happens for executables with names containing
+"patch" or "update".
+
+The second and more confusing is File Virtualization. With it, writes to
+some files which should fail are instead redirected to somewhere else,
+and reads to files might return different contents if a previous write
+was redirected. Even more confusing, not all writes are redirected; I
+recall reading somewhere that for instance writes to .exe files will
+fail instead of redirecting.
+
+Needless to say, git wants none of that. Not only that, but File
+Virtualization has been blamed for dramatic slowdowns in git (see for
+instance http://code.google.com/p/msysgit/issues/detail?id=320).
+
+There are two ways to turn off these annoyances. Either you embed an
+application manifest within all your executables, or you add an external
+manifest (a file with the same name followed by .manifest) to all your
+executables. Since for git some executables are copied (or hardlinked)
+with several names, it is simpler and more robust to embed an internal
+manifest.
+
+A recent enough MSVC compiler should already embed a working internal
+manifest, but for mingw you have to do so by hand.
+
+Very lightly tested on Wine, where like on Windows XP it should not make
+any difference.
+
+References:
+  - New UAC Technologies for Windows Vista
+    http://msdn.microsoft.com/en-us/library/bb756960.aspx
+  - Create and Embed an Application Manifest (UAC)
+    http://msdn.microsoft.com/en-us/library/bb756929.aspx
+
+Signed-off-by: Cesar Eduardo Barros <ces...@cesarb.net>
+---
+ Makefile                  |   29 +++++++++++++++++++++--------
+ compat/win32/git.manifest |   11 +++++++++++
+ compat/win32/resource.rc  |    1 +
+ 3 files changed, 33 insertions(+), 8 deletions(-)
+ create mode 100644 compat/win32/git.manifest
+ create mode 100644 compat/win32/resource.rc
+
+--- git-1.8.4/config.mak.uname.orig	2013-08-24 08:15:28.412809200 +0000
++++ git-1.8.4/config.mak.uname	2013-08-24 08:16:47.558359400 +0000
+@@ -171,6 +171,7 @@
+ 	NO_FAST_WORKING_DIRECTORY = UnfortunatelyYes
+ 	NO_ST_BLOCKS_IN_STRUCT_STAT = YesPlease
+ 	X = .exe
++	APPLICATION_MANIFEST = YesPlease
+ 	UNRELIABLE_FSTAT = UnfortunatelyYes
+ 	SPARSE_FLAGS = -isystem /usr/include/w32api -Wno-one-bit-signed-bitfield
+ endif
+@@ -196,6 +196,7 @@
+ 	NO_FAST_WORKING_DIRECTORY = UnfortunatelyYes
+ 	NO_ST_BLOCKS_IN_STRUCT_STAT = YesPlease
+ 	X = .exe
++	APPLICATION_MANIFEST = YesPlease
+ 	UNRELIABLE_FSTAT = UnfortunatelyYes
+ 	SPARSE_FLAGS = -isystem /usr/include/w32api -Wno-one-bit-signed-bitfield
+ endif
+@@ -346,6 +347,7 @@
+ 	NO_INET_PTON = YesPlease
+ 	NO_INET_NTOP = YesPlease
+ 	NO_POSIX_GOODIES = UnfortunatelyYes
++	APPLICATION_MANIFEST = YesPlease
+ 	NATIVE_CRLF = YesPlease
+ 	DEFAULT_HELP_FORMAT = html
+ 
+@@ -499,6 +501,7 @@
+ 	NO_INET_PTON = YesPlease
+ 	NO_INET_NTOP = YesPlease
+ 	NO_POSIX_GOODIES = UnfortunatelyYes
++	APPLICATION_MANIFEST = YesPlease
+ 	DEFAULT_HELP_FORMAT = html
+ 	COMPAT_CFLAGS += -D__USE_MINGW_ACCESS -DNOGDI -Icompat -Icompat/win32
+ 	COMPAT_CFLAGS += -DSTRIP_EXTENSION=\".exe\"
+--- git-1.8.3.3/Makefile.orig	2013-07-15 20:59:21.000000000 +0000
++++ git-1.8.3.3/Makefile	2013-07-27 03:30:24.456888600 +0000
+@@ -415,6 +415,7 @@
+ PTHREAD_LIBS = -lpthread
+ PTHREAD_CFLAGS =
+ GCOV = gcov
++WINDRES = windres
+ 
+ export TCL_PATH TCLTK_PATH
+ 
+@@ -435,6 +436,7 @@
+ BUILT_INS =
+ COMPAT_CFLAGS =
+ COMPAT_OBJS =
++RESOURCE_OBJS =
+ XDIFF_OBJS =
+ VCSSVN_OBJS =
+ GENERATED_H =
+@@ -1476,6 +1478,11 @@
+        COMPAT_OBJS += compat/nedmalloc/nedmalloc.o
+ endif
+ 
++ifdef APPLICATION_MANIFEST
++        # Cannot be in LIB_OBJS because it must always be linked in
++        RESOURCE_OBJS += compat/win32/resource.o
++endif
++
+ ifdef GIT_TEST_CMP_USE_COPIED_CONTEXT
+ 	export GIT_TEST_CMP_USE_COPIED_CONTEXT
+ endif
+@@ -1525,6 +1532,7 @@
+ 	QUIET_XGETTEXT = @echo '   ' XGETTEXT $@;
+ 	QUIET_MSGFMT   = @echo '   ' MSGFMT $@;
+ 	QUIET_GCOV     = @echo '   ' GCOV $@;
++	QUIET_WINDRES  = @echo '   ' RC $@;
+ 	QUIET_SP       = @echo '   ' SP $<;
+ 	QUIET_SUBDIR0  = +@subdir=
+ 	QUIET_SUBDIR1  = ;$(NO_SUBDIR) echo '   ' SUBDIR $$subdir; \
+@@ -1709,9 +1717,9 @@
+ 	'-DGIT_MAN_PATH="$(mandir_relative_SQ)"' \
+ 	'-DGIT_INFO_PATH="$(infodir_relative_SQ)"'
+ 
+-git$X: git.o GIT-LDFLAGS $(BUILTIN_OBJS) $(GITLIBS)
++git$X: git.o GIT-LDFLAGS $(BUILTIN_OBJS) $(RESOURCE_OBJS) $(GITLIBS)
+ 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ git.o \
+-		$(BUILTIN_OBJS) $(ALL_LDFLAGS) $(LIBS)
++		$(BUILTIN_OBJS) $(RESOURCE_OBJS) $(ALL_LDFLAGS) $(LIBS)
+ 
+ help.sp help.s help.o: common-cmds.h
+ 
+@@ -2029,21 +2037,21 @@
+ 	-DNDEBUG -DOVERRIDE_STRDUP -DREPLACE_SYSTEM_ALLOCATOR
+ endif
+ 
+-git-%$X: %.o GIT-LDFLAGS $(GITLIBS)
++git-%$X: %.o $(RESOURCE_OBJS) GIT-LDFLAGS $(GITLIBS)
+ 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) $(LIBS)
+ 
+-git-imap-send$X: imap-send.o GIT-LDFLAGS $(GITLIBS)
++git-imap-send$X: imap-send.o $(RESOURCE_OBJS) GIT-LDFLAGS $(GITLIBS)
+ 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) \
+ 		$(LIBS) $(OPENSSL_LINK) $(OPENSSL_LIBSSL) $(LIB_4_CRYPTO)
+ 
+-git-http-fetch$X: revision.o http.o http-walker.o http-fetch.o GIT-LDFLAGS $(GITLIBS)
++git-http-fetch$X: revision.o http.o http-walker.o http-fetch.o $(RESOURCE_OBJS) GIT-LDFLAGS $(GITLIBS)
+ 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) \
+ 		$(LIBS) $(CURL_LIBCURL)
+-git-http-push$X: revision.o http.o http-push.o GIT-LDFLAGS $(GITLIBS)
++git-http-push$X: revision.o http.o http-push.o $(RESOURCE_OBJS) GIT-LDFLAGS $(GITLIBS)
+ 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) \
+ 		$(LIBS) $(CURL_LIBCURL) $(EXPAT_LIBEXPAT)
+ 
+-git-remote-testsvn$X: remote-testsvn.o GIT-LDFLAGS $(GITLIBS) $(VCSSVN_LIB)
++git-remote-testsvn$X: remote-testsvn.o $(RESOURCE_OBJS) GIT-LDFLAGS $(GITLIBS) $(VCSSVN_LIB)
+ 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) $(LIBS) \
+ 	$(VCSSVN_LIB)
+ 
+@@ -2053,10 +2061,15 @@
+ 	ln -s $< $@ 2>/dev/null || \
+ 	cp $< $@
+ 
+-$(REMOTE_CURL_PRIMARY): remote-curl.o http.o http-walker.o GIT-LDFLAGS $(GITLIBS)
++$(REMOTE_CURL_PRIMARY): remote-curl.o http.o http-walker.o $(RESOURCE_OBJS) GIT-LDFLAGS $(GITLIBS)
+ 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) \
+ 		$(LIBS) $(CURL_LIBCURL) $(EXPAT_LIBEXPAT)
+ 
++%.o: %.rc
++	$(QUIET_WINDRES)$(WINDRES) $< $@
++compat/win32/resource.o: compat/win32/git.manifest
++
++
+ $(LIB_FILE): $(LIB_OBJS)
+ 	$(QUIET_AR)$(RM) $@ && $(AR) rcs $@ $(LIB_OBJS)
+ 
+@@ -2260,7 +2273,7 @@
+ 
+ .PRECIOUS: $(TEST_OBJS)
+ 
+-test-%$X: test-%.o GIT-LDFLAGS $(GITLIBS)
++test-%$X: test-%.o $(RESOURCE_OBJS) GIT-LDFLAGS $(GITLIBS)
+ 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) $(filter %.a,$^) $(LIBS)
+ 
+ check-sha1:: test-sha1$X
+diff --git a/compat/win32/git.manifest b/compat/win32/git.manifest
+new file mode 100644
+index 0000000..a82605c
+--- /dev/null
++++ b/compat/win32/git.manifest
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
++        <assemblyIdentity type="win32" name="Git" processorArchitecture="x86" version="0.0.0.0" />
++        <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
++                <security>
++                        <requestedPrivileges>
++                                <requestedExecutionLevel level="asInvoker" uiAccess="false" />
++                        </requestedPrivileges>
++                </security>
++        </trustInfo>
++</assembly>
+diff --git a/compat/win32/resource.rc b/compat/win32/resource.rc
+new file mode 100644
+index 0000000..c2bf4a6
+--- /dev/null
++++ b/compat/win32/resource.rc
+@@ -0,0 +1 @@
++1 24 "git.manifest"
+-- 
+1.7.4.4
