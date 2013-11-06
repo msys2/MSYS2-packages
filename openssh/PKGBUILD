@@ -1,0 +1,66 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=openssh
+pkgver=6.3p1
+pkgrel=1
+pkgdesc='Free version of the SSH connectivity tools'
+url='http://www.openssh.org/portable.html'
+license=('custom:BSD')
+arch=('i686' 'x86_64')
+depends=('openssl' 'libedit' 'libcrypt')
+source=("ftp://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/${pkgname}-${pkgver}.tar.gz"
+        openssh-6.3p1-fix-man-install.patch
+        openssh-6.3p1-msys2.patch)
+sha1sums=('70845ca79474258cab29dbefae13d93e41a83ccb'
+          '3caaf19c16dd13276f96353014826bd40a887a2e'
+          'cb7ba3141fc0f3b2c1fa7c8cf510cb8a2c9fee00')
+
+backup=('etc/ssh/ssh_config')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  patch -p1 -i ${srcdir}/openssh-6.3p1-fix-man-install.patch
+  patch -p1 -i ${srcdir}/openssh-6.3p1-msys2.patch
+}
+
+build() {
+	cd "${srcdir}/${pkgname}-${pkgver}"
+
+	./configure \
+		--build=${CHOST} \
+		--prefix=/usr \
+		--sbindir=/usr/bin \
+		--libexecdir=/usr/lib/ssh \
+		--sysconfdir=/etc/ssh \
+		--with-libedit
+
+	make
+}
+
+check() {
+	cd "${srcdir}/${pkgname}-${pkgver}"
+
+	make tests ||
+	grep $USER /etc/passwd | grep -q /bin/false
+	# connect.sh fails when run with stupid login shell
+}
+
+package() {
+	cd "${srcdir}/${pkgname}-${pkgver}"
+
+	make DESTDIR="${pkgdir}" install
+
+	#ln -sf ssh.1.gz "${pkgdir}"/usr/share/man/man1/slogin.1.gz
+	install -Dm644 LICENCE "${pkgdir}/usr/share/licenses/${pkgname}/LICENCE"
+
+	install -Dm755 contrib/findssl.sh "${pkgdir}"/usr/bin/findssl.sh
+	install -Dm755 contrib/ssh-copy-id "${pkgdir}"/usr/bin/ssh-copy-id
+	install -Dm644 contrib/ssh-copy-id.1 "${pkgdir}"/usr/share/man/man1/ssh-copy-id.1
+
+	mv -f "${pkgdir}"/etc "${pkgdir}"/usr/
+	mv -f "${pkgdir}"/var "${pkgdir}"/usr/
+	rm -f "${pkgdir}"/usr/etc/ssh/sshd_config
+	rm -f "${pkgdir}"/usr/bin/sshd.exe
+	rm -f "${pkgdir}"/usr/sbin/sshd.exe
+	rm -f "${pkgdir}"/usr/lib/ssh/sftp-server.exe
+}
