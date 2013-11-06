@@ -1,0 +1,103 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgbase='guile'
+pkgname=("$pkgbase" "lib${pkgbase}" "lib${pkgbase}-devel")
+pkgver=2.0.9
+pkgrel=1
+pkgdesc="a portable, embeddable Scheme implementation written in C"
+url="http://www.gnu.org/software/guile/"
+arch=(i686 x86_64)
+license=('GPL')
+depends=('gmp' 'libltdl' 'ncurses' 'texinfo' 'libunistring' 'libgc' 'libffi')
+makedepends=('gmp-devel' 'ncurses-devel' 'libunistring-devel' 'libgc-devel' 'libffi-devel')
+install=guile.install
+source=("ftp://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.gz"
+		0002-install-fix.all.patch
+		2.0.9-module-ldflags.patch
+		0003-fix-gnulib.all.patch
+		guile-2.0.9-export-symbols.patch
+		guile-2.0.9-msys2.patch)
+options=('!libtool')
+md5sums=('531839c3fe887382ca9d4774db544d34'
+         'ed5d94a5bcefd1ebedb3dc76f98de4b5'
+         'bf85cd18f7d1c1ab14a02b8eccf6691a'
+         'e480cf9cbbbef9f8198fca3c395fddb5'
+         '4eb6e6498afe1c704026d499046287ab'
+         '599d0f66e6d8d329c99a5784d2d2bcc6')
+
+prepare() {
+  cd "${srcdir}/${pkgbase}-${pkgver}"
+  
+  patch -p1 -i ${srcdir}/0002-install-fix.all.patch
+  patch -p2 -i ${srcdir}/2.0.9-module-ldflags.patch
+  patch -p1 -i ${srcdir}/0003-fix-gnulib.all.patch
+  patch -p1 -i ${srcdir}/guile-2.0.9-export-symbols.patch
+  patch -p1 -i ${srcdir}/guile-2.0.9-msys2.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd "${srcdir}/${pkgbase}-${pkgver}"
+  ./configure --build=${CHOST} \
+    --prefix=/usr \
+	--disable-debug-malloc \
+	--disable-guile-debug \
+	--disable-error-on-warning \
+	--disable-rpath \
+	--enable-deprecated \
+	--enable-networking \
+	--enable-nls \
+	--enable-posix \
+	--enable-regex \
+	--with-threads \
+	--with-modules \
+	--disable-static
+  make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+package_guile() {
+  depends=('libguile')
+  install=${pkgbase}.install
+
+  install -dm755 ${pkgdir}/usr/bin
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  rm -f ${pkgdir}/usr/bin/*.dll
+  rm -f ${pkgdir}/usr/bin/*-config
+  
+  install -dm644 ${pkgdir}/usr/share
+  #cp -rf ${srcdir}/dest/usr/share/doc $pkgdir/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/info ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
+}
+
+package_libguile() {
+  groups=('libraries')
+
+  install -dm755 ${pkgdir}/usr/bin
+  install -Dm755 ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+  install -Dm755 ${srcdir}/dest/usr/lib/*.dll ${pkgdir}/usr/bin/
+  
+  #cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+  install -dm644 ${pkgdir}/usr/lib
+  cp -rf ${srcdir}/dest/usr/lib/guile ${pkgdir}/usr/lib/
+  install -dm644 ${pkgdir}/usr/share
+  cp -rf ${srcdir}/dest/usr/share/guile ${pkgdir}/usr/share/
+}
+
+package_libguile-devel() {
+  depends=('libguile')
+  groups=('development')
+  options=('staticlibs')
+  
+  install -dm755 ${pkgdir}/usr/bin
+  install -Dm755 ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  install -dm644 ${pkgdir}/usr/lib
+  cp -rf ${srcdir}/dest/usr/lib/*.a ${pkgdir}/usr/lib/
+  cp -rf ${srcdir}/dest/usr/lib/pkgconfig ${pkgdir}/usr/lib/
+  install -dm644 ${pkgdir}/usr/share
+  cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
+
+}
