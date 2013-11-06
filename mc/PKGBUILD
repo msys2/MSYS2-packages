@@ -1,0 +1,80 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=mc
+pkgver=4.8.10
+pkgrel=1
+pkgdesc="Midnight Commander is a text based filemanager/shell that emulates Norton Commander"
+arch=('i686' 'x86_64')
+url="http://www.ibiblio.org/mc/"
+license=('GPL')
+depends=(
+    'glib2'
+    'libssh2')
+makedepends=('glib2-devel' 'libssh2-devel')
+optdepends=(
+    'gawk: hp48+ extfs'
+    'aspell: spelling corrections'
+    'cvs: CVS support'
+    'perl: needed by several extfs scripts'
+    'unace: uace extfs'
+    'unarj: uarj extfs'
+    'unrar: urar extfs'
+    'zip: uzip extfs'
+    'p7zip: support for 7zip archives')
+options=('!emptydirs' '!makeflags')
+backup=('etc/mc/edit.indent.rc'
+        'etc/mc/filehighlight.ini'
+        'etc/mc/mcedit.menu'
+        'etc/mc/mc.ext'
+        'etc/mc/mc.keymap'
+        'etc/mc/mc.menu'
+        'etc/mc/sfs.ini')
+source=("http://www.midnight-commander.org/downloads/${pkgname}-${pkgver}.tar.bz2"
+        "fs36962.patch"
+		4.7.5.2-ncursesw-term.h.patch
+		mc-4.8.10-1.src.patch
+		mc-4.8.10-msys2.patch)
+
+prepare() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+
+    patch -Np1 -i "${srcdir}/fs36962.patch"
+	patch -Np2 -i "${srcdir}/4.7.5.2-ncursesw-term.h.patch"
+	patch -Np2 -i "${srcdir}/mc-4.8.10-1.src.patch"
+	patch -Np1 -i "${srcdir}/mc-4.8.10-msys2.patch"
+}
+
+build() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+
+    ./configure --build=${CHOST} \
+	  --prefix=/usr \
+	  --sysconfdir=/etc \
+	  --without-libintl-prefix \
+      --without-libiconv-prefix \
+      --with-screen=ncursesw \
+      --enable-charset \
+	  --libexecdir=/usr/lib
+
+    make
+}
+
+package() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+
+    make DESTDIR="${pkgdir}" install
+	mv -f ${pkgdir}/etc ${pkgdir}/usr/
+
+    # Fix FS#15177
+    sed 's|op_has_zipinfo = 0|op_has_zipinfo = 1|' \
+        -i "${pkgdir}/usr/lib/mc/extfs.d/uzip"
+
+    sed 's#/usr/bin/env python#/usr/bin/python2#' \
+        -i "${pkgdir}/usr/lib/mc/extfs.d/s3+"
+}
+
+md5sums=('eb4bdc23abd4fdfa14911d53d65c8186'
+         '7f7cf5388a5390c2ed49965492f490aa'
+         '5b5e78b598b4405c1c4bcef055c78744'
+         '18b3279dc5663100ee757b5793c5304c'
+         '1f1094202c02faaa42ce215ba6a35a6c')
