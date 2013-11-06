@@ -1,0 +1,55 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=nano
+pkgver=2.3.2
+pkgrel=1
+pkgdesc="Pico editor clone with enhancements"
+arch=('i686' 'x86_64')
+license=('GPL')
+url="http://www.nano-editor.org"
+groups=('base')
+depends=('ncurses' 'sh')
+backup=('etc/nanorc')
+install=nano.install
+source=(http://www.nano-editor.org/dist/v2.3/${pkgname}-${pkgver}.tar.gz
+		2.2.4-wchar.patch
+		nano-2.3.2-fix-ncurses-location.patch
+		nano-2.3.2-msys2.patch
+		nano-2.3.2-winio-fix.patch)
+md5sums=('6451aeae836471cadea8567c44a46c99'
+         '85fd83d3de15f8820bec392a0a938274'
+         '9480df57b2938717880d2d3d687cbdcf'
+         '8bb4295dcd8d024a20f75137da16aa61'
+         '9886bb90344ca16fb12a248674908674')
+
+prepare() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  
+  patch -p2 -i ${srcdir}/2.2.4-wchar.patch
+  patch -p1 -i ${srcdir}/nano-2.3.2-fix-ncurses-location.patch
+  patch -p1 -i ${srcdir}/nano-2.3.2-msys2.patch
+  patch -p1 -i ${srcdir}/nano-2.3.2-winio-fix.patch
+  
+}
+
+build() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  ./configure --build=${CHOST} \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --enable-color \
+	--without-slang \
+    --enable-nanorc \
+    CFLAGS="${CFLAGS} -I/usr/include/ncursesw" \
+    CPPFLAGS="${CPPFLAGS} -I/usr/include/ncursesw"
+
+  make
+}
+
+package() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make DESTDIR=${pkgdir} install
+  install -DTm644 ${srcdir}/${pkgname}-${pkgver}/doc/nanorc.sample ${pkgdir}/etc/nanorc
+  
+  mv -f ${pkgdir}/etc ${pkgdir}/usr/
+}
