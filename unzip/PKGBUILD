@@ -1,0 +1,40 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=unzip
+pkgver=6.0
+pkgrel=1
+pkgdesc="Unpacks .zip archives such as those made by PKZIP"
+arch=('i686' 'x86_64')
+url="http://www.info-zip.org/"
+license=('custom')
+depends=('libbz2' 'bash')
+source=('http://downloads.sourceforge.net/infozip/unzip60.tar.gz')
+md5sums=('62b490407489521db863b523a7f86375')
+
+build() {
+  cd ${srcdir}/${pkgname}${pkgver/./}
+  
+  # set CFLAGS -- from Debian
+  export CFLAGS="$CFLAGS -D_FILE_OFFSET_BITS=64 -DACORN_FTYPE_NFS \
+  -DWILD_STOP_AT_DIR -DLARGE_FILE_SUPPORT -DUNICODE_SUPPORT \
+  -DUNICODE_WCHAR -DUTF8_MAYBE_NATIVE -DNO_LCHMOD -DDATE_FORMAT=DF_YMD \
+  -DUSE_BZIP2 -DNATIVE"
+
+  sed -i "/MANDIR =/s#)/#)/share/#" unix/Makefile
+
+  # make -- from Debian
+  make -f unix/Makefile LOCAL_UNZIP="$CFLAGS" prefix=/usr LF2="" \
+  CC=gcc LD=gcc AS=gcc \
+  D_USE_BZ2=-DUSE_BZIP2 L_BZ2=-lbz2 E=".exe" CP="cp" LN="ln -s" unzips
+}
+
+package() {
+  cd ${srcdir}/${pkgname}${pkgver/./}
+
+  # install -- from Debian
+  make -f unix/Makefile prefix=${pkgdir}/usr INSTALL_PROGRAM="install" install
+
+  # install the license file
+  install -Dm644 LICENSE ${pkgdir}/usr/share/licenses/unzip/LICENSE
+}
+
