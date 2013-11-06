@@ -1,0 +1,53 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=mercurial
+pkgver=2.8
+pkgrel=1
+pkgdesc="A scalable distributed SCM tool"
+arch=('i686' 'x86_64')
+url="http://mercurial.selenic.com/"
+license=('GPL')
+depends=('python2')
+#optdepends=('tk: for the hgk GUI')
+backup=('etc/mercurial/hgrc')
+source=("http://mercurial.selenic.com/release/${pkgname}-${pkgver}.tar.gz"
+        'mercurial.profile'
+		mercurial-2.6.1-msys2.patch)
+md5sums=('76b565f48000e9f331356ab107a5bcbb'
+         '43e1d36564d4c7fbe9a091d3ea370a44'
+         'c4fe47468f6fef63ce1c72d14307d312')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  
+  patch -p1 -i ${srcdir}/mercurial-2.6.1-msys2.patch
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  python2 setup.py install --root="${pkgdir}/" --optimize=1
+
+  sed -i -e 's#env python#env python2#' \
+    "${pkgdir}"/usr/lib/python2.7/site-packages/mercurial/lsprof.py
+
+  install -d ${pkgdir}/usr/share/man/{man1,man5}
+  install -m644 doc/hg.1 "${pkgdir}/usr/share/man/man1"
+  install -m644 doc/{hgrc.5,hgignore.5} "${pkgdir}/usr/share/man/man5"
+  install -m755 contrib/hgk "${pkgdir}/usr/bin"
+  #install -m644 -D contrib/zsh_completion "${pkgdir}/usr/share/zsh/site-functions/_hg"
+  install -m644 -D contrib/bash_completion "${pkgdir}/usr/share/bash-completion/completions/hg"
+  install -d "${pkgdir}/usr/share/emacs/site-lisp"
+  install -m644 contrib/{mq.el,mercurial.el} "${pkgdir}/usr/share/emacs/site-lisp"
+
+  vimpath="${pkgdir}/usr/share/vim/vimfiles"
+  install -Dm644 contrib/vim/HGAnnotate.vim "${vimpath}/syntax/HGAnnotate.vim"
+
+  # set some variables
+  install -m755 -d ${pkgdir}/usr/etc/profile.d
+  install -m755 ${srcdir}/mercurial.profile "${pkgdir}/usr/etc/profile.d/mercurial.sh"
+
+  # install configuration file
+  install -m755 -d ${pkgdir}/usr/etc/mercurial
+  install -m644 contrib/sample.hgrc "${pkgdir}/usr/etc/mercurial/hgrc"
+}
