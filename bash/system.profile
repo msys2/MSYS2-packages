@@ -452,3 +452,5 @@ if [ "$MAYBE_FIRST_START" = "true" ]; then
   echo
   echo
 fi
+unset MAYBE_FIRST_START
+
