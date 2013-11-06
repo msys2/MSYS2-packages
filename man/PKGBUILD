@@ -1,0 +1,54 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=man
+_ver=1.6g
+pkgver=${_ver/[a-z]/.${_ver//[0-9.]/}}
+pkgrel=1
+pkgdesc="Man, apropos, and whatis commands"
+arch=('i686' 'x86_64')
+url="http://primates.ximian.com/~flucifredi/man/"
+license=('GPL' 'LGPL')
+groups=('base')
+depends=('bzip2' 'coreutils' 'gawk' 'groff' 'gzip' 'less' 'libcatgets' 'xz')
+backup=('etc/man.conf')
+#install=${pkgname}.install
+source=(http://primates.ximian.com/~flucifredi/man/man-${_ver}.tar.gz{,.sig}
+        man-1.6g-2.src.patch)
+options=('!libtool' 'emptydirs')
+md5sums=('ba154d5796928b841c9c69f0ae376660'
+         'SKIP'
+         '7171549b20a106f2f69cd4d949c9f445')
+
+prepare() {
+  cd ${srcdir}/${pkgname}-${_ver}
+  patch -p2 -i ${srcdir}/man-1.6g-2.src.patch
+}
+
+build() {
+  cd ${srcdir}/${pkgname}-${_ver}
+  BUILD_CC=gcc \
+  CC=gcc \
+  CFLAGS="${CFLAGS}" \
+  ./configure -prefix=/usr -confdir=/etc -mandir=/usr/share/man +lang all +fhs
+  
+  make CC=gcc -j1 LIBS=-Wl,-dn,-lcatgets,-dy
+}
+
+package() {
+  cd ${srcdir}/${pkgname}-${_ver}
+  make DESTDIR=${pkgdir} -j1 install
+  
+  install -m644 misc/manlint.1 ${pkgdir}/usr/share/man/man1/manlint.1
+  install -m755 misc/manlint ${pkgdir}/usr/bin/manlint
+
+  cat >> ${pkgdir}/usr/share/man/man1/manpath.1 <<-_EOF
+.so man1/man.1
+_EOF
+		
+  cd ${pkgdir}/usr/bin
+  cp -f ${pkgdir}/usr/bin/man.exe ${pkgdir}/usr/bin/manpath.exe
+  
+  mkdir -p ${pkgdir}/usr/var/cache/man
+  mv -f ${pkgdir}/etc ${pkgdir}/usr/
+}
+
