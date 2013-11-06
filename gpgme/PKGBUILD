@@ -1,0 +1,69 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgbase=gpgme
+pkgname=('libgpgme' 'libgpgme-devel')
+pkgver=1.4.3
+pkgrel=1
+pkgdesc="A C wrapper library for GnuPG"
+arch=('i686' 'x86_64')
+url="http://www.gnupg.org/related_software/gpgme/"
+license=('LGPL')
+depends=('libgpg-error' 'gnupg')
+options=('!libtool' '!emptydirs')
+source=(ftp://ftp.gnupg.org/gcrypt/${pkgbase}/${pkgbase}-${pkgver}.tar.bz2{,.sig}
+		1.4.2-without-libassuan.patch
+		gpgme-1.4.2-msys2.patch)
+md5sums=('334e524cffa8af4e2f43ae8afe585672'
+         'SKIP'
+         '06dc75d7c83b6925be6ad00334c51032'
+         '90f0770c35ffd94f52aafe3de6397b85')
+
+prepare() {
+  cd ${srcdir}/${pkgbase}-${pkgver}
+  
+  patch -p2 -i ${srcdir}/1.4.2-without-libassuan.patch
+  patch -p1 -i ${srcdir}/gpgme-1.4.2-msys2.patch
+  
+  ./autogen.sh
+}
+
+build() {
+  cd ${srcdir}/${pkgbase}-${pkgver}
+  ./configure --build=${CHOST} \
+		--prefix=/usr \
+		--with-gpg=/usr/bin/gpg \
+		--without-gpgsm \
+		--without-gpgconf \
+		--without-g13
+
+  make no_undefined=-no-undefined
+  make DESTDIR=${srcdir}/dest install
+}
+
+check() {
+  cd ${srcdir}/${pkgbase}-${pkgver}
+  make check
+}
+
+package_libgpgme() {
+  groups=('libraries')
+  install=${pkgname}.install
+
+  mkdir -p $pkgdir/usr/{bin,share}
+  cp -f ${srcdir}/dest/usr/bin/*.dll $pkgdir/usr/bin/
+  #cp -rf ${srcdir}/dest/usr/share/doc $pkgdir/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/info $pkgdir/usr/share/
+}
+
+package_libgpgme-devel() {
+  groups=('development')
+  options=('staticlibs')
+  
+  mkdir -p $pkgdir/usr/{bin,share}
+  cp -f ${srcdir}/dest/usr/bin/*-config $pkgdir/usr/bin/
+  cp -rf ${srcdir}/dest/usr/include $pkgdir/usr/
+  cp -rf ${srcdir}/dest/usr/lib $pkgdir/usr/
+  cp -rf ${srcdir}/dest/usr/share/aclocal $pkgdir/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/common-lisp $pkgdir/usr/share/
+
+}
