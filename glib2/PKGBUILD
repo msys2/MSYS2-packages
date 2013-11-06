@@ -1,0 +1,144 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgbase=glib2
+pkgname=(glib2 glib2-devel glib2-docs)
+pkgver=2.38.1
+pkgrel=1
+pkgdesc="Common C routines used by GTK+ and other libs"
+url="http://www.gtk.org/"
+arch=('i686' 'x86_64')
+makedepends=('pkg-config' 'python2' 'libxslt' 'docbook-xml' 'libpcre' 'libffi')
+source=(http://ftp.gnome.org/pub/GNOME/sources/glib/${pkgver%.*}/glib-$pkgver.tar.xz
+        revert-warn-glib-compile-schemas.patch
+		2.16-tests.patch
+		2.24.1-gmodule.patch
+		2.34.3-m4macros.patch
+		2.36.3-gcredentials-cygwin.patch
+		2.36.3-not-win32.patch
+		2.36.3-visibility.patch
+		glib-2.38.1-msys2.patch)
+sha256sums=('01906c62ac666d2ab3183cc07261b2536fab7b211c6129ab66b119c2af56d159'
+            '049240975cd2f1c88fbe7deb28af14d4ec7d2640495f7ca8980d873bb710cc97'
+            '3bfcc379e2d8b893e2c7e419442a006886568ab960f5aea6044cbfe28f9f9e4f'
+            'bc1d90c66e4eed39fe4c5720c966e3dd44451df1de676c028cca6f7b06dcfd3a'
+            '9095183f944334e2d02ca67b363d43ea7508c2b02c6e91905160786e7bccbaa7'
+            '2c6a6dd89501ec4cf653ad19c2f751de56b62b2228f8729578d2afda9dc02d33'
+            '6a0dd9bb6cddf8a6b811a3509582f46ad15bbbfa15150bee85aed74b5ef57f76'
+            '23a544c39a8596dfcd59b0226a3228d04c288c2023f6069942c3a76b8397e93b'
+            '34050b0a2ac2ed82572e32c0103d2ebd1f468a80a94917667f57edef5d0f62ad')
+
+prepare() {
+  cd glib-$pkgver
+  patch -Rp1 -i ../revert-warn-glib-compile-schemas.patch
+  
+  patch -p2 -i ${srcdir}/2.16-tests.patch
+  patch -p2 -i ${srcdir}/2.24.1-gmodule.patch
+  patch -p2 -i ${srcdir}/2.34.3-m4macros.patch
+  patch -p2 -i ${srcdir}/2.36.3-gcredentials-cygwin.patch
+  patch -p2 -i ${srcdir}/2.36.3-not-win32.patch
+  patch -p2 -i ${srcdir}/2.36.3-visibility.patch
+  patch -p1 -i ${srcdir}/glib-2.38.1-msys2.patch
+  
+  autoreconf -fi
+}
+  
+build() {
+  cd glib-$pkgver
+  ./configure --build=${CHOST} \
+      --prefix=/usr \
+      --disable-libelf \
+      --with-libiconv=gnu \
+      --with-pcre=system \
+      --with-threads=posix \
+      ac_cv_header_winsock2_h=no \
+      ac_cv_header_mswsock_h=no
+  make
+  
+  make completiondir=/usr/share/bash-completion/completions DESTDIR="$srcdir/dest" install
+  pushd $srcdir/dest/usr/share/gdb/auto-load > /dev/null
+	mv libglib* msys-glib-2.0-0.dll-gdb.py
+	mv libgobject* msys-gobject-2.0-0.dll-gdb.py
+  popd > /dev/null
+}
+
+check() {
+  cd glib-$pkgver
+  #make -k check || :
+}
+
+package_glib2() {
+  depends=('pcre' 'libffi')
+  optdepends=('python2: for gdbus-codegen and gtester-report')
+  options=('!docs' '!emptydirs')
+  license=('LGPL')
+
+  #cd glib-$pkgver
+  #make completiondir=/usr/share/bash-completion/completions DESTDIR="$pkgdir" install
+
+  mkdir -p $pkgdir/usr/{bin,lib,share}
+  cp -f $srcdir/dest/usr/bin/*.dll $pkgdir/usr/bin/
+  for file in gdbus gio-querymodules glib-compile-schemas gobject-query gsettings; do
+    cp -f $srcdir/dest/usr/bin/${file}.exe $pkgdir/usr/bin/
+  done
+  
+  cp -rf $srcdir/dest/usr/lib/gio $pkgdir/usr/lib/
+  #cp -rf $srcdir/dest/usr/share/doc $pkgdir/usr/share/
+  cp -rf $srcdir/dest/usr/share/gdb $pkgdir/usr/share/
+  
+  mkdir -p $pkgdir/usr/share/{man,glib-2.0}
+  cp -rf $srcdir/dest/usr/share/glib-2.0/gdb $pkgdir/usr/share/glib-2.0/
+  cp -rf $srcdir/dest/usr/share/glib-2.0/schemas $pkgdir/usr/share/glib-2.0/
+  cp -rf $srcdir/dest/usr/share/locale $pkgdir/usr/share/
+  mkdir -p $pkgdir/usr/share/man/man1
+  cp -rf $srcdir/dest/usr/share/man/man1/gdbus.* $pkgdir/usr/share/man/man1/
+  cp -rf $srcdir/dest/usr/share/man/man1/gio* $pkgdir/usr/share/man/man1/
+  cp -rf $srcdir/dest/usr/share/man/man1/glib-compile-schemas* $pkgdir/usr/share/man/man1/
+  cp -rf $srcdir/dest/usr/share/man/man1/gobject* $pkgdir/usr/share/man/man1/
+  cp -rf $srcdir/dest/usr/share/man/man1/gsettings.* $pkgdir/usr/share/man/man1/
+  
+  cp -rf $srcdir/dest/usr/share/bash-completion $pkgdir/usr/share/
+  
+  for _i in "$pkgdir/usr/share/bash-completion/completions/"*; do
+      chmod -x "$_i"
+  done
+}
+
+package_glib2-devel() {
+  pkgdesc="glib2 headers and libraries"
+  groups=('development')
+  
+  mkdir -p $pkgdir/usr/{bin,lib,share}
+  cp -f $srcdir/dest/usr/bin/gdbus-codegen $pkgdir/usr/bin/
+  cp -f $srcdir/dest/usr/bin/glib-* $pkgdir/usr/bin/
+  cp -f $srcdir/dest/usr/bin/gresource* $pkgdir/usr/bin/
+  cp -f $srcdir/dest/usr/bin/gtester* $pkgdir/usr/bin/
+  
+  cp -rf $srcdir/dest/usr/lib/pkgconfig $pkgdir/usr/lib/
+  cp -f $srcdir/dest/usr/lib/*.a $pkgdir/usr/lib/
+  
+  cp -rf $srcdir/dest/usr/include $pkgdir/usr/
+  cp -rf $srcdir/dest/usr/share/aclocal $pkgdir/usr/share/
+  cp -rf $srcdir/dest/usr/share/glib-2.0 $pkgdir/usr/share/
+  
+  mkdir -p $pkgdir/usr/share/man/man1
+  cp -rf $srcdir/dest/usr/share/man/man1/gdbus-codegen* $pkgdir/usr/share/man/man1/
+  cp -rf $srcdir/dest/usr/share/man/man1/glib-* $pkgdir/usr/share/man/man1/
+  cp -rf $srcdir/dest/usr/share/man/man1/gresource* $pkgdir/usr/share/man/man1/
+  cp -rf $srcdir/dest/usr/share/man/man1/gtester* $pkgdir/usr/share/man/man1/
+
+}
+
+package_glib2-docs() {
+  pkgdesc="Documentation for glib2"
+  conflicts=('gobject2-docs')
+  replaces=('gobject2-docs')
+  license=('custom')
+  options=('docs' '!emptydirs')
+  
+  cd glib-$pkgver/docs
+  make DESTDIR="${pkgdir}" install
+  install -m755 -d "${pkgdir}/usr/share/licenses/glib2-docs"
+  install -m644 reference/COPYING "${pkgdir}/usr/share/licenses/glib2-docs/"
+
+  rm -rf "${pkgdir}/usr/share/man"
+}
