@@ -1,0 +1,85 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgbase=gc
+pkgname=('libgc' 'libgc-devel' 'libatomic_ops-devel')
+pkgver=7.2.d
+pkgrel=1
+pkgdesc="A garbage collector for C and C++"
+arch=('i686' 'x86_64')
+gropus=('libraries')
+url="http://www.hpl.hp.com/personal/Hans_Boehm/gc/"
+license=('GPL')
+source=("http://www.hpl.hp.com/personal/Hans_Boehm/gc/gc_source/${pkgbase}-7.2d.tar.gz"
+		gc-7.2-msys2.patch
+		gc-7.2d-patch64.diff)
+depends=('gcc-libs')
+options=('!libtool')
+md5sums=('91340b28c61753a789eb6077675d87d2'
+         '863ef4700d7f92262f3b282a44316654'
+         'db2dd5909ea0701aa6de2b8153c0b4a4')
+
+prepare() {
+  cd "${srcdir}/${pkgbase}-7.2"
+  
+  patch -p2 -i ${srcdir}/gc-7.2d-patch64.diff
+  patch -p1 -i ${srcdir}/gc-7.2-msys2.patch
+}
+
+build() {
+  cd "${srcdir}/${pkgbase}-7.2"
+  ./configure --build=${CHOST} \
+    --prefix=/usr \
+	--enable-cplusplus \
+	--enable-threads=pthreads \
+	--without-libatomic-ops \
+	--disable-static
+  make
+  
+  # Install to dest
+  make DESTDIR="${srcdir}/dest" install
+  cd libatomic_ops
+  make DESTDIR="${srcdir}/dest" install
+  cd ..
+  
+  rm -rf "${srcdir}/dest/usr/share/gc"
+  install -m755 -d "${srcdir}/dest/usr/share/doc/gc"
+  install -m644 doc/README{,.{changes,contributors,environment,win32}} \
+    "${srcdir}/dest/usr/share/doc/gc/"
+
+  sed -i -e 's/GC_MALLOC 1L/gc 3/' doc/gc.man
+  install -m755 -d "${srcdir}/dest/usr/share/man/man3"
+  install -m644 doc/gc.man "${srcdir}/dest/usr/share/man/man3/gc.3"
+}
+
+package_libgc() {
+  mkdir -p $pkgdir/usr/{bin,share}
+  cp -f ${srcdir}/dest/usr/bin/*.dll $pkgdir/usr/bin/
+  cp -rf ${srcdir}/dest/usr/share/man $pkgdir/usr/share/
+}
+
+package_libgc-devel() {
+  groups=('development')
+  options=('staticlibs')
+  depends=('libgc')
+  
+  mkdir -p $pkgdir/usr/{lib,include}
+  cp -rf ${srcdir}/dest/usr/include/gc $pkgdir/usr/include
+  cp -f ${srcdir}/dest/usr/include/gc*.h $pkgdir/usr/include/
+  
+  cp -f ${srcdir}/dest/usr/lib/lib{cord,gc}*.a $pkgdir/usr/lib/
+  mkdir -p $pkgdir/usr/lib/pkgconfig
+  cp -f ${srcdir}/dest/usr/lib/pkgconfig/bdw-gc.pc $pkgdir/usr/lib/pkgconfig/
+}
+
+package_libatomic_ops-devel() {
+  groups=('development')
+  options=('staticlibs')
+
+  mkdir -p $pkgdir/usr/{lib,include}
+  cp -rf ${srcdir}/dest/usr/include/atomic_ops $pkgdir/usr/include
+  cp -f ${srcdir}/dest/usr/include/atomic_ops*.h $pkgdir/usr/include/
+  
+  cp -f ${srcdir}/dest/usr/lib/libatomic_ops*.a $pkgdir/usr/lib/
+  mkdir -p $pkgdir/usr/lib/pkgconfig
+  cp -f ${srcdir}/dest/usr/lib/pkgconfig/atomic_ops.pc $pkgdir/usr/lib/pkgconfig/
+}
