@@ -1,0 +1,80 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=p7zip
+pkgver=9.20.1
+pkgrel=1
+pkgdesc='Command-line version of the 7zip compressed file archiver'
+url='http://p7zip.sourceforge.net/'
+license=('GPL' 'custom')
+arch=('i686' 'x86_64')
+depends=('gcc-libs' 'bash')
+makedepends=('nasm')
+options=('emptydirs')
+source=("http://downloads.sourceforge.net/project/${pkgname}/${pkgname}/${pkgver}/${pkgname}_${pkgver}_src_all.tar.bz2"
+		01_makefile_9.20.1.patch
+		02_man_9.20.1.patch
+		03_respect-umask-partial_9.20.1.patch
+		p7zip-9.20.1-1.src.patch)
+sha1sums=('1cd567e043ee054bf08244ce15f32cb3258306b7'
+          '4ec01e226688a64775cebc1f9c6b0b8fe38ee12a'
+          'd071a69f00886d56e6546257715c9201547d4709'
+          'b0ba244d6e59e348b0bc809e7ec2da1178c58744'
+          '6cad4cfa5e3f78b91e7e27863000bbeb7efbd3e9')
+
+options=('!makeflags')
+
+prepare() {
+  cd "${srcdir}/${pkgname}_${pkgver}"
+	
+  patch -p1 -i ${srcdir}/01_makefile_9.20.1.patch
+  patch -p1 -i ${srcdir}/02_man_9.20.1.patch
+  patch -p1 -i ${srcdir}/03_respect-umask-partial_9.20.1.patch
+  patch -p1 -i ${srcdir}/p7zip-9.20.1-1.src.patch
+	
+  [[ $CARCH = x86_64 ]] \
+    && cp makefile.cygwin makefile.machine \
+    || cp makefile.cygwin_asm makefile.machine
+}
+
+build() {
+  cd "${srcdir}/${pkgname}_${pkgver}"
+  make all3 OPTFLAGS="${CXXFLAGS}"
+}
+
+check() {
+  cd "${srcdir}/${pkgname}_${pkgver}"
+  make test
+  make test_7z
+  make test_7zr
+}
+
+package() {
+  cd "${srcdir}/${pkgname}_${pkgver}"
+  
+  #local sedexp1="s,^DEST_DIR=.*\$,DEST_DIR=${D},";
+  #local sedexp2="s,^EXEEXT=.*\$,EXEEXT=.exe,";
+
+  #mv -f install.sh install.sh.orig
+  #cat install.sh.orig | sed -e "$sedexp1" -e "$sedexp2" > ./install.sh
+  #chmod +x install.sh
+  #./install.sh
+	
+  make install \
+    DEST_DIR="${pkgdir}" \
+    DEST_HOME="/usr" \
+    DEST_MAN="/usr/share/man"
+
+  # Licenses
+  #install -d "${pkgdir}"/usr/share/licenses/p7zip
+  #ln -s -t "${pkgdir}"/usr/share/licenses/p7zip \
+  #	/usr/share/doc/p7zip/DOCS/License.txt \
+  #	/usr/share/doc/p7zip/DOCS/unRarLicense.txt
+	
+  #cp contrib/gzip-like_CLI_wrapper_for_7z/README ${B}/p7zip-script.README
+  #dodoc p7zip-script.README
+
+  install -Dm755 contrib/gzip-like_CLI_wrapper_for_7z/p7zip ${pkgdir}/usr/bin/p7zip
+  install -Dm644 contrib/gzip-like_CLI_wrapper_for_7z/man1/p7zip.1 ${pkgdir}/usr/share/man/man1/p7zip.1
+
+  chmod -R u+w "${pkgdir}/usr"
+}
