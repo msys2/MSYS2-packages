@@ -1,0 +1,72 @@
+Fix linking for perl.
+
+From: David Rothenberger <daveroth@acm.org>
+
+
+---
+ Makefile.in             |    1 +
+ build.conf              |    7 ++-----
+ build/ac-macros/swig.m4 |    6 ++++++
+ 3 files changed, 9 insertions(+), 5 deletions(-)
+
+diff --git a/Makefile.in b/Makefile.in
+index 5ad1ecb..127b825 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -137,6 +137,7 @@ SWIG_PY_COMPILE = @SWIG_PY_COMPILE@
+ SWIG_PY_LINK = @SWIG_PY_LINK@
+ SWIG_PY_LIBS = @SWIG_PY_LIBS@
+ SWIG_PL_INCLUDES = @SWIG_PL_INCLUDES@
++SWIG_PL_LIBS = @SWIG_PL_LIBS@
+ SWIG_RB_INCLUDES = @SWIG_RB_INCLUDES@ -I$(SWIG_SRC_DIR)/ruby/libsvn_swig_ruby
+ SWIG_RB_COMPILE = @SWIG_RB_COMPILE@
+ SWIG_RB_LINK = @SWIG_RB_LINK@
+diff --git a/build.conf b/build.conf
+index 5136b41..73b925d 100644
+--- a/build.conf
++++ b/build.conf
+@@ -514,7 +514,8 @@ msvc-static = no
+ type = swig_lib
+ lang = perl
+ path = subversion/bindings/swig/perl/libsvn_swig_perl
+-libs = libsvn_delta libsvn_subr apriconv apr perl
++libs = libsvn_delta libsvn_subr apriconv apr
++link-cmd = $(LINK) $(SWIG_PL_LIBS)
+ install = swig-pl-lib
+ # need special build rule to include
+ compile-cmd = $(COMPILE_SWIG_PL)
+@@ -1207,10 +1208,6 @@ type = lib
+ external-lib = $(SVN_FS_LIB_LINK)
+ libs = libsvn_fs_base libsvn_fs_fs
+ 
+-[perl]
+-type = lib
+-external-lib = -L/usr/lib/perl5/5.14/i686-cygwin-threads-64int/CORE -lperl
+-
+ [mod_dav]
+ type = lib
+ external-lib = -Wl,`$(APXS) -q libexecdir`/mod_dav.so
+diff --git a/build/ac-macros/swig.m4 b/build/ac-macros/swig.m4
+index 70b829d..b73a935 100644
+--- a/build/ac-macros/swig.m4
++++ b/build/ac-macros/swig.m4
+@@ -174,6 +174,11 @@ AC_DEFUN(SVN_FIND_SWIG,
+     AC_MSG_RESULT([$PERL_VERSION])
+     if test "$PERL_VERSION" -ge "5008000"; then
+       SWIG_PL_INCLUDES="\$(SWIG_INCLUDES) `$PERL -MExtUtils::Embed -e ccopts`"
++
++      AC_CACHE_CHECK([how to link Perl libraries], [ac_cv_perl_libs], [
++        ac_cv_perl_libs="`$PERL -MExtUtils::Embed -e ldopts`"
++      ])
++      SWIG_PL_LIBS="`SVN_REMOVE_STANDARD_LIB_DIRS($ac_cv_perl_libs)`"
+     else
+       AC_MSG_WARN([perl bindings require perl 5.8.0 or newer.])
+     fi
+@@ -294,6 +299,7 @@ int main()
+   AC_SUBST(SWIG_PY_LINK)
+   AC_SUBST(SWIG_PY_LIBS)
+   AC_SUBST(SWIG_PL_INCLUDES)
++  AC_SUBST(SWIG_PL_LIBS)
+   AC_SUBST(SWIG_RB_LINK)
+   AC_SUBST(SWIG_RB_LIBS)
+   AC_SUBST(SWIG_RB_INCLUDES)

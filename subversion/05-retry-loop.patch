@@ -1,0 +1,96 @@
+Use WIN32 retry loop on Cygwin, too.
+
+From: David Rothenberger <d.rothenberger@entomo.com>
+
+
+---
+ subversion/libsvn_subr/io.c |   25 +++++++++++++++++++++----
+ 1 files changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/subversion/libsvn_subr/io.c b/subversion/libsvn_subr/io.c
+index 7c17169..1b62056 100644
+--- a/subversion/libsvn_subr/io.c
++++ b/subversion/libsvn_subr/io.c
+@@ -29,6 +29,10 @@
+ #include <unistd.h>
+ #endif
+ 
++#ifdef __CYGWIN__
++#include <errno.h>
++#endif
++
+ #ifndef APR_STATUS_IS_EPERM
+ #include <errno.h>
+ #ifdef EPERM
+@@ -134,6 +138,12 @@
+                          || os_err == ERROR_SHARING_VIOLATION              \
+                          || os_err == ERROR_DIR_NOT_EMPTY),                \
+              1)
++#elif defined(__CYGWIN__)
++#define WIN32_RETRY_LOOP(err, expr)                                        \
++  RETRY_LOOP(err, expr, (os_err == EBUSY                                   \
++                         || os_err == EACCES                               \
++                         || os_err == ENOTEMPTY),                          \
++             1)
+ #else
+ #define WIN32_RETRY_LOOP(err, expr) ((void)0)
+ #endif
+@@ -2268,6 +2278,7 @@ svn_io_remove_file2(const char *path,
+               || SVN__APR_STATUS_IS_ENOTDIR(apr_err))))
+     return SVN_NO_ERROR;
+ 
++#if defined(WIN32) || defined(__CYGWIN__)
+ #ifdef WIN32
+   /* If the target is read only NTFS reports EACCESS and FAT/FAT32
+      reports EEXIST */
+@@ -2281,11 +2292,15 @@ svn_io_remove_file2(const char *path,
+       if (!apr_err)
+         return SVN_NO_ERROR;
+     }
+-
++#endif
+     {
+       apr_status_t os_err = APR_TO_OS_ERROR(apr_err);
+       /* Check to make sure we aren't trying to delete a directory */
++#ifdef WIN32
+       if (os_err == ERROR_ACCESS_DENIED || os_err == ERROR_SHARING_VIOLATION)
++#else
++      if (os_err == EACCES)
++#endif
+         {
+           apr_finfo_t finfo;
+ 
+@@ -3618,20 +3633,22 @@ svn_io_file_rename(const char *from_path, const char *to_path,
+ 
+   status = apr_file_rename(from_path_apr, to_path_apr, pool);
+ 
+-#if defined(WIN32) || defined(__OS2__)
++#if defined(WIN32) || defined(__OS2__) || defined(__CYGWIN__)
+   /* If the target file is read only NTFS reports EACCESS and
+      FAT/FAT32 reports EEXIST */
+   if (APR_STATUS_IS_EACCES(status) || APR_STATUS_IS_EEXIST(status))
+     {
++#ifndef __CYGWIN__
+       /* Set the destination file writable because Windows will not
+          allow us to rename when to_path is read-only, but will
+          allow renaming when from_path is read only. */
+       SVN_ERR(svn_io_set_file_read_write(to_path, TRUE, pool));
++#endif
+ 
+       status = apr_file_rename(from_path_apr, to_path_apr, pool);
+     }
+   WIN32_RETRY_LOOP(status, apr_file_rename(from_path_apr, to_path_apr, pool));
+-#endif /* WIN32 || __OS2__ */
++#endif /* WIN32 || __OS2__ || __CYGWIN__ */
+ 
+   if (status)
+     return svn_error_wrap_apr(status, _("Can't move '%s' to '%s'"),
+@@ -3746,7 +3763,7 @@ dir_make(const char *path, apr_fileperms_t perm,
+ /* Windows does not implement sgid. Skip here because retrieving
+    the file permissions via APR_FINFO_PROT | APR_FINFO_OWNER is documented
+    to be 'incredibly expensive'. */
+-#ifndef WIN32
++#if !defined(WIN32) && !defined(__CYGWIN__)
+   if (sgid)
+     {
+       apr_finfo_t finfo;
