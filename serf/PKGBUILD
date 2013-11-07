@@ -1,0 +1,74 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgbase=serf
+pkgname=("lib${pkgbase}" "lib${pkgbase}-devel")
+pkgver=1.3.2
+pkgrel=1
+pkgdesc="High-performance asynchronous HTTP client library"
+arch=('i686' 'x86_64')
+url="http://code.google.com/p/serf/"
+groups=('libraries')
+license=('Apache')
+depends=('apr-util')
+makedepends=('scons')
+options=('staticlibs')
+source=(http://serf.googlecode.com/files/${pkgbase}-${pkgver}.tar.bz2
+		03-destdir.patch
+		05-disable-SHLIBVERSION.patch
+		06-strcasecmp.patch)
+md5sums=('43ce30fccf39ab0186a7590e2733e3ec'
+         'cb0cc5190fc77c349a8a3ccc0892bc37'
+         '4ef49148ee9e19bb718de41294b5643c'
+         '21cf6762552937c3128161b1397d0ff2')
+
+prepare() {
+  cd ${pkgbase}-${pkgver}
+  
+  patch -p1 -i ${srcdir}/03-destdir.patch
+  patch -p2 -i ${srcdir}/05-disable-SHLIBVERSION.patch
+  patch -p2 -i ${srcdir}/06-strcasecmp.patch
+}
+
+build() {
+  cd ${pkgbase}-${pkgver}
+  scons PREFIX=/usr \
+        CFLAGS="${CFLAGS}"
+		
+  install -d "${srcdir}/dest/usr"
+  scons DESTDIR="${srcdir}/dest" install
+  
+  versions=($(echo ${pkgver} | tr -t '.' '\n'))
+  major=${versions[0]}
+  minor=${versions[1]}
+
+  # Rename the libraries
+  mv ${srcdir}/dest/usr/lib/libserf-${major}-0.dll.a ${srcdir}/dest/usr/lib/libserf-${major}.dll.a
+  mv ${srcdir}/dest/usr/lib/libserf-${major}-0.a ${srcdir}/dest/usr/lib/libserf-${major}.a
+
+  # Install the DLL
+  rm ${srcdir}/dest/usr/lib/msys-serf-${major}-0.dll
+  install -Dm755 msys-serf-${major}-0.dll ${srcdir}/dest/usr/bin/msys-serf-${major}-0.dll
+}
+
+check() {
+  cd ${pkgbase}-${pkgver}
+  scons check
+}
+
+package_libserf() {
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -rf ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+}
+
+package_libserf-devel() {
+  pkgdesc="Libserf headers and libraries"
+  groups=('development')
+  depends=('libserf')
+  options=('staticlibs')
+ 
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
