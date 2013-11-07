@@ -1,0 +1,45 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=rsync
+pkgver=3.1.0
+pkgrel=1
+pkgdesc="A file transfer program to keep remote files in sync"
+arch=('i686' 'x86_64')
+url="http://samba.anu.edu.au/rsync/"
+license=('GPL3')
+depends=('perl' 'popt')
+backup=('etc/rsyncd.conf' 'etc/xinetd.d/rsync')
+source=("http://rsync.samba.org/ftp/rsync/$pkgname-$pkgver.tar.gz"
+        "http://rsync.samba.org/ftp/rsync/$pkgname-$pkgver.tar.gz.asc"
+        rsync-3.1.0-msys2.patch)
+md5sums=('3be148772a33224771a8d4d2a028b132'
+         'SKIP'
+         '6964f315300b3cfe8f663d1386628368')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  
+  patch -p1 -i ${srcdir}/rsync-3.1.0-msys2.patch
+  
+  autoreconf -fi
+}
+
+build() {
+	cd "$srcdir/$pkgname-$pkgver"
+	./configure --prefix=/usr \
+		--with-included-popt=no \
+		--with-included-zlib=no \
+		--disable-debug
+	make man all
+}
+
+check() {
+	cd "$srcdir/$pkgname-$pkgver"
+	make test
+}
+
+package() {
+	cd "$srcdir/$pkgname-$pkgver"
+	make DESTDIR="$pkgdir" install
+	install -Dm755 support/rrsync "$pkgdir/usr/lib/rsync/rrsync"
+}
