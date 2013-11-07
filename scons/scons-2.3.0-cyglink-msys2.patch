@@ -128,9 +128,11 @@ diff -Naur scons-2.3.0-orig/engine/SCons/Tool/__init__.py scons-2.3.0/engine/SCo
      else:
          "prefer GNU tools on all other platforms"
          linkers = ['gnulink', 'mslink', 'ilink']
-diff -Naur scons-2.3.0-orig/engine/SCons/Tool/cyglink.py scons-2.3.0/engine/SCons/Tool/cyglink.py
---- scons-2.3.0-orig/engine/SCons/Tool/cyglink.py	1970-01-01 03:00:00.000000000 +0300
-+++ scons-2.3.0/engine/SCons/Tool/cyglink.py	2013-07-25 23:43:21.700195300 +0400
+diff --git a/engine/SCons/Tool/cyglink.py b/engine/SCons/Tool/cyglink.py
+new file mode 100644
+index 0000000..87716cf
+--- /dev/null
++++ scons-2.3.0/engine/SCons/Tool/cyglink.py
 @@ -0,0 +1,94 @@
 +"""SCons.Tool.cyglink
 +
@@ -178,8 +180,8 @@ diff -Naur scons-2.3.0-orig/engine/SCons/Tool/cyglink.py scons-2.3.0/engine/SCon
 +    
 +    # Remove any "lib" after the prefix
 +    pre = env.subst('$SHLIBPREFIX')
-+    if dll_name[len(pre):len(pre)+3] == 'lib':
-+        dll_name = pre + dll_name[len(pre)+3:]
++    if dll.name[len(pre):len(pre)+3] == 'lib':
++        dll.name = pre + dll.name[len(pre)+3:]
 +
 +    orig_target = target
 +    target = [env.fs.File(dll)]
@@ -277,7 +279,7 @@ diff -Naur scons-2.3.0-orig/engine/SCons/Tool/hpc++.py scons-2.3.0/engine/SCons/
 diff -Naur scons-2.3.0-orig/engine/SCons/Tool/msyslink.py scons-2.3.0/engine/SCons/Tool/msyslink.py
 --- scons-2.3.0-orig/engine/SCons/Tool/msyslink.py	1970-01-01 03:00:00.000000000 +0300
 +++ scons-2.3.0/engine/SCons/Tool/msyslink.py	2013-07-25 23:49:10.017578100 +0400
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,94 @@
 +"""SCons.Tool.msyslink
 +
 +Customization of gnulink for MSYS
@@ -324,10 +326,8 @@ diff -Naur scons-2.3.0-orig/engine/SCons/Tool/msyslink.py scons-2.3.0/engine/SCo
 +    
 +    # Remove any "lib" after the prefix
 +    pre = env.subst('$SHLIBPREFIX')
-+    dll_name = str(dll)
-+    if dll_name[len(pre):len(pre)+3] == 'lib':
-+        dll_name = pre + dll_name[len(pre)+3:]
-+        dll = env.fs.File(dll_name)
++    if dll.name[len(pre):len(pre)+3] == 'lib':
++        dll.name = pre + dll.name[len(pre)+3:]
 +
 +    orig_target = target
 +    target = [env.fs.File(dll)]
@@ -374,6 +374,29 @@ diff -Naur scons-2.3.0-orig/engine/SCons/Tool/msyslink.py scons-2.3.0/engine/SCo
 +# indent-tabs-mode:nil
 +# End:
 +# vim: set expandtab tabstop=4 shiftwidth=4:
+diff --git a/engine/SCons/Tool/link.py b/engine/SCons/Tool/link.py
+index 008a7d7..173f091 100644
+--- a/engine/SCons/Tool/link.py
++++ b/engine/SCons/Tool/link.py
+@@ -127,6 +127,18 @@ def shlib_emitter_names(target, source, env):
+                     print "shlib_emitter_names: side effect: ", name
+                 # add version_name to list of names to be a Side effect
+                 version_names.append(version_name)
++            elif platform in ['cygwin', 'msys']:
++                shlib_suffix = env.subst('$SHLIBSUFFIX')
++                name = target[0].name
++                # generate library name with the version number
++                suffix_re = re.escape(shlib_suffix)
++                version_name = re.sub(suffix_re, '-' + re.sub('\.', '-', version) + shlib_suffix, name)
++                if Verbose:
++                    print "shlib_emitter_names: target is ", version_name
++                    print "shlib_emitter_names: side effect: ", name
++                # add version_name to list of names to be a Side effect
++                version_names.append(version_name)
++                
+     except KeyError:
+         version = None
+     return version_names
 diff -Naur scons-2.3.0-orig/engine/SCons/Util.py scons-2.3.0/engine/SCons/Util.py
 --- scons-2.3.0-orig/engine/SCons/Util.py	2013-03-03 18:48:40.000000000 +0400
 +++ scons-2.3.0/engine/SCons/Util.py	2013-07-25 23:36:54.231445300 +0400
