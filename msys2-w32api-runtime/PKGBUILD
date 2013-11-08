@@ -1,0 +1,83 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('msys2-w32api-runtime')
+_ver_base=4.0.0
+pkgver=4.0.0.6365
+pkgrel=1
+pkgdesc="Win32 API import libs for MSYS2 toolchain"
+arch=('i686' 'x86_64')
+url="http://mingw-w64.sourceforge.net/"
+license=('custom')
+groups=('base-devel')
+depends=('msys2-w32api-headers')
+makedepends=('subversion')
+provides=($pkgname)
+conflicts=($pkgname)
+source=('msys2-w32api-runtime'::'svn://svn.code.sf.net/p/mingw-w64/code/trunk/mingw-w64-crt')
+md5sums=(SKIP)
+
+MINGW_CHOST=${CARCH}-w64-mingw32
+
+change_path() {
+  ORIG_PATH=$PATH
+ 
+  case ${CARCH} in
+    i686)
+      export PATH=/mingw32/bin:$PATH
+    ;;
+    x86_64)
+      export PATH=/mingw64/bin:$PATH
+    ;;
+  esac
+}
+
+restore_path () {
+  export PATH=$ORIG_PATH
+  unset ORIG_PATH
+}
+
+pkgver() {
+  cd "$srcdir/$pkgname"
+  local ver="$(svnversion)"
+  printf "%s.%s" "${_ver_base}" "${ver//[[:alpha:]]}"
+  
+}
+ 
+build() {
+  cd $srcdir/$pkgname
+  
+  local _libs=
+  case ${CARCH} in
+    i686)
+      _libs="--enable-lib32 --disable-lib64"
+    ;;
+    x86_64)
+      _libs="--enable-lib64 --disable-lib32"
+    ;;
+  esac
+
+  change_path
+  ./configure --build=${MINGW_CHOST} \
+     --target=${MINGW_CHOST} \
+     --host=${MINGW_CHOST} \
+     --prefix=${srcdir}/dest \
+	 --enable-w32api \
+	 ${_libs} \
+	 CFLAGS='-I/usr/include/w32api' \
+	 CXXFLAGS='-I/usr/include/w32api' \
+	 CPPFLAGS='-I/usr/include/w32api'
+
+  make
+  restore_path
+}
+
+package() {
+  cd $srcdir/$pkgname
+  
+  change_path
+  make install
+  restore_path
+  
+  mkdir -p $pkgdir/usr
+  cp -rf ${srcdir}/dest/* $pkgdir/usr/
+}
