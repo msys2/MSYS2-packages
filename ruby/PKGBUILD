@@ -1,0 +1,80 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('ruby' 'ruby-docs')
+pkgver=2.0.0_p247
+pkgrel=1
+arch=('i686' 'x86_64')
+url='http://www.ruby-lang.org/en/'
+license=('BSD' 'custom')
+makedepends=('openssl' 'libffi' 'doxygen' 'libyaml')
+options=('!emptydirs' '!makeflags' 'staticlibs')
+source=("http://cache.ruby-lang.org/pub/ruby/${pkgver%.*}/ruby-${pkgver//_/-}.tar.bz2"
+        'gemrc'
+		'ruby-2.0.0-p195-msys2-full.patch')
+md5sums=('60913f3eec0c4071f44df42600be2604'
+         '6fb8e7a09955e0f64be3158fb4a27e7a'
+         '44a37623e4607f21ca01207d7640bd99')
+
+prepare() {
+  cd ruby-${pkgver//_/-}
+  
+  patch -p1 -i ${srcdir}/ruby-2.0.0-p195-msys2-full.patch
+  autoreconf -fi
+}
+
+build() {
+  cd ruby-${pkgver//_/-}
+
+  PKG_CONFIG=/usr/bin/pkg-config ./configure \
+    --build=${CHOST} \
+	--prefix=/usr \
+    --sysconfdir=/etc \
+    --enable-shared \
+    --enable-shared \
+    LDSHARED="gcc -shared" \
+    DLDFLAGS="-Wl,--export-all-symbols" \
+    CFLAGS="${CFLAGS} -fno-strict-aliasing " \
+    CXXFLAGS="${CXXFLAGS} -fno-strict-aliasing "
+
+  # Workaround for generation docs
+  mv doc/ChangeLog-1.9.3 ./
+  
+  make
+}
+
+check() {
+  cd ruby-${pkgver//_/-}
+
+  make test
+}
+
+package_ruby() {
+  pkgdesc='An object-oriented language for quick and easy programming'
+  depends=('openssl' 'libffi' 'libyaml')
+  optdepends=('tk: for Ruby/TK'
+              'ruby-docs: Ruby documentation')
+  provides=('rubygems' 'rake')
+  conflicts=('rake')
+  backup=('etc/gemrc')
+  install='ruby.install'
+
+  cd ruby-${pkgver//_/-}
+
+  make DESTDIR="${pkgdir}" install-nodoc
+
+  install -D -m644 ${srcdir}/gemrc "${pkgdir}/usr/etc/gemrc"
+
+  install -D -m644 COPYING "${pkgdir}/usr/share/licenses/ruby/LICENSE"
+  install -D -m644 BSDL "${pkgdir}/usr/share/licenses/ruby/BSDL"
+}
+
+package_ruby-docs() {
+  pkgdesc='Documentation files for ruby'
+
+  cd ruby-${pkgver//_/-}
+
+  make DESTDIR="${pkgdir}" install-doc install-capi
+
+  install -D -m644 COPYING "${pkgdir}/usr/share/licenses/ruby-docs/LICENSE"
+  install -D -m644 BSDL "${pkgdir}/usr/share/licenses/ruby-docs/BSDL"
+}
