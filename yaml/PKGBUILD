@@ -1,0 +1,53 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('libyaml' 'libyaml-devel')
+pkgver=0.1.4
+pkgrel=1
+pkgdesc="YAML 1.1 library"
+arch=('i686' 'x86_64')
+url="http://pyyaml.org/wiki/LibYAML"
+license=('MIT')
+source=(http://pyyaml.org/download/libyaml/yaml-$pkgver.tar.gz
+		'yaml-0.1.4-fix-undefined.patch'
+		'yaml-0.1.4-msys2.patch')
+md5sums=('36c852831d02cf90508c29852361d01b'
+         'a95f36e309521dbfed5aaf177d47ce00'
+         'a8d5375a23b85daed680f37a7a48ddc0')
+
+prepare() {
+  cd "$srcdir/yaml-$pkgver"
+  
+  patch -p1 -i ${srcdir}/yaml-0.1.4-fix-undefined.patch
+  patch -p1 -i ${srcdir}/yaml-0.1.4-msys2.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd "$srcdir/yaml-$pkgver"
+  ./configure --build=${CHOST} --prefix=/usr
+  make
+}
+
+setup() {
+  cd "$srcdir/yaml-$pkgver"
+  make DESTDIR="$srcdir/dest" install
+  install -m644 -D LICENSE $srcdir/dest/usr/share/licenses/$pkgname/LICENSE
+}
+
+package_libyaml() {
+  groups=('libraries')
+  
+  install -dm755 $pkgdir/usr/bin
+  install -m755 -t ${pkgdir}/usr/bin $srcdir/dest/usr/bin/*.dll
+  cp -rf $srcdir/dest/usr/share ${pkgdir}/usr/
+}
+
+package_libyaml-devel() {
+  groups=('development')
+  depends=('libyaml')
+  
+  install -dm755 $pkgdir/usr
+  cp -rf $srcdir/dest/usr/include ${pkgdir}/usr/
+  cp -rf $srcdir/dest/usr/lib ${pkgdir}/usr/
+}
