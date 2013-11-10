@@ -8,7 +8,7 @@ pkgver=4.8.2
 pkgrel=1
 #_snapshot=4.8-20130725
 pkgdesc="The GNU Compiler Collection"
-arch=('x86_64')
+arch=('i686' 'x86_64')
 groups=('msys2-devel')
 license=('GPL' 'LGPL' 'FDL' 'custom')
 url="http://gcc.gnu.org"
@@ -28,7 +28,7 @@ source=(ftp://gcc.gnu.org/pub/gcc/releases/gcc-${pkgver}/gcc-${pkgver}.tar.bz2
 		4.7-libffi-noinst.patch
 		4.7-libitm-cygwin.patch
 		4.7-libstdc-cygwin.patch
-		4.7-libstdc-dllimport.patch
+		4.8-gcc-ada-DTR.patch
 		4.8-cmodel-medium.patch
 		4.8-duplicate-symbols.patch
 		4.8-java-soname.patch
@@ -39,10 +39,13 @@ source=(ftp://gcc.gnu.org/pub/gcc/releases/gcc-${pkgver}/gcc-${pkgver}.tar.bz2
 		4.8-lto-plugin-soname.patch
 		4.8-picflag-cygwin64.patch
 		4.8-specs-cygwin.patch
+		gcc-4.8.2-1.src.patch
 		gcc-4.8.0-configure-msys2.patch
+		gcc-4.8.0-libgcc-msys32.patch
+		gcc-4.8.0-libgcc-msys64.patch
 		gcc-4.8.0-msys2-spec.patch
 		gcc-4.8.0-testsuite-msys2.patch
-		gcc-4.8.1-fix-dw2.patch)
+		4.8-libgcc-references.patch)
 md5sums=('a3d7d63b9cb6b6ea049469a0c4a43c9d'
          '40cb437805e2f7a006aa0d0c3098ab0f'
          '741e079f5ec80aee1a552d0ec0b74575'
@@ -55,7 +58,7 @@ md5sums=('a3d7d63b9cb6b6ea049469a0c4a43c9d'
          '15da8d111f8eab15597db353537aefd3'
          '094b047b34a044d4ba76074d98bfd8a0'
          'e553ecf0eeb3e83a149cc1241971fd10'
-         '3be8c0209afce82b73cdc93d3606cf5f'
+         'f3302086c3246e1fc45cac73deb9429d'
          '6a5d266ca3b80805ca4f47fb1991687c'
          '735b839507e6c355024469f9e65eee49'
          '2d4d01c814a6db66e896d9ba9acd4b29'
@@ -66,10 +69,13 @@ md5sums=('a3d7d63b9cb6b6ea049469a0c4a43c9d'
          'fc7adee9dc8206aaf5e033798c358157'
          'acda6f3393d9e935953fa48f68e9d4f5'
          '3cbcce9b943b85562bb6afd7d83c5eac'
+         '18d72148d7e9f4d0251fcdf41e6afa05'
          'a83db795d84bbe727ebf18d240d9ac1a'
-         '8c4e18a0501be085fe7fea554e197145'
+         'd694307ff0c82bf0aac3d1d042a666d1'
+         '8939d9e1a18a1181bbb95da8efb8e98f'
+         'c9fb65c97643807fcee2f21e897b5ed7'
          '3d6ec97347c5a57f46610a93bbd724a8'
-         'ce1cb59287b237ca29f941cdd851e3fd')
+         '928e151b33981e68d0e67a9bd387b37e')
 
 if [ -n "${_snapshot}" ]; then
   _basedir=gcc-${_snapshot}
@@ -103,19 +109,33 @@ prepare() {
   patch -p2 -i ${srcdir}/4.8-libdecnumber-cygwin64.patch
   patch -p2 -i ${srcdir}/4.7-libffi-noinst.patch
   patch -p2 -i ${srcdir}/4.8-libffi-cygwin64.patch
-  patch -p0 -i ${srcdir}/4.8-libgcc-cygwin64.patch
+  if [ "$CARCH" = "x86_64" ]
+  then
+    patch -p0 -i ${srcdir}/4.8-libgcc-cygwin64.patch
+    patch -p1 -i ${srcdir}/gcc-4.8.0-libgcc-msys64.patch
+  else
+    patch -p1 -i ${srcdir}/gcc-4.8.0-libgcc-msys32.patch
+  fi
   patch -p2 -i ${srcdir}/4.7-libitm-cygwin.patch
   patch -p2 -i ${srcdir}/4.7-libstdc-cygwin.patch
   patch -p2 -i ${srcdir}/4.8-lto-plugin-soname.patch
   patch -p2 -i ${srcdir}/4.8-picflag-cygwin64.patch
   patch -p0 -i ${srcdir}/4.8-specs-cygwin.patch
-  patch -p0 -i ${srcdir}/4.8-cmodel-medium.patch
+  if [ "$CARCH" = "x86_64" ]
+  then
+    echo "tutuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+    patch -p0 -i ${srcdir}/4.8-cmodel-medium.patch
+    patch -p2 -i ${srcdir}/4.8-duplicate-symbols.patch	
+  fi
+  patch -p0 -i ${srcdir}/4.8-libgcc-references.patch
   patch -p2 -i ${srcdir}/4.5-skiptest.patch
-  patch -p2 -i ${srcdir}/4.8-duplicate-symbols.patch
+  if [ "$CARCH" = "i686" ]
+  then
+    patch -p0 -i ${srcdir}/4.8-gcc-ada-DTR.patch
+  fi
   patch -p1 -i ${srcdir}/gcc-4.8.0-configure-msys2.patch
   patch -p1 -i ${srcdir}/gcc-4.8.0-msys2-spec.patch
   patch -p1 -i ${srcdir}/gcc-4.8.0-testsuite-msys2.patch
-  patch -p1 -i ${srcdir}/gcc-4.8.1-fix-dw2.patch
 	
   mkdir ${srcdir}/gcc-build
 }
@@ -123,6 +143,14 @@ prepare() {
 build() {
   cd ${srcdir}/gcc-build
 
+  case ${CARCH} in
+    i686)
+      _arch=i686
+    ;;
+	x86_64)
+      _arch=x86-64
+    ;;
+  esac
   # using -pipe causes spurious test-suite failures
   # http://gcc.gnu.org/bugzilla/show_bug.cgi?id=48565
   CFLAGS=${CFLAGS/-pipe/}
@@ -134,7 +162,8 @@ build() {
 		--enable-bootstrap \
 		--enable-shared --enable-shared-libgcc --enable-static \
 		--enable-version-specific-runtime-libs \
-		--with-arch=x86-64 \
+		--with-arch=$_arch \
+		--disable-sjlj-exceptions \
 		--with-tune=generic \
 		--disable-__cxa_atexit \
 		--enable-languages=c,c++,fortran,lto \
