@@ -436,6 +436,19 @@ esac
 
 
 if [ "$MAYBE_FIRST_START" = "true" ]; then
+  sh /sbin/regen-info.sh
+  
+  if [ -f "/usr/bin/update-ca-trust" ]
+  then 
+    sh /usr/bin/update-ca-trust
+  fi
+  
+  if [ -f "/usr/bin/xmlcatalog" ]
+  then
+    /bin/mkdir -p /etc/xml
+    /usr/bin/xmlcatalog --noout --create /etc/xml/catalog
+  fi
+
   clear
   echo
   echo
