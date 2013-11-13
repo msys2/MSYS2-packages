@@ -2,8 +2,8 @@
 
 pkgname=vim
 _topver=7.4
-_patchlevel=069
-__hgrev=e6c00dbedde1
+_patchlevel=091
+__hgrev=34a3b852ec05
 _versiondir="${pkgname}${_topver//./}"
 pkgver=${_topver}.${_patchlevel}
 pkgrel=1
@@ -13,20 +13,50 @@ url="http://www.vim.org"
 depends=('ncurses')
 groups=('editors')
 makedepends=('gawk' 'perl' 'python2' 'python3' 'ruby' 'mercurial' 'iconv')
-source=("${pkgname}-${pkgver}"::"hg+http://vim.googlecode.com/hg/vim#tag=v${pkgver//./-}"
-		#"ftp://ftp.archlinux.org/other/vim/${pkgname}-${pkgver}.tar.xz"
-        #"ftp://ftp.archlinux.org/other/vim/${pkgname}-${pkgver}.tar.xz.sig"
+source=(#"${pkgname}-${pkgver}"::"hg+http://vim.googlecode.com/hg/vim#tag=v${pkgver//./-}"
+		"${pkgname}-${pkgver}.tar.xz"
+        "${pkgname}-${pkgver}.tar.xz.sig"
         'dot.vimrc'
         7.3-cygwin-mouse.patch
         7.3-virc.patch
         7.3-cygwin-python-dyn.patch
         'vim-completion')
-md5sums=('SKIP'
+md5sums=('55332420e27ac27471c228e208b1bb82'
+         'SKIP'
          'b18bd005832117243727e9fef1b45691'
          '82e8c2ae0821d3a453c808e98916c4b8'
          'e776f485d8f027050ff040120acb8a86'
          '88ab80d81af8e88cf80d21b2796ec94d'
          '87fe7821e180647f3bf48ed099a22b83')
+
+# source PKGBUILD && mksource
+mksource() {
+  [[ -x /usr/bin/hg ]] || (echo "hg not found. Install mercurial." && return 1)
+
+  __hgroot='http://vim.googlecode.com/hg/'
+  __hgrepo='vim'
+  __hgbranch='default'
+
+  hg clone -b ${__hgbranch} -u ${__hgrev} "${__hgroot}${__hgrepo}" ${__hgrepo}
+
+  pushd ${__hgrepo}
+  if (( $(hg id -n) < $(hg id -nr ${__hgbranch}) )); then
+    printf 'You are not building the latest revision!\n'
+    printf "Consider updating __hgrev to $(hg id -r ${__hgbranch}).\n"
+  fi
+  popd
+
+  mv vim ${pkgname}-${pkgver}
+  find ${pkgname}-${pkgver} -depth -type d -name .hg -exec rm -rf {} \;
+  rm ${pkgname}-${pkgver}/{.hgignore,.hgtags}
+  tar -cJf ${pkgname}-${pkgver}.tar.xz ${pkgname}-${pkgver}/*
+  rm -r ${pkgname}-${pkgver}
+
+  gpg --detach-sign ${pkgname}-${pkgver}.tar.xz
+
+  #scp ${pkgname}-${pkgver}.tar.xz nym:/srv/ftp/other/vim/
+  #scp ${pkgname}-${pkgver}.tar.xz.sig nym:/srv/ftp/other/vim/
+}
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
