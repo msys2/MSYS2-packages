@@ -1,0 +1,47 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=Net-SSLeay
+pkgname=perl-${_realname}
+pkgver=1.55
+pkgrel=1
+pkgdesc="Perl extension for using OpenSSL"
+arch=('i686' 'x86_64')
+license=('custom:BSD')
+url="http://search.cpan.org/dist/${_realname}/"
+groups=('perl-modules')
+depends=('openssl')
+options=(!emptydirs)
+replaces=('net-ssleay')
+provides=('net-ssleay')
+source=("http://www.cpan.org/authors/id/M/MI/MIKEM/${_realname}-${pkgver}.tar.gz"
+        'Net-SSLeay-1.55.patch')
+md5sums=('473b8d66ca69d5784bb0e428721f58e0'
+         '3616dc0383aa0df83f0726e94ad8455a')
+
+prepare() {
+  cd ${srcdir}/${_realname}-${pkgver}
+
+  patch -p1 -i ${srcdir}/Net-SSLeay-1.55.patch
+
+  sed -i \
+      -e "/\$opts->{optimize} = '-O2 -g';/d" \
+      inc/Module/Install/PRIVATE/Net/SSLeay.pm
+}
+
+build() {
+  cd ${srcdir}/${_realname}-${pkgver}
+
+  export OPTIMIZE="$CFLAGS"
+  export OPENSSL_PREFIX=/usr
+
+  # install module in vendor directories.
+  PERL_MM_USE_DEFAULT=1 perl Makefile.PL -- INSTALLDIRS=vendor 
+  make
+}
+
+package() {
+  cd ${srcdir}/${_realname}-${pkgver}
+
+  make install DESTDIR=${pkgdir} 
+  install -D -m644 README "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

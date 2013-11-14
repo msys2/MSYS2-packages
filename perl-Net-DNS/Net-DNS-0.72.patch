@@ -1,0 +1,57 @@
+--- Net-DNS-0.72/Makefile.PL.orig	2012-12-28 17:22:43.000000000 +0400
++++ Net-DNS-0.72/Makefile.PL	2013-11-14 11:31:40.611000000 +0400
+@@ -54,7 +54,7 @@
+ 	'help|?'      => \$help,
+ 	);
+ 
+-push @options, ( 'iphelper!' => \$iphelper ) if ( $^O eq 'cygwin' );
++push @options, ( 'iphelper!' => \$iphelper ) if ( $^O eq 'cygwin' or $^O eq 'msys' );
+ 
+ 
+ unless ( GetOptions(@options) ) {
+@@ -85,7 +85,7 @@
+ 				make test.  This is the default.
+ 
+ EOT
+-	print <<EOT if ( $^O eq 'cygwin' );
++	print <<EOT if ( $^O eq 'cygwin' or $^O eq 'msys' );
+   --iphelper --noiphelper	Use the Win32::IPHelper module to determine
+ 				network parameters like which nameservers to
+ 				use.  When freshly installing Net::DNS, the
+@@ -99,7 +99,7 @@
+ 	exit 0;
+ }
+ 
+-if ( $^O eq 'cygwin' ) {
++if ( $^O eq 'cygwin' or $^O eq 'msys') {
+ 	# Just testing if Net::DNS::Resolver::Win32 is installed, but
+ 	# Net::DNS::Resolver needs to be required first for it to load
+ 	# successfully (if available).
+@@ -152,7 +152,7 @@
+ 			);
+ 
+ 
+-if ( $^O eq 'MSWin32' || $^O eq "cygwin" && $iphelper ) {
++if ( $^O eq 'MSWin32' || $^O eq "cygwin" || $^O eq 'msys' && $iphelper ) {
+ 	unless (eval {
+ 			local $SIG{__WARN__} = sub { };
+ 			require WIN32::API;
+@@ -362,6 +362,6 @@
+ sub MY::libscan {
+ 	my $path = $_[1];
+ 	return '' if $path =~ /\B\.svn\b/;
+-	return '' if $^O eq 'cygwin' && !$iphelper && $path =~ /Resolver[^\w]MSWin32\.pm$/;
++	return '' if $^O eq 'cygwin' || $^O eq 'msys' && !$iphelper && $path =~ /Resolver[^\w]MSWin32\.pm$/;
+ 	return $path;
+ }
+--- Net-DNS-0.72/lib/Net/DNS/Resolver.pm.orig	2013-11-14 11:30:08.711400000 +0400
++++ Net-DNS-0.72/lib/Net/DNS/Resolver.pm	2013-11-14 11:32:33.042600000 +0400
+@@ -20,7 +20,7 @@
+ BEGIN {
+ 	for ($^O) {				## Perl OS identifier
+ 
+-		/cygwin/ && do {
++		/cygwin|msys/ && do {
+ 			eval { require Net::DNS::Resolver::MSWin32; };
+ 
+ 			unless ($@) {
