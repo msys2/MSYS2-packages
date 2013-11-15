@@ -1,0 +1,129 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('heimdal' 'heimdal-libs' 'heimdal-devel')
+pkgver=1.5.3
+pkgrel=1
+pkgdesc="Implementation of Kerberos V5 libraries"
+arch=('i686' 'x86_64')
+url="http://www.h5l.org/"
+license=('custom')
+depends=('libsqlite' 'libreadline' 'ncurses') #libldap
+options=('!libtool' '!emptydirs')
+source=(http://www.h5l.org/dist/src/heimdal-${pkgver}.tar.gz
+	1.2.1-test-modules.patch
+	1.5.2-hdbdir.patch
+	1.5.2-install-catman.patch
+	1.5.2-roken-signal.patch
+	heimdal-1.5.2-msys2.patch
+)
+md5sums=('30b379e3de12f332fbd201131f02ffca'
+         '11fc922e2d294570b00290466a4922da'
+         '1a7f12d2d147e0f0e75c8f74ca44ee9d'
+         '6ad64b8dfc6360a5e2b9d84b8a86abf1'
+         'f07e91c3df57d9fb03356dff98f45b82'
+         '778dbeed45ee7540a7139fd52edc61d0')
+
+prepare() {
+  cd ${srcdir}/heimdal-${pkgver}
+  
+  patch -p2 -i ${srcdir}/1.2.1-test-modules.patch
+  patch -p2 -i ${srcdir}/1.5.2-hdbdir.patch
+  patch -p2 -i ${srcdir}/1.5.2-install-catman.patch
+  patch -p2 -i ${srcdir}/1.5.2-roken-signal.patch
+  patch -p1 -i ${srcdir}/heimdal-1.5.2-msys2.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd ${srcdir}/heimdal-${pkgver}
+
+  ./configure --build=${CHOST} \
+	--prefix=/usr \
+	--enable-shared=yes \
+	--disable-static \
+	--without-x \
+	--sysconfdir=/etc/krb5 \
+	--mandir=/usr/share/man \
+	--datadir=/var/lib/heimdal \
+	--localstatedir=/var/lib/heimdal \
+	--with-openssl=/usr \
+	--with-readline-lib=/usr/lib \
+	--with-readline-include=/usr/include/readline \
+	--with-sqlite3-lib=/usr/lib \
+	--with-sqlite3-include=/usr/include \
+	--libexecdir=/usr/sbin \
+	--disable-kcm \
+	--disable-ndbm-db \
+	--disable-heimdal-documentation
+  make LDFLAGS="${LDFLAGS} -no-undefined" -j1
+}
+
+setup() {
+  cd ${srcdir}/heimdal-${pkgver}
+  make DESTDIR=${destdir} install
+
+  # Remove daemons and their manpages
+  for i in telnetd ftpd rshd; do
+    rm ${destdir}/usr/share/man/man8/${i}.8
+    rm ${destdir}/usr/sbin/${i}
+  done
+
+  # Rename clients and their manpages
+  for i in rcp rsh telnet ftp su login; do
+    if [ -f ${destdir}/usr/share/man/man1/${i}.1 ]; then
+      mv ${destdir}/usr/share/man/man1/{,k}${i}.1
+    fi
+    mv ${destdir}/usr/bin/{,k}${i}
+  done
+  rm -rf ${destdir}/usr/share/man/cat{1,3,5,8}
+
+  # install config
+  # Do not install the config as this will conflict with krb5
+  install -D -m644 ${srcdir}/heimdal-${pkgver}/krb5.conf ${destdir}/usr/etc/krb5/krb5.conf
+
+  # Remove conflicts
+  rm -rf ${destdir}/usr/share/man/man5/ftpusers.5*		              # man-pages
+  rm -rf ${destdir}/usr/share/man/man3/{DES,DH,EVP,OpenSSL,RAND,RSA}*  # openssl
+  rm -rf ${destdir}/usr/share/man/man3/os.3*                           # erlang
+
+  # Install the license
+  install -Dm644 ${srcdir}/heimdal-${pkgver}/LICENSE \
+  	${destdir}/usr/share/licenses/${pkgname}/LICENSE
+}
+
+package_heimdal() {
+  groups=('sys-utils')
+  depends=('heimdal-libs')
+  backup=(etc/krb5/krb5.conf)
+  
+  mkdir -p ${pkgdir}/usr
+  
+  cp -rf ${destdir}/usr/bin ${pkgdir}/usr/
+  rm -f ${pkgdir}/usr/bin/*-config
+  rm -f ${pkgdir}/usr/bin/*.dll
+  cp -rf ${destdir}/usr/etc ${pkgdir}/usr/
+  cp -rf ${destdir}/usr/sbin ${pkgdir}/usr/
+  cp -rf ${destdir}/usr/share ${pkgdir}/usr/
+}
+
+package_heimdal-libs() {
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -rf ${destdir}/usr/bin/*.dll ${pkgdir}/usr/bin/
+}
+
+package_heimdal-devel() {
+  pkgdesc="Heimdal headers and libraries"
+  groups=('development')
+  depends=('heimdal-libs')
+  
+  mkdir -p ${pkgdir}/usr
+  
+  cp -rf ${destdir}/usr/include ${pkgdir}/usr/
+  cp -rf ${destdir}/usr/lib ${pkgdir}/usr/
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp ${destdir}/usr/bin/*-config ${pkgdir}/usr/bin/
+}
