@@ -1,0 +1,87 @@
+--- origsrc/zip30/revision.h	2008-07-05 13:24:56.000000000 -0400
++++ src/zip30/revision.h	2009-08-04 16:46:09.143600000 -0400
+@@ -58,7 +58,7 @@ ZCONST char *copyright[] = {
+ };
+ 
+ ZCONST char * far versinfolines[] = {
+-"This is %s %s (%s), by Info-ZIP.",
++"This is %s %s (%s), by Cygwin. Original by Info-ZIP.",
+ "Currently maintained by E. Gordon.  Please send bug reports to",
+ "the authors using the web page at www.info-zip.org; see README for details.",
+ "",
+--- origsrc/zip30/unix/Makefile	2008-05-07 02:33:56.000000000 -0400
++++ src/zip30/unix/Makefile	2009-08-04 16:46:09.150600000 -0400
+@@ -227,7 +227,7 @@ cray_v3:
+ 
+ # Cygwin
+ cygwin:
+-	$(MAKE) $(MAKEF) generic CC="gcc" CPP="gcc -E" EXE=".exe"
++	$(MAKE) $(MAKEF) generic CC="gcc" CPP="gcc -E" E=".exe"
+ 
+ # LynxOS
+ lynx:
+--- origsrc/zip30/unix/configure	2009-08-04 16:46:02.792600000 -0400
++++ src/zip30/unix/configure	2009-08-04 16:46:09.174600000 -0400
+@@ -204,9 +204,19 @@ int main()
+   return 0;
+ }
+ _EOF_
+-      $CC $CFLAGS -o conftest conftest.c -lbz2 > /dev/null 2>/dev/null
++      $CC $CFLAGS $LDFLAGS -o conftest conftest.c -lbz2 > /dev/null 2>/dev/null
+       if test $? -eq 0; then
+-        echo "-- OS supports bzip2 - linking in bzip2"
++        nm `$CC $CFLAGS $LDFLAGS -print-file-name=libbz2.a` | grep bz_internal_error > /dev/null
++        if test $? -eq 0; then
++          echo "-- OS supports bzip2 - linking in bzip2"
++        else
++          echo "    OS provides bzip2 library but not built with the" 
++          echo "      BZ_NO_STDIO option"
++          echo "    WARNING:  We recommend using a bzip2 library compiled"
++          echo "      with BZ_NO_STDIO defined for proper error handling"
++          echo "    Please see the Zip installation instructions"
++          echo "    Continuing anyway with standard bzip2 library..."
++        fi
+         CFLAGS="${CFLAGS} -DBZIP2_SUPPORT"
+         LFLAGS2="${LFLAGS2} -lbz2"
+       else
+--- origsrc/zip30/unix/unix.c	2008-06-19 00:26:18.000000000 -0400
++++ src/zip30/unix/unix.c	2009-08-04 16:46:09.210600000 -0400
+@@ -239,6 +239,14 @@ int *pdosflag;          /* output: force
+   dosflag = dosify;     /* default for non-DOS and non-OS/2 */
+ 
+   /* Find starting point in name before doing malloc */
++#ifdef __CYGWIN__
++  /* Strip drive specification */
++  t = *x && isascii((uch)*x) && *(x + 1) == ':' ? x + 2 : x;
++  /* Convert backslashes to slashes */
++  for (n = t; *n; n++)
++    if (*n == '\\')
++      *n = '/';
++#endif
+   /* Strip "//host/share/" part of a UNC name */
+   if (!strncmp(x,"//",2) && (x[2] != '\0' && x[2] != '/')) {
+     n = x + 2;
+@@ -251,8 +259,12 @@ int *pdosflag;          /* output: force
+     }
+     if (*n != '\0')
+       t = n + 1;
++#ifdef __CYGWIN__
++  } /* we may already have adjusted t */
++#else
+   } else
+       t = x;
++#endif
+   while (*t == '/')
+     t++;                /* strip leading '/' chars to get a relative path */
+   while (*t == '.' && t[1] == '/')
+--- origsrc/zip30/zipsplit.c	2008-05-08 04:17:16.000000000 -0400
++++ src/zip30/zipsplit.c	2009-08-04 16:46:09.217600000 -0400
+@@ -890,7 +890,7 @@ char **argv;            /* command line 
+       strcpy(name, INDEX);
+       printf("creating: %s\n", path);
+       indexmade = 1;
+-      if ((f = fopen(path, "w")) == NULL)
++      if ((f = fopen(path, FOPW)) == NULL) /* cygwin fix: use FOPW */
+       {
+         if (u && retry()) goto redobin;
+         ziperr(ZE_CREAT, path);
