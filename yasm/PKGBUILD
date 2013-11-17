@@ -1,0 +1,62 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('yasm' 'yasm-devel')
+pkgver=1.2.0
+pkgrel=1
+pkgdesc="A rewrite of NASM to allow for multiple syntax supported (NASM, TASM, GAS, etc.)"
+arch=('i686' 'x86_64')
+groups=('base-devel')
+url="http://www.tortall.net/projects/yasm/"
+license=('BSD' 'GPL2' 'LGPL2.1' 'PerlArtistic')
+options=('staticlibs')
+source=(http://www.tortall.net/projects/yasm/releases/${pkgname}-${pkgver}.tar.gz
+        'yasm-1.2.0-1.src.patch'
+        'update-config-sub-guess.patch')
+sha1sums=('773d28f27f83c44ac35079add0d3167ca6c1def8'
+          '5a7dae77b2a1230e1d3a1123fcf63633d756c4d7'
+          '340b4b26cecca8f04ec977506f80d772b0123adb')
+
+prepare() {
+  cd ${pkgname}-${pkgver}
+  patch -p1 -i ${srcdir}/update-config-sub-guess.patch
+  patch -p2 -i ${srcdir}/yasm-1.2.0-1.src.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd ${pkgname}-${pkgver}
+  ./configure --prefix=/usr --build=${CHOST}
+  make
+}
+
+setup() {
+  cd ${pkgname}-${pkgver}
+  make DESTDIR="${destdir}" install
+  
+  cp -f ${destdir}/usr/bin/ytasm.exe ${destdir}/usr/bin/tasm.exe
+  
+  cp -f ${destdir}/usr/share/man/man1/ytasm.1 ${destdir}/usr/share/man/man1/tasm.1
+  cp -f ${destdir}/usr/share/man/man1/ytasm.1 ${destdir}/usr/share/man/man1/vsyasm.1
+  install -Dm644 COPYING "${destdir}/usr/share/licenses/yasm/LICENSE"
+  install -Dm644 BSD.txt "${destdir}/usr/share/licenses/yasm/BSD.txt"
+}
+
+check() {
+  cd ${pkgname}-${pkgver}
+  make check
+}
+
+package_yasm() {
+  mkdir -p ${pkgdir}/usr
+  
+  cp -rf ${destdir}/usr/bin ${pkgdir}/usr/
+  cp -rf ${destdir}/usr/share ${pkgdir}/usr/
+}
+
+package_yasm-devel() {
+  mkdir -p ${pkgdir}/usr
+  
+  cp -rf ${destdir}/usr/include ${pkgdir}/usr/
+  cp -rf ${destdir}/usr/lib ${pkgdir}/usr/
+}
