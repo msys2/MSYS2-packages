@@ -2,7 +2,7 @@
 
 pkgname=('msys2-w32api-runtime')
 _ver_base=4.0.0
-pkgver=4.0.0.6368
+pkgver=4.0.0.6380
 pkgrel=1
 pkgdesc="Win32 API import libs for MSYS2 toolchain"
 arch=('i686' 'x86_64')
@@ -11,31 +11,13 @@ license=('custom')
 groups=('msys2-devel')
 depends=('msys2-w32api-headers')
 options=('staticlibs' '!strip')
-makedepends=('subversion')
+makedepends=('subversion' 'mingw-w64-cross-gcc')
 provides=($pkgname)
 conflicts=($pkgname)
 source=('msys2-w32api-runtime'::'svn://svn.code.sf.net/p/mingw-w64/code/trunk/mingw-w64-crt')
 md5sums=(SKIP)
 
 MINGW_CHOST=${CARCH}-w64-mingw32
-
-change_path() {
-  ORIG_PATH=$PATH
- 
-  case ${CARCH} in
-    i686)
-      export PATH=/mingw32/bin:$PATH
-    ;;
-    x86_64)
-      export PATH=/mingw64/bin:$PATH
-    ;;
-  esac
-}
-
-restore_path () {
-  export PATH=$ORIG_PATH
-  unset ORIG_PATH
-}
 
 pkgver() {
   cd "$srcdir/$pkgname"
@@ -57,29 +39,20 @@ build() {
     ;;
   esac
 
-  change_path
-  ./configure --build=${MINGW_CHOST} \
-     --target=${MINGW_CHOST} \
-     --host=${MINGW_CHOST} \
-     --prefix=${pkgdir} \
-	 --enable-w32api \
-	 ${_libs} \
-	 CFLAGS='-I/usr/include/w32api' \
-	 CXXFLAGS='-I/usr/include/w32api' \
-	 CPPFLAGS='-I/usr/include/w32api'
+  ./configure \
+	--prefix=/usr \
+	--host=${MINGW_CHOST} \
+	--enable-w32api \
+	${_libs} \
+	CFLAGS='-I/usr/include/w32api' \
+	CXXFLAGS='-I/usr/include/w32api' \
+	CPPFLAGS='-I/usr/include/w32api'
 
   make
-  restore_path
 }
 
 package() {
   cd $srcdir/$pkgname
   
-  change_path
-  make install
-  restore_path
-  
-  mkdir -p $pkgdir/usr
-  mv -f ${pkgdir}/include $pkgdir/usr/
-  mv -f ${pkgdir}/lib $pkgdir/usr/
+  make DESTDIR=${pkgdir} install
 }
