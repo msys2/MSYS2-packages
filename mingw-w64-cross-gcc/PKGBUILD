@@ -1,0 +1,165 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=gcc
+_mingw_suff=mingw-w64-cross
+pkgname=("${_mingw_suff}-${_realname}")
+pkgver=4.8.2
+pkgrel=1
+pkgdesc="GCC for the MinGW-w64"
+arch=('i686' 'x86_64')
+url="http://gcc.gnu.org"
+license=('GPL' 'LGPL' 'FDL' 'custom')
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+depends=("zlib" "mpc" "cloog" "${_mingw_suff}-crt" "${_mingw_suff}-binutils" "${_mingw_suff}-winpthreads" "${_mingw_suff}-headers")
+makedepends=("gcc" 'lndir')
+#checkdepends=('dejagnu')
+optdepends=()
+replaces=()
+backup=()
+options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
+source=("ftp://gcc.gnu.org/pub/gcc/releases/${_realname}-${pkgver}/${_realname}-${pkgver}.tar.bz2"
+		'gcc-4.8-filename-output.patch'
+		'gcc-4.8-lambda-ICE.patch'
+		'gcc-4.8-iconv.patch'
+		'4.8-libgcc-references.patch'
+		'gcc-4.8-libstdc++export.patch'
+		'gcc-4.7-stdthreads.patch'
+		'4.7-execstack.patch'
+		'4.7-libffi-noinst.patch'
+		'4.7-libitm-cygwin.patch'
+		'4.7-libstdc-cygwin.patch'
+		'4.8-libatomic-cygwin.patch'
+		'4.8-libdecnumber-cygwin64.patch'
+		'4.8-libffi-cygwin64.patch'
+		'4.8-lto-plugin-soname.patch'
+		'4.8-picflag-cygwin64.patch'
+		'4.8-specs-cygwin.patch'
+		'gcc-4.8.0-configure-msys2.patch'
+		'gcc-4.8.0-msys2-spec.patch')
+md5sums=('a3d7d63b9cb6b6ea049469a0c4a43c9d'
+         '40cb437805e2f7a006aa0d0c3098ab0f'
+         '6eb6e080dbf7bc6825f53a0aaa6c4ef9'
+         'd28f5653282c67bcfd1a8f81aebef72d'
+         '928e151b33981e68d0e67a9bd387b37e'
+         'f6b5fb08ff06a7d60ee3280e14240bb2'
+         '71cdb550528efcf2a5c9112464bfbabc'
+         'f7cb43c6a6a54e55027e70a9b03774b2'
+         '15da8d111f8eab15597db353537aefd3'
+         '094b047b34a044d4ba76074d98bfd8a0'
+         'e553ecf0eeb3e83a149cc1241971fd10'
+         'f01b3978cbd1f8aa14833a26a7891a32'
+         '78eab6229fd809e5494df53797778e0b'
+         '40b0a196ff005adb442ac5b9a2f42fd8'
+         'fc7adee9dc8206aaf5e033798c358157'
+         'acda6f3393d9e935953fa48f68e9d4f5'
+         '3cbcce9b943b85562bb6afd7d83c5eac'
+         'e0c65906da3c1cc14cd2158a9389be74'
+         'c9fb65c97643807fcee2f21e897b5ed7')
+
+_threads="win32"
+_targets="i686-w64-mingw32 x86_64-w64-mingw32"
+
+prepare() {
+	cd ${srcdir}/${_realname}-${pkgver}
+
+	#do not install libiberty
+	sed -i 's/install_to_$(INSTALL_DEST) //' libiberty/Makefile.in
+	# hack! - some configure tests for header files using "$CPP $CPPFLAGS"
+	#sed -i "/ac_cpp=/s/\$CPPFLAGS/\$CPPFLAGS -O2/" {libiberty,gcc}/configure
+  
+	patch -p0 -i ${srcdir}/gcc-4.8-filename-output.patch
+	patch -p1 -i ${srcdir}/gcc-4.8-lambda-ICE.patch
+	#patch -p1 -i ${srcdir}/gcc-4.8-iconv.patch
+  
+	patch -p0 -i ${srcdir}/4.8-libgcc-references.patch
+	patch -p1 -i ${srcdir}/gcc-4.8-libstdc++export.patch
+	patch -p1 -i ${srcdir}/gcc-4.7-stdthreads.patch
+	
+	#MSYS/Cygwin patches
+	patch -p2 -i ${srcdir}/4.7-execstack.patch
+	patch -p2 -i ${srcdir}/4.8-libatomic-cygwin.patch
+	patch -p2 -i ${srcdir}/4.8-libdecnumber-cygwin64.patch
+	patch -p2 -i ${srcdir}/4.7-libffi-noinst.patch
+	patch -p2 -i ${srcdir}/4.8-libffi-cygwin64.patch
+	patch -p2 -i ${srcdir}/4.7-libitm-cygwin.patch
+	patch -p2 -i ${srcdir}/4.7-libstdc-cygwin.patch
+	patch -p2 -i ${srcdir}/4.8-lto-plugin-soname.patch
+	patch -p2 -i ${srcdir}/4.8-picflag-cygwin64.patch
+	patch -p0 -i ${srcdir}/4.8-specs-cygwin.patch
+	patch -p1 -i ${srcdir}/gcc-4.8.0-configure-msys2.patch
+	patch -p1 -i ${srcdir}/gcc-4.8.0-msys2-spec.patch
+}
+
+build() {
+	for _target in ${_targets}; do
+	mkdir -p ${srcdir}/gcc-build-${_target} && cd ${srcdir}/gcc-build-${_target}
+    
+	case "${_target}" in
+		i686*)
+			local _conf="--disable-sjlj-exceptions --with-dwarf2"
+			local _ldflags=" -Wl,--large-address-aware"
+			local _arch=i686
+		;;
+		
+		x86_64*)
+			local _arch=x86-64
+			local _conf=""
+		;;
+	esac
+
+	../${_realname}-${pkgver}/configure \
+		--prefix=/opt \
+		--build=${CHOST} \
+		--host=${CHOST} \
+		--target=${_target} \
+		--libexecdir=/opt/lib \
+		--disable-bootstrap \
+		--with-arch=${_arch} \
+		--with-tune=generic \
+		--enable-languages=c,lto,c++,fortran \
+		--enable-shared --enable-static \
+		--enable-threads=${_threads} \
+		--enable-graphite \
+		--enable-fully-dynamic-string \
+		--enable-libstdcxx-time=yes \
+		--disable-libstdcxx-pch \
+		--disable-libstdcxx-debug \
+		--enable-cloog-backend=isl \
+		--enable-version-specific-runtime-libs \
+		--disable-cloog-version-check --disable-isl-version-check \
+		--enable-lto \
+		--enable-libgomp \
+		--disable-multilib \
+		--enable-checking=release \
+		--disable-rpath \
+		--disable-win32-registry \
+		--disable-werror \
+		--disable-symvers \
+		--with-libiconv \
+		--with-system-zlib \
+		--with-{gmp,mpfr,mpc,isl,cloog}=/usr \
+		--with-gnu-as --with-gnu-ld \
+		${_conf} \
+		CFLAGS="-O2 -pipe" \
+		CXXFALGS="-O2 -pipe" \
+		LDFLAGS="$_ldflags"
+
+	make all
+	done
+}
+
+package() {
+	for _target in ${_targets}; do
+		cd ${srcdir}/gcc-build-${_target}
+		make -j1 DESTDIR=${pkgdir} install
+		mv ${pkgdir}/opt/lib/gcc/${_target}/lib/libgcc_s.a ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/
+		mv ${pkgdir}/opt/lib/gcc/${_target}/libgcc*.dll ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/
+		for _f in ${pkgdir}/opt/bin/*.exe; do
+			strip -s ${_f}
+		done
+		for _f in ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/*.exe; do
+			strip -s ${_f}
+		done		
+		rm -rf ${pkgdir}/opt/share
+	done
+}

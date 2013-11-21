@@ -1,0 +1,86 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=binutils
+_mingw_suff=mingw-w64-cross
+pkgname=("${_mingw_suff}-${_realname}")
+_basever=2.24.51
+pkgver=${_basever}.20131119
+#pkgver=2.23.2
+pkgrel=1
+pkgdesc="A set of programs to assemble and manipulate binary and object files"
+arch=('i686' 'x86_64')
+url="http://www.gnu.org/software/binutils/"
+license=('GPL')
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+depends=("libiconv" "zlib")
+checkdepends=('dejagnu' 'bc')
+makedepends=("libiconv" "zlib")
+options=('staticlibs' '!distcc' '!ccache' '!buildflags')
+#install=binutils.install
+source=("ftp://mirrors.kernel.org/sources.redhat.com/binutils/snapshots/binutils-${_basever}.tar.bz2"
+        'binutils-trunk-msys2.patch')
+md5sums=('9816c8f69beaaf8f7c468dcd4e4bfceb'
+         '6f7175b7ed29bc597f0d300500e2b651')
+_targets="i686-w64-mingw32 x86_64-w64-mingw32"
+
+prepare() {
+  cd ${srcdir}/binutils-${_basever}
+
+  # http://sourceware.org/git/?p=binutils.git;a=patch;h=e02bf935
+  # http://sourceware.org/git/?p=binutils.git;a=patch;h=935f8542
+  patch -p1 -i ${srcdir}/binutils-trunk-msys2.patch
+  
+  #do not install libiberty
+  sed -i 's/install_to_$(INSTALL_DEST) //' libiberty/Makefile.in
+  # hack! - libiberty configure tests for header files using "$CPP $CPPFLAGS"
+  sed -i "/ac_cpp=/s/\$CPPFLAGS/\$CPPFLAGS -O2/" libiberty/configure
+
+  mkdir ${srcdir}/binutils-build
+}
+
+build() {
+  for _target in ${_targets}; do
+  mkdir -p ${srcdir}/binutils-build-${_target} && cd ${srcdir}/binutils-build-${_target}
+
+  if [ "${_target}" = "x86_64-w64-mingw32" ]; then
+    local _conf='--enable-64-bit-bfd'
+  else
+    local _conf=''
+  fi
+  ${srcdir}/binutils-${_basever}/configure \
+	--build=${CHOST} \
+	--host=${CHOST} \
+	--target=${_target} \
+    --prefix=/opt \
+    --disable-werror \
+	--enable-lto \
+	--with-libiconv-prefix=/usr \
+	$_conf
+
+  make
+  done
+}
+
+check() {
+  for _target in ${_targets}; do
+  cd ${srcdir}/binutils-build-${_target}
+  
+  # unset LDFLAGS as testsuite makes assumptions about which ones are active
+  # do not abort on errors - manually check log files
+  make LDFLAGS="" -k check || true
+  done
+}
+
+package() {
+  for _target in ${_targets}; do
+  cd ${srcdir}/binutils-build-${_target}
+  make DESTDIR=${pkgdir} install
+  
+  # Remove unwanted files
+  #rm ${destdir}/usr/share/info/{configure,standards}.info
+  
+  # Add some useful headers
+  #install -m644 ${srcdir}/binutils-${pkgver}/include/libiberty.h ${pkgdir}/opt/include
+  #install -m644 ${srcdir}/binutils-${pkgver}/include/demangle.h ${pkgdir}/opt/include
+  done
+}

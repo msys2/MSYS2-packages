@@ -1,0 +1,47 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=winpthreads
+_mingw_suff=mingw-w64-cross
+pkgname="${_mingw_suff}-${_realname}"
+_ver_base=4.0.0
+pkgver=4.0.0.6379
+pkgrel=1
+pkgdesc="MinGW-w64 winpthreads library for cross-compiler"
+arch=('i686' 'x86_64')
+url="http://mingw-w64.sourceforge.net"
+license=('custom')
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+makedepends=("subversion" "${_mingw_suff}-gcc" "${_mingw_suff}-binutils" "${_mingw_suff}-crt" "${_mingw_suff}-headers")
+depends=("${_mingw_suff}-crt")
+optdepends=()
+backup=()
+options=('!strip' '!buildflags' 'staticlibs' '!emptydirs' '!buildflags')
+source=("${_realname}"::"svn+svn://svn.code.sf.net/p/mingw-w64/code/trunk/mingw-w64-libraries/winpthreads")
+md5sums=(SKIP)
+
+_targets="i686-w64-mingw32 x86_64-w64-mingw32"
+
+pkgver() {
+  cd "${srcdir}/${_realname}"
+  local ver="$(svnversion)"
+  printf "%s.%s" "${_ver_base}" "${ver//[[:alpha:]]}"
+}
+
+build() {
+	for _target in ${_targets}; do
+    mkdir -p ${srcdir}/winpthreads-build-${_target} && cd ${srcdir}/winpthreads-build-${_target}
+    ${srcdir}/${_realname}/configure \
+		--prefix=/opt/${_target} \
+		--host=${_target} \
+		--enable-static \
+		--enable-shared
+    make
+	done
+}
+
+package() {
+	for _target in ${_targets}; do
+    	cd ${srcdir}/winpthreads-build-${_target}
+    	make DESTDIR=${pkgdir} install
+	done
+}
