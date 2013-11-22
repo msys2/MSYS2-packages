@@ -40,7 +40,12 @@ then
 	MSYS)
 		PATH="${MSYS2_PATH}:/opt/bin:${PATH}"
 	;;
+	*)
+		PATH="${MSYS2_PATH}:${PATH}"
+	;;
   esac
+else
+	PATH="${MSYS2_PATH}:${PATH}"
 fi
 
 MAYBE_FIRST_START=false
