@@ -21,24 +21,24 @@
 # Modifying these default path settings can be done in different ways.
 # To learn more about startup files, refer to your shell's man page.
 
-PATH="/usr/local/bin:/usr/bin:${PATH}"
+MSYS2_PATH="/usr/local/bin:/usr/bin"
 MANPATH="/usr/local/man:/usr/share/man:/usr/man:${MANPATH}"
 INFOPATH="/usr/local/info:/usr/share/info:/usr/info:${INFOPATH}"
 if [ -n "$MSYSTEM" ]
 then
   case "$MSYSTEM" in
     MINGW32)
-		PATH="/mingw32/bin:${PATH}"
+		PATH="/mingw32/bin:${MSYS2_PATH}:${PATH}"
 		PKG_CONFIG_PATH="/mingw32/lib/pkgconfig"
 		MANPATH="/mingw32/share/man:${MANPATH}"
 	;;
 	MINGW64)
-		PATH="/mingw64/bin:${PATH}"
+		PATH="/mingw64/bin:${MSYS2_PATH}:${PATH}"
 		PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
 		MANPATH="/mingw64/share/man:${MANPATH}"
 	;;
 	MSYS)
-		PATH="${PATH}:/mingw32/bin:/mingw64/bin"
+		PATH="${MSYS2_PATH}:/opt/bin:${PATH}"
 	;;
   esac
 fi
@@ -342,6 +342,10 @@ maybe_create_home ()
     fi
   fi
 
+  # Start MSYS in selected folder
+  # c:\msys\bin\bash -c "cd '%curdir'; export 
+  # CHERE_INVOKING=1; exec /bin/bash --login -i"
+  # 
   # Make sure we start in home unless invoked by CHERE
   if [ ! -z "${CHERE_INVOKING}" ]; then
     unset CHERE_INVOKING
