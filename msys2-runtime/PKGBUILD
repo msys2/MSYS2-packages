@@ -2,7 +2,7 @@
 
 pkgname=('msys2-runtime' 'msys2-runtime-devel')
 _ver_base=2.0
-pkgver=2.0.15634.0ec2c05
+pkgver=2.0.15686.12ed171
 pkgrel=1
 pkgdesc="Cygwin POSIX emulation engine"
 arch=('i686' 'x86_64')
@@ -10,32 +10,36 @@ url=""
 license=('GPL')
 groups=('base')
 depends=()
-makedepends=('cocom' 'git' 'perl' 'gcc' 'mingw-w64-cross-gcc')
+makedepends=('cocom' 'git' 'perl' 'gcc' 'mingw-w64-cross-gcc' 'mingw-w64-cross-zlib')
 source=('msys2-runtime'::'git+https://github.com/Alexpux/Cygwin.git#branch=develop')
 md5sums=('SKIP')
 
 pkgver() {
-  cd "$srcdir/$pkgname"
+  cd "$srcdir/msys2-runtime"
   #printf "%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
   printf "%s.%s.%s" "${_ver_base}" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
  
 build() {
-  cd $srcdir/$pkgname
+  mkdir -p $srcdir/msys2-build && cd $srcdir/msys2-build
 
-  CFLAGS="-O2 -pipe -ggdb -fdebug-prefix-map=$srcdir/$pkgname=/usr/src/debug/msys"
+  CFLAGS="-O2 -pipe -ggdb -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
   CXX=g++
-  CXXFLAGS="-O2 -pipe -ggdb -fdebug-prefix-map=$srcdir/$pkgname=/usr/src/debug/msys"
+  CXXFLAGS="-O2 -pipe -ggdb -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
   F77=gfortran
-  FFLAGS+=" -ggdb -fdebug-prefix-map=$srcdir/$pkgname=/usr/src/debug/msys"
+  FFLAGS+=" -ggdb -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
   FC=gfortran
-  FCFLAGS+=" -ggdb -fdebug-prefix-map=$srcdir/$pkgname=/usr/src/debug/msys"
+  FCFLAGS+=" -ggdb -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
 
-  export PATH=$PATH:/mingw32/bin:/mingw64/bin
-  ./configure --prefix=/usr --build=${CHOST} --sysconfdir=/etc
-  LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 make
-  make DESTDIR="$srcdir/dest" install
-  rm -rf $srcdir/dest/etc
+  ../msys2-runtime/configure --prefix=/usr --build=${CHOST} --sysconfdir=/etc
+  LANG=C make
+  
+}
+
+setup() {
+  cd $srcdir/msys2-build
+  make -j1 DESTDIR="$destdir" install
+  rm -rf $destdir/etc
 }
 
 package_msys2-runtime() {
@@ -45,13 +49,13 @@ package_msys2-runtime() {
   #install=msys2-runtime.install
 
   mkdir -p $pkgdir/usr
-  cp -rf $srcdir/dest/usr/bin $pkgdir/usr/
+  cp -rf $destdir/usr/bin $pkgdir/usr/
   rm -f $pkgdir/usr/bin/msys-2.0.dbg
   rm -f $pkgdir/usr/bin/cyglsa-config
   rm -f $pkgdir/usr/bin/cyglsa.dll
   rm -f $pkgdir/usr/bin/cyglsa64.dll
   rm -f $pkgdir/usr/bin/cygserver-config  
-  cp -rf $srcdir/dest/usr/share $pkgdir/usr/
+  cp -rf $destdir/usr/share $pkgdir/usr/
   
 }
 
@@ -62,9 +66,9 @@ package_msys2-runtime-devel() {
   options=('staticlibs' '!strip')
   
   mkdir -p $pkgdir/usr/bin
-  cp -f $srcdir/dest/usr/bin/msys-2.0.dbg $pkgdir/usr/bin/
-  cp -rf $srcdir/dest/usr/${CHOST}/include $pkgdir/usr/
+  cp -f $destdir/usr/bin/msys-2.0.dbg $pkgdir/usr/bin/
+  cp -rf $destdir/usr/${CHOST}/include $pkgdir/usr/
   rm -f $pkgdir/usr/include/iconv.h
   rm -f $pkgdir/usr/include/unctrl.h
-  cp -rf $srcdir/dest/usr/${CHOST}/lib $pkgdir/usr/
+  cp -rf $destdir/usr/${CHOST}/lib $pkgdir/usr/
 }
