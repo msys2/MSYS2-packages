@@ -2,7 +2,7 @@
 
 pkgname=pacman
 _base_ver=4.1.2
-pkgver=4.1.2.5558.0dfee19
+pkgver=4.1.2.5560.3d0367e
 pkgrel=1
 pkgdesc="A library-based package manager with dependency support"
 arch=('i686' 'x86_64')
@@ -17,15 +17,21 @@ optdepends=()
 provides=('pacman-contrib')
 conflicts=('pacman-contrib')
 replaces=('pacman-contrib')
-backup=(usr/etc/pacman.conf usr/etc/makepkg.conf)
+backup=("usr/etc/pacman.conf" "usr/etc/makepkg.conf" "usr/etc/makepkg_mingw32.conf" "usr/etc/makepkg_mingw64.conf")
 source=("$pkgname"::'git://github.com/Alexpux/MSYS2-pacman.git'
-        pacman.conf.i686
-        pacman.conf.x86_64
-        makepkg.conf)
+		"pacman.conf.i686"
+		"pacman.conf.x86_64"
+		"makepkg.conf"
+		"makepkg_mingw32.conf"
+		"makepkg_mingw64.conf"
+		"makepkg-mingw")
 md5sums=('SKIP'
          'c5e8e1fac90fa490347d8cda49aea282'
          'c5e8e1fac90fa490347d8cda49aea282'
-         'fc4f7b4393304307f41c219beb3b4623')
+         'fc4f7b4393304307f41c219beb3b4623'
+         '1bb8d09ab76f6d66475c6f061eaf0410'
+         'ea6f55dc472312f760f3e929c31ffec0'
+         '7185d513a6de7ff3e5afbf873b2590fc')
 
 pkgver() {
   cd "$srcdir/$pkgname"
@@ -53,10 +59,14 @@ package() {
   cd $srcdir/$pkgname
   make -j1 DESTDIR=$pkgdir install
   make -j1 DESTDIR=$pkgdir -C contrib install
+  
+  # Workaround for MSYS - place all files in /usr
+  mv -f $pkgdir/etc $pkgdir/usr/
+  mv -f $pkgdir/var $pkgdir/usr/
 
   # install Arch specific stuff
-  install -dm755 $pkgdir/etc
-  install -m644 $srcdir/pacman.conf.$CARCH $pkgdir/etc/pacman.conf
+  install -dm755 $pkgdir/usr/etc
+  install -m644 $srcdir/pacman.conf.$CARCH $pkgdir/usr/etc/pacman.conf
   
   case "$CARCH" in
     i686)    
@@ -74,9 +84,14 @@ package() {
 	  myprefix="/mingw64"
       ;;
   esac
-  install -m644 $srcdir/makepkg.conf $pkgdir/etc/
+  
+  install -m644 $srcdir/makepkg.conf $pkgdir/usr/etc/
+  install -m644 $srcdir/makepkg_mingw32.conf $pkgdir/usr/etc/
+  install -m644 $srcdir/makepkg_mingw64.conf $pkgdir/usr/etc/
+  install -m755 $srcdir/makepkg-mingw $pkgdir/usr/bin/
+  
   # set things correctly in the default conf file
-  sed -i $pkgdir/etc/makepkg.conf \
+  sed -i $pkgdir/usr/etc/makepkg.conf \
     -e "s|@CARCH[@]|$mycarch|g" \
     -e "s|@CHOST[@]|$mychost|g" \
 	-e "s|@MINGW_CHOST[@]|$mymingw|g" \
@@ -85,15 +100,11 @@ package() {
     
   # put bash_completion in the right location
   install -dm755 ${pkgdir}/usr/share/bash-completion/completions
-  mv ${pkgdir}/etc/bash_completion.d/pacman \
+  mv ${pkgdir}/usr/etc/bash_completion.d/pacman \
     ${pkgdir}/usr/share/bash-completion/completions
-  rmdir ${pkgdir}/etc/bash_completion.d
+  rmdir ${pkgdir}/usr/etc/bash_completion.d
 
   for f in makepkg pacman-key; do
     ln -s pacman "$pkgdir/usr/share/bash-completion/completions/$f"
   done
-  
-  # Workaround for MSYS - place all files in /usr
-  mv -f $pkgdir/etc $pkgdir/usr/
-  mv -f $pkgdir/var $pkgdir/usr/
 }
