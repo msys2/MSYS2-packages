@@ -1,8 +1,9 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=binutils
-_basever=2.24.51
-pkgver=${_basever}.20131121
+#_basever=2.24.51
+#pkgver=${_basever}.20131119
+pkgver=2.24
 pkgrel=1
 pkgdesc="A set of programs to assemble and manipulate binary and object files"
 arch=('i686' 'x86_64')
@@ -14,29 +15,26 @@ checkdepends=('dejagnu' 'bc')
 makedepends=('libiconv-devel' 'gettext-devel' 'zlib-devel')
 options=('staticlibs' '!distcc' '!ccache')
 install=binutils.install
-source=(http://sourceware.mirrors.tds.net/pub/sourceware.org/binutils/snapshots/binutils-${_basever}.tar.bz2
-        # ftp://ftp.gnu.org/gnu/binutils/binutils-${_basever}.tar.bz2{,.sig}
+source=(#http://sourceware.mirrors.tds.net/pub/sourceware.org/binutils/snapshots/binutils-${_basever}.tar.bz2
+        ftp://ftp.gnu.org/gnu/binutils/binutils-${pkgver}.tar.bz2{,.sig}
         #binutils-2.23.2-texinfo-5.0.patch
-        01-w32api-sysroot.patch
-        02-x86-64-pc32-relocs.patch
+        cofflink.patch
+		2.23.52-install-libiberty.patch
         binutils-trunk-msys2.patch)
-md5sums=('9816c8f69beaaf8f7c468dcd4e4bfceb'
-         'f13f153ee918273f99467150b981a8ff'
-         'e7e91814b32f4c4c63d4c777f5eabf7f'
+md5sums=('e0f71a7b2ddab0f8612336ac81d9636b'
+         'SKIP'
+         '65b166affc5cc9a422a9da90dd95bb9f'
+         'bbedd06f1acf9cab0a8dda20380cf26b'
          '6f7175b7ed29bc597f0d300500e2b651')
 
 prepare() {
-  cd ${srcdir}/binutils-${_basever}
-
-  # http://sourceware.org/git/?p=binutils.git;a=patch;h=e02bf935
-  # http://sourceware.org/git/?p=binutils.git;a=patch;h=935f8542
-  #patch -p1 -i ${srcdir}/binutils-2.23.2-texinfo-5.0.patch
-
-  patch -p2 -i $srcdir/01-w32api-sysroot.patch
+  cd ${srcdir}/binutils-$pkgver
   if [ "${CARCH}" = "x86_64" ]; then
 	msg "Applying reloc patch"
-	patch -p0 -i $srcdir/02-x86-64-pc32-relocs.patch
+	patch -p0 -i $srcdir/cofflink.patch
   fi
+  
+  patch -p2 -i $srcdir/2.23.52-install-libiberty.patch
   patch -p1 -i $srcdir/binutils-trunk-msys2.patch
   
   # hack! - libiberty configure tests for header files using "$CPP $CPPFLAGS"
@@ -53,13 +51,13 @@ build() {
   else
     local _conf=''
   fi
-  ${srcdir}/binutils-${_basever}/configure --build=${CHOST} \
+  ${srcdir}/binutils-${pkgver}/configure --build=${CHOST} \
     --prefix=/usr \
     --disable-werror \
 	$_conf \
     --without-libiconv-prefix \
     --without-libintl-prefix
-
+#	--enable-install-libiberty 
   make
 }
 
@@ -74,6 +72,7 @@ check() {
 package() {
   cd ${srcdir}/binutils-build
   make DESTDIR=${pkgdir} install
+  cp libiberty/libiberty.a ${pkgdir}/usr/lib
   
   # Remove unwanted files
   rm ${pkgdir}/usr/share/info/{configure,standards}.info
