@@ -1,0 +1,51 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=autoconf2.13
+pkgver=2.13
+pkgrel=1
+pkgdesc="A GNU tool for automatically configuring source code"
+arch=('any')
+license=('GPL2' 'GPL3' 'custom')
+url="http://www.gnu.org/software/autoconf"
+groups=('base-devel')
+depends=('awk' 'm4' 'diffutils' 'bash')
+# for test-suite
+install=autoconf.install
+source=(ftp://ftp.gnu.org/pub/gnu/autoconf/autoconf-${pkgver}.tar.gz
+        autoconf2.1-texinfo.patch
+        autoconf-2.13-msys2.patch)
+md5sums=('9de56d4a161a723228220b0f425dc711'
+         'e94e41d0bf86724bcddc53fe8032d9e7'
+         '3cc6995dbd9fb3d7f7b9262ec902a146')
+
+prepare() {
+  cd ${srcdir}/autoconf-${pkgver}
+  
+  patch -p2 -i ${srcdir}/autoconf2.1-texinfo.patch
+  patch -p1 -i ${srcdir}/autoconf-2.13-msys2.patch
+}
+
+build() {
+  cd ${srcdir}/autoconf-${pkgver}
+  ./configure --prefix=/usr --program-suffix=-2.13
+  make
+}
+
+check() {
+  cd ${srcdir}/autoconf-${pkgver}
+  make check
+}
+
+package() {
+  cd ${srcdir}/autoconf-${pkgver}
+  make prefix=${pkgdir}/usr install
+
+  makeinfo --no-split -I ${srcdir}/autoconf-${pkgver} -o autoconf2.13.info autoconf.texi
+  # license exception
+  install -Dm644 COPYING \
+    $pkgdir/usr/share/licenses/autoconf${pkgver}/COPYING
+
+  rm -rf ${pkgdir}/usr/info
+  mkdir -p ${pkgdir}/usr/share/info
+  cp autoconf2.13.info ${pkgdir}/usr/share/info/autoconf2.13.info
+}
