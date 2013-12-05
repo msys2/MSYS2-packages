@@ -2,24 +2,32 @@
 
 pkgname=('curl' 'libcurl' 'libcurl-devel')
 pkgver=7.33.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Multi-protocol file transfer utility"
 arch=('i686' 'x86_64')
 url="http://curl.haxx.se"
 license=('MIT')
-depends=('ca-certificates' 'libidn' 'libmetalink' 'libssh2' 'openssl' 'zlib')
-makedepends=('libmetalink-devel' 'libidn-devel' 'libssh2-devel' 'openssl-devel' 'zlib-devel')
+depends=('ca-certificates' 'libidn' 'libmetalink' 'libssh2' 'openssl' 'zlib' 'heimdal-libs')
+makedepends=('libmetalink-devel' 'libidn-devel' 'libssh2-devel' 'openssl-devel' 'zlib-devel' 'heimdal-devel')
 #provides=('libcurl.so')
 options=('!libtool' 'strip' '!debug')
 source=("http://curl.haxx.se/download/$pkgname-$pkgver.tar.gz"{,.asc}
-        curl-7.32.0-msys2.patch)
+        curl-7.32.0-msys2.patch
+		7.33.0-libdeps.patch
+		7.33.0-Wimplicit-decls.patch)
 md5sums=('c8a4eaac7ce7b0d1bf458d62ccd4ef93'
          'SKIP'
-         '255b3bf8fe8704adfb95222865589d16')
+         '255b3bf8fe8704adfb95222865589d16'
+         '009c98eea0b41ad0e534f5fac2bddd96'
+         '663783cdd842d658123d4063d81a0217')
 
 prepare() {
   cd "$pkgname-$pkgver"
   patch -p1 -i ${srcdir}/curl-7.32.0-msys2.patch
+  patch -p2 -i ${srcdir}/7.33.0-libdeps.patch
+  patch -p2 -i ${srcdir}/7.33.0-Wimplicit-decls.patch
+  
+  autoreconf -fi
 }
 
 build() {
@@ -30,10 +38,10 @@ build() {
       --prefix=/usr \
       --enable-debug \
       --enable-optimize \
+	  --enable-ipv6 \
       --disable-hidden-symbols \
       --disable-ares \
       --with-gssapi \
-      --without-krb4 \
       --with-libidn \
       --with-libmetalink \
       --without-librtmp \
@@ -41,7 +49,8 @@ build() {
       --without-spnego \
       --with-ssl \
       --with-zlib \
-      --with-ca-bundle=/usr/ssl/certs/ca-bundle.crt
+      --with-ca-bundle=/usr/ssl/certs/ca-bundle.crt \
+	  ac_cv_func_setmode=yes
 
   make
   make DESTDIR="${srcdir}/dest" install
@@ -61,7 +70,7 @@ package_curl() {
 
 package_libcurl() {
   pkgdesc="Multi-protocol file transfer library (runtime)"
-  depends=('ca-certificates' 'libidn' 'libmetalink' 'libssh2' 'openssl' 'zlib')
+  depends=('ca-certificates' 'heimdal-libs' 'libidn' 'libmetalink' 'libssh2' 'openssl' 'zlib')
   groups=('libraries')
   
   mkdir -p ${pkgdir}/usr/bin
