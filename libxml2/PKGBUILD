@@ -1,14 +1,13 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
-pkgname=('libxml2' 'libxml2-devel')
+pkgname=('libxml2' 'libxml2-devel' 'libxml2-python')
 pkgver=2.9.1
-pkgrel=2
+pkgrel=3
 pkgdesc="XML parsing library, version 2"
 arch=(i686 x86_64)
 license=('MIT')
 depends=('coreutils' 'zlib' 'libreadline' 'ncurses' 'liblzma')
 makedepends=('python2' 'python3')
-install=libxml2.install
 url="http://www.xmlsoft.org/"
 source=(ftp://ftp.xmlsoft.org/${pkgname}/${pkgname}-${pkgver}.tar.gz
         http://www.w3.org/XML/Test/xmlts20080827.tar.gz
@@ -34,6 +33,9 @@ md5sums=('9c0cfef285d5c4a5c80d00904ddab380'
          'efc796f7fa5aa9678b61bb5cb7d87561'
          '1fbd4215c81ca3286873bfb2a3f101f3'
          'c024dbf5eb208fad6dde89dc9819bc90')
+
+PYTHON_SITELIB=/usr/lib/python2.7/site-packages
+PYTHON_LIB=/usr/lib/python2.7
 
 prepare() {
   cd ${srcdir}
@@ -63,10 +65,14 @@ build() {
     --prefix=/usr \
     --enable-ipv6 \
     --with-history \
+	--with-python=/usr/bin/python2 \
     --with-html-dir=/usr/share/doc \
     --with-html-subdir=libxml2/html
   make
   make DESTDIR=${srcdir}/dest install
+  
+  mv ${srcdir}/dest${PYTHON_SITELIB}/${pkgname/lib/msys-}mod.dll ${srcdir}/dest${PYTHON_SITELIB}/${pkgname}mod.dll
+  sed -i -e "s:${pkgname/lib/msys-}mod:${PN}mod:g" ${srcdir}/dest${PYTHON_SITELIB}/${pkgname}mod.la
 }
 
 check() {
@@ -76,8 +82,9 @@ check() {
 
 package_libxml2() {
   groups=('libraries')
+  install=libxml2.install
   
-  mkdir -p ${pkgdir}/usr/share
+  mkdir -p ${pkgdir}/usr/{lib,share}
   cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
   rm -f ${pkgdir}/usr/bin/*-config
   cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
@@ -94,7 +101,22 @@ package_libxml2-devel() {
   cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
   cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
   cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+  rm -rf ${pkgdir}${PYTHON_SITELIB}
   cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
   cp -rf ${srcdir}/dest/usr/share/doc ${pkgdir}/usr/share/
+  rm -rf ${pkgdir}/usr/share/doc/python-libxml2
   cp -rf ${srcdir}/dest/usr/share/gtk-doc ${pkgdir}/usr/share/
+}
+
+package_libxml2-python(){
+  pkgdesc="Libxml2 python modules"
+  depends=('libxml2')
+  groups=('python-modules')
+  options=('staticlibs')
+  install=libxml2-python.install
+ 
+  mkdir -p ${pkgdir}/${PYTHON_SITELIB}
+  mkdir -p ${pkgdir}/usr/share/doc
+  cp -rf ${srcdir}/dest${PYTHON_SITELIB}/* ${pkgdir}${PYTHON_SITELIB}/
+  cp -rf ${srcdir}/dest/usr/share/doc/python-libxml2 ${pkgdir}/usr/share/doc/
 }
