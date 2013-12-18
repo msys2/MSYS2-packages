@@ -1,0 +1,80 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=automake1.8
+pkgver=1.8.5
+pkgrel=2
+pkgdesc="A GNU tool for automatically creating Makefiles"
+arch=('any')
+license=('GPL')
+url="http://www.gnu.org/software/automake"
+groups=('base-devel')
+depends=('perl' 'bash')
+makedepends=('autoconf')
+checkdepends=('dejagnu' 'python2')
+install=automake.install
+source=(ftp://ftp.gnu.org/gnu/automake/automake-${pkgver}.tar.bz2{,.sig}
+		automake-1.8.5-gentoo-test-fixes.patch
+		automake1.8-vs-modern-libtool.patch
+		automake1.8-documentation.patch
+		automake1.8-cygwin-test-fixes.patch
+        automake-1.8-msys2.patch)
+md5sums=('0114aa6d7dc32112834b68105fb8d7e2'
+         'SKIP'
+         '55580e93282f69d20f530d549d3f85e7'
+         '43ef156d754ee41f85e2804f1718b6a4'
+         'be4babc88c8211c327c8f99aa8d7250b'
+         '6120f3f38c5a5425430878c8eaafdfdb'
+         '56bdd4270df3c06ade981e995ad15d66')
+
+prepare() {
+  cd ${srcdir}/automake-${pkgver}
+
+  patch -p1 -i ${srcdir}/automake-1.8.5-gentoo-test-fixes.patch
+  patch -p2 -i ${srcdir}/automake1.8-vs-modern-libtool.patch
+  patch -p2 -i ${srcdir}/automake1.8-documentation.patch
+  patch -p2 -i ${srcdir}/automake1.8-cygwin-test-fixes.patch
+
+  patch -p1 -i ${srcdir}/automake-1.8-msys2.patch
+}
+
+build() {
+  cd ${srcdir}/automake-${pkgver}
+  ./configure --prefix=/usr
+  make
+  
+  (cd doc && makeinfo -I ${srcdir}/automake-${pkgver}/doc -o automake1.8.info automake.texi)
+}
+
+check() {
+  cd ${srcdir}/automake-${pkgver}
+
+  # expect 2 failures due to perl-5.18 incompatibility
+  make -k check || true
+}
+
+package() {
+	cd ${srcdir}/automake-${pkgver}
+	make DESTDIR=${pkgdir} install
+	mv ${pkgdir}/usr/info ${pkgdir}/usr/share/
+
+	# install the 1.8 versioned info files
+	for f in `find ${pkgdir}/usr/share/info -name "*.info*"` ; do
+	  rm -f ${f}
+	done
+	for f in `find ${srcdir}/automake-${pkgver} -name "*.info*"` ; do
+	  bf=`basename $f`
+	  cp $f ${pkgdir}/usr/share/info/
+	done
+	
+	# remove the unversioned executables
+	rm -f ${pkgdir}/usr/bin/automake ${pkgdir}/usr/bin/aclocal
+
+	# remove the unversioned man pages
+	rm -f ${pkgdir}/usr/share/man/man1/automake.1
+	rm -f ${pkgdir}/usr/share/man/man1/aclocal.1
+	
+	# remove the unversioned info files
+	rm -f ${pkgdir}/usr/share/info/automake.info*
+	
+	rm -rf ${pkgdir}/usr/share/doc
+}

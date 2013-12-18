@@ -1,0 +1,94 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=automake1.9
+pkgver=1.9.6
+pkgrel=1
+pkgdesc="A GNU tool for automatically creating Makefiles"
+arch=('any')
+license=('GPL')
+url="http://www.gnu.org/software/automake"
+groups=('base-devel')
+depends=('perl' 'bash')
+makedepends=('autoconf')
+checkdepends=('dejagnu' 'python2')
+install=automake.install
+source=(ftp://ftp.gnu.org/gnu/automake/automake-${pkgver}.tar.bz2{,.sig}
+		automake-1.9.6-gentoo-aclocal7-test-sleep.patch
+		automake-1.9.6-gentoo-ignore-comments.patch
+		automake-1.9.6-gentoo-include-dir-prefix.patch
+		automake1.9-backport-pr401-test-and-fix.patch
+		automake1.9-vs-modern-libtool.patch
+		automake1.9-cygwin-test-fixes.patch
+		automake1.9-documentation.patch
+		automake1.9-avoid-autoreconf.patch
+        automake-1.9-msys2.patch
+		automake-1.9-makeinfo-fix.patch)
+md5sums=('c11b8100bb311492d8220378fd8bf9e0'
+         'SKIP'
+         '7c3755a846d4a5cc4c3230f3895f537a'
+         '3099ade0063f414271664a3909abac9e'
+         '41bfebb78fd15ed76ef2ae3a7d76d726'
+         '677f5c9f68425384eb8c65f9030e3219'
+         'c9dc1735dc968162822a507220e971ec'
+         '78b543eac0a9d105ac0c26f9bcd14c0b'
+         '0531ba4c4abdeb1a650d9d2b157ef223'
+         'e8322fa37f3aaf8376807d3f34cd985a'
+         '294217de89557bb836aef02a04e48143'
+         '9874687415659b15082ecfd46a5623c4')
+
+prepare() {
+  cd ${srcdir}/automake-${pkgver}
+
+  patch -p1 -i ${srcdir}/automake-1.9.6-gentoo-aclocal7-test-sleep.patch
+  patch -p0 -i ${srcdir}/automake-1.9.6-gentoo-ignore-comments.patch
+  patch -p0 -i ${srcdir}/automake-1.9.6-gentoo-include-dir-prefix.patch
+  patch -p2 -i ${srcdir}/automake1.9-backport-pr401-test-and-fix.patch
+  patch -p2 -i ${srcdir}/automake1.9-vs-modern-libtool.patch
+  patch -p2 -i ${srcdir}/automake1.9-cygwin-test-fixes.patch
+  patch -p2 -i ${srcdir}/automake1.9-documentation.patch
+  patch -p1 -i ${srcdir}/automake1.9-avoid-autoreconf.patch
+  
+  patch -p1 -i ${srcdir}/automake-1.9-makeinfo-fix.patch
+  patch -p1 -i ${srcdir}/automake-1.9-msys2.patch
+}
+
+build() {
+  cd ${srcdir}/automake-${pkgver}
+  ./configure --prefix=/usr
+  make
+  
+  (cd doc && makeinfo -I ${srcdir}/automake-${pkgver}/doc -o automake1.9.info automake.texi)
+}
+
+check() {
+  cd ${srcdir}/automake-${pkgver}
+
+  # expect 2 failures due to perl-5.18 incompatibility
+  make -k check || true
+}
+
+package() {
+	cd ${srcdir}/automake-${pkgver}
+	make DESTDIR=${pkgdir} install
+
+	# install the 1.11 versioned info files
+	for f in `find ${pkgdir}/usr/share/info -name "*.info*"` ; do
+	  rm -f ${f}
+	done
+	for f in `find ${srcdir}/automake-${pkgver} -name "*.info*"` ; do
+	  bf=`basename $f`
+	  cp $f ${pkgdir}/usr/share/info/
+	done
+	
+	# remove the unversioned executables
+	rm -f ${pkgdir}/usr/bin/automake ${pkgdir}/usr/bin/aclocal
+
+	# remove the unversioned man pages
+	rm -f ${pkgdir}/usr/share/man/man1/automake.1
+	rm -f ${pkgdir}/usr/share/man/man1/aclocal.1
+	
+	# remove the unversioned info files
+	rm -f ${pkgdir}/usr/share/info/automake.info*
+	
+	rm -rf ${pkgdir}/usr/share/doc
+}

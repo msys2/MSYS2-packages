@@ -1,0 +1,77 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=automake1.7
+pkgver=1.7.9
+pkgrel=1
+pkgdesc="A GNU tool for automatically creating Makefiles"
+arch=('any')
+license=('GPL')
+url="http://www.gnu.org/software/automake"
+groups=('base-devel')
+depends=('perl' 'bash')
+makedepends=('autoconf')
+checkdepends=('dejagnu' 'python2')
+install=automake.install
+source=(ftp://ftp.gnu.org/gnu/automake/automake-${pkgver}.tar.bz2{,.sig}
+		automake-1.7.9-gentoo-test-fixes.patch
+		automake1.7-cygwin-test-fixes.patch
+		automake1.7-documentation.patch
+        automake-1.7-msys2.patch)
+md5sums=('571fd0b0598eb2a27dcf68adcfddfacb'
+         'SKIP'
+         'fdeb1b5ca48d002a20e844f3787bdd7b'
+         'b9f0c21088dcc7d6ac4c90e719625347'
+         'f2120c31bf9b4fd8c7812970346735a3'
+         'a952177db4955709b3363b9b14c9ace5')
+
+prepare() {
+  cd ${srcdir}/automake-${pkgver}
+
+  patch -p1 -i ${srcdir}/automake-1.7.9-gentoo-test-fixes.patch
+  patch -p2 -i ${srcdir}/automake1.7-cygwin-test-fixes.patch
+  patch -p2 -i ${srcdir}/automake1.7-documentation.patch
+  patch -p1 -i ${srcdir}/automake-1.7-msys2.patch
+}
+
+build() {
+  cd ${srcdir}/automake-${pkgver}
+  ./configure --prefix=/usr
+  make
+  
+  (makeinfo -I ${srcdir}/automake-${pkgver} -o automake1.7.info automake.texi)
+}
+
+check() {
+  cd ${srcdir}/automake-${pkgver}
+
+  # expect 2 failures due to perl-5.18 incompatibility
+  make -k check || true
+}
+
+package() {
+	cd ${srcdir}/automake-${pkgver}
+	make DESTDIR=${pkgdir} install
+	
+	mv ${pkgdir}/usr/info ${pkgdir}/usr/share/
+
+	# install the 1.7 versioned info files
+	for f in `find ${pkgdir}/usr/share/info -name "*.info*"` ; do
+	  rm -f ${f}
+	done
+	for f in `find ${srcdir}/automake-${pkgver} -name "*.info*"` ; do
+	  bf=`basename $f`
+	  cp $f ${pkgdir}/usr/share/info/
+	done
+	
+	# remove the unversioned executables
+	rm -f ${pkgdir}/usr/bin/automake ${pkgdir}/usr/bin/aclocal
+
+	# remove the unversioned man pages
+	rm -f ${pkgdir}/usr/share/man/man1/automake.1
+	rm -f ${pkgdir}/usr/share/man/man1/aclocal.1
+	
+	# remove the unversioned info files
+	rm -f ${pkgdir}/usr/share/info/automake.info*
+	
+	rm -rf ${pkgdir}/usr/share/doc
+}

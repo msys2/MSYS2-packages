@@ -1,0 +1,72 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=automake1.10
+pkgver=1.10.3
+pkgrel=1
+pkgdesc="A GNU tool for automatically creating Makefiles"
+arch=('any')
+license=('GPL')
+url="http://www.gnu.org/software/automake"
+groups=('base-devel')
+depends=('perl' 'bash')
+makedepends=('autoconf')
+checkdepends=('dejagnu' 'python2')
+install=automake.install
+source=(ftp://ftp.gnu.org/gnu/automake/automake-${pkgver}.tar.bz2{,.sig}
+        automake-1.10-msys2.patch
+		automake1.10-documentation.patch
+		automake-1.10-makeinfo-fix.patch)
+md5sums=('b8e67fb458da396bc35555af7ef2b49f'
+         'SKIP'
+         '0cc04bed86ae6d1b5c3bd90ba3593ee6'
+         'b9537a6237a5bdf8c48a76c277b53ae6'
+         '79199a6a20eaab3f95f17cfde86e628d')
+
+prepare() {
+  cd ${srcdir}/automake-${pkgver}
+
+  patch -p2 -i ${srcdir}/automake1.10-documentation.patch
+  patch -p1 -i ${srcdir}/automake-1.10-makeinfo-fix.patch
+  patch -p1 -i ${srcdir}/automake-1.10-msys2.patch
+}
+
+build() {
+  cd ${srcdir}/automake-${pkgver}
+  ./configure --prefix=/usr
+  make
+  
+  (cd doc && makeinfo -I ${srcdir}/automake-${pkgver}/doc -o automake1.10.info automake.texi)
+}
+
+check() {
+  cd ${srcdir}/automake-${pkgver}
+
+  # expect 2 failures due to perl-5.18 incompatibility
+  make -k check || true
+}
+
+package() {
+	cd ${srcdir}/automake-${pkgver}
+	make DESTDIR=${pkgdir} install
+
+	# install the 1.11 versioned info files
+	for f in `find ${pkgdir}/usr/share/info -name "*.info*"` ; do
+	  rm -f ${f}
+	done
+	for f in `find ${srcdir}/automake-${pkgver} -name "*.info*"` ; do
+	  bf=`basename $f`
+	  cp $f ${pkgdir}/usr/share/info/
+	done
+	
+	# remove the unversioned executables
+	rm -f ${pkgdir}/usr/bin/automake ${pkgdir}/usr/bin/aclocal
+
+	# remove the unversioned man pages
+	rm -f ${pkgdir}/usr/share/man/man1/automake.1
+	rm -f ${pkgdir}/usr/share/man/man1/aclocal.1
+	
+	# remove the unversioned info files
+	rm -f ${pkgdir}/usr/share/info/automake.info*
+	
+	rm -rf ${pkgdir}/usr/share/doc
+}
