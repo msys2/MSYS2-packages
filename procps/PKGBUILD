@@ -2,14 +2,14 @@
 
 pkgname=procps
 pkgver=3.2.8
-pkgrel=1
+pkgrel=2
 pkgdesc="System and process monitoring utilities"
 arch=('i686' 'x86_64')
 url="http://procps.sourceforge.net/"
 license=('GPL2')
 groups=('sys-utils')
 depends=('msys2-runtime')
-options=('emptydirs')
+options=('!emptydirs' 'strip')
 # procps-3.2.8-2.src.patch is by Cygwin's Corinna Vinschen.
 source=(http://procps.sourceforge.net/$pkgname-$pkgver.tar.gz
         procps-3.2.8-2.src.patch)
@@ -24,10 +24,20 @@ prepare() {
 
 build() {
   cd ${srcdir}/$pkgname-$pkgver
-  make
+  make \
+    CFLAGS+=" -I/usr/include/ncursesw" \
+    CURSES=-lncursesw \
+    CPPFLAGS+=" -I/usr/include/ncursesw"
 }
 
 package() {
   cd ${srcdir}/$pkgname-$pkgver
   make DESTDIR=${pkgdir} install
+  
+  # fix permissons
+  find ${pkgdir}/ -type f \( -name "*.dll" -o -name "*.exe" \) | xargs chmod 0755
+
+  mv -f ${pkgdir}/bin/* ${pkgdir}/usr/bin/
+  rm -r ${pkgdir}/bin
+  mv -f ${pkgdir}/sbin ${pkgdir}/usr/
 }
