@@ -1,0 +1,852 @@
+--- origsrc/procps-3.2.8/Makefile	2009-05-10 20:50:48.000000000 +0200
++++ src/procps-3.2.8/Makefile	2013-11-22 11:51:29.956979741 +0100
+@@ -27,7 +27,7 @@ TARVERSION   := $(VERSION).$(SUBVERSION)
+ ldconfig := ldconfig
+ ln_f     := ln -f
+ ln_sf    := ln -sf
+-install  := install -D --owner 0 --group 0
++install  := install -D
+ 
+ # Lame x86-64 /lib64 and /usr/lib64 abomination:
+ lib64    := lib$(shell [ -d /lib64 ] && echo 64)
+@@ -45,14 +45,14 @@ usr/include              := $(DESTDIR)/u
+ 
+ #SKIP     := $(bin)kill $(man1)kill.1
+ 
+-BINFILES := $(usr/bin)uptime $(usr/bin)tload $(usr/bin)free $(usr/bin)w \
+-            $(usr/bin)top $(usr/bin)vmstat $(usr/bin)watch $(usr/bin)skill \
+-            $(usr/bin)snice $(bin)kill $(sbin)sysctl $(usr/bin)pmap \
+-            $(usr/proc/bin)pgrep $(usr/proc/bin)pkill $(usr/bin)slabtop \
+-            $(usr/proc/bin)pwdx
++BINFILES := $(usr/bin)uptime.exe $(usr/bin)tload.exe $(usr/bin)free.exe $(usr/bin)w.exe \
++            $(usr/bin)top.exe $(usr/bin)vmstat.exe $(usr/bin)watch.exe $(usr/bin)skill.exe \
++            $(usr/bin)snice.exe $(bin)prockill.exe $(sbin)sysctl.exe $(usr/bin)pmap.exe \
++            $(usr/proc/bin)pgrep.exe $(usr/proc/bin)pkill.exe $(usr/bin)slabtop.exe \
++            $(usr/proc/bin)pwdx.exe
+ 
+ MANFILES := $(man1)uptime.1 $(man1)tload.1 $(man1)free.1 $(man1)w.1 \
+-            $(man1)top.1 $(man1)watch.1 $(man1)skill.1 $(man1)kill.1 \
++            $(man1)top.1 $(man1)watch.1 $(man1)skill.1 \
+             $(man1)snice.1 $(man1)pgrep.1 $(man1)pkill.1 $(man1)pmap.1 \
+             $(man5)sysctl.conf.5 $(man8)vmstat.8 $(man8)sysctl.8 \
+             $(man1)slabtop.1 $(man1)pwdx.1
+@@ -99,7 +99,8 @@ ALL_CPPFLAGS := $(PKG_CPPFLAGS) $(CPPFLA
+ PKG_CFLAGS   := -fno-common -ffast-math \
+   -W -Wall -Wshadow -Wcast-align -Wredundant-decls \
+   -Wbad-function-cast -Wcast-qual -Wwrite-strings -Waggregate-return \
+-  -Wstrict-prototypes -Wmissing-prototypes
++  -Wstrict-prototypes -Wmissing-prototypes \
++  -Wno-comment -Wno-cast-qual -Wno-address
+ # Note that some stuff below is conditional on CFLAGS containing
+ # an option that starts with "-g". (-g, -g2, -g3, -ggdb, etc.)
+ CFLAGS       := -O2 -s
+@@ -169,7 +170,7 @@ CLEAN := $(notdir $(BINFILES))
+ 
+ DIRS :=
+ 
+-INSTALL := $(BINFILES) $(MANFILES)
++INSTALL := $(BINFILES) $(MANFILES) $(man1)prockill.1
+ 
+ # want this rule first, use := on ALL, and ALL not filled in yet
+ all: do_all
+@@ -227,9 +228,12 @@ $(BINFILES) : all
+ $(MANFILES) : all
+ 	$(install) --mode a=r $(notdir $@) $@
+ 
++$(man1)prockill.1 : kill.1
++	$(install) --mode a=r $< $@
++
+ install: $(filter-out $(SKIP) $(addprefix $(DESTDIR),$(SKIP)),$(INSTALL))
+-	cd $(usr/bin) && $(ln_f) skill snice
+-	cd $(usr/proc/bin) && $(ln_f) pgrep pkill
++	cd $(usr/bin) && $(ln_f) skill.exe snice.exe
++	cd $(usr/proc/bin) && $(ln_f) pgrep.exe pkill.exe
+ 
+ ############ prog.c --> prog.o
+ 
+@@ -243,19 +247,19 @@ w.o:    w.c
+ 
+ ############ prog.o --> prog
+ 
+-pmap w uptime tload free sysctl vmstat utmp pgrep skill pwdx: % : %.o $(LIBPROC)
++pmap.exe w.exe uptime.exe tload.exe free.exe sysctl.exe vmstat.exe utmp.exe pgrep.exe skill.exe pwdx.exe: %.exe : %.o $(LIBPROC)
+ 	$(CC) $(ALL_CFLAGS) $^ $(ALL_LDFLAGS) -o $@
+ 
+-slabtop top: % : %.o $(LIBPROC)
++slabtop.exe top.exe: %.exe : %.o $(LIBPROC)
+ 	$(CC) $(ALL_CFLAGS) $^ $(ALL_LDFLAGS) -o $@ $(CURSES)
+ 
+-watch: % : %.o
++watch.exe: %.exe : %.o
+ 	$(CC) $(ALL_CFLAGS) $^ $(ALL_LDFLAGS) -o $@ $(CURSES)
+ 
+ ############ progX --> progY
+ 
+-snice kill: skill
+-	$(ln_f) skill $@
++snice.exe prockill.exe: skill.exe
++	$(ln_f) skill.exe $@
+ 
+-pkill: pgrep
+-	$(ln_f) pgrep pkill
++pkill.exe: pgrep.exe
++	$(ln_f) pgrep.exe pkill.exe
+--- origsrc/procps-3.2.8/free.c	2004-01-30 03:30:29.000000000 +0100
++++ src/procps-3.2.8/free.c	2013-11-22 11:51:29.981979634 +0100
+@@ -63,7 +63,7 @@ int main(int argc, char *argv[]){
+         meminfo();
+         printf("             total       used       free     shared    buffers     cached\n");
+         printf(
+-            "%-7s %10Lu %10Lu %10Lu %10Lu %10Lu %10Lu\n", "Mem:",
++            "%-7s %10llu %10llu %10llu %10llu %10llu %10llu\n", "Mem:",
+             S(kb_main_total),
+             S(kb_main_used),
+             S(kb_main_free),
+@@ -77,13 +77,13 @@ int main(int argc, char *argv[]){
+         // print the high info, even if it is zero.
+         if (show_high) {
+             printf(
+-                "%-7s %10Lu %10Lu %10Lu\n", "Low:",
++                "%-7s %10llu %10llu %10llu\n", "Low:",
+                 S(kb_low_total),
+                 S(kb_low_total - kb_low_free),
+                 S(kb_low_free)
+             );
+             printf(
+-                "%-7s %10Lu %10Lu %10Lu\n", "High:",
++                "%-7s %10llu %10llu %10llu\n", "High:",
+                 S(kb_high_total),
+                 S(kb_high_total - kb_high_free),
+                 S(kb_high_free)
+@@ -92,20 +92,20 @@ int main(int argc, char *argv[]){
+         if(!old_fmt){
+             unsigned KLONG buffers_plus_cached = kb_main_buffers + kb_main_cached;
+             printf(
+-                "-/+ buffers/cache: %10Lu %10Lu\n", 
++                "-/+ buffers/cache: %10llu %10llu\n",
+                 S(kb_main_used - buffers_plus_cached),
+                 S(kb_main_free + buffers_plus_cached)
+             );
+         }
+         printf(
+-            "%-7s %10Lu %10Lu %10Lu\n", "Swap:",
++            "%-7s %10llu %10llu %10llu\n", "Swap:",
+             S(kb_swap_total),
+             S(kb_swap_used),
+             S(kb_swap_free)
+         );
+         if(show_total){
+             printf(
+-                "%-7s %10Lu %10Lu %10Lu\n", "Total:",
++                "%-7s %10llu %10llu %10llu\n", "Total:",
+                 S(kb_main_total + kb_swap_total),
+                 S(kb_main_used  + kb_swap_used),
+                 S(kb_main_free  + kb_swap_free)
+--- origsrc/procps-3.2.8/minimal.c	2005-10-30 01:45:17.000000000 +0200
++++ src/procps-3.2.8/minimal.c	2013-11-22 11:51:30.009979515 +0100
+@@ -65,6 +65,17 @@
+ #endif
+ #endif
+ 
++///////////////////////////////////////////////////////
++#ifdef __CYGWIN__
++#include <sys/param.h>  /* HZ */
++#include <limits.h>   /* PAGE_SIZE */
++#define NO_TTY_VALUE DEV_ENCODE(0,0)
++#ifndef HZ
++#warning HZ not defined, assuming it is 100
++#define HZ 100
++#endif
++#endif
++
+ ///////////////////////////////////////////////////////////
+ 
+ #ifndef PAGE_SIZE
+--- origsrc/procps-3.2.8/pgrep.c	2007-05-28 02:11:07.000000000 +0200
++++ src/procps-3.2.8/pgrep.c	2013-11-22 11:51:30.033979412 +0100
+@@ -140,7 +140,7 @@ static int strict_atol (const char *rest
+ 	}
+ 
+ 	for ( ; *str; ++str) {
+-		if (! isdigit (*str))
++		if (! isdigit ((unsigned char) *str))
+ 			return (0);
+ 		res *= 10;
+ 		res += *str - '0';
+@@ -151,11 +151,12 @@ static int strict_atol (const char *rest
+ 
+ #include <sys/file.h>
+ 
++#if 0
+ // Seen non-BSD code do this:
+ //
+ //if (fcntl_lock(pid_fd, F_SETLK, F_WRLCK, SEEK_SET, 0, 0) == -1)
+ //                return -1;
+-int fcntl_lock(int fd, int cmd, int type, int whence, int start, int len)
++static int fcntl_lock(int fd, int cmd, int type, int whence, int start, int len)
+ {
+         struct flock lock[1];
+ 
+@@ -166,7 +167,7 @@ int fcntl_lock(int fd, int cmd, int type
+ 
+         return fcntl(fd, cmd, lock);
+ }
+-                                                
++#endif 
+ 
+ // We try a read lock. The daemon should have a write lock.
+ // Seen using flock: FreeBSD code
+@@ -209,7 +210,7 @@ static union el *read_pidfile(void)
+ 	pid = strtoul(buf+1,&endp,10);
+ 	if(endp<=buf+1 || pid<1 || pid>0x7fffffff)
+ 		goto out;
+-	if(*endp && !isspace(*endp))
++	if(*endp && !isspace((unsigned char) *endp))
+ 		goto out;
+ 	list = malloc(2 * sizeof *list);
+ 	list[0].num = 1;
+@@ -549,7 +550,7 @@ static void parse_opts (int argc, char *
+ 		if (argc > 1 && argv[1][0] == '-') {
+ 			int sig;
+ 			sig = signal_name_to_number (argv[1] + 1);
+-			if (sig == -1 && isdigit (argv[1][1]))
++			if (sig == -1 && isdigit ((unsigned char) argv[1][1]))
+ 				sig = atoi (argv[1] + 1);
+ 			if (sig != -1) {
+ 				int i;
+--- origsrc/procps-3.2.8/pmap.c	2008-10-19 21:34:34.000000000 +0200
++++ src/procps-3.2.8/pmap.c	2013-11-22 11:51:30.053979327 +0100
+@@ -75,7 +75,7 @@ static void discover_shm_minor(void){
+     if(tmp) *tmp='\0';
+     tmp = mapbuf;
+     while(*tmp){
+-      if(!isprint(*tmp)) *tmp='?';
++      if(!isprint((unsigned char) *tmp)) *tmp='?';
+       tmp++;
+     }
+     if(start > (unsigned long)addr) continue;
+@@ -168,7 +168,7 @@ static int one_proc(proc_t *p){
+     if(tmp) *tmp='\0';
+     tmp = mapbuf;
+     while(*tmp){
+-      if(!isprint(*tmp)) *tmp='?';
++      if(!isprint((unsigned char) *tmp)) *tmp='?';
+       tmp++;
+     }
+     
+@@ -311,8 +311,14 @@ int main(int argc, char *argv[]){
+             char *arg2 = strchr(arg1,',');
+             if(arg2)
+               *arg2 = '\0';
++#ifdef DANGEROUS_RELIANCE_ON_EVALUATION_ORDER
+             arg2 = arg2 ? arg2++ : arg1;
+-            
++#else
++	    if (arg2)
++	      arg2++;
++	    else
++	      arg2 = arg1;
++#endif
+             if(*arg1)
+               range_low = STRTOUKL(arg1,&arg1,16);
+             if(*arg2)
+--- origsrc/procps-3.2.8/proc/devname.c	2009-05-03 08:39:54.000000000 +0200
++++ src/procps-3.2.8/proc/devname.c	2013-11-22 11:51:30.080979212 +0100
+@@ -31,7 +31,7 @@
+  * dev_to_tty   top, ps
+  */
+ 
+-#if 0
++#if 1
+ #include <sys/sysmacros.h>
+ #define MAJOR_OF(d) ((unsigned)major(d))
+ #define MINOR_OF(d) ((unsigned)minor(d))
+@@ -69,7 +69,7 @@ static void load_drivers(void){
+   p = buf;
+   while(( p = strstr(p, " /dev/") )){  // " /dev/" is the second column
+     tty_map_node *tmn;
+-    int len;
++    size_t len;
+     char *end;
+     p += 6;
+     end = strchr(p, ' ');
+@@ -191,15 +191,25 @@ int main(int argc, char *argv[]){
+ /* Try to guess the device name (useful until /proc/PID/tty is added) */
+ static int guess_name(char *restrict const buf, unsigned maj, unsigned min){
+   struct stat sbuf;
++#ifndef __CYGWIN__
+   int t0, t1;
++#endif
+   unsigned tmpmin = min;
+ 
+   switch(maj){
+   case   3:      /* /dev/[pt]ty[p-za-o][0-9a-z] is 936 */
+     if(tmpmin > 255) return 0;   // should never happen; array index protection
++#ifdef __CYGWIN__
++    sprintf(buf, "/dev/cons%d", tmpmin);
++    /* Skip stat call.  The reason is that cons devices are local to
++       the processes running in that console.  Calling stat from another
++       console or pty will return -1. */
++    return 1;
++#else
+     t0 = "pqrstuvwxyzabcde"[tmpmin>>4];
+     t1 = "0123456789abcdef"[tmpmin&0x0f];
+     sprintf(buf, "/dev/tty%c%c", t0, t1);
++#endif
+     break;
+   case   4:
+     if(min<64){
+@@ -224,8 +234,12 @@ static int guess_name(char *restrict con
+   case  78:  sprintf(buf, "/dev/ttyM%d",  min); break; /* conflict */
+   case 105:  sprintf(buf, "/dev/ttyV%d",  min); break;
+   case 112:  sprintf(buf, "/dev/ttyM%d",  min); break; /* conflict */
++#ifdef __CYGWIN__
++  case 136:  sprintf(buf, "/dev/pty%d",  min); break;
++#else
+   /* 136 ... 143 are /dev/pts/0, /dev/pts/1, /dev/pts/2 ... */
+   case 136 ... 143:  sprintf(buf, "/dev/pts/%d",  min+(maj-136)*256); break;
++#endif
+   case 148:  sprintf(buf, "/dev/ttyT%d",  min); break;
+   case 154:  sprintf(buf, "/dev/ttySR%d", min); break;
+   case 156:  sprintf(buf, "/dev/ttySR%d", min+256); break;
+@@ -273,6 +287,33 @@ static int link_name(char *restrict cons
+   return 1;
+ }
+ 
++#ifdef __CYGWIN__
++/* Cygwin keeps the name to the controlling tty in a virtual file called
++   /proc/PID/ctty, including a trailing LF (sigh). */
++static int
++ctty_name (char *restrict const buf, int pid)
++{
++  char path[32];
++  FILE *fp;
++  char *lf;
++
++  sprintf (path, "/proc/%d/ctty", pid);  /* often permission denied */
++  fp = fopen (path, "r");
++  if (!fp)
++    return 0;
++  if (!fgets (buf,TTY_NAME_SIZE,fp))
++    {
++      fclose (fp);
++      return 0;
++    }
++  fclose (fp);
++  lf = strchr (buf, '\n');
++  if (lf)
++    *lf = (lf == buf ? '?' : '\0');
++  return 1;
++}
++#endif
++
+ /* number --> name */
+ unsigned dev_to_tty(char *restrict ret, unsigned chop, dev_t dev_t_dev, int pid, unsigned int flags) {
+   static char buf[TTY_NAME_SIZE];
+@@ -281,6 +322,9 @@ unsigned dev_to_tty(char *restrict ret,
+   unsigned i = 0;
+   int c;
+   if(dev == 0u) goto no_tty;
++#ifdef __CYGWIN__
++  if(  ctty_name(tmp, pid                                        )) goto abbrev;
++#endif
+   if(linux_version_code > LINUX_VERSION(2, 7, 0)){  // not likely to make 2.6.xx
+     if(link_name(tmp, MAJOR_OF(dev), MINOR_OF(dev), pid, "tty"   )) goto abbrev;
+   }
+--- origsrc/procps-3.2.8/proc/module.mk	2004-09-23 15:10:42.000000000 +0200
++++ src/procps-3.2.8/proc/module.mk	2013-11-22 11:51:30.096979143 +0100
+@@ -17,7 +17,7 @@
+ # numbers for future use, the ELF soname can be set equal to the
+ # file name until some future date when a stable ABI is declared.
+ 
+-SHARED     := 1
++SHARED     := 0
+ 
+ # for lib$(NAME).so and /usr/include/($NAME) and such
+ NAME       :=  proc
+--- origsrc/procps-3.2.8/proc/procps.h	2005-02-27 19:23:19.000000000 +0100
++++ src/procps-3.2.8/proc/procps.h	2013-11-22 11:51:30.111979079 +0100
+@@ -103,7 +103,7 @@
+ // Like HIDDEN, but for an alias that gets created.
+ // In gcc-3.2 there is an alias+hidden conflict.
+ // Many will have patched this bug, but oh well.
+-#if ( __GNUC__ == 3 && __GNUC_MINOR__ > 2 ) || __GNUC__ > 3
++#if (( __GNUC__ == 3 && __GNUC_MINOR__ > 2 ) || __GNUC__ > 3) && !defined(__CYGWIN__)
+ #define HIDDEN_ALIAS(x) extern __typeof(x) x##_direct __attribute__((alias(#x),visibility("hidden")))
+ #else
+ #define HIDDEN_ALIAS(x) extern __typeof(x) x##_direct __attribute__((alias(#x)))
+--- origsrc/procps-3.2.8/proc/readproc.c	2006-06-16 10:18:13.000000000 +0200
++++ src/procps-3.2.8/proc/readproc.c	2013-11-22 11:51:30.136978972 +0100
+@@ -37,6 +37,7 @@ extern void __cyg_profile_func_enter(voi
+ #define LEAVE(x)
+ #endif
+ 
++#ifndef SIGNAL_STRING
+ // convert hex string to unsigned long long
+ static unsigned long long unhex(const char *restrict cp){
+     unsigned long long ull = 0;
+@@ -47,6 +48,7 @@ static unsigned long long unhex(const ch
+     }
+     return ull;
+ }
++#endif
+ 
+ static int task_dir_missing;
+ 
+@@ -173,7 +175,7 @@ ENTER(0x220);
+         // examine a field name (hash and compare)
+     base:
+         if(unlikely(!*S)) break;
+-        entry = table[63 & (asso[S[3]] + asso[S[2]] + asso[S[0]])];
++        entry = table[63 & (asso[(int)S[3]] + asso[(int)S[2]] + asso[(int)S[0]])];
+         colon = strchr(S, ':');
+         if(unlikely(!colon)) break;
+         if(unlikely(colon[1]!='\t')) break;
+@@ -400,7 +402,7 @@ LEAVE(0x160);
+ /////////////////////////////////////////////////////////////////////////
+ 
+ static void statm2proc(const char* s, proc_t *restrict P) {
+-    int num;
++    int num __attribute__ ((unused));
+     num = sscanf(s, "%ld %ld %ld %ld %ld %ld %ld",
+ 	   &P->size, &P->resident, &P->share,
+ 	   &P->trs, &P->lrs, &P->drs, &P->dt);
+--- origsrc/procps-3.2.8/proc/slab.c	2006-06-25 01:09:08.000000000 +0200
++++ src/procps-3.2.8/proc/slab.c	2013-11-22 11:51:30.164978853 +0100
+@@ -61,7 +61,7 @@ static int slab_badname_detect(const cha
+ 	while (*buffer){
+ 		if((*buffer)==' ')
+ 			numberarea=1;
+-		if(isalpha(*buffer)&&numberarea)	
++		if(isalpha((unsigned char) *buffer)&&numberarea)	
+ 			return 1;
+ 		buffer++;	
+ 	}
+--- origsrc/procps-3.2.8/proc/sysinfo.c	2008-03-24 05:33:43.000000000 +0100
++++ src/procps-3.2.8/proc/sysinfo.c	2013-11-22 11:49:33.631476967 +0100
+@@ -17,6 +17,7 @@
+ 
+ #include <unistd.h>
+ #include <fcntl.h>
++#include <sys/param.h>
+ #include "version.h"
+ #include "sysinfo.h" /* include self to verify prototypes */
+ 
+@@ -158,6 +159,7 @@ static void old_Hertz_hack(void){
+   case  247 ...  252 :  Hertz =  250; break;
+   case  253 ...  260 :  Hertz =  256; break;
+   case  393 ...  408 :  Hertz =  400; break; /* normal << 2 */
++  case  410 ...  600 :  Hertz =  500; break; /* SMP WinNT */
+   case  790 ...  808 :  Hertz =  800; break; /* normal << 3 */
+   case  990 ... 1010 :  Hertz = 1000; break; /* ARM */
+   case 1015 ... 1035 :  Hertz = 1024; break; /* Alpha, ia64 */
+@@ -227,6 +229,11 @@ static void init_libproc(void){
+     if(Hertz!=NOTE_NOT_FOUND) return;
+     fputs("2.4+ kernel w/o ELF notes? -- report this\n", stderr);
+   }
++#ifdef __CYGWIN__
++  // On Cygwin we can rely on the HZ value given in sys/param.h
++  Hertz = (unsigned long long)HZ;    /* <asm/param.h> */
++  return;
++#endif
+   old_Hertz_hack();
+ }
+ 
+@@ -343,7 +350,7 @@ static void getrunners(unsigned int *res
+     int fd;
+     char c;
+ 
+-    if (!isdigit(ent->d_name[0])) continue;
++    if (!isdigit((unsigned char) ent->d_name[0])) continue;
+     sprintf(tbuf, "/proc/%s/stat", ent->d_name);
+ 
+     fd = open(tbuf, O_RDONLY, 0);
+--- origsrc/procps-3.2.8/ps/global.c	2005-10-30 01:43:34.000000000 +0200
++++ src/procps-3.2.8/ps/global.c	2013-11-22 11:51:30.230978571 +0100
+@@ -19,6 +19,9 @@
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <fcntl.h>
++#ifdef __CYGWIN__
++#include <sys/termios.h>
++#endif
+                      
+ 
+ #include "common.h"
+--- origsrc/procps-3.2.8/ps/module.mk	2005-10-30 04:19:46.000000000 +0100
++++ src/procps-3.2.8/ps/module.mk	2013-11-22 11:51:30.261978439 +0100
+@@ -1,15 +1,17 @@
+ # This file gets included into the main Makefile, in the top directory.
+ 
+-INSTALL += $(bin)ps $(man1)ps.1
++INSTALL += $(bin)procps.exe $(man1)procps.1
+ 
+ # files to remove
+-CLEAN += ps/ps ps/debug
++CLEAN += ps/procps.exe ps/debug.exe
+ 
+ # a directory for cleaning
+ DIRS += ps/
+ 
+ # a file to create
+-ALL += ps/ps
++ALL += ps/procps.exe
++
++LIBPROC = proc/libproc.a
+ 
+ PS_C    := display global help output parser select sortformat
+ PSNAMES := $(addprefix ps/,$(PS_C))
+@@ -19,11 +21,11 @@ PSSRC   := $(addsuffix .c,$(PSNAMES))
+ PS_X := COPYING HACKING TRANSLATION common.h module.mk it p ps.1 regression
+ TARFILES += $(PSSRC) $(addprefix ps/,$(PS_X))
+ 
+-ps/ps: $(PSOBJ) $(LIBPROC)
++ps/procps.exe: $(PSOBJ) $(LIBPROC)
+ 	$(CC) $(ALL_CFLAGS) $(ALL_LDFLAGS) -o $@ $^ $(ldl)
+ 
+ # This just adds the stacktrace code
+-ps/debug: $(PSOBJ) stacktrace.o $(LIBPROC)
++ps/debug.exe: $(PSOBJ) stacktrace.o $(LIBPROC)
+ 	$(CC) $(ALL_CFLAGS) $(ALL_LDFLAGS) -o $@ $^ -lefence $(ldl)
+ 
+ $(PSOBJ): %.o: %.c ps/common.h $(LIBPROC)
+@@ -32,9 +34,9 @@ $(PSOBJ): %.o: %.c ps/common.h $(LIBPROC
+ ps/stacktrace.o: ps/stacktrace.c
+ 
+ 
+-$(bin)ps: ps/ps
++$(bin)procps.exe: ps/procps.exe
+ 	$(install) --mode a=rx $< $@
+ 
+-$(man1)ps.1 : ps/ps.1
++$(man1)procps.1 : ps/ps.1
+ 	$(install) --mode a=r $< $@
+-	-rm -f $(DESTDIR)/var/catman/cat1/ps.1.gz $(DESTDIR)/var/man/cat1/ps.1.gz
++	-rm -f $(DESTDIR)/var/catman/cat1/procps.1.gz $(DESTDIR)/var/man/cat1/procps.1.gz
+--- origsrc/procps-3.2.8/ps/output.c	2009-05-10 21:24:50.000000000 +0200
++++ src/procps-3.2.8/ps/output.c	2013-11-22 11:51:30.295978294 +0100
+@@ -76,8 +76,8 @@ static unsigned max_leftward = 0x1234567
+ 
+ static int wide_signals;  /* true if we have room */
+ 
+-static unsigned long seconds_since_1970;
+-static unsigned long time_of_boot;
++static time_t seconds_since_1970;
++static time_t time_of_boot;
+ static unsigned long page_shift;
+ 
+ 
+@@ -589,7 +589,7 @@ static int pr_pri_api(char *restrict con
+ }
+ 
+ static int pr_nice(char *restrict const outbuf, const proc_t *restrict const pp){
+-  if(pp->sched!=0 && pp->sched!=-1) return snprintf(outbuf, COLWID, "-");
++  if(pp->sched!=0 && pp->sched!=(unsigned long)-1) return snprintf(outbuf, COLWID, "-");
+   return snprintf(outbuf, COLWID, "%ld", pp->nice);
+ }
+ 
+@@ -626,11 +626,11 @@ static int pr_class(char *restrict const
+ //    default   "%u:%u", type, prio
+ // We just print the priority, and have other keywords for type.
+ static int pr_rtprio(char *restrict const outbuf, const proc_t *restrict const pp){
+-  if(pp->sched==0 || pp->sched==-1) return snprintf(outbuf, COLWID, "-");
++  if(pp->sched==0 || pp->sched==(unsigned long)-1) return snprintf(outbuf, COLWID, "-");
+   return snprintf(outbuf, COLWID, "%ld", pp->rtprio);
+ }
+ static int pr_sched(char *restrict const outbuf, const proc_t *restrict const pp){
+-  if(pp->sched==-1) return snprintf(outbuf, COLWID, "-");
++  if(pp->sched==(unsigned long)-1) return snprintf(outbuf, COLWID, "-");
+   return snprintf(outbuf, COLWID, "%ld", pp->sched);
+ }
+ 
+@@ -945,7 +945,7 @@ static int pr_start(char *restrict const
+   str = ctime(&t);
+   if(str[8]==' ')  str[8]='0';
+   if(str[11]==' ') str[11]='0';
+-  if((unsigned long)t+60*60*24 > seconds_since_1970)
++  if(t+60*60*24 > seconds_since_1970)
+     return snprintf(outbuf, COLWID, "%8.8s", str+11);
+   return snprintf(outbuf, COLWID, "  %6.6s", str+4);
+ }
+--- origsrc/procps-3.2.8/skill.c	2008-03-24 06:48:39.000000000 +0100
++++ src/procps-3.2.8/skill.c	2013-11-22 11:51:30.321978182 +0100
+@@ -565,6 +565,9 @@ int main(int argc, const char *argv[]){
+     if(!strcmp(tmpstr,"skill")) program = PROG_SKILL;
+   }else{
+     if(!strcmp(tmpstr,"kill")) program = PROG_KILL;
++#ifdef __CYGWIN__
++    if(!strcmp(tmpstr,"prockill")) program = PROG_KILL;
++#endif
+   }
+   switch(program){
+   case PROG_SNICE:
+--- origsrc/procps-3.2.8/slabtop.c	2005-01-05 22:25:54.000000000 +0100
++++ src/procps-3.2.8/slabtop.c	2013-11-22 11:51:30.341978097 +0100
+@@ -230,7 +230,7 @@ static void * set_sort_func(char key)
+ 
+ static void parse_input(char c)
+ {
+-	c = toupper(c);
++	c = toupper((unsigned char) c);
+ 	switch(c) {
+ 	case 'A':
+ 		sort_func = sort_nr_active_objs;
+--- origsrc/procps-3.2.8/sysctl.c	2007-05-28 03:54:22.000000000 +0200
++++ src/procps-3.2.8/sysctl.c	2013-11-22 11:51:30.363978003 +0100
+@@ -33,6 +33,9 @@
+ #include "proc/procps.h"
+ #include "proc/version.h"
+ 
++#ifdef __CYGWIN__
++#include <libgen.h>
++#endif
+ 
+ // Proof that C++ causes brain damage:
+ typedef int bool;
+--- origsrc/procps-3.2.8/tload.c	2002-10-06 23:21:38.000000000 +0200
++++ src/procps-3.2.8/tload.c	2013-11-22 11:51:30.389977892 +0100
+@@ -30,8 +30,10 @@ static int fd=1;
+ static int dly=5;
+ static jmp_buf jb;
+ 
++#ifndef __CYGWIN__
+ extern int optind;
+ extern char *optarg;
++#endif
+ 
+ static void alrm(int signo)
+ {
+--- origsrc/procps-3.2.8/top.c	2007-05-28 18:04:00.000000000 +0200
++++ src/procps-3.2.8/top.c	2013-11-22 11:51:30.419977764 +0100
+@@ -41,7 +41,12 @@
+ #include <termios.h>
+ #include <time.h>
+ #include <unistd.h>
++#ifdef __CYGWIN__
++#define MAXFLOAT    3.40282347e+38F
++#define MAXINT		0x7fffffff
++#else
+ #include <values.h>
++#endif
+ 
+ #include "proc/devname.h"
+ #include "proc/wchan.h"
+@@ -242,9 +247,9 @@ SCB_NUM1(P_WCH, wchan)
+ SCB_NUM1(P_FLG, flags)
+ 
+         /* ///////////////////////////////// special sort for prochlp() ! */
+-static int sort_HST_t (const HST_t *P, const HST_t *Q)
++static int sort_HST_t (const void *P, const void *Q)
+ {
+-   return P->pid - Q->pid;
++   return ((const HST_t *) P)->pid - ((const HST_t *) Q)->pid;
+ }
+ 
+ 
+@@ -486,7 +491,7 @@ static void suspend (int dont_care_sig)
+    /* macro to test if a basic (non-color) capability is valid
+          thanks: Floyd Davidson <floyd@ptialaska.net> */
+ #define tIF(s)  s ? s : ""
+-#define CAPCOPY(dst,src) src && strcpy(dst,src)
++#define CAPCOPY(dst,src) ((void) (src && strcpy(dst,src)))
+ 
+         /*
+          * Make the appropriate caps/color strings and set some
+@@ -851,12 +856,12 @@ static int good_uid(const proc_t *restri
+    case 0:
+       return 1;
+    case 'U':
+-      if (pp->ruid == selection_uid) return 1;
+-      if (pp->suid == selection_uid) return 1;
+-      if (pp->fuid == selection_uid) return 1;
++      if ((uid_t) pp->ruid == selection_uid) return 1;
++      if ((uid_t) pp->suid == selection_uid) return 1;
++      if ((uid_t) pp->fuid == selection_uid) return 1;
+       // FALLTHROUGH
+    case 'u':
+-      if (pp->euid == selection_uid) return 1;
++      if ((uid_t) pp->euid == selection_uid) return 1;
+       // FALLTHROUGH
+    default:
+       ;  // don't know what it is; find bugs fast
+@@ -1673,7 +1678,7 @@ static void confighlp (char *fields) {
+    for (;;) {
+       c = *cp++;
+       if (!c) break;
+-      if(isupper(c)) upper[c&0x1f]++;
++      if(isupper((unsigned char) c)) upper[c&0x1f]++;
+       else           lower[c&0x1f]++;
+    }
+ 
+@@ -1694,7 +1699,7 @@ static void confighlp (char *fields) {
+       }
+       while (upper[c&0x1f] > 1) {               // got too many A..Z
+          upper[c&0x1f]--;
+-         cp = strchr(fields, toupper(c));
++         cp = strchr(fields, toupper((unsigned char) c));
+          memmove(cp, cp+1, strlen(cp));
+       }
+       if (!upper[c&0x1f] && !lower[c&0x1f]) {   // both missing
+@@ -1738,7 +1743,7 @@ static void configs_read (void)
+             const char *two = eol + 1;  // line two
+             if (sec < eol) Secure_mode = !!sec;
+             eol = strchr(two, '\n');
+-            if (eol && eol > two && isdigit(*two)) Rc.delay_time = atof(two);
++            if (eol && eol > two && isdigit((unsigned char) *two)) Rc.delay_time = atof(two);
+          }
+       }
+       close(fd);
+@@ -1934,7 +1939,7 @@ static void whack_terminal (void)
+    struct termios newtty;
+ 
+    if (Batch) {
+-      setupterm("dumb", STDOUT_FILENO, NULL);
++      setupterm((char *) "dumb", STDOUT_FILENO, NULL);
+       return;
+    }
+    setupterm(NULL, STDOUT_FILENO, NULL);
+@@ -1981,7 +1986,7 @@ static void display_fields (const char *
+    putp(Curwin->cap_bold);
+    for (i = 0; fields[i]; ++i) {
+       const FLD_t *f = ft_get_ptr(FT_NEW_fmt, fields[i]);
+-      int b = isupper(fields[i]);
++      int b = isupper((unsigned char) fields[i]);
+ 
+       if (!f) continue;                 // hey, should be std_err!
+       for (p = f->head; ' ' == *p; ++p) // advance past any leading spaces
+@@ -2029,10 +2034,10 @@ static void fields_reorder (void)
+          , Cap_home, Curwin->rc.fieldscur, Curwin->grpname, prompt));
+       chin(0, &c, 1);
+       if (!ft_get_ptr(FT_NEW_fmt, c)) break;
+-      i = toupper(c) - 'A';
++      i = toupper((unsigned char) c) - 'A';
+       if (((p = strchr(Curwin->rc.fieldscur, i + 'A')))
+       || ((p = strchr(Curwin->rc.fieldscur, i + 'a')))) {
+-         if (isupper(c)) p--;
++         if (isupper((unsigned char) c)) p--;
+          if (('\0' != p[1]) && (p >= Curwin->rc.fieldscur)) {
+             c    = p[0];
+             p[0] = p[1];
+@@ -2058,13 +2063,13 @@ static void fields_sort (void)
+    putp(Cap_curs_huge);
+    for (;;) {
+       p  = phoney + i;
+-      *p = toupper(*p);
++      *p = toupper((unsigned char) *p);
+       display_fields(phoney, SORT_xtra);
+       show_special(1, fmtmk(SORT_fields, Cap_home, *p, Curwin->grpname, prompt));
+       chin(0, &c, 1);
+       if (!ft_get_ptr(FT_NEW_fmt, c)) break;
+-      i = toupper(c) - 'A';
+-      *p = tolower(*p);
++      i = toupper((unsigned char) c) - 'A';
++      *p = tolower((unsigned char) *p);
+       x = i;
+    }
+    if ((p = strchr(Curwin->rc.fieldscur, x + 'a')))
+@@ -2089,7 +2094,7 @@ static void fields_toggle (void)
+       show_special(1, fmtmk(FIELDS_current, Cap_home, Curwin->rc.fieldscur, Curwin->grpname, prompt));
+       chin(0, &c, 1);
+       if (!ft_get_ptr(FT_NEW_fmt, c)) break;
+-      i = toupper(c) - 'A';
++      i = toupper((unsigned char) c) - 'A';
+       if ((p = strchr(Curwin->rc.fieldscur, i + 'A')))
+          *p = i + 'a';
+       else if ((p = strchr(Curwin->rc.fieldscur, i + 'a')))
+@@ -2119,7 +2124,7 @@ static void reframewins (void)
+       if (!Rc.mode_altscr || CHKw(w, VISIBLE_tsk)) {
+          // build window's procflags array and establish a tentative maxpflgs
+          for (i = 0, w->maxpflgs = 0; w->rc.fieldscur[i]; i++) {
+-            if (isupper(w->rc.fieldscur[i]))
++            if (isupper((unsigned char) w->rc.fieldscur[i]))
+                w->procflags[w->maxpflgs++] = w->rc.fieldscur[i] - 'A';
+          }
+ 
+@@ -2956,7 +2961,7 @@ static proc_t **summary_show (void)
+       // sleep for half a second
+       tv.tv_sec = 0;
+       tv.tv_usec = 500000;
+-      select(0, NULL, NULL, NULL, &tv);  // ought to loop until done
++      select(0, NULL, NULL, NULL, (struct timeval *) &tv);  // ought to loop until done
+ #endif
+    } else {
+       putp(Batch ? "\n\n" : Cap_home);
+@@ -3376,7 +3381,7 @@ int main (int dont_care_argc, char *argv
+       tv.tv_usec = (Rc.delay_time - (int)Rc.delay_time) * 1000000;
+ 
+       if (Batch) {
+-         select(0, NULL, NULL, NULL, &tv);  // ought to loop until done
++         select(0, NULL, NULL, NULL, (struct timeval *) &tv);  // ought to loop until done
+       } else {
+          long file_flags;
+          int rc;
+@@ -3395,7 +3400,7 @@ int main (int dont_care_argc, char *argv
+             // We should quickly die via SIGHUP, and thus not spin here.
+             // if (rc == 0) end_pgm(0); /* EOF from terminal */
+             fcntl(STDIN_FILENO, F_SETFL, file_flags);
+-            select(1, &fs, NULL, NULL, &tv);
++            select(1, &fs, NULL, NULL, (struct timeval *) &tv);
+             fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK|file_flags);
+          }
+          if (chin(0, &c, 1) > 0) {
+--- origsrc/procps-3.2.8/top.h	2006-06-25 08:41:48.000000000 +0200
++++ src/procps-3.2.8/top.h	2013-11-22 11:51:30.437977687 +0100
+@@ -153,7 +153,7 @@ do {
+       if (memcmp(_ptr, _str, _len)) {                \
+          memcpy(_ptr, _str, _len);                \
+       } else {                                 \
+-         _ptr = "\n";                       \
++         _ptr = (char *) "\n";                       \
+       }                                 \
+    }                                \
+    putp(_ptr);                   \
+--- origsrc/procps-3.2.8/vmstat.c	2007-05-28 02:14:57.000000000 +0200
++++ src/procps-3.2.8/vmstat.c	2013-11-22 11:51:30.457977602 +0100
+@@ -25,6 +25,9 @@
+ #include <sys/ioctl.h>
+ #include <sys/dir.h>
+ #include <dirent.h>
++#ifdef __CYGWIN__
++#include <sys/termios.h>
++#endif
+ 
+ #include "proc/sysinfo.h"
+ #include "proc/version.h"
+--- origsrc/procps-3.2.8/w.c	2006-06-17 12:40:47.000000000 +0200
++++ src/procps-3.2.8/w.c	2013-11-22 11:51:30.492977452 +0100
+@@ -59,7 +59,7 @@ static void print_host(const char *restr
+     if (len > 16) len = 16;
+     last = host + len;
+     for ( ; host < last ; host++){
+-        if (isprint(*host) && *host != ' ') {
++        if (isprint((unsigned char) *host) && *host != ' ') {
+ 	    fputc(*host, stdout);
+ 	    ++width;
+ 	} else {
+@@ -130,7 +130,7 @@ static const proc_t *getproc(const utmp_
+     proc_t **pptr = procs;
+     const proc_t *best = NULL;
+     const proc_t *secondbest = NULL;
+-    unsigned uid = ~0U;
++    uid_t uid = ~0U;
+ 
+     *found_utpid = 0;
+     if(!ignoreuser){
+@@ -158,7 +158,7 @@ static const proc_t *getproc(const utmp_
+ 	if(!  (secondbest && tmp->start_time <= secondbest->start_time)  ){
+ 	    secondbest = tmp;
+ 	}
+-	if(!ignoreuser && uid != tmp->euid && uid != tmp->ruid) continue;
++	if(!ignoreuser && uid != (uid_t) tmp->euid && uid != (uid_t) tmp->ruid) continue;
+ 	if(tmp->tgid != tmp->tpgid) continue;
+ 	if(best && tmp->start_time <= best->start_time) continue;
+     	best = tmp;
+@@ -177,7 +177,7 @@ static void showinfo(utmp_t *u, int form
+     const proc_t *best;
+ 
+     for (i=0; i < sizeof(u->ut_line); i++)	/* clean up tty if garbled */
+-	if (isalnum(u->ut_line[i]) || (u->ut_line[i]=='/'))
++	if (isalnum((unsigned char) u->ut_line[i]) || (u->ut_line[i]=='/'))
+ 	    tty[i+5] = u->ut_line[i];
+ 	else
+ 	    tty[i+5] = '\0';
