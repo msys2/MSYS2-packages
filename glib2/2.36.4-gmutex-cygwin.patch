@@ -1,0 +1,41 @@
+pthread_mutex_init(&mutex, NULL) uses PTHREAD_MUTEX_ERRORCHECK, even though
+PTHREAD_MUTEX_DEFAULT == PTHREAD_MUTEX_NORMAL.
+
+--- origsrc/glib-2.36.4/glib/gthread-posix.c	2013-08-07 09:34:32.000000000 -0500
++++ src/glib-2.36.4/glib/gthread-posix.c	2013-10-24 22:00:57.631593400 -0500
+@@ -81,7 +81,7 @@ g_thread_abort (gint         status,
+ static pthread_mutex_t *
+ g_mutex_impl_new (void)
+ {
+-  pthread_mutexattr_t *pattr = NULL;
++  static pthread_mutexattr_t attr = NULL;
+   pthread_mutex_t *mutex;
+   gint status;
+ 
+@@ -89,21 +89,18 @@ g_mutex_impl_new (void)
+   if G_UNLIKELY (mutex == NULL)
+     g_thread_abort (errno, "malloc");
+ 
+-#ifdef PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP
+-  {
+-    pthread_mutexattr_t attr;
++  if (!attr)
+     pthread_mutexattr_init (&attr);
++#ifdef PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP
+     pthread_mutexattr_settype (&attr, PTHREAD_MUTEX_ADAPTIVE_NP);
+-    pattr = &attr;
+-  }
++#else
++    pthread_mutexattr_settype (&attr, PTHREAD_MUTEX_DEFAULT);
+ #endif
+ 
+-  if G_UNLIKELY ((status = pthread_mutex_init (mutex, pattr)) != 0)
++  if G_UNLIKELY ((status = pthread_mutex_init (mutex, &attr)) != 0)
+     g_thread_abort (status, "pthread_mutex_init");
+ 
+-#ifdef PTHREAD_ADAPTIVE_MUTEX_NP
+   pthread_mutexattr_destroy (&attr);
+-#endif
+ 
+   return mutex;
+ }
