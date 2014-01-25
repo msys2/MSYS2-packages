@@ -1,0 +1,138 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=(cyrus-sasl libsasl libsasl-devel)
+pkgver=2.1.26
+pkgrel=3
+pkgdesc="Cyrus Simple Authentication Service Layer (SASL) library"
+arch=('i686' 'x86_64')
+url="http://cyrusimap.web.cmu.edu/"
+license=('custom')
+groups=('sys-utils')
+makedepends=('heimdal-devel' 'openssl-devel' 'libsqlite-devel' 'libcrypt-devel')
+options=('emptydirs' 'strip' '!makeflags')
+source=(http://ftp.cyrusimap.org/cyrus-sasl/cyrus-sasl-${pkgver}.tar.gz
+        01-no-undefined.patch
+		02-exeext.patch
+		03-fix-plugins.patch
+		04-manpage-paths.patch
+		05-remove-warnings.patch
+		06-fix-sqlite-search.patch
+		07-fix-pkgconfig.patch
+		08-cyrus-sasl-2.1.26-size_t.patch
+		cyrus-sasl-2.1.26-msys2.patch
+		)
+md5sums=('a7f4e5e559a0e37b3ffc438c9456e425'
+         '7f52862a74ada70ed2e257990f9b4334'
+         'd7ff8a6d1902478190c705a580b4bd80'
+         '744e8af08823097021e6087c8baca9c8'
+         'abda82e2cb8dca0ebe2fbe9d076c379a'
+         '44567c9345424c5c4642c006a39b0446'
+         '5b2af6369c98a778b82b53dee65789ca'
+         '716c142e9779dd087ce231345adec0c2'
+         'bcaafcbc79054e8356217213d6eda16d'
+         'b48df2818c4836801445d9dee0adfaa0')
+
+prepare() {
+	cd ${srcdir}/$pkgname-$pkgver
+
+	patch -p1 -i ${srcdir}/01-no-undefined.patch
+	patch -p1 -i ${srcdir}/02-exeext.patch
+	patch -p1 -i ${srcdir}/03-fix-plugins.patch
+	patch -p1 -i ${srcdir}/04-manpage-paths.patch
+	patch -p1 -i ${srcdir}/05-remove-warnings.patch
+	patch -p1 -i ${srcdir}/06-fix-sqlite-search.patch
+	patch -p2 -i ${srcdir}/07-fix-pkgconfig.patch
+	patch -p1 -i ${srcdir}/08-cyrus-sasl-2.1.26-size_t.patch
+	patch -p1 -i ${srcdir}/cyrus-sasl-2.1.26-msys2.patch
+	
+	sed 's/AM_CONFIG_HEADER/AC_CONFIG_HEADERS/' -i configure.in
+	rm -f config/config.guess config/config.sub 
+	rm -f config/ltconfig config/ltmain.sh config/libtool.m4
+	rm -fr autom4te.cache
+	libtoolize -c
+	aclocal -I config -I cmulocal
+	automake -a -c
+	autoheader
+	autoconf
+	
+	pushd saslauthd
+		rm -f config/config.guess config/config.sub 
+		rm -f config/ltconfig config/ltmain.sh config/libtool.m4
+		rm -fr autom4te.cache
+		libtoolize -c
+		aclocal -I config -I ../cmulocal -I ../config
+		automake -a -c
+		autoheader
+		autoconf
+	popd
+}
+
+build() {
+	cd ${srcdir}/$pkgname-$pkgver
+	./configure \
+		--prefix=/usr \
+		--build=$CHOST \
+		--host=$CHOST \
+		--with-configdir=/etc/sasl2:/etc/sasl:/usr/lib/sasl2 \
+		--with-plugindir=/usr/lib/sasl2 \
+		--disable-static --enable-shared \
+		--enable-sql \
+		--with-sqlite3=/usr \
+		--disable-ldapdb \
+		sasl_cv_dlsym_adds_uscore=yes
+
+	make CFLAGS="$CFLAGS -Wall -Wno-char-subscripts -Wno-unused -Wno-pointer-sign -Wno-uninitialized"
+}
+
+
+package_cyrus-sasl() {
+  depends=("libsasl=${pkgver}")
+  pkgdesc="Cyrus saslauthd SASL authentication daemon"
+  #backup=('etc/conf.d/saslauthd')
+
+  cd cyrus-sasl-$pkgver/saslauthd
+  make DESTDIR="${pkgdir}" install
+
+  install -m755 -d "${pkgdir}/usr/share/licenses/cyrus-sasl"
+  cp -pR ../COPYING "${pkgdir}/usr/share/licenses/cyrus-sasl/"
+}
+
+package_libsasl() {
+  groups=('libraries')
+  options=('emptydirs' 'strip' 'libtool')
+  pkgdesc="Cyrus Simple Authentication Service Layer (SASL) Library"
+  depends=('libcrypt' 'libopenssl' 'heimdal-libs' 'libsqlite')
+
+  cd cyrus-sasl-$pkgver
+  for dir in include lib sasldb plugins utils; do
+    pushd ${dir}
+    make DESTDIR="${pkgdir}" install
+    popd
+  done
+  rm -f "${pkgdir}"/usr/lib/sasl2/*.a
+  rm -f "${pkgdir}"/usr/lib/*.a
+  rm -f "${pkgdir}"/usr/lib/*.la
+  rm -rf "${pkgdir}"/usr/include
+  install -m755 -d "${pkgdir}/usr/share/licenses/libsasl"
+  install -m644 COPYING "${pkgdir}/usr/share/licenses/libsasl/"
+  # pushd "${pkgdir}"/usr/lib/sasl2
+    # for x in .dll; do
+      # mv $x $(echo $x | sed e 's/^msys-/lib/' e 's/[0-9][0-9]\.dll$/.so/')
+    # done
+  # popd
+}
+
+package_libsasl-devel() {
+  pkgdesc="Libsasl headers and libraries"
+  groups=('development')
+  depends=("libsasl=${pkgver}")
+  options=('strip' 'libtool')
+
+  cd cyrus-sasl-$pkgver
+  for dir in include lib; do
+    pushd ${dir}
+    make DESTDIR="${pkgdir}" install
+    popd
+  done
+  rm -rf "${pkgdir}"/usr/bin
+}
