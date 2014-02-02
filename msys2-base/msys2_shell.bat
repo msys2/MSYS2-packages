@@ -22,6 +22,8 @@ rem ember that we get here even in command.com.
 if NOT EXIST %WD%msys-2.0.dll set WD=%~dp0\bin\
 
 set MSYSTEM=MSYS
+rem To activate windows native symlinks uncomment next line
+rem set MSYS=winsymlinks:nativestrict
 set MSYSCON=mintty.exe
 if "x%1" == "x-consolez" set MSYSCON=console.exe
 if "x%1" == "x-mintty" set MSYSCON=mintty.exe
