@@ -59,19 +59,19 @@ plain() {
 	printf "${BOLD}    ${mesg}${ALL_OFF}\n" "$@" >&2
 }
 
-print_msg() {
+print_msg0() {
 	local mesg=$1; shift
-	printf "${GREEN}==>${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+	printf "${YELLOW}=> ${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_msg1() {
+	local mesg=$1; shift
+	printf "${GREEN}==> ${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
 }
 
 print_msg2() {
 	local mesg=$1; shift
 	printf "${BLUE}  ->${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
-}
-
-print_warning() {
-	local mesg=$1; shift
-	printf "${YELLOW}==> WARNING:${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
 }
 
 print_error() {
@@ -105,11 +105,38 @@ version() {
 
 process_binary() {
 	# $1 - windows PE file
+	# $2 - search pattern
 	# process all libraries needed by the binary
-	for sofile in $(LC_ALL=C objdump -x "$1" 2>/dev/null | sed -nr 's/.*DLL Name: (.*).*/\1/p')
+	if [[ -n $2 ]]; then
+		local _lower_pattern=$(echo $2 | tr 'A-Z' 'a-z')
+	fi
+	local _sofile=
+	for _sofile in $(LC_ALL=C objdump -x "$1" 2>/dev/null | sed -nr 's/.*DLL Name: (.*).*/\1/p')
 	do
-		echo "$sofile\n"
+		if [[ -n $2 ]]; then
+			local _lower_sofile=$(echo $_sofile | tr 'A-Z' 'a-z')
+			if [ "$(echo $_lower_sofile | grep -Eio $_lower_pattern)" = "$_lower_pattern" ]; then
+				print_msg2 "$1: $_sofile"
+			fi
+		else
+			print_msg2 "$_sofile"
+		fi
 	done
+}
+
+process_directory() {
+	# $1 - derectory to search
+	# $2 - search pattern
+	local _file_list=$(find "$1" -type f -name "*.dll" -o -name "*.exe" -o -name "*.so" -o -name "*.pyd")
+	local _it=
+	if [[ ${#_file_list[@]} = 0 ]]; then
+		print_msg1 "There are no executables or dll's in $1."
+	else
+		for _it in ${_file_list[@]}; do
+			print_msg1 "Processing $_it"
+			process_binary "$_it" "$2"
+		done
+	fi
 }
 
 # check if messages are to be printed using color
@@ -176,53 +203,17 @@ while [[ $# > 0 ]]; do
 	shift
 done
 
-pushd $_search_dir > /dev/null
-	_lower_pattern=$(echo $_search_pattern | tr 'A-Z' 'a-z')
-	
-	if [[ "$_run_mode" = "file" ]]; then
-		if [[ "$_search_mode" = "all" ]]; then
-			print_msg "Scanning %s for all dependencies" "$_search_file"
-		else
-			print_msg "Scanning %s for dependency on %s" "$_search_file" "$_search_pattern"
-		fi
-		
-		# process all libraries needed by the binary
-		for sofile in $(LC_ALL=C objdump -x "$_search_file" 2>/dev/null | sed -nr 's/.*DLL Name: (.*).*/\1/p')
-		do
-			if [[ "$_search_mode" = "all" ]]; then
-				print_msg2 "$sofile"
-			else
-				_lower_sofile=$(echo $sofile | tr 'A-Z' 'a-z')
-				if [ "$(echo $_lower_sofile | grep -Eio $_lower_pattern)" = "$_lower_pattern" ]; then
-					print_msg2 "$_search_file: $sofile"
-				fi
-			fi		
-		done
-	else
-		if [[ "$_search_mode" = "all" ]]; then
-			print_msg "Scanning all executables in %s for all dependencies" "$_search_dir"
-		else
-			print_msg "Scanning all executables in %s for dependency on %s" "$_search_dir" "$_search_pattern"
-		fi
-		for curr_bin in *.exe *.dll; do
-			if [[ "$_search_mode" = "all" ]]; then
-				print_msg "$curr_bin :"
-			fi
-			# process all libraries needed by the binary
-			for sofile in $(LC_ALL=C objdump -x "$curr_bin" 2>/dev/null | sed -nr 's/.*DLL Name: (.*).*/\1/p')
-			do
-				if [[ "$_search_mode" = "all" ]]; then
-					print_msg2 "$sofile"
-				else
-					_lower_sofile=$(echo $sofile | tr 'A-Z' 'a-z')
-					if [ "$(echo $_lower_sofile | grep -Eio $_lower_pattern)" = "$_lower_pattern" ]; then
-						print_msg2 "$curr_bin: $sofile"
-					fi
-				fi
-			done
-		done		
-		
-	fi
-popd > /dev/null
+_ext_msg=
+if [[ -n $_search_pattern ]]; then
+	_ext_msg="on $_search_pattern"
+fi
+
+if [[ "$_run_mode" = "file" ]]; then
+	print_msg0 "Scanning file %s for dependencies %s" "$_search_file" "$_ext_msg"
+	process_binary "$_search_file" "$_search_pattern"
+else
+	print_msg0 "Scanning directory %s for dependencies %s" "$_search_dir" "$_ext_msg"
+	process_directory "$_search_dir" "$_search_pattern"
+fi
 		
 exit 0
