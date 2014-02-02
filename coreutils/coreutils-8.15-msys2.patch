@@ -1,0 +1,278 @@
+diff -Naur coreutils-8.15/build-aux/compile coreutils-8.15-msys/build-aux/compile
+--- coreutils-8.15/build-aux/compile	2011-11-24 18:46:06.000000000 +0000
++++ coreutils-8.15-msys/build-aux/compile	2013-02-22 18:14:50.759765600 +0000
+@@ -54,7 +54,7 @@
+ 	  MINGW*)
+ 	    file_conv=mingw
+ 	    ;;
+-	  CYGWIN*)
++	  CYGWIN* | MSYS*)
+ 	    file_conv=cygwin
+ 	    ;;
+ 	  *)
+@@ -68,7 +68,7 @@
+ 	mingw/*)
+ 	  file=`cmd //C echo "$file " | sed -e 's/"\(.*\) " *$/\1/'`
+ 	  ;;
+-	cygwin/*)
++	cygwin/* | msys/*)
+ 	  file=`cygpath -m "$file" || echo "$file"`
+ 	  ;;
+ 	wine/*)
+diff -Naur coreutils-8.15/build-aux/config.guess coreutils-8.15-msys/build-aux/config.guess
+--- coreutils-8.15/build-aux/config.guess	2012-01-06 07:20:50.000000000 +0000
++++ coreutils-8.15-msys/build-aux/config.guess	2013-02-22 18:15:41.291015600 +0000
+@@ -803,6 +803,9 @@
+     i*:CYGWIN*:*)
+ 	echo ${UNAME_MACHINE}-pc-cygwin
+ 	exit ;;
++    i*:MSYS*:*)
++	echo ${UNAME_MACHINE}-pc-msys
++	exit ;;
+     *:MINGW*:*)
+ 	echo ${UNAME_MACHINE}-pc-mingw32
+ 	exit ;;
+@@ -846,6 +849,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur coreutils-8.15/build-aux/config.rpath coreutils-8.15-msys/build-aux/config.rpath
+--- coreutils-8.15/build-aux/config.rpath	2012-01-06 07:20:50.000000000 +0000
++++ coreutils-8.15-msys/build-aux/config.rpath	2013-02-22 18:16:25.619140600 +0000
+@@ -57,7 +57,7 @@
+     aix*)
+       wl='-Wl,'
+       ;;
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       ;;
+     hpux9* | hpux10* | hpux11*)
+       wl='-Wl,'
+@@ -149,7 +149,7 @@
+ hardcode_minus_L=no
+ 
+ case "$host_os" in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -198,7 +198,7 @@
+         ld_shlibs=no
+       fi
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+       # no search path for DLLs.
+       hardcode_libdir_flag_spec='-L$libdir'
+@@ -348,7 +348,7 @@
+       ;;
+     bsdi[45]*)
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -537,7 +537,7 @@
+   bsdi[45]*)
+     library_names_spec='$libname$shrext'
+     ;;
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     shrext=.dll
+     library_names_spec='$libname.dll.a $libname.lib'
+     ;;
+diff -Naur coreutils-8.15/configure coreutils-8.15-msys/configure
+--- coreutils-8.15/configure	2012-01-06 17:06:35.000000000 +0000
++++ coreutils-8.15-msys/configure	2013-02-22 18:46:00.589843800 +0000
+@@ -7055,7 +7046,7 @@
+      else
+        case "$host_os" in
+                                                                osf*) gl_use_threads=no ;;
+-         cygwin*)
++         cygwin* | msys*)
+                case `uname -r` in
+                  1.[0-5].*) gl_use_threads=no ;;
+                  *)         gl_use_threads=yes ;;
+@@ -8906,7 +8897,7 @@
+         # special semantics and is distinct from /, please report it to
+         # <bug-gnulib@gnu.org>.
+         case $host in
+-          *-cygwin | i370-ibm-openedition)
++          *-cygwin | *-msys | i370-ibm-openedition)
+             gl_cv_double_slash_root=yes ;;
+           *)
+             # Be optimistic and assume that / and // are the same when we
+@@ -12620,7 +12611,7 @@
+                      # Guess yes on glibc systems.
+             *-gnu*)  gl_cv_func_getcwd_null="guessing yes";;
+                      # Guess yes on Cygwin.
+-            cygwin*) gl_cv_func_getcwd_null="guessing yes";;
++            cygwin* | msys*) gl_cv_func_getcwd_null="guessing yes";;
+                      # If we don't know, assume the worst.
+             *)       gl_cv_func_getcwd_null="guessing no";;
+           esac
+@@ -22716,7 +22707,7 @@
+            openbsd*)        gl_cv_func_printf_directive_ls="guessing no";;
+            irix*)           gl_cv_func_printf_directive_ls="guessing no";;
+            solaris*)        gl_cv_func_printf_directive_ls="guessing no";;
+-           cygwin*)         gl_cv_func_printf_directive_ls="guessing no";;
++           cygwin* | msys*)         gl_cv_func_printf_directive_ls="guessing no";;
+            beos* | haiku*)  gl_cv_func_printf_directive_ls="guessing no";;
+            *)               gl_cv_func_printf_directive_ls="guessing yes";;
+          esac
+@@ -22800,7 +22791,7 @@
+       if test "$cross_compiling" = yes; then :
+ 
+          case "$host_os" in
+-           cygwin*)      gl_cv_func_printf_flag_grouping="guessing no";;
++           cygwin* | msys*)      gl_cv_func_printf_flag_grouping="guessing no";;
+            netbsd*)      gl_cv_func_printf_flag_grouping="guessing no";;
+            mingw* | pw*) gl_cv_func_printf_flag_grouping="guessing no";;
+            *)            gl_cv_func_printf_flag_grouping="guessing yes";;
+@@ -24370,7 +24361,7 @@
+ 
+            case "$host_os" in
+                       # Guess no on Cygwin.
+-             cygwin*) gl_cv_func_btowc_nul="guessing no" ;;
++             cygwin* | msys*) gl_cv_func_btowc_nul="guessing no" ;;
+                       # Guess yes otherwise.
+              *)       gl_cv_func_btowc_nul="guessing yes" ;;
+            esac
+@@ -25619,7 +25610,7 @@
+         # special semantics and is distinct from /, please report it to
+         # <bug-gnulib@gnu.org>.
+         case $host in
+-          *-cygwin | i370-ibm-openedition)
++          *-cygwin | *-msys | i370-ibm-openedition)
+             gl_cv_double_slash_root=yes ;;
+           *)
+             # Be optimistic and assume that / and // are the same when we
+@@ -25711,7 +25702,7 @@
+   case "$host_os" in
+            mingw*) # on this platform, dup2 always returns 0 for success
+              gl_cv_func_dup2_works="guessing no" ;;
+-           cygwin*) # on cygwin 1.5.x, dup2(1,1) returns 0
++           cygwin* | msys*) # on cygwin 1.5.x, dup2(1,1) returns 0
+              gl_cv_func_dup2_works="guessing no" ;;
+            linux*) # On linux between 2008-07-27 and 2009-05-11, dup2 of a
+                    # closed fd may yield -EBADF instead of -1 / errno=EBADF.
+@@ -55444,7 +55435,7 @@
+ 
+   case "$host_os" in
+             mingw*) REPLACE_SETLOCALE=1 ;;
+-            cygwin*)
++            cygwin* | msys*)
+       case `uname -r` in
+         1.5.*) REPLACE_SETLOCALE=1 ;;
+       esac
+@@ -56490,7 +56481,7 @@
+   gnu[0-9]* | \
+   linux-* | linux | \
+   freebsd2.2* | freebsd[3-9]* | freebsd[1-9][0-9]* | \
+-  cygwin | \
++  cygwin | msys | \
+   mingw*)
+ 
+ $as_echo "#define UNLINK_CANNOT_UNLINK_DIR 1" >>confdefs.h
+@@ -57148,7 +57139,7 @@
+           *) gl_cv_func_wctob_works="guessing yes" ;;
+         esac
+         case "$host_os" in
+-          cygwin*)
++          cygwin* | msys*)
+             if test "$cross_compiling" = yes; then :
+   :
+ else
+diff -Naur coreutils-8.15/gnulib-tests/test-copy-acl.sh coreutils-8.15-msys/gnulib-tests/test-copy-acl.sh
+--- coreutils-8.15/gnulib-tests/test-copy-acl.sh	2012-01-06 07:20:50.000000000 +0000
++++ coreutils-8.15-msys/gnulib-tests/test-copy-acl.sh	2013-02-22 18:17:44.608398400 +0000
+@@ -128,7 +128,7 @@
+   # the programs.
+   # func_test_same_acls file1 file2
+   case $acl_flavor in
+-    linux | cygwin | freebsd | solaris)
++    linux | cygwin | msys | freebsd | solaris)
+       func_test_same_acls ()
+       {
+         getfacl "$1" | sed -e "s/$1/FILENAME/g" > tmpaclout1
+@@ -302,7 +302,7 @@
+ 
+         ;;
+ 
+-      cygwin)
++      cygwin | msys)
+ 
+         # Set an ACL for a group.
+         setfacl -m group:0:1 tmpfile0
+diff -Naur coreutils-8.15/gnulib-tests/test-file-has-acl.sh coreutils-8.15-msys/gnulib-tests/test-file-has-acl.sh
+--- coreutils-8.15/gnulib-tests/test-file-has-acl.sh	2012-01-06 07:20:50.000000000 +0000
++++ coreutils-8.15-msys/gnulib-tests/test-file-has-acl.sh	2013-02-22 18:18:27.936523400 +0000
+@@ -247,7 +247,7 @@
+         fi
+         ;;
+ 
+-      cygwin)
++      cygwin | msys)
+ 
+         # Set an ACL for a group.
+         if setfacl -m group:0:1 tmpfile0; then
+diff -Naur coreutils-8.15/gnulib-tests/test-set-mode-acl.sh coreutils-8.15-msys/gnulib-tests/test-set-mode-acl.sh
+--- coreutils-8.15/gnulib-tests/test-set-mode-acl.sh	2012-01-06 07:20:50.000000000 +0000
++++ coreutils-8.15-msys/gnulib-tests/test-set-mode-acl.sh	2013-02-22 18:19:28.030273400 +0000
+@@ -177,7 +177,7 @@
+           linux | freebsd | solaris)
+             setfacl -m user:$auid:1 tmpfile0
+             ;;
+-          cygwin)
++          cygwin | msys)
+             setfacl -m group:0:1 tmpfile0
+             ;;
+           hpux)
+diff -Naur coreutils-8.15/install.exe.manifest coreutils-8.15-msys/install.exe.manifest
+--- coreutils-8.15/install.exe.manifest	1970-01-01 00:00:00.000000000 +0000
++++ coreutils-8.15-msys/install.exe.manifest	2013-03-04 05:40:53.179687500 +0000
+@@ -0,0 +1,11 @@
++﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
++<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
++  <v3:trustInfo xmlns:v3="urn:schemas-microsoft-com:asm.v3">
++    <v3:security>
++      <v3:requestedPrivileges>
++        <v3:requestedExecutionLevel level="asInvoker" />
++      </v3:requestedPrivileges>
++    </v3:security>
++  </v3:trustInfo>
++</assembly>
++
+diff -Naur coreutils-8.15/lib/gnulib.mk coreutils-8.15-msys/lib/gnulib.mk
+--- coreutils-8.15/lib/gnulib.mk	2012-01-06 07:22:27.000000000 +0000
++++ coreutils-8.15-msys/lib/gnulib.mk	2013-02-22 18:21:02.490234300 +0000
+@@ -1807,7 +1807,7 @@
+ 	  case '$(host_os)' in \
+ 	    darwin[56]*) \
+ 	      need_charset_alias=true ;; \
+-	    darwin* | cygwin* | mingw* | pw32* | cegcc*) \
++	    darwin* | cygwin* | msys* | mingw* | pw32* | cegcc*) \
+ 	      need_charset_alias=false ;; \
+ 	    *) \
+ 	      need_charset_alias=true ;; \
+diff -Naur coreutils-8.15/Makefile.in coreutils-8.15-msys/lib/Makefile.in
+--- coreutils-8.15/Makefile.in	2012-01-06 15:49:23.000000000 +0000
++++ coreutils-8.15-msys/Makefile.in	2013-03-04 08:25:50.146484300 +0000
+@@ -2970,7 +3005,7 @@
+ 	  case '$(host_os)' in \
+ 	    darwin[56]*) \
+ 	      need_charset_alias=true ;; \
+-	    darwin* | cygwin* | mingw* | pw32* | cegcc*) \
++	    darwin* | cygwin* | msys* | mingw* | pw32* | cegcc*) \
+ 	      need_charset_alias=false ;; \
+ 	    *) \
+ 	      need_charset_alias=true ;; \
