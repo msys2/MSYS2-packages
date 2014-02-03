@@ -2,7 +2,7 @@
 
 pkgname=('msys2-runtime' 'msys2-runtime-devel')
 _ver_base=2.0
-pkgver=2.0.15738.3671673
+pkgver=2.0.15817.4b08809
 pkgrel=1
 pkgdesc="Cygwin POSIX emulation engine"
 arch=('i686' 'x86_64')
@@ -15,60 +15,58 @@ source=('msys2-runtime'::'git+https://github.com/Alexpux/Cygwin.git#branch=devel
 md5sums=('SKIP')
 
 pkgver() {
-  cd "$srcdir/msys2-runtime"
-  #printf "%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
-  printf "%s.%s.%s" "${_ver_base}" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+	cd "$srcdir/msys2-runtime"
+	#printf "%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+	printf "%s.%s.%s" "${_ver_base}" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
  
 build() {
-  mkdir -p $srcdir/msys2-build && cd $srcdir/msys2-build
+	[[ -d $srcdir/build-${CHOST} ]] && rm -rf $srcdir/build-${CHOST}
+	mkdir -p $srcdir/build-${CHOST} && cd $srcdir/build-${CHOST}
 
-  CFLAGS="-O2 -pipe -ggdb -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
-  CXX=g++
-  CXXFLAGS="-O2 -pipe -ggdb -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
-  F77=gfortran
-  FFLAGS+=" -ggdb -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
-  FC=gfortran
-  FCFLAGS+=" -ggdb -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
+	CFLAGS="-O2 -pipe -ggdb -fdebug-prefix-map=$srcdir/build-${CHOST}=/usr/src/debug/msys -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
+	CXX=g++
+	CXXFLAGS="-O2 -pipe -ggdb -fdebug-prefix-map=$srcdir/build-${CHOST}=/usr/src/debug/msys -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
+	F77=gfortran
+	FFLAGS+=" -ggdb -fdebug-prefix-map=$srcdir/build-${CHOST}=/usr/src/debug/msys -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
+	FC=gfortran
+	FCFLAGS+=" -ggdb -fdebug-prefix-map=$srcdir/build-${CHOST}=/usr/src/debug/msys -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
 
-  ../msys2-runtime/configure --prefix=/usr --build=${CHOST} --sysconfdir=/etc
-  LANG=C make
-  
-}
-
-setup() {
-  cd $srcdir/msys2-build
-  make -j1 DESTDIR="$destdir" install
-  rm -rf $destdir/etc
+	../msys2-runtime/configure \
+		--prefix=/usr \
+		--build=${CHOST} \
+		--sysconfdir=/etc
+	LANG=C make
+	LANG=C make -j1 DESTDIR=${srcdir}/dest install
+	rm -rf ${srcdir}/dest/etc
 }
 
 package_msys2-runtime() {
-  pkgdesc="Posix emulation engine for Windows"
-  groups=('base')
-  options=('!strip')
-  #install=msys2-runtime.install
+	pkgdesc="Posix emulation engine for Windows"
+	groups=('base')
+	options=('!strip')
+	#install=msys2-runtime.install
 
-  mkdir -p $pkgdir/usr
-  cp -rf $destdir/usr/bin $pkgdir/usr/
-  rm -f $pkgdir/usr/bin/msys-2.0.dbg
-  rm -f $pkgdir/usr/bin/cyglsa-config
-  rm -f $pkgdir/usr/bin/cyglsa.dll
-  rm -f $pkgdir/usr/bin/cyglsa64.dll
-  rm -f $pkgdir/usr/bin/cygserver-config  
-  cp -rf $destdir/usr/share $pkgdir/usr/
-  
+	mkdir -p $pkgdir/usr
+	cp -rf ${srcdir}/dest/usr/bin $pkgdir/usr/
+	rm -f $pkgdir/usr/bin/msys-2.0.dbg
+	rm -f $pkgdir/usr/bin/cyglsa-config
+	rm -f $pkgdir/usr/bin/cyglsa.dll
+	rm -f $pkgdir/usr/bin/cyglsa64.dll
+	rm -f $pkgdir/usr/bin/cygserver-config  
+	cp -rf ${srcdir}/dest/usr/share $pkgdir/usr/
 }
 
 package_msys2-runtime-devel() {
-  pkgdesc="MSYS2 headers and libraries"
-  groups=('MSYS2-devel')
-  depends=("msys2-runtime=${pkgver}")
-  options=('staticlibs' '!strip')
-  
-  mkdir -p $pkgdir/usr/bin
-  cp -f $destdir/usr/bin/msys-2.0.dbg $pkgdir/usr/bin/
-  cp -rf $destdir/usr/${CHOST}/include $pkgdir/usr/
-  rm -f $pkgdir/usr/include/iconv.h
-  rm -f $pkgdir/usr/include/unctrl.h
-  cp -rf $destdir/usr/${CHOST}/lib $pkgdir/usr/
+	pkgdesc="MSYS2 headers and libraries"
+	groups=('MSYS2-devel')
+	depends=("msys2-runtime=${pkgver}")
+	options=('staticlibs' '!strip')
+
+	mkdir -p $pkgdir/usr/bin
+	cp -f ${srcdir}/dest/usr/bin/msys-2.0.dbg $pkgdir/usr/bin/
+	cp -rf ${srcdir}/dest/usr/${CHOST}/include $pkgdir/usr/
+	rm -f $pkgdir/usr/include/iconv.h
+	rm -f $pkgdir/usr/include/unctrl.h
+	cp -rf ${srcdir}/dest/usr/${CHOST}/lib $pkgdir/usr/
 }
