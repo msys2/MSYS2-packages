@@ -5,68 +5,71 @@ pkgname=('sqlite' 'libsqlite' 'libsqlite-devel' 'sqlite-doc')
 _amalgamationver=3080200
 _docver=${_amalgamationver}
 #_docver=3080001
-pkgver=3.8.2
+pkgver=3.8.3
 pkgrel=1
 pkgdesc="A C library that implements an SQL database engine"
 arch=('i686' 'x86_64')
 license=('custom:Public Domain')
 url="http://www.sqlite.org/"
-depends=('libreadline')
-makedepends=('libreadline-devel')
+depends=('libreadline' 'icu' 'zlib')
+makedepends=('libreadline-devel' 'icu-devel' 'zlib-devel')
 source=( # tarball containing the amalgamation for SQLite >= 3.7.5 together with a configure script and makefile for building it; includes now also the Tcl Extension Architecture (TEA)
 	http://www.sqlite.org/2013/sqlite-autoconf-$_amalgamationver.tar.gz
 	http://www.sqlite.org/2013/sqlite-doc-${_docver}.zip
 	license.txt
 	'sqlite-3.8.0.1-msys2.patch'
-	'sqlite3-3.8.2-2.src.patch')
+	'sqlite3-3.8.3-1.src.patch'
+	'sqlite-3.8.3-cygwin-need-_XOPEN_SORCE.patch')
 options=('!libtool' '!emptydirs')
 sha1sums=('6033ef603ce221d367c665477514d972ef1dc90e'
           'b9cbd42d08b8c1ce96656a6b111e918bb515b605'
           'f34f6daa4ab3073d74e774aad21d66878cf26853'
           '0810721cc17128498f99863c185753e06a95ad79'
-          '2379775ffa7488b187cac3ff3094e2cc298a9357')
+          'a6ffdd697078d6621be8a1fbb6d938f67f799a41'
+          '2ff3db98562a0a5c556ed6d0125de878466a9554')
 
 prepare() {
   cd "$srcdir"/sqlite-autoconf-$_amalgamationver
   
+  patch -p2 -i ${srcdir}/sqlite3-3.8.3-1.src.patch
+  patch -p1 -i ${srcdir}/sqlite-3.8.3-cygwin-need-_XOPEN_SORCE.patch
   patch -p1 -i ${srcdir}/sqlite-3.8.0.1-msys2.patch
-  patch -p2 -i ${srcdir}/sqlite3-3.8.2-2.src.patch
   autoreconf -fi
 }
 
 build() {
-  export CPPFLAGS="$CPPFLAGS \
-	-DHAVE_MALLOC_H \
-	-DHAVE_MALLOC_USABLE_SIZE \
-	-DSQLITE_DEFAULT_FILE_FORMAT=4 \
-	-DSQLITE_ENABLE_COLUMN_METADATA=1 \
-	-DSQLITE_ENABLE_EXPLAIN_COMMENTS=1 \
-	-DSQLITE_ENABLE_FTS3=1 \
-	-DSQLITE_ENABLE_FTS4=1 \
-	-DSQLITE_ENABLE_LOCKING_STYLE=1 \
-	-DSQLITE_ENABLE_RTREE=1 \
-	-DSQLITE_ENABLE_STAT4=1 \
-	-DSQLITE_ENABLE_UNLOCK_NOTIFY=1 \
-	-DSQLITE_OS_UNIX=1 \
-	-DSQLITE_OS_WIN=1 \
-	-DSQLITE_SOUNDEX=1 \
-	-DSQLITE_WIN32_NO_ANSI=1 \
-	-DSQLITE_WINNT_MAX_PATH_CHARS=4096"
+	export CPPFLAGS="$CPPFLAGS \
+		-DHAVE_MALLOC_H \
+		-DHAVE_MALLOC_USABLE_SIZE \
+		-DSQLITE_DEFAULT_FILE_FORMAT=4 \
+		-DSQLITE_ENABLE_COLUMN_METADATA=1 \
+		-DSQLITE_ENABLE_EXPLAIN_COMMENTS=1 \
+		-DSQLITE_ENABLE_FTS3=1 \
+		-DSQLITE_ENABLE_FTS4=1 \
+		-DSQLITE_ENABLE_LOCKING_STYLE=1 \
+		-DSQLITE_ENABLE_RTREE=1 \
+		-DSQLITE_ENABLE_SQLLOG=1 \
+		-DSQLITE_ENABLE_STAT4=1 \
+		-DSQLITE_ENABLE_UNLOCK_NOTIFY=1 \
+		-DSQLITE_OS_UNIX=1 \
+		-DSQLITE_OS_WIN=1 \
+		-DSQLITE_SOUNDEX=1 \
+		-DSQLITE_WIN32_NO_ANSI=1 \
+		-DSQLITE_WINNT_MAX_PATH_CHARS=4096"
 
-  # build sqlite
-  cd "$srcdir"/sqlite-autoconf-$_amalgamationver
-  ./configure --build=${CHOST} --prefix=/usr \
-	--disable-static
-  make
+	# build sqlite
+	cd "$srcdir"/sqlite-autoconf-$_amalgamationver
+	./configure --build=${CHOST} --prefix=/usr \
+		--disable-static
+	make
   
-  make DESTDIR=${srcdir}/dest install
-  
-  # build the tcl extension    
-  #cd "$srcdir"/sqlite-autoconf-$_amalgamationver/tea
-  #./configure --prefix=/usr \
+	make DESTDIR=${srcdir}/dest install
+
+	# build the tcl extension    
+	#cd "$srcdir"/sqlite-autoconf-$_amalgamationver/tea
+	#./configure --prefix=/usr \
 	#--with-system-sqlite
-  #make
-
+	#make
 }
 
 package_sqlite() {
