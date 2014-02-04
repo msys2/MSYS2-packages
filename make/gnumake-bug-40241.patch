@@ -1,0 +1,97 @@
+From a7794f483b5351ff7712bc02d0f3469551ce5290 Mon Sep 17 00:00:00 2001
+From: Eli Zaretskii <eliz@gnu.org>
+Date: Tue, 22 Oct 2013 18:55:38 +0300
+Subject: [PATCH] Fix Savannah bug 40241 with Unixy file names as commands to
+ MSYS shell.
+
+* sub_proc.c: Include filedef.h and variable.h.
+(process_begin): If exec_path was not found, but its first
+character is '/', assume there's some shell magic, and invoke the
+command through '$(SHELL) -c "COMMAND"'.  Fixes SV bug#40241.
+(make_command_line): Kludgey feature: if full_exec_path is "-c",
+assume that argv[0] is not to be skipped, as it holds the command
+string to be passed to the shell.
+---
+ w32/subproc/sub_proc.c | 42 ++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 38 insertions(+), 4 deletions(-)
+
+diff --git a/w32/subproc/sub_proc.c b/w32/subproc/sub_proc.c
+index f790ca3..9bbe3e5 100644
+--- a/w32/subproc/sub_proc.c
++++ b/w32/subproc/sub_proc.c
+@@ -29,6 +29,8 @@ this program.  If not, see <http://www.gnu.org/licenses/>.  */
+ #include <windows.h>
+ 
+ #include "makeint.h"
++#include "filedef.h"
++#include "variable.h"
+ #include "sub_proc.h"
+ #include "proc.h"
+ #include "w32err.h"
+@@ -584,7 +586,7 @@ process_begin(
+ 	char exec_fname[MAX_PATH];
+ 	const char *path_var = NULL;
+ 	char **ep;
+-	char buf[256];
++	char buf[MAX_PATH];
+ 	DWORD bytes_returned;
+ 	DWORD flags;
+ 	char *command_line;
+@@ -618,10 +620,39 @@ process_begin(
+ 
+ 	/*
+ 	 * If we couldn't open the file, just assume that Windows will be
+-	 * somehow able to find and execute it.
++	 * somehow able to find and execute it.  If the first character
++	 * of the command is '/', assume they set SHELL to a Unixy shell
++	 * that have some magic mounts known only to it, and run the whole
++	 * command via $SHELL -c "COMMAND" instead.
+ 	 */
+ 	if (exec_handle == INVALID_HANDLE_VALUE) {
+-		file_not_found++;
++		if (exec_path[0] == '/') {
++			char *new_argv0;
++			char **argvi = argv;
++			int arglen = 0;
++
++			strcpy(buf, variable_expand ("$(SHELL)"));
++			shell_name = &buf[0];
++			strcpy(exec_fname, "-c");
++			/* Construct a single command string in argv[0].  */
++			while (*argvi) {
++				arglen += strlen(*argvi) + 1;
++				argvi++;
++			}
++			new_argv0 = xmalloc(arglen + 1);
++			new_argv0[0] = '\0';
++			for (argvi = argv; *argvi; argvi++) {
++				strcat(new_argv0, *argvi);
++				strcat(new_argv0, " ");
++			}
++			/* Remove the extra blank at the end.  */
++			new_argv0[arglen-1] = '\0';
++			free(argv[0]);
++			argv[0] = new_argv0;
++			argv[1] = NULL;
++		}
++		else
++			file_not_found++;
+ 	}
+ 	else {
+ 		/* Attempt to read the first line of the file */
+@@ -1176,8 +1207,11 @@ make_command_line( char *shell_name, char *full_exec_path, char **argv)
+ 		  = strlen(shell_name) + 1 + strlen(full_exec_path);
+ 		/*
+ 		 * Skip argv[0] if any, when shell_name is given.
++		 * The special case of "-c" in full_exec_path means
++		 * argv[0] is not the shell name, but the command string
++		 * to pass to the shell.
+ 		 */
+-		if (*argv) argv++;
++		if (*argv && strcmp(full_exec_path, "-c")) argv++;
+ 		/*
+ 		 * Add one for the intervening space.
+ 		 */
+-- 
+1.8.3.4 (Apple Git-47)
+
