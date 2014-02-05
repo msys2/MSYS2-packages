@@ -1,0 +1,3238 @@
+--- origsrc/sqlite-autoconf-3080300/Makefile.am	2014-02-03 15:04:55.000000000 +0100
++++ src/sqlite-autoconf-3080300/Makefile.am	2014-02-04 12:53:52.195918100 +0100
+@@ -1,13 +1,13 @@
+ 
+ AM_CFLAGS = @THREADSAFE_FLAGS@ @DYNAMIC_EXTENSION_FLAGS@ -DSQLITE_ENABLE_FTS3 -DSQLITE_ENABLE_RTREE
+-
++ 
+ lib_LTLIBRARIES = libsqlite3.la
+ libsqlite3_la_SOURCES = sqlite3.c
+ libsqlite3_la_LDFLAGS = -no-undefined -version-info 8:6:8
+ 
+ bin_PROGRAMS = sqlite3
+ sqlite3_SOURCES = shell.c sqlite3.h
+-sqlite3_LDADD = $(top_builddir)/libsqlite3.la @READLINE_LIBS@
++sqlite3_LDADD = $(top_builddir)/libsqlite3.la @READLINE_LIBS@ -licui18n -licuuc -lz
+ sqlite3_DEPENDENCIES = $(top_builddir)/libsqlite3.la
+ 
+ include_HEADERS = sqlite3.h sqlite3ext.h
+--- origsrc/sqlite-autoconf-3080300/icu.c	1970-01-01 01:00:00.000000000 +0100
++++ src/sqlite-autoconf-3080300/icu.c	2014-02-04 12:53:52.204918600 +0100
+@@ -0,0 +1,504 @@
++/*
++** 2007 May 6
++**
++** The author disclaims copyright to this source code.  In place of
++** a legal notice, here is a blessing:
++**
++**    May you do good and not evil.
++**    May you find forgiveness for yourself and forgive others.
++**    May you share freely, never taking more than you give.
++**
++*************************************************************************
++** $Id: icu.c,v 1.7 2007/12/13 21:54:11 drh Exp $
++**
++** This file implements an integration between the ICU library 
++** ("International Components for Unicode", an open-source library 
++** for handling unicode data) and SQLite. The integration uses 
++** ICU to provide the following to SQLite:
++**
++**   * An implementation of the SQL regexp() function (and hence REGEXP
++**     operator) using the ICU uregex_XX() APIs.
++**
++**   * Implementations of the SQL scalar upper() and lower() functions
++**     for case mapping.
++**
++**   * Integration of ICU and SQLite collation sequences.
++**
++**   * An implementation of the LIKE operator that uses ICU to 
++**     provide case-independent matching.
++*/
++
++#if !defined(SQLITE_CORE) || defined(SQLITE_ENABLE_ICU)
++
++/* Include ICU headers */
++#include <unicode/utypes.h>
++#include <unicode/uregex.h>
++#include <unicode/ustring.h>
++#include <unicode/ucol.h>
++
++#include <assert.h>
++
++#ifndef SQLITE_CORE
++  #include "sqlite3ext.h"
++  SQLITE_EXTENSION_INIT1
++#else
++  #include "sqlite3.h"
++#endif
++
++/*
++** Maximum length (in bytes) of the pattern in a LIKE or GLOB
++** operator.
++*/
++#ifndef SQLITE_MAX_LIKE_PATTERN_LENGTH
++# define SQLITE_MAX_LIKE_PATTERN_LENGTH 50000
++#endif
++
++/*
++** Version of sqlite3_free() that is always a function, never a macro.
++*/
++static void xFree(void *p){
++  sqlite3_free(p);
++}
++
++/*
++** Compare two UTF-8 strings for equality where the first string is
++** a "LIKE" expression. Return true (1) if they are the same and 
++** false (0) if they are different.
++*/
++static int icuLikeCompare(
++  const uint8_t *zPattern,   /* LIKE pattern */
++  const uint8_t *zString,    /* The UTF-8 string to compare against */
++  const UChar32 uEsc         /* The escape character */
++){
++  static const int MATCH_ONE = (UChar32)'_';
++  static const int MATCH_ALL = (UChar32)'%';
++
++  int iPattern = 0;       /* Current byte index in zPattern */
++  int iString = 0;        /* Current byte index in zString */
++
++  int prevEscape = 0;     /* True if the previous character was uEsc */
++
++  while( zPattern[iPattern]!=0 ){
++
++    /* Read (and consume) the next character from the input pattern. */
++    UChar32 uPattern;
++    U8_NEXT_UNSAFE(zPattern, iPattern, uPattern);
++    assert(uPattern!=0);
++
++    /* There are now 4 possibilities:
++    **
++    **     1. uPattern is an unescaped match-all character "%",
++    **     2. uPattern is an unescaped match-one character "_",
++    **     3. uPattern is an unescaped escape character, or
++    **     4. uPattern is to be handled as an ordinary character
++    */
++    if( !prevEscape && uPattern==MATCH_ALL ){
++      /* Case 1. */
++      uint8_t c;
++
++      /* Skip any MATCH_ALL or MATCH_ONE characters that follow a
++      ** MATCH_ALL. For each MATCH_ONE, skip one character in the 
++      ** test string.
++      */
++      while( (c=zPattern[iPattern]) == MATCH_ALL || c == MATCH_ONE ){
++        if( c==MATCH_ONE ){
++          if( zString[iString]==0 ) return 0;
++          U8_FWD_1_UNSAFE(zString, iString);
++        }
++        iPattern++;
++      }
++
++      if( zPattern[iPattern]==0 ) return 1;
++
++      while( zString[iString] ){
++        if( icuLikeCompare(&zPattern[iPattern], &zString[iString], uEsc) ){
++          return 1;
++        }
++        U8_FWD_1_UNSAFE(zString, iString);
++      }
++      return 0;
++
++    }else if( !prevEscape && uPattern==MATCH_ONE ){
++      /* Case 2. */
++      if( zString[iString]==0 ) return 0;
++      U8_FWD_1_UNSAFE(zString, iString);
++
++    }else if( !prevEscape && uPattern==uEsc){
++      /* Case 3. */
++      prevEscape = 1;
++
++    }else{
++      /* Case 4. */
++      UChar32 uString;
++      U8_NEXT_UNSAFE(zString, iString, uString);
++      uString = u_foldCase(uString, U_FOLD_CASE_DEFAULT);
++      uPattern = u_foldCase(uPattern, U_FOLD_CASE_DEFAULT);
++      if( uString!=uPattern ){
++        return 0;
++      }
++      prevEscape = 0;
++    }
++  }
++
++  return zString[iString]==0;
++}
++
++/*
++** Implementation of the like() SQL function.  This function implements
++** the build-in LIKE operator.  The first argument to the function is the
++** pattern and the second argument is the string.  So, the SQL statements:
++**
++**       A LIKE B
++**
++** is implemented as like(B, A). If there is an escape character E, 
++**
++**       A LIKE B ESCAPE E
++**
++** is mapped to like(B, A, E).
++*/
++static void icuLikeFunc(
++  sqlite3_context *context, 
++  int argc, 
++  sqlite3_value **argv
++){
++  const unsigned char *zA = sqlite3_value_text(argv[0]);
++  const unsigned char *zB = sqlite3_value_text(argv[1]);
++  UChar32 uEsc = 0;
++
++  /* Limit the length of the LIKE or GLOB pattern to avoid problems
++  ** of deep recursion and N*N behavior in patternCompare().
++  */
++  if( sqlite3_value_bytes(argv[0])>SQLITE_MAX_LIKE_PATTERN_LENGTH ){
++    sqlite3_result_error(context, "LIKE or GLOB pattern too complex", -1);
++    return;
++  }
++
++
++  if( argc==3 ){
++    /* The escape character string must consist of a single UTF-8 character.
++    ** Otherwise, return an error.
++    */
++    int nE= sqlite3_value_bytes(argv[2]);
++    const unsigned char *zE = sqlite3_value_text(argv[2]);
++    int i = 0;
++    if( zE==0 ) return;
++    U8_NEXT(zE, i, nE, uEsc);
++    if( i!=nE){
++      sqlite3_result_error(context, 
++          "ESCAPE expression must be a single character", -1);
++      return;
++    }
++  }
++
++  if( zA && zB ){
++    sqlite3_result_int(context, icuLikeCompare(zA, zB, uEsc));
++  }
++}
++
++/*
++** This function is called when an ICU function called from within
++** the implementation of an SQL scalar function returns an error.
++**
++** The scalar function context passed as the first argument is 
++** loaded with an error message based on the following two args.
++*/
++static void icuFunctionError(
++  sqlite3_context *pCtx,       /* SQLite scalar function context */
++  const char *zName,           /* Name of ICU function that failed */
++  UErrorCode e                 /* Error code returned by ICU function */
++){
++  char zBuf[128];
++  sqlite3_snprintf(128, zBuf, "ICU error: %s(): %s", zName, u_errorName(e));
++  zBuf[127] = '\0';
++  sqlite3_result_error(pCtx, zBuf, -1);
++}
++
++/*
++** Function to delete compiled regexp objects. Registered as
++** a destructor function with sqlite3_set_auxdata().
++*/
++static void icuRegexpDelete(void *p){
++  URegularExpression *pExpr = (URegularExpression *)p;
++  uregex_close(pExpr);
++}
++
++/*
++** Implementation of SQLite REGEXP operator. This scalar function takes
++** two arguments. The first is a regular expression pattern to compile
++** the second is a string to match against that pattern. If either 
++** argument is an SQL NULL, then NULL Is returned. Otherwise, the result
++** is 1 if the string matches the pattern, or 0 otherwise.
++**
++** SQLite maps the regexp() function to the regexp() operator such
++** that the following two are equivalent:
++**
++**     zString REGEXP zPattern
++**     regexp(zPattern, zString)
++**
++** Uses the following ICU regexp APIs:
++**
++**     uregex_open()
++**     uregex_matches()
++**     uregex_close()
++*/
++static void icuRegexpFunc(sqlite3_context *p, int nArg, sqlite3_value **apArg){
++  UErrorCode status = U_ZERO_ERROR;
++  URegularExpression *pExpr;
++  UBool res;
++  const UChar *zString = sqlite3_value_text16(apArg[1]);
++
++  (void)nArg;  /* Unused parameter */
++
++  /* If the left hand side of the regexp operator is NULL, 
++  ** then the result is also NULL. 
++  */
++  if( !zString ){
++    return;
++  }
++
++  pExpr = sqlite3_get_auxdata(p, 0);
++  if( !pExpr ){
++    const UChar *zPattern = sqlite3_value_text16(apArg[0]);
++    if( !zPattern ){
++      return;
++    }
++    pExpr = uregex_open(zPattern, -1, 0, 0, &status);
++
++    if( U_SUCCESS(status) ){
++      sqlite3_set_auxdata(p, 0, pExpr, icuRegexpDelete);
++    }else{
++      assert(!pExpr);
++      icuFunctionError(p, "uregex_open", status);
++      return;
++    }
++  }
++
++  /* Configure the text that the regular expression operates on. */
++  uregex_setText(pExpr, zString, -1, &status);
++  if( !U_SUCCESS(status) ){
++    icuFunctionError(p, "uregex_setText", status);
++    return;
++  }
++
++  /* Attempt the match */
++  res = uregex_matches(pExpr, 0, &status);
++  if( !U_SUCCESS(status) ){
++    icuFunctionError(p, "uregex_matches", status);
++    return;
++  }
++
++  /* Set the text that the regular expression operates on to a NULL
++  ** pointer. This is not really necessary, but it is tidier than 
++  ** leaving the regular expression object configured with an invalid
++  ** pointer after this function returns.
++  */
++  uregex_setText(pExpr, 0, 0, &status);
++
++  /* Return 1 or 0. */
++  sqlite3_result_int(p, res ? 1 : 0);
++}
++
++/*
++** Implementations of scalar functions for case mapping - upper() and 
++** lower(). Function upper() converts its input to upper-case (ABC).
++** Function lower() converts to lower-case (abc).
++**
++** ICU provides two types of case mapping, "general" case mapping and
++** "language specific". Refer to ICU documentation for the differences
++** between the two.
++**
++** To utilise "general" case mapping, the upper() or lower() scalar 
++** functions are invoked with one argument:
++**
++**     upper('ABC') -> 'abc'
++**     lower('abc') -> 'ABC'
++**
++** To access ICU "language specific" case mapping, upper() or lower()
++** should be invoked with two arguments. The second argument is the name
++** of the locale to use. Passing an empty string ("") or SQL NULL value
++** as the second argument is the same as invoking the 1 argument version
++** of upper() or lower().
++**
++**     lower('I', 'en_us') -> 'i'
++**     lower('I', 'tr_tr') -> 'ı' (small dotless i)
++**
++** http://www.icu-project.org/userguide/posix.html#case_mappings
++*/
++static void icuCaseFunc16(sqlite3_context *p, int nArg, sqlite3_value **apArg){
++  const UChar *zInput;
++  UChar *zOutput;
++  int nInput;
++  int nOutput;
++
++  UErrorCode status = U_ZERO_ERROR;
++  const char *zLocale = 0;
++
++  assert(nArg==1 || nArg==2);
++  if( nArg==2 ){
++    zLocale = (const char *)sqlite3_value_text(apArg[1]);
++  }
++
++  zInput = sqlite3_value_text16(apArg[0]);
++  if( !zInput ){
++    return;
++  }
++  nInput = sqlite3_value_bytes16(apArg[0]);
++
++  nOutput = nInput * 2 + 2;
++  zOutput = sqlite3_malloc(nOutput);
++  if( !zOutput ){
++    return;
++  }
++
++  if( sqlite3_user_data(p) ){
++    u_strToUpper(zOutput, nOutput/2, zInput, nInput/2, zLocale, &status);
++  }else{
++    u_strToLower(zOutput, nOutput/2, zInput, nInput/2, zLocale, &status);
++  }
++
++  if( !U_SUCCESS(status) ){
++    icuFunctionError(p, "u_strToLower()/u_strToUpper", status);
++    return;
++  }
++
++  sqlite3_result_text16(p, zOutput, -1, xFree);
++}
++
++/*
++** Collation sequence destructor function. The pCtx argument points to
++** a UCollator structure previously allocated using ucol_open().
++*/
++static void icuCollationDel(void *pCtx){
++  UCollator *p = (UCollator *)pCtx;
++  ucol_close(p);
++}
++
++/*
++** Collation sequence comparison function. The pCtx argument points to
++** a UCollator structure previously allocated using ucol_open().
++*/
++static int icuCollationColl(
++  void *pCtx,
++  int nLeft,
++  const void *zLeft,
++  int nRight,
++  const void *zRight
++){
++  UCollationResult res;
++  UCollator *p = (UCollator *)pCtx;
++  res = ucol_strcoll(p, (UChar *)zLeft, nLeft/2, (UChar *)zRight, nRight/2);
++  switch( res ){
++    case UCOL_LESS:    return -1;
++    case UCOL_GREATER: return +1;
++    case UCOL_EQUAL:   return 0;
++  }
++  assert(!"Unexpected return value from ucol_strcoll()");
++  return 0;
++}
++
++/*
++** Implementation of the scalar function icu_load_collation().
++**
++** This scalar function is used to add ICU collation based collation 
++** types to an SQLite database connection. It is intended to be called
++** as follows:
++**
++**     SELECT icu_load_collation(<locale>, <collation-name>);
++**
++** Where <locale> is a string containing an ICU locale identifier (i.e.
++** "en_AU", "tr_TR" etc.) and <collation-name> is the name of the
++** collation sequence to create.
++*/
++static void icuLoadCollation(
++  sqlite3_context *p, 
++  int nArg, 
++  sqlite3_value **apArg
++){
++  sqlite3 *db = (sqlite3 *)sqlite3_user_data(p);
++  UErrorCode status = U_ZERO_ERROR;
++  const char *zLocale;      /* Locale identifier - (eg. "jp_JP") */
++  const char *zName;        /* SQL Collation sequence name (eg. "japanese") */
++  UCollator *pUCollator;    /* ICU library collation object */
++  int rc;                   /* Return code from sqlite3_create_collation_x() */
++
++  assert(nArg==2);
++  zLocale = (const char *)sqlite3_value_text(apArg[0]);
++  zName = (const char *)sqlite3_value_text(apArg[1]);
++
++  if( !zLocale || !zName ){
++    return;
++  }
++
++  pUCollator = ucol_open(zLocale, &status);
++  if( !U_SUCCESS(status) ){
++    icuFunctionError(p, "ucol_open", status);
++    return;
++  }
++  assert(p);
++
++  rc = sqlite3_create_collation_v2(db, zName, SQLITE_UTF16, (void *)pUCollator, 
++      icuCollationColl, icuCollationDel
++  );
++  if( rc!=SQLITE_OK ){
++    ucol_close(pUCollator);
++    sqlite3_result_error(p, "Error registering collation function", -1);
++  }
++}
++
++/*
++** Register the ICU extension functions with database db.
++*/
++int sqlite3IcuInit(sqlite3 *db){
++  struct IcuScalar {
++    const char *zName;                        /* Function name */
++    int nArg;                                 /* Number of arguments */
++    int enc;                                  /* Optimal text encoding */
++    void *pContext;                           /* sqlite3_user_data() context */
++    void (*xFunc)(sqlite3_context*,int,sqlite3_value**);
++  } scalars[] = {
++    {"regexp", 2, SQLITE_ANY,          0, icuRegexpFunc},
++
++    {"lower",  1, SQLITE_UTF16,        0, icuCaseFunc16},
++    {"lower",  2, SQLITE_UTF16,        0, icuCaseFunc16},
++    {"upper",  1, SQLITE_UTF16, (void*)1, icuCaseFunc16},
++    {"upper",  2, SQLITE_UTF16, (void*)1, icuCaseFunc16},
++
++    {"lower",  1, SQLITE_UTF8,         0, icuCaseFunc16},
++    {"lower",  2, SQLITE_UTF8,         0, icuCaseFunc16},
++    {"upper",  1, SQLITE_UTF8,  (void*)1, icuCaseFunc16},
++    {"upper",  2, SQLITE_UTF8,  (void*)1, icuCaseFunc16},
++
++    {"like",   2, SQLITE_UTF8,         0, icuLikeFunc},
++    {"like",   3, SQLITE_UTF8,         0, icuLikeFunc},
++
++    {"icu_load_collation",  2, SQLITE_UTF8, (void*)db, icuLoadCollation},
++  };
++
++  int rc = SQLITE_OK;
++  int i;
++
++  for(i=0; rc==SQLITE_OK && i<(int)(sizeof(scalars)/sizeof(scalars[0])); i++){
++    struct IcuScalar *p = &scalars[i];
++    rc = sqlite3_create_function(
++        db, p->zName, p->nArg, p->enc, p->pContext, p->xFunc, 0, 0
++    );
++  }
++
++  return rc;
++}
++
++#if !SQLITE_CORE
++#ifdef _WIN32
++__declspec(dllexport)
++#endif
++int sqlite3_icu_init(
++  sqlite3 *db, 
++  char **pzErrMsg,
++  const sqlite3_api_routines *pApi
++){
++  SQLITE_EXTENSION_INIT2(pApi)
++  return sqlite3IcuInit(db);
++}
++#endif
++
++#endif
+--- origsrc/sqlite-autoconf-3080300/shell.c	2014-02-03 15:04:55.000000000 +0100
++++ src/sqlite-autoconf-3080300/shell.c	2014-02-04 12:53:52.214919200 +0100
+@@ -28,11 +28,24 @@
+ # define _LARGEFILE_SOURCE 1
+ #endif
+ 
++#define SQLITE_CORE 1
++#define SQLITE_ENABLE_ICU 1
++#define SQLITE_ENABLE_ZLIB 1
++
+ #include <stdlib.h>
+ #include <string.h>
+ #include <stdio.h>
+ #include <assert.h>
+ #include "sqlite3.h"
++#ifndef SQLITE_CORE
++#  define SQLITE_CORE 1  /* Disable the API redefinition in sqlite3ext.h */
++#endif
++#ifdef SQLITE_ENABLE_ICU
++#include "icu.c"
++#endif
++#ifdef SQLITE_ENABLE_ZLIB
++#include "zlib.c"
++#endif
+ #include <ctype.h>
+ #include <stdarg.h>
+ 
+@@ -482,7 +495,7 @@ struct callback_data {
+ #define MODE_Csv      7  /* Quote strings, numbers are plain */
+ #define MODE_Explain  8  /* Like MODE_Column, but do not truncate data */
+ 
+-static const char *modeDescr[] = {
++static const char *const modeDescr[] = {
+   "line",
+   "column",
+   "list",
+@@ -1156,7 +1169,7 @@ static int display_stats(
+ ** is equal, according to strcmp(), to any of the strings in the array.
+ ** Otherwise, return zero.
+ */
+-static int str_in_array(const char *zStr, const char **azArray){
++static int str_in_array(const char *zStr, const char *const *azArray){
+   int i;
+   for(i=0; azArray[i]; i++){
+     if( 0==strcmp(zStr, azArray[i]) ) return 1;
+@@ -1188,9 +1201,9 @@ static void explain_data_prepare(struct
+   int nAlloc = 0;                 /* Allocated size of p->aiIndent[], abYield */
+   int iOp;                        /* Index of operation in p->aiIndent[] */
+ 
+-  const char *azNext[] = { "Next", "Prev", "VPrev", "VNext", "SorterNext", 0 };
+-  const char *azYield[] = { "Yield", "SeekLt", "SeekGt", "RowSetRead", "Rewind", 0 };
+-  const char *azGoto[] = { "Goto", 0 };
++  const char *const azNext[] = { "Next", "Prev", "VPrev", "VNext", "SorterNext", 0 };
++  const char *const azYield[] = { "Yield", "SeekLt", "SeekGt", "RowSetRead", "Rewind", 0 };
++  const char *const azGoto[] = { "Goto", 0 };
+ 
+   /* Try to figure out if this is really an EXPLAIN statement. If this
+   ** cannot be verified, return early.  */
+@@ -2772,6 +2785,9 @@ static int do_meta_command(char *zLine,
+       { "optimizations",         SQLITE_TESTCTRL_OPTIMIZATIONS          },
+       { "iskeyword",             SQLITE_TESTCTRL_ISKEYWORD              },
+       { "scratchmalloc",         SQLITE_TESTCTRL_SCRATCHMALLOC          },
++      { "localtime_fault",       SQLITE_TESTCTRL_LOCALTIME_FAULT        },
++      { "explain_stmt",          SQLITE_TESTCTRL_EXPLAIN_STMT           },
++      { "never_corrupt",         SQLITE_TESTCTRL_NEVER_CORRUPT          }
+     };
+     int testctrl = -1;
+     int rc = 0;
+@@ -2866,6 +2882,9 @@ static int do_meta_command(char *zLine,
+         case SQLITE_TESTCTRL_FAULT_INSTALL:       
+         case SQLITE_TESTCTRL_BENIGN_MALLOC_HOOKS: 
+         case SQLITE_TESTCTRL_SCRATCHMALLOC:       
++        case SQLITE_TESTCTRL_LOCALTIME_FAULT:
++        case SQLITE_TESTCTRL_EXPLAIN_STMT:
++        case SQLITE_TESTCTRL_NEVER_CORRUPT:
+         default:
+           fprintf(stderr,"Error: CLI support for testctrl %s not implemented\n",
+                   azArg[1]);
+@@ -3271,6 +3290,9 @@ static void usage(int showDetail){
+ ** Initialize the state information in data
+ */
+ static void main_init(struct callback_data *data) {
++#if (defined(_WIN32) || defined(__CYGWIN__)) && !defined(SQLITE_WIN32_NO_WIDE)
++  sqlite3_vfs *pVfs;
++#endif
+   memset(data, 0, sizeof(*data));
+   data->mode = MODE_List;
+   memcpy(data->separator,"|", 2);
+@@ -3280,6 +3302,18 @@ static void main_init(struct callback_da
+   sqlite3_snprintf(sizeof(mainPrompt), mainPrompt,"sqlite> ");
+   sqlite3_snprintf(sizeof(continuePrompt), continuePrompt,"   ...> ");
+   sqlite3_config(SQLITE_CONFIG_SINGLETHREAD);
++#if (defined(_WIN32) || defined(__CYGWIN__)) && !defined(SQLITE_WIN32_NO_WIDE)
++  pVfs = sqlite3_vfs_find("win32-longpath");
++  if( pVfs ){
++    sqlite3_vfs_register(pVfs, 1);
++  }
++#endif
++#ifdef SQLITE_ENABLE_ICU
++  sqlite3_auto_extension((void *)sqlite3IcuInit);
++#endif
++#ifdef SQLITE_ENABLE_ZLIB
++  sqlite3_auto_extension((void *)sqlite3ZlibInit);
++#endif
+ }
+ 
+ /*
+@@ -3303,9 +3337,9 @@ int main(int argc, char **argv){
+   int i;
+   int rc = 0;
+ 
+-  if( strcmp(sqlite3_sourceid(),SQLITE_SOURCE_ID)!=0 ){
+-    fprintf(stderr, "SQLite header and source version mismatch\n%s\n%s\n",
+-            sqlite3_sourceid(), SQLITE_SOURCE_ID);
++  if( sqlite3_libversion_number()<3008000 ){
++    fprintf(stderr, "Unsuitable SQLite version %s, must be at least 3.8.0",
++            sqlite3_libversion());
+     exit(1);
+   }
+   Argv0 = argv[0];
+--- origsrc/sqlite-autoconf-3080300/sqlite3.c	2014-02-03 15:04:55.000000000 +0100
++++ src/sqlite-autoconf-3080300/sqlite3.c	2014-02-04 12:53:52.284923200 +0100
+@@ -137,7 +137,7 @@ extern "C" {
+ */
+ #define SQLITE_VERSION        "3.8.3"
+ #define SQLITE_VERSION_NUMBER 3008003
+-#define SQLITE_SOURCE_ID      "2014-02-03 14:04:11 6c643e45c274e755dc5a1a65673df79261c774be"
++#define SQLITE_SOURCE_ID      "2014-02-03 13:52:03 e816dd924619db5f766de6df74ea2194f3e3b538"
+ 
+ /*
+ ** CAPI3REF: Run-Time Library Version Numbers
+@@ -9779,7 +9779,10 @@ SQLITE_PRIVATE void sqlite3PCacheSetDefa
+ #if !defined(SQLITE_OS_UNIX) && !defined(SQLITE_OS_OTHER)
+ # define SQLITE_OS_OTHER 0
+ # ifndef SQLITE_OS_WIN
+-#   if defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
++#   if defined(__CYGWIN__)
++#     define SQLITE_OS_WIN 1
++#     define SQLITE_OS_UNIX 1
++#   elif defined(_WIN32) || defined(WIN32) || defined(__MINGW32__) || defined(__BORLANDC__)
+ #     define SQLITE_OS_WIN 1
+ #     define SQLITE_OS_UNIX 0
+ #   else
+@@ -9795,7 +9798,7 @@ SQLITE_PRIVATE void sqlite3PCacheSetDefa
+ # endif
+ #endif
+ 
+-#if SQLITE_OS_WIN
++#if SQLITE_OS_WIN && !defined(__CYGWIN__)
+ # include <windows.h>
+ #endif
+ 
+@@ -10067,10 +10070,10 @@ SQLITE_PRIVATE int sqlite3OsCloseFree(sq
+ # define SQLITE_MUTEX_OMIT
+ #endif
+ #if SQLITE_THREADSAFE && !defined(SQLITE_MUTEX_NOOP)
+-#  if SQLITE_OS_UNIX
+-#    define SQLITE_MUTEX_PTHREADS
+-#  elif SQLITE_OS_WIN
++#  if SQLITE_OS_WIN
+ #    define SQLITE_MUTEX_W32
++#  elif SQLITE_OS_UNIX
++#    define SQLITE_MUTEX_PTHREADS
+ #  else
+ #    define SQLITE_MUTEX_NOOP
+ #  endif
+@@ -12743,6 +12746,8 @@ SQLITE_PRIVATE   void sqlite3WithPush(Pa
+ #else
+ #define sqlite3WithPush(x,y,z)
+ #define sqlite3WithDelete(x,y)
++#define sqlite3WithAdd(p,w,t,x,y) (sqlite3ErrorMsg((p), \
++    "near \"%T\": syntax error", (t)),(With*)(w))
+ #endif
+ 
+ /* Declarations for functions in fkey.c. All of these are replaced by
+@@ -18789,6 +18794,10 @@ SQLITE_PRIVATE sqlite3_mutex_methods con
+ ** This file contains the C functions that implement mutexes for win32
+ */
+ 
++#ifdef __CYGWIN__
++# include <windows.h> /* amalgamator: keep */
++#endif
++
+ /*
+ ** The code in this file is only used if we are compiling multithreaded
+ ** on a win32 system.
+@@ -18885,6 +18894,9 @@ static int winMutex_isInit = 0;
+ */
+ static LONG winMutex_lock = 0;
+ 
++#if defined(__CYGWIN__) && defined(SQLITE_AMALGAMATION)
++static
++#endif
+ SQLITE_API void sqlite3_win32_sleep(DWORD milliseconds); /* os_win.c */
+ 
+ static int winMutexInit(void){ 
+@@ -23413,7 +23425,7 @@ SQLITE_PRIVATE const char *sqlite3Opcode
+ ** where the database is located.  
+ */
+ #if !defined(SQLITE_ENABLE_LOCKING_STYLE)
+-#  if defined(__APPLE__)
++#  if defined(__APPLE__) || defined(__CYGWIN__)
+ #    define SQLITE_ENABLE_LOCKING_STYLE 1
+ #  else
+ #    define SQLITE_ENABLE_LOCKING_STYLE 0
+@@ -23472,13 +23484,17 @@ SQLITE_PRIVATE const char *sqlite3Opcode
+ #include <sys/mman.h>
+ #endif
+ 
++#ifdef __CYGWIN__
++# include <sys/cygwin.h>
++#endif
+ 
+-#if SQLITE_ENABLE_LOCKING_STYLE
++#if SQLITE_ENABLE_LOCKING_STYLE || defined(__CYGWIN__)
+ # include <sys/ioctl.h>
+-# if OS_VXWORKS
++# if OS_VXWORKS || defined(__CYGWIN__)
+ #  include <semaphore.h>
+ #  include <limits.h>
+-# else
++# endif
++# if !OS_VXWORKS
+ #  include <sys/file.h>
+ #  include <sys/param.h>
+ # endif
+@@ -23523,7 +23539,15 @@ SQLITE_PRIVATE const char *sqlite3Opcode
+ /*
+ ** Maximum supported path-length.
+ */
+-#define MAX_PATHNAME 512
++#ifndef MAX_PATHNAME
++#  if defined(PATH_MAX)
++#    define MAX_PATHNAME PATH_MAX
++#  elif defined(MAXPATHLEN)
++#    define MAX_PATHNAME MAXPATHLEN
++#  else
++#    define MAX_PATHNAME 512
++#  endif
++#endif
+ 
+ /*
+ ** Only set the lastErrno if the error code is a real error and not 
+@@ -23581,7 +23605,7 @@ struct unixFile {
+ #if SQLITE_ENABLE_LOCKING_STYLE
+   int openFlags;                      /* The flags specified at open() */
+ #endif
+-#if SQLITE_ENABLE_LOCKING_STYLE || defined(__APPLE__)
++#if SQLITE_ENABLE_LOCKING_STYLE && !defined(__CYGWIN__) || defined(__APPLE__)
+   unsigned fsFlags;                   /* cached details from statfs() */
+ #endif
+ #if OS_VXWORKS
+@@ -23913,6 +23937,7 @@ static int openDirectory(const char*, in
+ ** testing and sandboxing.  The following array holds the names and pointers
+ ** to all overrideable system calls.
+ */
++#define aSyscall aUnixSyscall
+ static struct unix_syscall {
+   const char *zName;            /* Name of the system call */
+   sqlite3_syscall_ptr pCurrent; /* Current value of the system call */
+@@ -24409,7 +24434,9 @@ struct vxworksFileId {
+ ** variable:
+ */
+ static struct vxworksFileId *vxworksFileList = 0;
++#endif /* OS_VXWORKS */
+ 
++#if OS_VXWORKS || defined(__CYGWIN__)
+ /*
+ ** Simplify a filename into its canonical form
+ ** by making the following changes:
+@@ -24428,7 +24455,13 @@ static int vxworksSimplifyName(char *z,
+   while( n>1 && z[n-1]=='/' ){ n--; }
+   for(i=j=0; i<n; i++){
+     if( z[i]=='/' ){
+-      if( z[i+1]=='/' ) continue;
++      if( z[i+1]=='/' ){
++#ifdef __CYGWIN__
++      /* Make an exception for UNC paths */
++      if( i!=0 )
++#endif
++      continue;
++      }
+       if( z[i+1]=='.' && i+2<n && z[i+2]=='/' ){
+         i += 1;
+         continue;
+@@ -24445,7 +24478,9 @@ static int vxworksSimplifyName(char *z,
+   z[j] = 0;
+   return j;
+ }
++#endif
+ 
++#if OS_VXWORKS
+ /*
+ ** Find a unique file ID for the given absolute pathname.  Return
+ ** a pointer to the vxworksFileId object.  This pointer is the unique
+@@ -24640,10 +24675,10 @@ struct unixInodeInfo {
+   UnixUnusedFd *pUnused;          /* Unused file descriptors to close */
+   unixInodeInfo *pNext;           /* List of all unixInodeInfo objects */
+   unixInodeInfo *pPrev;           /*    .... doubly linked */
+-#if SQLITE_ENABLE_LOCKING_STYLE
++#if defined(__APPLE__) && SQLITE_ENABLE_LOCKING_STYLE
+   unsigned long long sharedByte;  /* for AFP simulated shared lock */
+ #endif
+-#if OS_VXWORKS
++#if OS_VXWORKS || defined(__CYGWIN__)
+   sem_t *pSem;                    /* Named POSIX semaphore */
+   char aSemName[MAX_PATHNAME+2];  /* Name of that semaphore */
+ #endif
+@@ -25337,11 +25372,10 @@ static int posixUnlock(sqlite3_file *id,
+     */
+     if( eFileLock==SHARED_LOCK ){
+ 
+-#if !defined(__APPLE__) || !SQLITE_ENABLE_LOCKING_STYLE
++#if (!defined(__APPLE__) && !defined(__CYGWIN__)) || !SQLITE_ENABLE_LOCKING_STYLE
+       (void)handleNFSUnlock;
+       assert( handleNFSUnlock==0 );
+-#endif
+-#if defined(__APPLE__) && SQLITE_ENABLE_LOCKING_STYLE
++#else
+       if( handleNFSUnlock ){
+         int tErrno;               /* Error code from system call errors */
+         off_t divSize = SHARED_SIZE - 1;
+@@ -25789,7 +25823,7 @@ static int dotlockClose(sqlite3_file *id
+ ** Omit this section if SQLITE_ENABLE_LOCKING_STYLE is turned off or if
+ ** compiling for VXWORKS.
+ */
+-#if SQLITE_ENABLE_LOCKING_STYLE && !OS_VXWORKS
++#if SQLITE_ENABLE_LOCKING_STYLE && !OS_VXWORKS || defined(__CYGWIN__)
+ 
+ /*
+ ** Retry flock() calls that fail with EINTR
+@@ -25995,7 +26029,7 @@ static int flockClose(sqlite3_file *id)
+ ** the database file at a time.  This reduces potential concurrency, but
+ ** makes the lock implementation much easier.
+ */
+-#if OS_VXWORKS
++#if OS_VXWORKS || defined(__CYGWIN__)
+ 
+ /*
+ ** This routine checks if there is a RESERVED lock held on the specified
+@@ -26637,7 +26671,7 @@ static int afpClose(sqlite3_file *id) {
+ /******************************************************************************
+ *************************** Begin NFS Locking ********************************/
+ 
+-#if defined(__APPLE__) && SQLITE_ENABLE_LOCKING_STYLE
++#if (defined(__APPLE__) || defined(__CYGWIN__)) && SQLITE_ENABLE_LOCKING_STYLE
+ /*
+  ** Lower the locking level on file descriptor pFile to eFileLock.  eFileLock
+  ** must be either NO_LOCK or SHARED_LOCK.
+@@ -26652,7 +26686,7 @@ static int nfsUnlock(sqlite3_file *id, i
+ #endif /* defined(__APPLE__) && SQLITE_ENABLE_LOCKING_STYLE */
+ /*
+ ** The code above is the NFS lock implementation.  The code is specific
+-** to MacOSX and does not work on other unix platforms.  No alternative
++** to MacOSX/Cygwin and does not work on other unix platforms.  No alternative
+ ** is available.  
+ **
+ ********************* End of the NFS lock implementation **********************
+@@ -26934,8 +26968,7 @@ static int unixWrite(
+ ** Count the number of fullsyncs and normal syncs.  This is used to test
+ ** that syncs and fullsyncs are occurring at the right times.
+ */
+-SQLITE_API int sqlite3_sync_count = 0;
+-SQLITE_API int sqlite3_fullsync_count = 0;
++extern int sqlite3_sync_count, sqlite3_fullsync_count;
+ #endif
+ 
+ /*
+@@ -27231,7 +27264,7 @@ static int unixFileSize(sqlite3_file *id
+   return SQLITE_OK;
+ }
+ 
+-#if SQLITE_ENABLE_LOCKING_STYLE && defined(__APPLE__)
++#if SQLITE_ENABLE_LOCKING_STYLE && (defined(__APPLE__) || defined(__CYGWIN__))
+ /*
+ ** Handler for proxy-locking file-control verbs.  Defined below in the
+ ** proxying locking division.
+@@ -27328,6 +27361,7 @@ static int unixGetTempname(int nBuf, cha
+ /*
+ ** Information and control of an open file handle.
+ */
++
+ static int unixFileControl(sqlite3_file *id, int op, void *pArg){
+   unixFile *pFile = (unixFile*)id;
+   switch( op ){
+@@ -27403,7 +27437,7 @@ static int unixFileControl(sqlite3_file
+       return SQLITE_OK;
+     }
+ #endif
+-#if SQLITE_ENABLE_LOCKING_STYLE && defined(__APPLE__)
++#if SQLITE_ENABLE_LOCKING_STYLE && (defined(__APPLE__) || defined(__CYGWIN__))
+     case SQLITE_SET_LOCKPROXYFILE:
+     case SQLITE_GET_LOCKPROXYFILE: {
+       return proxyFileControl(id,op,pArg);
+@@ -28534,7 +28568,19 @@ IOMETHODS(
+   dotlockCheckReservedLock  /* xCheckReservedLock method */
+ )
+ 
+-#if SQLITE_ENABLE_LOCKING_STYLE && !OS_VXWORKS
++#if defined(__CYGWIN__)
++IOMETHODS(
++  cygwinIoFinder,            /* Finder function name */
++  cygwinIoMethods,           /* sqlite3_io_methods object name */
++  1,                        /* shared memory is disabled */
++  flockClose,               /* xClose method */
++  flockLock,                /* xLock method */
++  flockUnlock,              /* xUnlock method */
++  flockCheckReservedLock    /* xCheckReservedLock method */
++)
++#endif
++
++#if SQLITE_ENABLE_LOCKING_STYLE && !OS_VXWORKS || defined(__CYGWIN__)
+ IOMETHODS(
+   flockIoFinder,            /* Finder function name */
+   flockIoMethods,           /* sqlite3_io_methods object name */
+@@ -28546,7 +28592,7 @@ IOMETHODS(
+ )
+ #endif
+ 
+-#if OS_VXWORKS
++#if OS_VXWORKS || defined(__CYGWIN__)
+ IOMETHODS(
+   semIoFinder,              /* Finder function name */
+   semIoMethods,             /* sqlite3_io_methods object name */
+@@ -28579,7 +28625,7 @@ IOMETHODS(
+ ** to go ahead and define the sqlite3_io_methods and finder function
+ ** for proxy locking here.  So we forward declare the I/O methods.
+ */
+-#if defined(__APPLE__) && SQLITE_ENABLE_LOCKING_STYLE
++#if (defined(__APPLE__) || defined(__CYGWIN__)) && SQLITE_ENABLE_LOCKING_STYLE
+ static int proxyClose(sqlite3_file*);
+ static int proxyLock(sqlite3_file*, int);
+ static int proxyUnlock(sqlite3_file*, int);
+@@ -28596,7 +28642,7 @@ IOMETHODS(
+ #endif
+ 
+ /* nfs lockd on OSX 10.3+ doesn't clear write locks when a read lock is set */
+-#if defined(__APPLE__) && SQLITE_ENABLE_LOCKING_STYLE
++#if (defined(__APPLE__) || defined(__CYGWIN__)) && SQLITE_ENABLE_LOCKING_STYLE
+ IOMETHODS(
+   nfsIoFinder,               /* Finder function name */
+   nfsIoMethods,              /* sqlite3_io_methods object name */
+@@ -28712,6 +28758,66 @@ static const sqlite3_io_methods
+ 
+ #endif /* OS_VXWORKS && SQLITE_ENABLE_LOCKING_STYLE */
+ 
++#if defined(__CYGWIN__) && SQLITE_ENABLE_LOCKING_STYLE
++/*
++** This "finder" function attempts to determine the best locking strategy
++** for the database file "filePath".  It then returns the sqlite3_io_methods
++** object that implements that strategy.
++**
++** This is for Cygwin only.
++*/
++static const sqlite3_io_methods *autolockIoFinderImpl(
++  const char *filePath,    /* name of the database file */
++  unixFile *pNew           /* the open file object */
++){
++  static const sqlite3_io_methods *ioMethods = NULL;
++
++  if( !filePath ){
++    /* If filePath==NULL that means we are dealing with a transient file
++    ** that does not need to be locked. */
++    return &nolockIoMethods;
++  }
++
++  if( !ioMethods ){
++    const char *strategy = getenv("CYGWIN_SQLITE_LOCKING");
++    ioMethods = &cygwinIoMethods;
++
++    if( strategy ){
++      if( !sqlite3_strnicmp(strategy, "unix", 4) ){
++        if( (strategy[4]=='-') || (strategy[4]=='_')){
++          strategy += 5;
++        }
++        ioMethods = &posixIoMethods;
++      }
++      if( sqlite3_stricmp(strategy, "excl") == 0 ){
++        pNew->ctrlFlags |= UNIXFILE_EXCL;
++        ioMethods = &posixIoMethods;
++      }else if( sqlite3_stricmp(strategy, "posix") == 0 ){
++        ioMethods = &posixIoMethods;
++      }else if( sqlite3_stricmp(strategy, "bsd") == 0
++          || sqlite3_stricmp(strategy, "flock") == 0 ){
++        ioMethods = &flockIoMethods;
++      }else if( sqlite3_stricmp(strategy, "dotfile") == 0 ){
++        ioMethods = &dotlockIoMethods;
++      }else if( sqlite3_stricmp(strategy, "nfs") == 0 ){
++        ioMethods = &nfsIoMethods;
++      }else if( sqlite3_stricmp(strategy, "none") == 0 ){
++        ioMethods = &nolockIoMethods;
++      }else if( sqlite3_strnicmp(strategy, "win", 3) == 0
++          || sqlite3_strnicmp(strategy, "cyg", 3) == 0
++          || sqlite3_stricmp(strategy, "proxy") == 0 ){
++        /* Fall back to original default */
++        ioMethods = &cygwinIoMethods;
++      }
++    }
++  }
++  return ioMethods;
++}
++static const sqlite3_io_methods
++  *(*const autolockIoFinder)(const char*,unixFile*) = autolockIoFinderImpl;
++
++#endif /* OS_VXWORKS && SQLITE_ENABLE_LOCKING_STYLE */
++
+ /*
+ ** An abstract type for a pointer to a IO method finder function:
+ */
+@@ -28745,7 +28851,7 @@ static int fillInUnixFile(
+   ** exception is when opening the proxy "conch" file in builds that
+   ** include the special Apple locking styles.
+   */
+-#if defined(__APPLE__) && SQLITE_ENABLE_LOCKING_STYLE
++#if (defined(__APPLE__) || defined(__CYGWIN__)) && SQLITE_ENABLE_LOCKING_STYLE
+   assert( zFilename==0 || zFilename[0]=='/' 
+     || pVfs->pAppData==(void*)&autolockIoFinder );
+ #else
+@@ -28792,7 +28898,7 @@ static int fillInUnixFile(
+   }
+ 
+   if( pLockingStyle == &posixIoMethods
+-#if defined(__APPLE__) && SQLITE_ENABLE_LOCKING_STYLE
++#if (defined(__APPLE__) || defined(__CYGWIN__)) && SQLITE_ENABLE_LOCKING_STYLE
+     || pLockingStyle == &nfsIoMethods
+ #endif
+   ){
+@@ -28868,7 +28974,7 @@ static int fillInUnixFile(
+     pNew->lockingContext = zLockFile;
+   }
+ 
+-#if OS_VXWORKS
++#if OS_VXWORKS || defined(__CYGWIN__)
+   else if( pLockingStyle == &semIoMethods ){
+     /* Named semaphore locking uses the file path so it needs to be
+     ** included in the semLockingContext
+@@ -28878,8 +28984,14 @@ static int fillInUnixFile(
+     if( (rc==SQLITE_OK) && (pNew->pInode->pSem==NULL) ){
+       char *zSemName = pNew->pInode->aSemName;
+       int n;
++#if OS_VXWORKS
+       sqlite3_snprintf(MAX_PATHNAME, zSemName, "/%s.sem",
+                        pNew->pId->zCanonicalName);
++#else
++      sqlite3_snprintf(MAX_PATHNAME, zSemName, "/%s.sem",
++                       zFilename);
++      vxworksSimplifyName(zSemName, MAX_PATHNAME);
++#endif
+       for( n=1; zSemName[n]; n++ )
+         if( zSemName[n]=='/' ) zSemName[n] = '_';
+       pNew->pInode->pSem = sem_open(zSemName, O_CREAT, 0666, 1);
+@@ -28891,6 +29003,15 @@ static int fillInUnixFile(
+     unixLeaveMutex();
+   }
+ #endif
++
++#if defined(__CYGWIN__)
++  else if( pLockingStyle == &cygwinIoMethods ){
++    if ((osFcntl(h, F_LCK_MANDATORY, 1) != 0) && (errno != EINVAL)) {
++      /* The API exists but it refused to enable mandatory locking! */
++      rc = SQLITE_IOERR_ACCESS;
++    }
++  }
++#endif
+   
+   pNew->lastErrno = 0;
+ #if OS_VXWORKS
+@@ -28920,6 +29041,8 @@ static const char *unixTempFileDir(void)
+      0,
+      0,
+      0,
++     0,
++     0,
+      "/var/tmp",
+      "/usr/tmp",
+      "/tmp",
+@@ -28932,6 +29055,8 @@ static const char *unixTempFileDir(void)
+   azDirs[0] = sqlite3_temp_directory;
+   if( !azDirs[1] ) azDirs[1] = getenv("SQLITE_TMPDIR");
+   if( !azDirs[2] ) azDirs[2] = getenv("TMPDIR");
++  if( !azDirs[3] ) azDirs[2] = getenv("TMP");
++  if( !azDirs[4] ) azDirs[3] = getenv("TEMP");
+   for(i=0; i<sizeof(azDirs)/sizeof(azDirs[0]); zDir=azDirs[i++]){
+     if( zDir==0 ) continue;
+     if( osStat(zDir, &buf) ) continue;
+@@ -28984,7 +29109,7 @@ static int unixGetTempname(int nBuf, cha
+   return SQLITE_OK;
+ }
+ 
+-#if SQLITE_ENABLE_LOCKING_STYLE && defined(__APPLE__)
++#if SQLITE_ENABLE_LOCKING_STYLE && (defined(__APPLE__) || defined(__CYGWIN__))
+ /*
+ ** Routine to transform a unixFile into a proxy-locking unixFile.
+ ** Implementation in the proxy-lock division, but used by unixOpen()
+@@ -29169,10 +29294,10 @@ static int unixOpen(
+   int isCreate     = (flags & SQLITE_OPEN_CREATE);
+   int isReadonly   = (flags & SQLITE_OPEN_READONLY);
+   int isReadWrite  = (flags & SQLITE_OPEN_READWRITE);
+-#if SQLITE_ENABLE_LOCKING_STYLE
++#if SQLITE_ENABLE_LOCKING_STYLE && !defined(__CYGWIN__)
+   int isAutoProxy  = (flags & SQLITE_OPEN_AUTOPROXY);
+ #endif
+-#if defined(__APPLE__) || SQLITE_ENABLE_LOCKING_STYLE
++#if defined(__APPLE__) || SQLITE_ENABLE_LOCKING_STYLE && !defined(__CYGWIN__)
+   struct statfs fsInfo;
+ #endif
+ 
+@@ -29323,7 +29448,7 @@ static int unixOpen(
+     osUnlink(zName);
+ #endif
+   }
+-#if SQLITE_ENABLE_LOCKING_STYLE
++#if SQLITE_ENABLE_LOCKING_STYLE && !defined(__CYGWIN__)
+   else{
+     p->openFlags = openFlags;
+   }
+@@ -29332,7 +29457,7 @@ static int unixOpen(
+   noLock = eType!=SQLITE_OPEN_MAIN_DB;
+ 
+   
+-#if defined(__APPLE__) || SQLITE_ENABLE_LOCKING_STYLE
++#if defined(__APPLE__) || SQLITE_ENABLE_LOCKING_STYLE && !defined(__CYGWIN__)
+   if( fstatfs(fd, &fsInfo) == -1 ){
+     ((unixFile*)pFile)->lastErrno = errno;
+     robust_close(p, fd, __LINE__);
+@@ -29350,7 +29475,7 @@ static int unixOpen(
+   if( syncDir )                 ctrlFlags |= UNIXFILE_DIRSYNC;
+   if( flags & SQLITE_OPEN_URI ) ctrlFlags |= UNIXFILE_URI;
+ 
+-#if SQLITE_ENABLE_LOCKING_STYLE
++#if SQLITE_ENABLE_LOCKING_STYLE && !defined(__CYGWIN__)
+ #if SQLITE_PREFER_PROXY_LOCKING
+   isAutoProxy = 1;
+ #endif
+@@ -29492,6 +29617,13 @@ static int unixAccess(
+ }
+ 
+ 
++#if SQLITE_OS_WIN
++#  if defined(SQLITE_AMALGAMATION)
++    static
++#  endif
++  void winSimplifyName(char *z);
++#endif
++
+ /*
+ ** Turn a relative pathname into a full pathname. The relative path
+ ** is stored as a nul-terminated string in the buffer pointed to by
+@@ -29507,6 +29639,9 @@ static int unixFullPathname(
+   int nOut,                     /* Size of output buffer in bytes */
+   char *zOut                    /* Output buffer */
+ ){
++#ifdef __CYGWIN__
++  int i;
++#endif
+ 
+   /* It's odd to simulate an io-error here, but really this is just
+   ** using the io-error infrastructure to test that SQLite handles this
+@@ -29519,6 +29654,35 @@ static int unixFullPathname(
+   UNUSED_PARAMETER(pVfs);
+ 
+   zOut[nOut-1] = '\0';
++#ifdef __CYGWIN__
++  if( sqlite3Isalpha(zPath[0]) && (zPath[1]==':')
++      && ((zPath[2]=='\\') || (zPath[2]=='/')) ){
++    int nDrive;
++    char temp[4];
++    temp[0] = zPath[0];
++    memcpy(&temp[1], ":\\", 3);
++    cygwin_conv_path(CCP_WIN_A_TO_POSIX, temp, zOut, nOut);
++    nDrive = (int)strlen(zOut);
++    sqlite3_snprintf(nOut-nDrive, &zOut[nDrive], "%s", zPath+2);
++  }else if( ((zPath[0]=='\\') || (zPath[0]=='/')) && ((zPath[1]=='\\') || (zPath[1]=='/'))
++      && (zPath[2]=='?') && ((zPath[3]=='\\') || (zPath[3]=='/')) && sqlite3Isalpha(zPath[4])
++      && (zPath[5]==':') && ((zPath[6]=='\\') || (zPath[6]=='/')) ){
++    int nDrive;
++    char temp[4];
++    temp[0] = zPath[4];
++    memcpy(&temp[1], ":\\", 3);
++    cygwin_conv_path(CCP_WIN_A_TO_POSIX, temp, zOut, nOut);
++    nDrive = (int)strlen(zOut);
++    sqlite3_snprintf(nOut-nDrive, &zOut[nDrive], "%s", zPath+6);
++  }else if( ((zPath[0]=='\\') || (zPath[0]=='/')) && ((zPath[1]=='\\') || (zPath[1]=='/'))
++      && (zPath[2]=='?') && ((zPath[3]=='\\') || (zPath[3]=='/')) && sqlite3_strnicmp(zPath+4, "UNC", 3)==0
++      && ((zPath[7]=='\\') || (zPath[7]=='/')) ){
++    /* UNC paths in Cygwin start with "//" */
++    sqlite3_snprintf(nOut, zOut, "//%s", zPath+8);
++  }else if( zPath[0]=='\\' ){
++    sqlite3_snprintf(nOut, zOut, "%s", zPath);
++  }else
++#endif
+   if( zPath[0]=='/' ){
+     sqlite3_snprintf(nOut, zOut, "%s", zPath);
+   }else{
+@@ -29529,6 +29693,9 @@ static int unixFullPathname(
+     nCwd = (int)strlen(zOut);
+     sqlite3_snprintf(nOut-nCwd, &zOut[nCwd], "/%s", zPath);
+   }
++#if SQLITE_OS_WIN && defined(__CYGWIN__) 
++  winSimplifyName(zOut);
++#endif
+   return SQLITE_OK;
+ }
+ 
+@@ -29672,7 +29839,7 @@ static int unixSleep(sqlite3_vfs *NotUse
+ ** sqlite3OsCurrentTime() during testing.
+ */
+ #ifdef SQLITE_TEST
+-SQLITE_API int sqlite3_current_time = 0;  /* Fake system time in seconds since 1970. */
++SQLITE_API extern int sqlite3_current_time;  /* Fake system time in seconds since 1970. */
+ #endif
+ 
+ /*
+@@ -29897,9 +30064,9 @@ static int unixGetLastError(sqlite3_vfs
+ */
+ 
+ /*
+-** Proxy locking is only available on MacOSX 
++** Proxy locking is only available on MacOSX/Cygwin
+ */
+-#if defined(__APPLE__) && SQLITE_ENABLE_LOCKING_STYLE
++#if (defined(__APPLE__) || defined(__CYGWIN__)) && SQLITE_ENABLE_LOCKING_STYLE
+ 
+ /*
+ ** The proxyLockingContext has the path and file structures for the remote 
+@@ -29965,7 +30132,7 @@ static int proxyGetLockPath(const char *
+  */
+ static int proxyCreateLockPath(const char *lockPath){
+   int i, len;
+-  char buf[MAXPATHLEN];
++  char buf[MAX_PATHNAME];
+   int start = 0;
+   
+   assert(lockPath!=NULL);
+@@ -30090,6 +30257,12 @@ end_create_proxy:
+ SQLITE_API int sqlite3_hostid_num = 0;
+ #endif
+ 
++#ifdef __CYGWIN__
++#  define st_mtimespec st_mtim
++#  undef uuid_t
++#  define uuid_t void *
++#endif
++
+ #define PROXY_HOSTIDLEN    16  /* conch file host id length */
+ 
+ /* Not always defined in the headers as it ought to be */
+@@ -30131,7 +30304,7 @@ static int proxyGetHostID(unsigned char
+ #define PROXY_CONCHVERSION 2   /* 1-byte header, 16-byte host id, path */
+ #define PROXY_HEADERLEN    1   /* conch file header length */
+ #define PROXY_PATHINDEX    (PROXY_HEADERLEN+PROXY_HOSTIDLEN)
+-#define PROXY_MAXCONCHLEN  (PROXY_HEADERLEN+PROXY_HOSTIDLEN+MAXPATHLEN)
++#define PROXY_MAXCONCHLEN  (PROXY_HEADERLEN+PROXY_HOSTIDLEN+MAX_PATHNAME)
+ 
+ /* 
+ ** Takes an open conch file, copies the contents to a new path and then moves 
+@@ -30142,7 +30315,7 @@ static int proxyGetHostID(unsigned char
+ static int proxyBreakConchLock(unixFile *pFile, uuid_t myHostID){
+   proxyLockingContext *pCtx = (proxyLockingContext *)pFile->lockingContext; 
+   unixFile *conchFile = pCtx->conchFile;
+-  char tPath[MAXPATHLEN];
++  char tPath[MAX_PATHNAME];
+   char buf[PROXY_MAXCONCHLEN];
+   char *cPath = pCtx->conchFilePath;
+   size_t readLen = 0;
+@@ -30153,8 +30326,8 @@ static int proxyBreakConchLock(unixFile
+   UNUSED_PARAMETER(myHostID);
+ 
+   /* create a new path by replace the trailing '-conch' with '-break' */
+-  pathLen = strlcpy(tPath, cPath, MAXPATHLEN);
+-  if( pathLen>MAXPATHLEN || pathLen<6 || 
++  pathLen = strlcpy(tPath, cPath, MAX_PATHNAME);
++  if( pathLen>MAX_PATHNAME || pathLen<6 || 
+      (strlcpy(&tPath[pathLen-5], "break", 6) != 5) ){
+     sqlite3_snprintf(sizeof(errmsg),errmsg,"path error (len %d)",(int)pathLen);
+     goto end_breaklock;
+@@ -30287,7 +30460,7 @@ static int proxyTakeConch(unixFile *pFil
+     uuid_t myHostID;
+     int pError = 0;
+     char readBuf[PROXY_MAXCONCHLEN];
+-    char lockPath[MAXPATHLEN];
++    char lockPath[MAX_PATHNAME];
+     char *tempLockPath = NULL;
+     int rc = SQLITE_OK;
+     int createConch = 0;
+@@ -30339,8 +30512,8 @@ static int proxyTakeConch(unixFile *pFil
+           if( hostIdMatch ){
+             size_t pathLen = (readLen - PROXY_PATHINDEX);
+             
+-            if( pathLen>=MAXPATHLEN ){
+-              pathLen=MAXPATHLEN-1;
++            if( pathLen>=MAX_PATHNAME ){
++              pathLen=MAX_PATHNAME-1;
+             }
+             memcpy(lockPath, &readBuf[PROXY_PATHINDEX], pathLen);
+             lockPath[pathLen] = 0;
+@@ -30366,7 +30539,7 @@ static int proxyTakeConch(unixFile *pFil
+       
+       /* either the conch didn't match or we need to create a new one */
+       if( !pCtx->lockProxyPath ){
+-        proxyGetLockPath(pCtx->dbPath, lockPath, MAXPATHLEN);
++        proxyGetLockPath(pCtx->dbPath, lockPath, MAX_PATHNAME);
+         tempLockPath = lockPath;
+         /* create a copy of the lock path _only_ if the conch is taken */
+       }
+@@ -30394,9 +30567,9 @@ static int proxyTakeConch(unixFile *pFil
+         writeBuffer[0] = (char)PROXY_CONCHVERSION;
+         memcpy(&writeBuffer[PROXY_HEADERLEN], myHostID, PROXY_HOSTIDLEN);
+         if( pCtx->lockProxyPath!=NULL ){
+-          strlcpy(&writeBuffer[PROXY_PATHINDEX], pCtx->lockProxyPath, MAXPATHLEN);
++          strlcpy(&writeBuffer[PROXY_PATHINDEX], pCtx->lockProxyPath, MAX_PATHNAME);
+         }else{
+-          strlcpy(&writeBuffer[PROXY_PATHINDEX], tempLockPath, MAXPATHLEN);
++          strlcpy(&writeBuffer[PROXY_PATHINDEX], tempLockPath, MAX_PATHNAME);
+         }
+         writeSize = PROXY_PATHINDEX + strlen(&writeBuffer[PROXY_PATHINDEX]);
+         robust_ftruncate(conchFile->h, writeSize);
+@@ -30478,11 +30651,13 @@ static int proxyTakeConch(unixFile *pFil
+       if( rc==SQLITE_OK ){
+         pCtx->conchHeld = 1;
+         
++#if defined(__APPLE__)
+         if( pCtx->lockProxy->pMethod == &afpIoMethods ){
+           afpLockingContext *afpCtx;
+           afpCtx = (afpLockingContext *)pCtx->lockProxy->lockingContext;
+           afpCtx->dbPath = pCtx->lockProxyPath;
+         }
++#endif
+       } else {
+         conchFile->pMethod->xUnlock((sqlite3_file*)conchFile, NO_LOCK);
+       }
+@@ -30575,7 +30750,7 @@ static int switchLockProxyPath(unixFile
+ 
+   /* nothing to do if the path is NULL, :auto: or matches the existing path */
+   if( !path || path[0]=='\0' || !strcmp(path, ":auto:") ||
+-    (oldPath && !strncmp(oldPath, path, MAXPATHLEN)) ){
++    (oldPath && !strncmp(oldPath, path, MAX_PATHNAME)) ){
+     return SQLITE_OK;
+   }else{
+     unixFile *lockProxy = pCtx->lockProxy;
+@@ -30595,7 +30770,7 @@ static int switchLockProxyPath(unixFile
+ 
+ /*
+ ** pFile is a file that has been opened by a prior xOpen call.  dbPath
+-** is a string buffer at least MAXPATHLEN+1 characters in size.
++** is a string buffer at least MAX_PATHNAME+1 characters in size.
+ **
+ ** This routine find the filename associated with pFile and writes it
+ ** int dbPath.
+@@ -30605,8 +30780,8 @@ static int proxyGetDbPathForUnixFile(uni
+   if( pFile->pMethod == &afpIoMethods ){
+     /* afp style keeps a reference to the db path in the filePath field 
+     ** of the struct */
+-    assert( (int)strlen((char*)pFile->lockingContext)<=MAXPATHLEN );
+-    strlcpy(dbPath, ((afpLockingContext *)pFile->lockingContext)->dbPath, MAXPATHLEN);
++    assert( (int)strlen((char*)pFile->lockingContext)<=MAX_PATHNAME );
++    strlcpy(dbPath, ((afpLockingContext *)pFile->lockingContext)->dbPath, MAX_PATHNAME);
+   } else
+ #endif
+   if( pFile->pMethod == &dotlockIoMethods ){
+@@ -30616,8 +30791,8 @@ static int proxyGetDbPathForUnixFile(uni
+     memcpy(dbPath, (char *)pFile->lockingContext, len + 1);
+   }else{
+     /* all other styles use the locking context to store the db file path */
+-    assert( strlen((char*)pFile->lockingContext)<=MAXPATHLEN );
+-    strlcpy(dbPath, (char *)pFile->lockingContext, MAXPATHLEN);
++    assert( strlen((char*)pFile->lockingContext)<=MAX_PATHNAME );
++    strlcpy(dbPath, (char *)pFile->lockingContext, MAX_PATHNAME);
+   }
+   return SQLITE_OK;
+ }
+@@ -30632,7 +30807,7 @@ static int proxyGetDbPathForUnixFile(uni
+ */
+ static int proxyTransformUnixFile(unixFile *pFile, const char *path) {
+   proxyLockingContext *pCtx;
+-  char dbPath[MAXPATHLEN+1];       /* Name of the database file */
++  char dbPath[MAX_PATHNAME+1];       /* Name of the database file */
+   char *lockPath=NULL;
+   int rc = SQLITE_OK;
+   
+@@ -30664,15 +30839,19 @@ static int proxyTransformUnixFile(unixFi
+       ** Ugh, since O_RDONLY==0x0000 we test for !O_RDWR since unixOpen asserts
+       ** that openFlags will have only one of O_RDONLY or O_RDWR.
+       */
++#if defined(__APPLE__)
+       struct statfs fsInfo;
++#endif
+       struct stat conchInfo;
+       int goLockless = 0;
+ 
+       if( osStat(pCtx->conchFilePath, &conchInfo) == -1 ) {
+         int err = errno;
++#if defined(__APPLE__)
+         if( (err==ENOENT) && (statfs(dbPath, &fsInfo) != -1) ){
+           goLockless = (fsInfo.f_flags&MNT_RDONLY) == MNT_RDONLY;
+         }
++#endif
+       }
+       if( goLockless ){
+         pCtx->conchHeld = -1; /* read only FS/ lockless */
+@@ -30753,7 +30932,7 @@ static int proxyFileControl(sqlite3_file
+             (proxyLockingContext*)pFile->lockingContext;
+           if( !strcmp(pArg, ":auto:") 
+            || (pCtx->lockProxyPath &&
+-               !strncmp(pCtx->lockProxyPath, proxyPath, MAXPATHLEN))
++               !strncmp(pCtx->lockProxyPath, proxyPath, MAX_PATHNAME))
+           ){
+             rc = SQLITE_OK;
+           }else{
+@@ -30931,7 +31110,15 @@ static int proxyClose(sqlite3_file *id)
+ ** necessarily been initialized when this routine is called, and so they
+ ** should not be used.
+ */
+-SQLITE_API int sqlite3_os_init(void){ 
++#if SQLITE_OS_WIN
++#if defined(SQLITE_AMALGAMATION)
++static
++#endif
++SQLITE_API int sqlite3_os_unix_init(void){
++#else
++SQLITE_API int sqlite3_os_init(void){
++#endif
++
+   /* 
+   ** The following macro defines an initializer for an sqlite3_vfs object.
+   ** The name of the VFS is NAME.  The pAppData is a pointer to a pointer
+@@ -30985,25 +31172,33 @@ SQLITE_API int sqlite3_os_init(void){
+   ** array cannot be const.
+   */
+   static sqlite3_vfs aVfs[] = {
+-#if SQLITE_ENABLE_LOCKING_STYLE && (OS_VXWORKS || defined(__APPLE__))
++#if SQLITE_ENABLE_LOCKING_STYLE && (OS_VXWORKS || defined(__APPLE__) || defined(__CYGWIN__))
+     UNIXVFS("unix",          autolockIoFinder ),
+ #else
+     UNIXVFS("unix",          posixIoFinder ),
+ #endif
++#ifdef __CYGWIN__
++    UNIXVFS("unix-cygwin",   cygwinIoFinder ),
++#if !SQLITE_OS_WIN
++    UNIXVFS("win32-longpath", cygwinIoFinder ),
++#endif
++#endif
+     UNIXVFS("unix-none",     nolockIoFinder ),
+     UNIXVFS("unix-dotfile",  dotlockIoFinder ),
+     UNIXVFS("unix-excl",     posixIoFinder ),
+-#if OS_VXWORKS
++#if OS_VXWORKS || defined(__CYGWIN__)
+     UNIXVFS("unix-namedsem", semIoFinder ),
+ #endif
+ #if SQLITE_ENABLE_LOCKING_STYLE
+     UNIXVFS("unix-posix",    posixIoFinder ),
+-#if !OS_VXWORKS
+-    UNIXVFS("unix-flock",    flockIoFinder ),
+ #endif
++#if SQLITE_ENABLE_LOCKING_STYLE && !OS_VXWORKS || defined(__CYGWIN__)
++    UNIXVFS("unix-flock",    flockIoFinder ),
+ #endif
+-#if SQLITE_ENABLE_LOCKING_STYLE && defined(__APPLE__)
++#if SQLITE_ENABLE_LOCKING_STYLE && (defined(__APPLE__) || defined(__CYGWIN__))
++#if defined(__APPLE__)
+     UNIXVFS("unix-afp",      afpIoFinder ),
++#endif
+     UNIXVFS("unix-nfs",      nfsIoFinder ),
+     UNIXVFS("unix-proxy",    proxyIoFinder ),
+ #endif
+@@ -31021,6 +31216,8 @@ SQLITE_API int sqlite3_os_init(void){
+   return SQLITE_OK; 
+ }
+ 
++#undef aSyscall
++#if !SQLITE_OS_WIN
+ /*
+ ** Shutdown the operating system interface.
+ **
+@@ -31031,6 +31228,7 @@ SQLITE_API int sqlite3_os_init(void){
+ SQLITE_API int sqlite3_os_end(void){ 
+   return SQLITE_OK; 
+ }
++#endif /* !SQLITE_OS_WIN */
+  
+ #endif /* SQLITE_OS_UNIX */
+ 
+@@ -31053,8 +31251,16 @@ SQLITE_API int sqlite3_os_end(void){
+ #if SQLITE_OS_WIN               /* This file is used for Windows only */
+ 
+ #ifdef __CYGWIN__
+-# include <sys/cygwin.h>
++/* # include <windows.h> */
++# include <sys/cygwin.h> /* amalgamator: keep */
++# include <unistd.h> /* amalgamator: keep */
+ # include <errno.h> /* amalgamator: keep */
++# include <limits.h> /* amalgamator: keep */
++#else
++enum {
++    CCP_POSIX_TO_WIN_W=1,
++    CCP_WIN_A_TO_POSIX
++};
+ #endif
+ 
+ /*
+@@ -31283,7 +31489,8 @@ SQLITE_API int sqlite3_open_file_count =
+ ** Are most of the Win32 ANSI APIs available (i.e. with certain exceptions
+ ** based on the sub-platform)?
+ */
+-#if !SQLITE_OS_WINCE && !SQLITE_OS_WINRT && !defined(SQLITE_WIN32_NO_ANSI)
++#if !SQLITE_OS_WINCE && !SQLITE_OS_WINRT && !defined(_WIN64) \
++    && !defined(__CYGWIN__) && !defined(SQLITE_WIN32_NO_ANSI)
+ #  define SQLITE_WIN32_HAS_ANSI
+ #endif
+ 
+@@ -31359,7 +31566,11 @@ SQLITE_API int sqlite3_open_file_count =
+ ** UNICODE_STRING_MAX_CHARS.
+ */
+ #ifndef SQLITE_WINNT_MAX_PATH_CHARS
+-#  define SQLITE_WINNT_MAX_PATH_CHARS   (UNICODE_STRING_MAX_CHARS)
++#  ifdef __CYGWIN__
++#    define SQLITE_WINNT_MAX_PATH_CHARS   (PATH_MAX)
++#  else
++#    define SQLITE_WINNT_MAX_PATH_CHARS   (UNICODE_STRING_MAX_CHARS)
++#  endif
+ #endif
+ 
+ /*
+@@ -31906,7 +32117,7 @@ static struct win_syscall {
+ 
+ #define osGetLastError ((DWORD(WINAPI*)(VOID))aSyscall[26].pCurrent)
+ 
+-#if !defined(SQLITE_OMIT_LOAD_EXTENSION)
++#if !defined(SQLITE_OMIT_LOAD_EXTENSION) || !defined(__CYGWIN__)
+ #if SQLITE_OS_WINCE
+   /* The GetProcAddressA() routine is only available on Windows CE. */
+   { "GetProcAddressA",         (SYSCALL)GetProcAddressA,         0 },
+@@ -32293,6 +32504,65 @@ static struct win_syscall {
+ #define osCreateFileMappingFromApp ((HANDLE(WINAPI*)(HANDLE, \
+         LPSECURITY_ATTRIBUTES,ULONG,ULONG64,LPCWSTR))aSyscall[75].pCurrent)
+ 
++#if defined(SQLITE_WIN32_HAS_ANSI) && !defined(__CYGWIN__)
++  { "GetModuleHandleA",         (SYSCALL)GetModuleHandleA,       0 },
++#else
++  { "GetModuleHandleA",         (SYSCALL)0,                      0 },
++#endif
++
++#define osGetModuleHandleA ((HMODULE(*)(LPCSTR))aSyscall[76].pCurrent)
++
++#if defined(SQLITE_WIN32_HAS_WIDE) && !defined(__CYGWIN__)
++  { "GetModuleHandleW",         (SYSCALL)GetModuleHandleW,       0 },
++#else
++  { "GetModuleHandleW",         (SYSCALL)0,                      0 },
++#endif
++
++#define osGetModuleHandleW ((HMODULE(*)(LPCWSTR))aSyscall[77].pCurrent)
++
++#if defined(__CYGWIN__)
++  { "getenv",                   (SYSCALL)getenv,                 0 },
++#else
++  { "getenv",                   (SYSCALL)0,                      0 },
++#endif
++
++#define getenv ((const char *(*)(const char *))aSyscall[78].pCurrent)
++
++#if defined(__CYGWIN__)
++  { "getcwd",                   (SYSCALL)getcwd,                 0 },
++#else
++  { "getcwd",                   (SYSCALL)0,                      0 },
++#endif
++
++#define getcwd ((char*(*)(char*,size_t))aSyscall[79].pCurrent)
++
++#if defined(__CYGWIN__)
++  { "__errno",                  (SYSCALL)__errno,                0 },
++#else
++  { "__errno",                  (SYSCALL)0,                      0 },
++#endif
++
++#define osErrno (*((int*(*)(void))aSyscall[80].pCurrent)())
++
++#if defined(__CYGWIN__) && defined(SQLITE_WIN32_HAS_WIDE)
++  { "cygwin_conv_path",         (SYSCALL)cygwin_conv_path,       0 },
++#else
++  { "cygwin_conv_path",         (SYSCALL)0,                      0 },
++#endif
++
++#define cygwin_conv_path ((ssize_t(*)(unsigned int, \
++    const void *, void *, size_t))aSyscall[81].pCurrent)
++
++  { "cygwin_conv_to_full_win32_path", (SYSCALL)0,                      0 },
++
++#define cygwin_conv_to_full_win32_path ((void(*)(const char *, \
++    char *))aSyscall[82].pCurrent)
++
++  { "cygwin_conv_to_full_posix_path", (SYSCALL)0,                      0 },
++
++#define cygwin_conv_to_full_posix_path ((void(*)(const char *, \
++    char *))aSyscall[83].pCurrent)
++
+ }; /* End of the overrideable system calls */
+ 
+ /*
+@@ -32466,6 +32736,7 @@ SQLITE_API int sqlite3_win32_reset_heap(
+ }
+ #endif /* SQLITE_WIN32_MALLOC */
+ 
++#ifndef __CYGWIN__
+ /*
+ ** This function outputs the specified (ANSI) string to the Win32 debugger
+ ** (if available).
+@@ -32502,6 +32773,7 @@ SQLITE_API void sqlite3_win32_write_debu
+   }
+ #endif
+ }
++#endif /* !__CYGWIN__ */
+ 
+ /*
+ ** The following routine suspends the current thread for at least ms
+@@ -32511,6 +32783,9 @@ SQLITE_API void sqlite3_win32_write_debu
+ static HANDLE sleepObj = NULL;
+ #endif
+ 
++#if defined(__CYGWIN__) && defined(SQLITE_AMALGAMATION)
++static
++#endif
+ SQLITE_API void sqlite3_win32_sleep(DWORD milliseconds){
+ #if SQLITE_OS_WINRT
+   if ( sleepObj==NULL ){
+@@ -32768,9 +33043,11 @@ SQLITE_PRIVATE void sqlite3MemSetDefault
+ /*
+ ** Convert a UTF-8 string to Microsoft Unicode (UTF-16?). 
+ **
+-** Space to hold the returned string is obtained from malloc.
++** Space to hold the returned string is obtained from malloc,
++** unless buf is not NULL and the needed size is less than
++** SQLITE_WIN32_MAX_PATH_CHARS bytes.
+ */
+-static LPWSTR winUtf8ToUnicode(const char *zFilename){
++static LPWSTR winUtf8ToUnicode(const char *zFilename, WCHAR *buf){
+   int nChar;
+   LPWSTR zWideFilename;
+ 
+@@ -32778,9 +33055,13 @@ static LPWSTR winUtf8ToUnicode(const cha
+   if( nChar==0 ){
+     return 0;
+   }
+-  zWideFilename = sqlite3MallocZero( nChar*sizeof(zWideFilename[0]) );
+-  if( zWideFilename==0 ){
+-    return 0;
++  if( buf && (nChar<=SQLITE_WIN32_MAX_PATH_CHARS/sizeof(WCHAR)) ){
++    zWideFilename = buf;
++  }else{
++    zWideFilename = sqlite3Malloc( nChar*sizeof(WCHAR) );
++    if( zWideFilename==0 ){
++      return 0;
++    }
+   }
+   nChar = osMultiByteToWideChar(CP_UTF8, 0, zFilename, -1, zWideFilename,
+                                 nChar);
+@@ -32833,7 +33114,7 @@ static LPWSTR winMbcsToUnicode(const cha
+   if( nByte==0 ){
+     return 0;
+   }
+-  zMbcsFilename = sqlite3MallocZero( nByte*sizeof(zMbcsFilename[0]) );
++  zMbcsFilename = sqlite3Malloc( nByte*sizeof(zMbcsFilename[0]) );
+   if( zMbcsFilename==0 ){
+     return 0;
+   }
+@@ -32862,7 +33143,7 @@ static char *winUnicodeToMbcs(LPCWSTR zW
+   if( nByte == 0 ){
+     return 0;
+   }
+-  zFilename = sqlite3MallocZero( nByte );
++  zFilename = sqlite3Malloc( nByte );
+   if( zFilename==0 ){
+     return 0;
+   }
+@@ -32875,6 +33156,7 @@ static char *winUnicodeToMbcs(LPCWSTR zW
+   return zFilename;
+ }
+ 
++#if !defined(__CYGWIN__)
+ /*
+ ** Convert multibyte character string to UTF-8.  Space to hold the
+ ** returned string is obtained from sqlite3_malloc().
+@@ -32894,18 +33176,22 @@ SQLITE_API char *sqlite3_win32_mbcs_to_u
+ 
+ /*
+ ** Convert UTF-8 to multibyte character string.  Space to hold the 
+-** returned string is obtained from sqlite3_malloc().
++** returned string is obtained from sqlite3_malloc(). If 'buf' is
++** non-zero, it points to scratch area to be used internally,
++** saving a 'malloc' call.
+ */
+-SQLITE_API char *sqlite3_win32_utf8_to_mbcs(const char *zFilename){
++SQLITE_API char *sqlite3_win32_utf8_to_mbcs(const char *zFilename, WCHAR *buf){
+   char *zFilenameMbcs;
+   LPWSTR zTmpWide;
+ 
+-  zTmpWide = winUtf8ToUnicode(zFilename);
++  zTmpWide = winUtf8ToUnicode(zFilename, buf);
+   if( zTmpWide==0 ){
+     return 0;
+   }
+   zFilenameMbcs = winUnicodeToMbcs(zTmpWide);
+-  sqlite3_free(zTmpWide);
++  if( zTmpWide != buf ){
++    sqlite3_free(zTmpWide);
++  }
+   return zFilenameMbcs;
+ }
+ 
+@@ -32931,7 +33217,7 @@ SQLITE_API int sqlite3_win32_set_directo
+           || type==SQLITE_WIN32_TEMP_DIRECTORY_TYPE
+   );
+   assert( !ppDirectory || sqlite3MemdebugHasType(*ppDirectory, MEMTYPE_HEAP) );
+-  if( ppDirectory ){
++  if( !getenv && ppDirectory ){
+     char *zValueUtf8 = 0;
+     if( zValue && zValue[0] ){
+       zValueUtf8 = winUnicodeToUtf8(zValue);
+@@ -32945,6 +33231,7 @@ SQLITE_API int sqlite3_win32_set_directo
+   }
+   return SQLITE_ERROR;
+ }
++#endif /* !__CYGWIN__*/
+ 
+ /*
+ ** The return value of winGetLastErrorMsg
+@@ -33178,8 +33465,9 @@ static int winceCreateLock(const char *z
+   DWORD lastErrno;
+   BOOL bLogged = FALSE;
+   BOOL bInit = TRUE;
++  WCHAR buf[SQLITE_WIN32_MAX_PATH_CHARS/sizeof(WCHAR)];
+ 
+-  zName = winUtf8ToUnicode(zFilename);
++  zName = winUtf8ToUnicode(zFilename, buf);
+   if( zName==0 ){
+     /* out of memory */
+     return SQLITE_IOERR_NOMEM;
+@@ -33199,7 +33487,9 @@ static int winceCreateLock(const char *z
+   pFile->hMutex = osCreateMutexW(NULL, FALSE, zName);
+   if (!pFile->hMutex){
+     pFile->lastErrno = osGetLastError();
+-    sqlite3_free(zName);
++    if( zName!=buf ){
++      sqlite3_free(zName);
++    }
+     return winLogError(SQLITE_IOERR, pFile->lastErrno,
+                        "winceCreateLock1", zFilename);
+   }
+@@ -33223,7 +33513,9 @@ static int winceCreateLock(const char *z
+     bInit = FALSE;
+   }
+ 
+-  sqlite3_free(zName);
++  if( zName!=buf ){
++    sqlite3_free(zName);
++  }
+ 
+   /* If we succeeded in making the shared memory handle, map it. */
+   if( pFile->hShared ){
+@@ -33861,8 +34153,7 @@ static int winTruncate(sqlite3_file *id,
+ ** Count the number of fullsyncs and normal syncs.  This is used to test
+ ** that syncs and fullsyncs are occuring at the right times.
+ */
+-SQLITE_API int sqlite3_sync_count = 0;
+-SQLITE_API int sqlite3_fullsync_count = 0;
++extern int sqlite3_sync_count, sqlite3_fullsync_count;
+ #endif
+ 
+ /*
+@@ -34446,7 +34737,7 @@ static int winDeviceCharacteristics(sqli
+ ** During sqlite3_os_init() we do a GetSystemInfo()
+ ** to get the granularity size.
+ */
+-SYSTEM_INFO winSysInfo;
++static SYSTEM_INFO winSysInfo;
+ 
+ #ifndef SQLITE_OMIT_WAL
+ 
+@@ -35348,7 +35639,7 @@ static const sqlite3_io_methods winIoMet
+ ** sqlite3_vfs object.
+ */
+ 
+-#if defined(__CYGWIN__)
++#if 0
+ /*
+ ** Convert a filename from whatever the underlying operating system
+ ** supports for filenames into UTF-8.  Space to hold the result is
+@@ -35373,16 +35664,77 @@ static char *winConvertToUtf8Filename(co
+ ** Convert a UTF-8 filename into whatever form the underlying
+ ** operating system wants filenames in.  Space to hold the result
+ ** is obtained from malloc and must be freed by the calling
+-** function.
++** function, unless buf is not NULL and the needed size is less
++** than SQLITE_WIN32_MAX_PATH_CHARS bytes.
+ */
+-static void *winConvertFromUtf8Filename(const char *zFilename){
++static void *winConvertFromUtf8Filename(const char *zFilename, WCHAR *buf){
+   void *zConverted = 0;
+   if( osIsNT() ){
+-    zConverted = winUtf8ToUnicode(zFilename);
++    int nChar;
++    LPWSTR zWideFilename;
++
++    if( (cygwin_conv_path!=NULL) && !(winIsDriveLetterAndColon(zFilename)
++        && winIsDirSep(zFilename[2]))){
++      int nByte = cygwin_conv_path(CCP_POSIX_TO_WIN_W, zFilename, 0, 0);
++      if( nByte>0 ){
++        if( buf && (nByte<SQLITE_WIN32_MAX_PATH_CHARS) ){
++          zConverted = buf;
++        }else{
++          zConverted = sqlite3Malloc(nByte);
++          if ( zConverted==0 ){
++            return zConverted;
++          }
++        }
++        if( zConverted==0 || cygwin_conv_path(CCP_POSIX_TO_WIN_W,
++            zFilename, zConverted, nByte)==0 ){
++          return zConverted;
++        }
++        if( zConverted!=buf ){
++          sqlite3_free(zConverted);
++        }
++      }
++#ifdef SQLITE_WIN32_HAS_ANSI
++    }else if( (cygwin_conv_to_full_win32_path!=NULL) &&
++        !(winIsDriveLetterAndColon(zFilename) && winIsDirSep(zFilename[2]))){
++      char buf1[SQLITE_WIN32_MAX_PATH_CHARS];
++      cygwin_conv_to_full_win32_path(zFilename, buf1);
++      return winMbcsToUnicode(buf1);
++#endif
++    }
++    nChar = osMultiByteToWideChar(CP_UTF8, 0, zFilename, -1, NULL, 0);
++    if( nChar==0 ){
++      return 0;
++    }
++    if( buf && (nChar<=SQLITE_WIN32_MAX_PATH_CHARS/sizeof(WCHAR)) ){
++      zWideFilename = buf;
++    }else{
++      zWideFilename = sqlite3Malloc( nChar*sizeof(WCHAR) );
++      if( zWideFilename==0 ){
++        return 0;
++      }
++    }
++    nChar = osMultiByteToWideChar(CP_UTF8, 0, zFilename, -1,
++                                    zWideFilename, nChar);
++    if( nChar==0 ){
++      sqlite3_free(zWideFilename);
++      zWideFilename = 0;
++    }
++    zConverted = zWideFilename;
+   }
+ #ifdef SQLITE_WIN32_HAS_ANSI
++  else if( (cygwin_conv_to_full_win32_path!=NULL) &&
++      !(winIsDriveLetterAndColon(zFilename) && winIsDirSep(zFilename[2])) ){
++    if( buf ){
++      zConverted = buf;
++    }else{
++      zConverted = sqlite3Malloc(SQLITE_WIN32_MAX_PATH_CHARS);
++    }
++    if( zConverted ){
++      cygwin_conv_to_full_win32_path(zFilename, zConverted);
++    }
++  }
+   else{
+-    zConverted = sqlite3_win32_utf8_to_mbcs(zFilename);
++    zConverted = sqlite3_win32_utf8_to_mbcs(zFilename, buf);
+   }
+ #endif
+   /* caller will handle out of memory */
+@@ -35401,7 +35753,14 @@ static int winMakeEndInDirSep(int nBuf,
+       if( winIsDirSep(zBuf[nLen-1]) ){
+         return 1;
+       }else if( nLen+1<nBuf ){
+-        zBuf[nLen] = winGetDirSep();
++        if( !getenv ){
++          zBuf[nLen] = '\\';
++        }else if( winIsDriveLetterAndColon(zBuf) && winIsDirSep(zBuf[2]) ){
++          zBuf[nLen] = '\\';
++          zBuf[2]='\\';
++        }else{
++          zBuf[nLen] = '/';
++        }
+         zBuf[nLen+1] = '\0';
+         return 1;
+       }
+@@ -35460,8 +35819,8 @@ static int winGetTempname(sqlite3_vfs *p
+       sqlite3_snprintf(nMax, zBuf, "%s", sqlite3_temp_directory);
+     }
+   }
+-#if defined(__CYGWIN__)
+-  else{
++#if SQLITE_OS_WINNT
++  else if( getenv!=NULL ){
+     static const char *azDirs[] = {
+        0, /* getenv("SQLITE_TMPDIR") */
+        0, /* getenv("TMPDIR") */
+@@ -35490,8 +35849,9 @@ static int winGetTempname(sqlite3_vfs *p
+       ** it must be converted to a native Win32 path via the Cygwin API
+       ** prior to using it.
+       */
+-      if( winIsDriveLetterAndColon(zDir) ){
+-        zConverted = winConvertFromUtf8Filename(zDir);
++      {
++        WCHAR buf[SQLITE_WIN32_MAX_PATH_CHARS/sizeof(WCHAR)];
++        zConverted = winConvertFromUtf8Filename(zDir, buf);
+         if( !zConverted ){
+           sqlite3_free(zBuf);
+           OSTRACE(("TEMP-FILENAME rc=SQLITE_IOERR_NOMEM\n"));
+@@ -35499,10 +35859,15 @@ static int winGetTempname(sqlite3_vfs *p
+         }
+         if( winIsDir(zConverted) ){
+           sqlite3_snprintf(nMax, zBuf, "%s", zDir);
+-          sqlite3_free(zConverted);
++          if( zConverted!=buf ){
++            sqlite3_free(zConverted);
++          }
+           break;
+         }
+-        sqlite3_free(zConverted);
++        if( zConverted!=buf ){
++          sqlite3_free(zConverted);
++        }
++#if 0 /* No longer necessary */
+       }else{
+         zConverted = sqlite3MallocZero( nMax+1 );
+         if( !zConverted ){
+@@ -35537,13 +35902,16 @@ static int winGetTempname(sqlite3_vfs *p
+           break;
+         }
+         sqlite3_free(zConverted);
++#endif /* No longer necessary */
+       }
+     }
+   }
+-#elif !SQLITE_OS_WINRT && !defined(__CYGWIN__)
++#endif
++
++#if !SQLITE_OS_WINRT && !defined(__CYGWIN__)
+   else if( osIsNT() ){
+     char *zMulti;
+-    LPWSTR zWidePath = sqlite3MallocZero( nMax*sizeof(WCHAR) );
++    LPWSTR zWidePath = sqlite3Malloc( nMax*sizeof(WCHAR) );
+     if( !zWidePath ){
+       sqlite3_free(zBuf);
+       OSTRACE(("TEMP-FILENAME rc=SQLITE_IOERR_NOMEM\n"));
+@@ -35571,7 +35939,7 @@ static int winGetTempname(sqlite3_vfs *p
+ #ifdef SQLITE_WIN32_HAS_ANSI
+   else{
+     char *zUtf8;
+-    char *zMbcsPath = sqlite3MallocZero( nMax );
++    char *zMbcsPath = sqlite3Malloc( nMax );
+     if( !zMbcsPath ){
+       sqlite3_free(zBuf);
+       OSTRACE(("TEMP-FILENAME rc=SQLITE_IOERR_NOMEM\n"));
+@@ -35778,7 +36146,7 @@ static int winOpen(
+        zUtf8Name[sqlite3Strlen30(zUtf8Name)+1]==0 );
+ 
+   /* Convert the filename to the system encoding. */
+-  zConverted = winConvertFromUtf8Filename(zUtf8Name);
++  zConverted = winConvertFromUtf8Filename(zUtf8Name, 0);
+   if( zConverted==0 ){
+     sqlite3_free(zTmpname);
+     OSTRACE(("OPEN name=%s, rc=SQLITE_IOERR_NOMEM", zUtf8Name));
+@@ -35973,13 +36341,14 @@ static int winDelete(
+   DWORD attr;
+   DWORD lastErrno = 0;
+   void *zConverted;
++  WCHAR buf[SQLITE_WIN32_MAX_PATH_CHARS/sizeof(WCHAR)];
+   UNUSED_PARAMETER(pVfs);
+   UNUSED_PARAMETER(syncDir);
+ 
+   SimulateIOError(return SQLITE_IOERR_DELETE);
+   OSTRACE(("DELETE name=%s, syncDir=%d\n", zFilename, syncDir));
+ 
+-  zConverted = winConvertFromUtf8Filename(zFilename);
++  zConverted = winConvertFromUtf8Filename(zFilename, buf);
+   if( zConverted==0 ){
+     OSTRACE(("DELETE name=%s, rc=SQLITE_IOERR_NOMEM\n", zFilename));
+     return SQLITE_IOERR_NOMEM;
+@@ -36063,7 +36432,9 @@ static int winDelete(
+   }else{
+     winLogIoerr(cnt);
+   }
+-  sqlite3_free(zConverted);
++  if( zConverted != buf ){
++    sqlite3_free(zConverted);
++  }
+   OSTRACE(("DELETE name=%s, rc=%s\n", zFilename, sqlite3ErrName(rc)));
+   return rc;
+ }
+@@ -36081,13 +36452,14 @@ static int winAccess(
+   int rc = 0;
+   DWORD lastErrno = 0;
+   void *zConverted;
++  WCHAR buf[SQLITE_WIN32_MAX_PATH_CHARS/sizeof(WCHAR)];
+   UNUSED_PARAMETER(pVfs);
+ 
+   SimulateIOError( return SQLITE_IOERR_ACCESS; );
+   OSTRACE(("ACCESS name=%s, flags=%x, pResOut=%p\n",
+            zFilename, flags, pResOut));
+ 
+-  zConverted = winConvertFromUtf8Filename(zFilename);
++  zConverted = winConvertFromUtf8Filename(zFilename, buf);
+   if( zConverted==0 ){
+     OSTRACE(("ACCESS name=%s, rc=SQLITE_IOERR_NOMEM\n", zFilename));
+     return SQLITE_IOERR_NOMEM;
+@@ -36113,7 +36485,9 @@ static int winAccess(
+     }else{
+       winLogIoerr(cnt);
+       if( lastErrno!=ERROR_FILE_NOT_FOUND && lastErrno!=ERROR_PATH_NOT_FOUND ){
+-        sqlite3_free(zConverted);
++        if( zConverted!=buf ){
++          sqlite3_free(zConverted);
++        }
+         return winLogError(SQLITE_IOERR_ACCESS, lastErrno, "winAccess",
+                            zFilename);
+       }else{
+@@ -36126,7 +36500,9 @@ static int winAccess(
+     attr = osGetFileAttributesA((char*)zConverted);
+   }
+ #endif
+-  sqlite3_free(zConverted);
++  if( zConverted!=buf ){
++    sqlite3_free(zConverted);
++  }
+   switch( flags ){
+     case SQLITE_ACCESS_READ:
+     case SQLITE_ACCESS_EXISTS:
+@@ -36192,6 +36568,46 @@ static BOOL winIsVerbatimPathname(
+   return FALSE;
+ }
+ 
++#if defined(_WIN32) || defined(__CYGWIN__)
++/*
++** Simplify a filename into its canonical form
++** by making the following changes:
++**
++**  * convert any '/' to '\' (win32) or reverse (Cygwin)
++**  * removing any trailing and duplicate / (except for UNC paths)
++**  * convert /./ into just /
++**
++** Changes are made in-place.  Return the new name length.
++**
++** The original filename is in z[0..]. If the path is shortened,
++** no-longer used bytes will be written by '\0'.
++*/
++#if defined(SQLITE_AMALGAMATION)
++  static
++#endif
++void winSimplifyName(char *z){
++  int i, j;
++  for(i=j=0; z[i]; ++i){
++    if( winIsDirSep(z[i]) ){
++#if !defined(SQLITE_TEST)
++      /* Some test-cases assume that "./foo" and "foo" are different */
++      if( z[i+1]=='.' && winIsDirSep(z[i+2]) ){
++        ++i;
++        continue;
++      }
++#endif
++      if( !z[i+1] || (winIsDirSep(z[i+1]) && (i!=0)) ){
++        continue;
++      }
++      z[j++] = getenv?'/':'\\';
++    }else{
++      z[j++] = z[i];
++    }
++  }
++  while(j<i) z[j++] = '\0';
++}
++#endif
++
+ /*
+ ** Turn a relative pathname into a full pathname.  Write the full
+ ** pathname into zOut[].  zOut[] will be at least pVfs->mxPathname
+@@ -36204,7 +36620,73 @@ static int winFullPathname(
+   char *zFull                   /* Output buffer */
+ ){
+   
+-#if defined(__CYGWIN__)
++#if !SQLITE_OS_WINCE && !SQLITE_OS_WINRT && !defined(__CYGWIN__)
++  DWORD nByte;
++  void *zConverted;
++  char *zOut;
++  WCHAR buf[SQLITE_WIN32_MAX_PATH_CHARS/sizeof(WCHAR)];
++#endif
++
++  if( cygwin_conv_path || cygwin_conv_to_full_posix_path ){
++    /* It's odd to simulate an io-error here, but really this is just
++    ** using the io-error infrastructure to test that SQLite handles this
++    ** function failing. This function could fail if, for example, the
++    ** current working directory has been unlinked.
++    */
++    SimulateIOError( return SQLITE_ERROR );
++    UNUSED_PARAMETER(pVfs);
++
++    zFull[nFull-1] = '\0';
++    if( winIsDirSep(zRelative[0]) && winIsDirSep(zRelative[1])
++        && zRelative[2]=='?' && winIsDirSep(zRelative[3])){
++      /* This is an extended path. Convert to non-extended form. */
++      if( winIsDriveLetterAndColon(&zRelative[4]) && winIsDirSep(zRelative[6]) ){
++        int nDrive;
++        char temp[4];
++        temp[0] = zRelative[4];
++        memcpy(&temp[1], ":\\", 3);
++        if( cygwin_conv_path ){
++          cygwin_conv_path(CCP_WIN_A_TO_POSIX, temp, zFull, nFull);
++        }else{
++          cygwin_conv_to_full_posix_path(temp, zFull);
++        }
++        nDrive = (int)strlen(zFull);
++        sqlite3_snprintf(nFull-nDrive, &zFull[nDrive], "%s", zRelative+4);
++      }else if( sqlite3_strnicmp(zRelative+4, "UNC", 3)==0 && winIsDirSep(zRelative[7]) ){
++        /* UNC paths in Cygwin start with "//" */
++        sqlite3_snprintf(nFull, zFull, "//%s", zRelative+8);
++      }else{
++        /* Something wrong, no conversion */
++        sqlite3_snprintf(nFull, zFull, "%s", zRelative);
++      }
++    }else if( winIsDriveLetterAndColon(zRelative) && winIsDirSep(zRelative[2]) ){
++      int nDrive;
++      char temp[4];
++      temp[0] = zRelative[0];
++      memcpy(&temp[1], ":\\", 3);
++      if( cygwin_conv_path ){
++        cygwin_conv_path(CCP_WIN_A_TO_POSIX, temp, zFull, nFull);
++      }else{
++        cygwin_conv_to_full_posix_path(temp, zFull);
++      }
++      nDrive = (int)strlen(zFull);
++      sqlite3_snprintf(nFull-nDrive, &zFull[nDrive], "%s", zRelative+2);
++    }else if( getcwd && !winIsDirSep(zRelative[0]) ){
++      int nCwd;
++      if( getcwd(zFull, nFull-1)==0 ){
++        return winLogError(SQLITE_CANTOPEN_BKPT, (DWORD)osErrno, "getcwd", zRelative);
++      }
++      nCwd = (int)strlen(zFull);
++      sqlite3_snprintf(nFull-nCwd, &zFull[nCwd], "/%s", zRelative);
++    }else{
++      sqlite3_snprintf(nFull, zFull, "%s", zRelative);
++    }
++#if defined(_WIN32) || defined(__CYGWIN__)
++    winSimplifyName(zFull);
++#endif
++    return SQLITE_OK;
++  }
++#if 0
+   SimulateIOError( return SQLITE_ERROR );
+   UNUSED_PARAMETER(nFull);
+   assert( nFull>=pVfs->mxPathname );
+@@ -36281,9 +36763,11 @@ static int winFullPathname(
+ #endif
+ 
+ #if !SQLITE_OS_WINCE && !SQLITE_OS_WINRT && !defined(__CYGWIN__)
++#if 0
+   DWORD nByte;
+   void *zConverted;
+   char *zOut;
++#endif
+ 
+   /* If this path name begins with "/X:", where "X" is any alphabetic
+   ** character, discard the initial "/" from the pathname.
+@@ -36309,32 +36793,131 @@ static int winFullPathname(
+                      sqlite3_data_directory, winGetDirSep(), zRelative);
+     return SQLITE_OK;
+   }
+-  zConverted = winConvertFromUtf8Filename(zRelative);
+-  if( zConverted==0 ){
+-    return SQLITE_IOERR_NOMEM;
++  nByte = osMultiByteToWideChar(CP_UTF8, 0, zRelative, -1, NULL, 0);
++  if( nByte==0 ){
++    return winLogError(SQLITE_IOERR_CONVPATH, (DWORD)osGetLastError(),
++                       "winFullPathname", zRelative);
++  }
++  if( osIsNT() ){
++    LPWSTR zWideFilename;
++    int i, j;
++
++    if( nByte>SQLITE_WIN32_MAX_PATH_CHARS ){
++      /* No Win32 API functions can handle such long paths. Let's see if
++       * we can do something about it. If not, just leave it as is. */
++      if( winIsDirSep(zRelative[0]) && winIsDirSep(zRelative[1])
++          && zRelative[2]!='?' ){
++        /* It's an UNC path, convert it to an extended UNC path. */
++        zWideFilename = sqlite3MallocZero( (nByte+6)*sizeof(WCHAR) );
++        if( zWideFilename==0 ){
++          return SQLITE_IOERR_NOMEM;
++        }
++        memcpy(zWideFilename, L"\\\\?\\UNC\\", 16);
++        nByte = osMultiByteToWideChar(CP_UTF8, 0, zRelative+2, -1,
++                                      zWideFilename+8, nByte);
++        goto finished;
++      }else if( winIsDriveLetterAndColon(zRelative)
++          && winIsDirSep(zRelative[2]) ){
++        /* It has a correct drive prefix, convert to extended form. */
++        zWideFilename = sqlite3MallocZero( (nByte+4)*sizeof(WCHAR) );
++        if( zWideFilename==0 ){
++          return SQLITE_IOERR_NOMEM;
++        }
++        memcpy(zWideFilename, L"\\\\?\\", 8);
++        nByte = osMultiByteToWideChar(CP_UTF8, 0, zRelative, -1,
++                                      zWideFilename+4, nByte);
++        zWideFilename[6] = '\\';
++        goto finished;
++      }
++      /* Another form, e.g. relative path or maybe it already
++       * has the '\\?\' prefix. Just leave it as-is. */
++    }
++    if( nByte<=SQLITE_WIN32_MAX_PATH_CHARS/sizeof(WCHAR) ){
++      zWideFilename = buf;
++    }else{
++      zWideFilename = sqlite3Malloc( nByte*sizeof(WCHAR) );
++      if( zWideFilename==0 ){
++        return SQLITE_IOERR_NOMEM;
++      }
++    }
++    /* Check whether it has the '\\?\' prefix and can be shortened. */
++    if( nByte<=(SQLITE_WIN32_MAX_PATH_CHARS+6)
++        && winIsDirSep(zRelative[0]) && winIsDirSep(zRelative[1])
++        && (zRelative[2]=='?') && winIsDirSep(zRelative[3]) ){
++      if( sqlite3_strnicmp(&zRelative[4], "UNC", 3)
++          && winIsDirSep(zRelative[7]) ){
++        memcpy(zWideFilename, L"\\\\", 4);
++        nByte = osMultiByteToWideChar(CP_UTF8, 0, zRelative+8, -1,
++                                      zWideFilename+2, nByte-8);
++      }else if( nByte<=(SQLITE_WIN32_MAX_PATH_CHARS+4) ){
++        nByte = osMultiByteToWideChar(CP_UTF8, 0, zRelative+4, -1,
++                                      zWideFilename, nByte-4);
++      }else{
++        nByte = osMultiByteToWideChar(CP_UTF8, 0, zRelative, -1,
++                                      zWideFilename, nByte);
++      }
++    }else{
++      nByte = osMultiByteToWideChar(CP_UTF8, 0, zRelative, -1,
++                                    zWideFilename, nByte);
++    }
++    if( nByte==0 ){
++      sqlite3_free(zWideFilename);
++      return SQLITE_IOERR_NOMEM;
++    }
++  finished:
++    zConverted = zWideFilename;
++    for(i=j=0; zWideFilename[i]; ++i){
++      if( winIsDirSep(zWideFilename[i]) ){
++        if( zWideFilename[i+1]=='.' && winIsDirSep(zWideFilename[i+2]) ){
++          ++i;
++          continue;
++        }
++        if( !zWideFilename[i+1] || (winIsDirSep(zWideFilename[i+1]) && (i!=0)) ){
++          continue;
++        }
++        zWideFilename[j++] = '\\';
++      }else{
++        zWideFilename[j++] = zWideFilename[i];
++      }
++    }
++    while(j<i) zWideFilename[j++] = '\0';
++  }else{
++    zConverted = sqlite3_win32_utf8_to_mbcs(zRelative, buf);
++    if( zConverted==0 ){
++      return SQLITE_IOERR_NOMEM;
++    }
+   }
++
+   if( osIsNT() ){
+     LPWSTR zTemp;
+     nByte = osGetFullPathNameW((LPCWSTR)zConverted, 0, 0, 0);
+     if( nByte==0 ){
+-      sqlite3_free(zConverted);
++      if( zConverted != buf ){
++        sqlite3_free(zConverted);
++      }
+       return winLogError(SQLITE_CANTOPEN_FULLPATH, osGetLastError(),
+                          "winFullPathname1", zRelative);
+     }
+     nByte += 3;
+-    zTemp = sqlite3MallocZero( nByte*sizeof(zTemp[0]) );
++    zTemp = sqlite3Malloc( nByte*sizeof(zTemp[0]) );
+     if( zTemp==0 ){
+-      sqlite3_free(zConverted);
++      if( zConverted != buf ){
++        sqlite3_free(zConverted);
++      }
+       return SQLITE_IOERR_NOMEM;
+     }
+     nByte = osGetFullPathNameW((LPCWSTR)zConverted, nByte, zTemp, 0);
+     if( nByte==0 ){
+-      sqlite3_free(zConverted);
++      if( zConverted != buf ){
++        sqlite3_free(zConverted);
++      }
+       sqlite3_free(zTemp);
+       return winLogError(SQLITE_CANTOPEN_FULLPATH, osGetLastError(),
+                          "winFullPathname2", zRelative);
+     }
+-    sqlite3_free(zConverted);
++    if( zConverted != buf ){
++      sqlite3_free(zConverted);
++    }
+     zOut = winUnicodeToUtf8(zTemp);
+     sqlite3_free(zTemp);
+   }
+@@ -36343,24 +36926,32 @@ static int winFullPathname(
+     char *zTemp;
+     nByte = osGetFullPathNameA((char*)zConverted, 0, 0, 0);
+     if( nByte==0 ){
+-      sqlite3_free(zConverted);
++      if( zConverted != buf ){
++        sqlite3_free(zConverted);
++      }
+       return winLogError(SQLITE_CANTOPEN_FULLPATH, osGetLastError(),
+                          "winFullPathname3", zRelative);
+     }
+     nByte += 3;
+-    zTemp = sqlite3MallocZero( nByte*sizeof(zTemp[0]) );
++    zTemp = sqlite3Malloc( nByte*sizeof(zTemp[0]) );
+     if( zTemp==0 ){
+-      sqlite3_free(zConverted);
++      if( zConverted != buf ){
++        sqlite3_free(zConverted);
++      }
+       return SQLITE_IOERR_NOMEM;
+     }
+     nByte = osGetFullPathNameA((char*)zConverted, nByte, zTemp, 0);
+     if( nByte==0 ){
+-      sqlite3_free(zConverted);
++      if( zConverted != buf ){
++        sqlite3_free(zConverted);
++      }
+       sqlite3_free(zTemp);
+       return winLogError(SQLITE_CANTOPEN_FULLPATH, osGetLastError(),
+                          "winFullPathname4", zRelative);
+     }
+-    sqlite3_free(zConverted);
++    if( zConverted != buf ){
++      sqlite3_free(zConverted);
++    }
+     zOut = sqlite3_win32_mbcs_to_utf8(zTemp);
+     sqlite3_free(zTemp);
+   }
+@@ -36386,7 +36977,8 @@ static int winFullPathname(
+ */
+ static void *winDlOpen(sqlite3_vfs *pVfs, const char *zFilename){
+   HANDLE h;
+-  void *zConverted = winConvertFromUtf8Filename(zFilename);
++  WCHAR buf[SQLITE_WIN32_MAX_PATH_CHARS/sizeof(WCHAR)];
++  void *zConverted = winConvertFromUtf8Filename(zFilename, buf);
+   UNUSED_PARAMETER(pVfs);
+   if( zConverted==0 ){
+     return 0;
+@@ -36403,7 +36995,9 @@ static void *winDlOpen(sqlite3_vfs *pVfs
+     h = osLoadLibraryA((char*)zConverted);
+   }
+ #endif
+-  sqlite3_free(zConverted);
++  if( zConverted!=buf ){
++    sqlite3_free(zConverted);
++  }
+   return (void*)h;
+ }
+ static void winDlError(sqlite3_vfs *pVfs, int nBuf, char *zBufOut){
+@@ -36486,7 +37080,7 @@ static int winSleep(sqlite3_vfs *pVfs, i
+ ** sqlite3OsCurrentTime() during testing.
+ */
+ #ifdef SQLITE_TEST
+-SQLITE_API int sqlite3_current_time = 0;  /* Fake system time in seconds since 1970. */
++SQLITE_API extern int sqlite3_current_time;  /* Fake system time in seconds since 1970. */
+ #endif
+ 
+ /*
+@@ -36587,6 +37181,10 @@ static int winGetLastError(sqlite3_vfs *
+   return winGetLastErrorMsg(osGetLastError(), nBuf, zBuf);
+ }
+ 
++#if SQLITE_OS_UNIX && !defined(SQLITE_AMALGAMATION)
++SQLITE_API int sqlite3_os_unix_init(void);
++#endif
++
+ /*
+ ** Initialize and deinitialize the operating system interface.
+ */
+@@ -36640,11 +37238,40 @@ SQLITE_API int sqlite3_os_init(void){
+     winGetSystemCall,    /* xGetSystemCall */
+     winNextSystemCall,   /* xNextSystemCall */
+   };
++#if !defined(__CYGWIN__)
++  static sqlite3_vfs winCygwinVfs = {
++    3,                   /* iVersion */
++    sizeof(winFile),     /* szOsFile */
++    4096, /* mxPathname */
++    0,                   /* pNext */
++    "win32-longpath",    /* zName */
++    0,                   /* pAppData */
++    winOpen,             /* xOpen */
++    winDelete,           /* xDelete */
++    winAccess,           /* xAccess */
++    winFullPathname,     /* xFullPathname */
++    winDlOpen,           /* xDlOpen */
++    winDlError,          /* xDlError */
++    winDlSym,            /* xDlSym */
++    winDlClose,          /* xDlClose */
++    winRandomness,       /* xRandomness */
++    winSleep,            /* xSleep */
++    winCurrentTime,      /* xCurrentTime */
++    winGetLastError,     /* xGetLastError */
++    winCurrentTimeInt64, /* xCurrentTimeInt64 */
++    winSetSystemCall,    /* xSetSystemCall */
++    winGetSystemCall,    /* xGetSystemCall */
++    winNextSystemCall,   /* xNextSystemCall */
++  };
+ #endif
++#endif
++
++  int i;
++  HMODULE module;
+ 
+   /* Double-check that the aSyscall[] array has been constructed
+   ** correctly.  See ticket [bb3a86e890c8e96ab] */
+-  assert( ArraySize(aSyscall)==76 );
++  assert( ArraySize(aSyscall)==84 );
+ 
+   /* get memory map allocation granularity */
+   memset(&winSysInfo, 0, sizeof(SYSTEM_INFO));
+@@ -36656,16 +37283,53 @@ SQLITE_API int sqlite3_os_init(void){
+   assert( winSysInfo.dwAllocationGranularity>0 );
+   assert( winSysInfo.dwPageSize>0 );
+ 
++#if !defined(__CYGWIN__)
++  if( osIsNT() ){
++    module = osGetModuleHandleW(L"CYGWIN1.DLL");
++    if( !module){
++      module = osGetModuleHandleW(L"MSYS-1.0.DLL");
++    }
++#ifdef SQLITE_WIN32_HAS_ANSI
++  }else{
++    module = osGetModuleHandleA("CYGWIN1.DLL");
++    if( !module){
++      module = osGetModuleHandleA("MSYS-1.0.DLL");
++    }
++#endif
++  }
++  if( module ){
++    for( i=78; i<ArraySize(aSyscall); ++i ){
++        aSyscall[i].pCurrent = (SYSCALL) osGetProcAddressA(module,
++            aSyscall[i].zName);
++    }
++  }
++#endif
++
+   sqlite3_vfs_register(&winVfs, 1);
+ 
+ #if defined(SQLITE_WIN32_HAS_WIDE)
++#if !defined(__CYGWIN__)
++  if( cygwin_conv_path ){
++    sqlite3_vfs_register(&winCygwinVfs, 1);
++  } else
++#endif
+   sqlite3_vfs_register(&winLongPathVfs, 0);
+ #endif
+ 
++#if SQLITE_OS_UNIX
++  sqlite3_os_unix_init();
++#endif
++
+   return SQLITE_OK; 
+ }
+ 
+ SQLITE_API int sqlite3_os_end(void){ 
++#if !defined(__CYGWIN__)
++  int i;
++  for( i=78; i<ArraySize(aSyscall); ++i ){
++      aSyscall[i].pCurrent = 0;
++  }
++#endif
+ #if SQLITE_OS_WINRT
+   if( sleepObj!=NULL ){
+     osCloseHandle(sleepObj);
+@@ -55450,15 +56114,6 @@ SQLITE_PRIVATE int sqlite3BtreeEof(BtCur
+ ** successful then set *pRes=0.  If the cursor
+ ** was already pointing to the last entry in the database before
+ ** this routine was called, then set *pRes=1.
+-**
+-** The calling function will set *pRes to 0 or 1.  The initial *pRes value
+-** will be 1 if the cursor being stepped corresponds to an SQL index and
+-** if this routine could have been skipped if that SQL index had been
+-** a unique index.  Otherwise the caller will have set *pRes to zero.
+-** Zero is the common case. The btree implementation is free to use the
+-** initial *pRes value as a hint to improve performance, but the current
+-** SQLite btree implementation does not. (Note that the comdb2 btree
+-** implementation does use this hint, however.)
+ */
+ SQLITE_PRIVATE int sqlite3BtreeNext(BtCursor *pCur, int *pRes){
+   int rc;
+@@ -55467,7 +56122,6 @@ SQLITE_PRIVATE int sqlite3BtreeNext(BtCu
+ 
+   assert( cursorHoldsMutex(pCur) );
+   assert( pRes!=0 );
+-  assert( *pRes==0 || *pRes==1 );
+   assert( pCur->skipNext==0 || pCur->eState!=CURSOR_VALID );
+   if( pCur->eState!=CURSOR_VALID ){
+     rc = restoreCursorPosition(pCur);
+@@ -55546,15 +56200,6 @@ SQLITE_PRIVATE int sqlite3BtreeNext(BtCu
+ ** successful then set *pRes=0.  If the cursor
+ ** was already pointing to the first entry in the database before
+ ** this routine was called, then set *pRes=1.
+-**
+-** The calling function will set *pRes to 0 or 1.  The initial *pRes value
+-** will be 1 if the cursor being stepped corresponds to an SQL index and
+-** if this routine could have been skipped if that SQL index had been
+-** a unique index.  Otherwise the caller will have set *pRes to zero.
+-** Zero is the common case. The btree implementation is free to use the
+-** initial *pRes value as a hint to improve performance, but the current
+-** SQLite btree implementation does not. (Note that the comdb2 btree
+-** implementation does use this hint, however.)
+ */
+ SQLITE_PRIVATE int sqlite3BtreePrevious(BtCursor *pCur, int *pRes){
+   int rc;
+@@ -55562,7 +56207,6 @@ SQLITE_PRIVATE int sqlite3BtreePrevious(
+ 
+   assert( cursorHoldsMutex(pCur) );
+   assert( pRes!=0 );
+-  assert( *pRes==0 || *pRes==1 );
+   assert( pCur->skipNext==0 || pCur->eState!=CURSOR_VALID );
+   pCur->atLast = 0;
+   if( pCur->eState!=CURSOR_VALID ){
+@@ -57789,7 +58433,7 @@ SQLITE_PRIVATE int sqlite3BtreeDelete(Bt
+   ** sub-tree headed by the child page of the cell being deleted. This makes
+   ** balancing the tree following the delete operation easier.  */
+   if( !pPage->leaf ){
+-    int notUsed = 0;
++    int notUsed;
+     rc = sqlite3BtreePrevious(pCur, &notUsed);
+     if( rc ) return rc;
+   }
+@@ -70054,7 +70698,6 @@ case OP_SeekGt: {       /* jump, in3 */
+ #endif
+   if( oc>=OP_SeekGe ){  assert( oc==OP_SeekGe || oc==OP_SeekGt );
+     if( res<0 || (res==0 && oc==OP_SeekGt) ){
+-      res = 0;
+       rc = sqlite3BtreeNext(pC->pCursor, &res);
+       if( rc!=SQLITE_OK ) goto abort_due_to_error;
+       pC->rowidIsValid = 0;
+@@ -70064,7 +70707,6 @@ case OP_SeekGt: {       /* jump, in3 */
+   }else{
+     assert( oc==OP_SeekLt || oc==OP_SeekLe );
+     if( res>0 || (res==0 && oc==OP_SeekLt) ){
+-      res = 0;
+       rc = sqlite3BtreePrevious(pC->pCursor, &res);
+       if( rc!=SQLITE_OK ) goto abort_due_to_error;
+       pC->rowidIsValid = 0;
+@@ -70917,7 +71559,7 @@ case OP_Rewind: {        /* jump */
+   break;
+ }
+ 
+-/* Opcode: Next P1 P2 P3 * P5
++/* Opcode: Next P1 P2 * * P5
+ **
+ ** Advance cursor P1 so that it points to the next key/data pair in its
+ ** table or index.  If there are no more key/value pairs then fall through
+@@ -70927,11 +71569,6 @@ case OP_Rewind: {        /* jump */
+ ** The P1 cursor must be for a real table, not a pseudo-table.  P1 must have
+ ** been opened prior to this opcode or the program will segfault.
+ **
+-** The P3 value is a hint to the btree implementation. If P3==1, that
+-** means P1 is an SQL index and that this instruction could have been
+-** omitted if that index had been unique.  P3 is usually 0.  P3 is
+-** always either 0 or 1.
+-**
+ ** P4 is always of type P4_ADVANCE. The function pointer points to
+ ** sqlite3BtreeNext().
+ **
+@@ -70940,12 +71577,12 @@ case OP_Rewind: {        /* jump */
+ **
+ ** See also: Prev, NextIfOpen
+ */
+-/* Opcode: NextIfOpen P1 P2 P3 * P5
++/* Opcode: NextIfOpen P1 P2 * * P5
+ **
+ ** This opcode works just like OP_Next except that if cursor P1 is not
+ ** open it behaves a no-op.
+ */
+-/* Opcode: Prev P1 P2 P3 * P5
++/* Opcode: Prev P1 P2 * * P5
+ **
+ ** Back up cursor P1 so that it points to the previous key/data pair in its
+ ** table or index.  If there is no previous key/value pairs then fall through
+@@ -70955,18 +71592,13 @@ case OP_Rewind: {        /* jump */
+ ** The P1 cursor must be for a real table, not a pseudo-table.  If P1 is
+ ** not open then the behavior is undefined.
+ **
+-** The P3 value is a hint to the btree implementation. If P3==1, that
+-** means P1 is an SQL index and that this instruction could have been
+-** omitted if that index had been unique.  P3 is usually 0.  P3 is
+-** always either 0 or 1.
+-**
+ ** P4 is always of type P4_ADVANCE. The function pointer points to
+ ** sqlite3BtreePrevious().
+ **
+ ** If P5 is positive and the jump is taken, then event counter
+ ** number P5-1 in the prepared statement is incremented.
+ */
+-/* Opcode: PrevIfOpen P1 P2 P3 * P5
++/* Opcode: PrevIfOpen P1 P2 * * P5
+ **
+ ** This opcode works just like OP_Prev except that if cursor P1 is not
+ ** open it behaves a no-op.
+@@ -70988,12 +71620,9 @@ case OP_Next:          /* jump */
+   assert( pOp->p1>=0 && pOp->p1<p->nCursor );
+   assert( pOp->p5<ArraySize(p->aCounter) );
+   pC = p->apCsr[pOp->p1];
+-  res = pOp->p3;
+   assert( pC!=0 );
+   assert( pC->deferredMoveto==0 );
+   assert( pC->pCursor );
+-  assert( res==0 || (res==1 && pC->isTable==0) );
+-  testcase( res==1 );
+   assert( pOp->opcode!=OP_Next || pOp->p4.xAdvance==sqlite3BtreeNext );
+   assert( pOp->opcode!=OP_Prev || pOp->p4.xAdvance==sqlite3BtreePrevious );
+   assert( pOp->opcode!=OP_NextIfOpen || pOp->p4.xAdvance==sqlite3BtreeNext );
+@@ -96034,6 +96663,9 @@ static int sqlite3LoadExtension(
+     for(iFile=ncFile-1; iFile>=0 && zFile[iFile]!='/'; iFile--){}
+     iFile++;
+     if( sqlite3_strnicmp(zFile+iFile, "lib", 3)==0 ) iFile += 3;
++#ifdef __CYGWIN__
++    if( sqlite3_strnicmp(zFile+iFile, "cyg", 3)==0 ) iFile += 3;
++#endif
+     for(iEntry=8; (c = zFile[iFile])!=0 && c!='.'; iFile++){
+       if( sqlite3Isalpha(c) ){
+         zAltEntry[iEntry++] = (char)sqlite3UpperToLower[(unsigned)c];
+@@ -96312,7 +96944,7 @@ SQLITE_PRIVATE void sqlite3AutoLoadExten
+ */
+ 
+ #if !defined(SQLITE_ENABLE_LOCKING_STYLE)
+-#  if defined(__APPLE__)
++#  if defined(__APPLE__) || defined(__CYGWIN__)
+ #    define SQLITE_ENABLE_LOCKING_STYLE 1
+ #  else
+ #    define SQLITE_ENABLE_LOCKING_STYLE 0
+@@ -96444,7 +97076,7 @@ static const struct sPragmaNames {
+     /* ePragFlag: */ 0,
+     /* iArg:      */ SQLITE_CountRows },
+ #endif
+-#if !defined(SQLITE_OMIT_PAGER_PRAGMAS) && SQLITE_OS_WIN
++#if SQLITE_OS_WIN && !defined(__CYGWIN__)
+   { /* zName:     */ "data_store_directory",
+     /* ePragTyp:  */ PragTyp_DATA_STORE_DIRECTORY,
+     /* ePragFlag: */ 0,
+@@ -97562,7 +98194,7 @@ SQLITE_PRIVATE void sqlite3Pragma(
+     break;
+   }
+ 
+-#if SQLITE_OS_WIN
++#if SQLITE_OS_WIN && !defined(__CYGWIN__)
+   /*
+   **   PRAGMA data_store_directory
+   **   PRAGMA data_store_directory = ""|"directory_name"
+@@ -108490,7 +109122,7 @@ struct WhereLevel {
+   int addrFirst;        /* First instruction of interior of the loop */
+   int addrBody;         /* Beginning of the body of this loop */
+   u8 iFrom;             /* Which entry in the FROM clause */
+-  u8 op, p3, p5;        /* Opcode, P3 & P5 of the opcode that ends the loop */
++  u8 op, p5;            /* Opcode and P5 of the opcode that ends the loop */
+   int p1, p2;           /* Operands of the opcode used to ends the loop */
+   union {               /* Information that depends on pWLoop->wsFlags */
+     struct {
+@@ -108877,7 +109509,6 @@ struct WhereInfo {
+ #define WHERE_MULTI_OR     0x00002000  /* OR using multiple indices */
+ #define WHERE_AUTO_INDEX   0x00004000  /* Uses an ephemeral index */
+ #define WHERE_SKIPSCAN     0x00008000  /* Uses the skip-scan algorithm */
+-#define WHERE_UNQ_WANTED   0x00010000  /* WHERE_ONEROW would have been helpful*/
+ 
+ /************** End of whereInt.h ********************************************/
+ /************** Continuing where we left off in where.c **********************/
+@@ -112047,8 +112678,6 @@ static Bitmask codeOneLoopStart(
+       pLevel->op = OP_Next;
+     }
+     pLevel->p1 = iIdxCur;
+-    assert( (WHERE_UNQ_WANTED>>16)==1 );
+-    pLevel->p3 = (pLoop->wsFlags>>16)&1;
+     if( (pLoop->wsFlags & WHERE_CONSTRAINT)==0 ){
+       pLevel->p5 = SQLITE_STMTSTATUS_FULLSCAN_STEP;
+     }else{
+@@ -112851,13 +113480,12 @@ static int whereLoopAddBtreeIndex(
+         || nInMul==0
+       );
+       pNew->wsFlags |= WHERE_COLUMN_EQ;
+-      if( iCol<0 || (nInMul==0 && pNew->u.btree.nEq==pProbe->nKeyCol-1)){
++      if( iCol<0  
++       || (pProbe->onError!=OE_None && nInMul==0
++           && pNew->u.btree.nEq==pProbe->nKeyCol-1)
++      ){
+         assert( (pNew->wsFlags & WHERE_COLUMN_IN)==0 || iCol<0 );
+-        if( iCol>=0 && pProbe->onError==OE_None ){
+-          pNew->wsFlags |= WHERE_UNQ_WANTED;
+-        }else{
+-          pNew->wsFlags |= WHERE_ONEROW;
+-        }
++        pNew->wsFlags |= WHERE_ONEROW;
+       }
+       pNew->u.btree.nEq++;
+       pNew->nOut = nRowEst + nInMul;
+@@ -114651,7 +115279,7 @@ SQLITE_PRIVATE void sqlite3WhereEnd(Wher
+     pLoop = pLevel->pWLoop;
+     sqlite3VdbeResolveLabel(v, pLevel->addrCont);
+     if( pLevel->op!=OP_Noop ){
+-      sqlite3VdbeAddOp3(v, pLevel->op, pLevel->p1, pLevel->p2, pLevel->p3);
++      sqlite3VdbeAddOp2(v, pLevel->op, pLevel->p1, pLevel->p2);
+       sqlite3VdbeChangeP5(v, pLevel->p5);
+     }
+     if( pLoop->wsFlags & WHERE_IN_ABLE && pLevel->u.in.nIn>0 ){
+@@ -117970,12 +118598,20 @@ static void yy_reduce(
+         break;
+       case 325: /* wqlist ::= nm idxlist_opt AS LP select RP */
+ {
++#ifdef SQLITE_OMIT_CTE
++  assert(0);
++#else
+   yygotominor.yy59 = sqlite3WithAdd(pParse, 0, &yymsp[-5].minor.yy0, yymsp[-4].minor.yy14, yymsp[-1].minor.yy3);
++#endif
+ }
+         break;
+       case 326: /* wqlist ::= wqlist COMMA nm idxlist_opt AS LP select RP */
+ {
++#ifdef SQLITE_OMIT_CTE
++  assert(0);
++#else
+   yygotominor.yy59 = sqlite3WithAdd(pParse, yymsp[-7].minor.yy59, &yymsp[-5].minor.yy0, yymsp[-4].minor.yy14, yymsp[-1].minor.yy3);
++#endif
+ }
+         break;
+       default:
+@@ -119468,6 +120104,39 @@ SQLITE_PRIVATE int sqlite3IcuInit(sqlite
+ /************** End of sqliteicu.h *******************************************/
+ /************** Continuing where we left off in main.c ***********************/
+ #endif
++#ifdef SQLITE_ENABLE_ZLIB
++/************** Include sqlitezlib.h in the middle of main.c *****************/
++/************** Begin file sqlitezlib.h **************************************/
++/*
++** 2008 May 26
++**
++** The author disclaims copyright to this source code.  In place of
++** a legal notice, here is a blessing:
++**
++**    May you do good and not evil.
++**    May you find forgiveness for yourself and forgive others.
++**    May you share freely, never taking more than you give.
++**
++******************************************************************************
++**
++** This header file is used by programs that want to link against the
++** zlib extension.  All it does is declare the sqlite3ZlibInit() interface.
++*/
++
++#if 0
++extern "C" {
++#endif  /* __cplusplus */
++
++SQLITE_PRIVATE int sqlite3ZlibInit(sqlite3 *db);
++
++#if 0
++}  /* extern "C" */
++#endif  /* __cplusplus */
++
++
++/************** End of sqlitezlib.h ******************************************/
++/************** Continuing where we left off in main.c ***********************/
++#endif
+ 
+ #ifndef SQLITE_AMALGAMATION
+ /* IMPLEMENTATION-OF: R-46656-45156 The sqlite3_version[] string constant
+@@ -122060,6 +122729,12 @@ static int openDatabase(
+   }
+ #endif
+ 
++#ifdef SQLITE_ENABLE_ZLIB
++  if( !db->mallocFailed && rc==SQLITE_OK ){
++    rc = sqlite3ZlibInit(db);
++  }
++#endif
++
+ #ifdef SQLITE_ENABLE_RTREE
+   if( !db->mallocFailed && rc==SQLITE_OK){
+     rc = sqlite3RtreeInit(db);
+@@ -145515,6 +146190,137 @@ SQLITE_API int sqlite3_icu_init(
+ #endif
+ 
+ /************** End of icu.c *************************************************/
++/************** Begin file zlib.c ********************************************/
++/*
++** 2014 January 6
++**
++** The author disclaims copyright to this source code.  In place of
++** a legal notice, here is a blessing:
++**
++**    May you do good and not evil.
++**    May you find forgiveness for yourself and forgive others.
++**    May you share freely, never taking more than you give.
++**
++*************************************************************************
++** $Id: zlib.c,v 1.0 2013/01/06 11:13:11 jan.nijtmans Exp $
++**
++** This file implements an integration between the zlib library ,
++** an open-source compression library and SQLite. The integration uses 
++** zlib to provide the following to SQLite:
++**
++**   * An implementation of the SQL compress() and decompress()
++**     functions.
++*/
++
++#if !defined(SQLITE_CORE) || defined(SQLITE_ENABLE_ZLIB)
++
++/* Include zlib headers */
++#include <zlib.h>
++
++#ifndef SQLITE_CORE
++  SQLITE_EXTENSION_INIT1
++#else
++#endif
++
++  /*
++  ** Implementation of the "compress(X)" SQL function.  The input X is
++  ** compressed using zLib and the output is returned.
++  */
++  static void zlibCompressFunc(
++    sqlite3_context *context,
++    int argc,
++    sqlite3_value **argv
++  ){
++    const unsigned char *pIn;
++    unsigned char *pOut;
++    unsigned int nIn;
++    unsigned long int nOut;
++
++    pIn = sqlite3_value_blob(argv[0]);
++    nIn = sqlite3_value_bytes(argv[0]);
++    nOut = 13 + nIn + (nIn+999)/1000;
++    pOut = sqlite3_malloc( nOut+4 );
++    pOut[0] = nIn>>24 & 0xff;
++    pOut[1] = nIn>>16 & 0xff;
++    pOut[2] = nIn>>8 & 0xff;
++    pOut[3] = nIn & 0xff;
++    compress(&pOut[4], &nOut, pIn, nIn);
++    sqlite3_result_blob(context, pOut, nOut+4, sqlite3_free);
++  }
++
++  /*
++  ** Implementation of the "decompress(X)" SQL function.  The argument X
++  ** is a blob which was obtained from compress(Y).  The output will be
++  ** the value Y.
++  */
++  static void zlibDecompressFunc(
++    sqlite3_context *context,
++    int argc,
++    sqlite3_value **argv
++  ){
++    const unsigned char *pIn;
++    unsigned char *pOut;
++    unsigned int nIn;
++    unsigned long int nOut;
++    int rc;
++
++    pIn = sqlite3_value_blob(argv[0]);
++    nIn = sqlite3_value_bytes(argv[0]);
++    nOut = (pIn[0]<<24) + (pIn[1]<<16) + (pIn[2]<<8) + pIn[3];
++    pOut = sqlite3_malloc( nOut+1 );
++    rc = uncompress(pOut, &nOut, &pIn[4], nIn-4);
++    if( rc==Z_OK ){
++      sqlite3_result_blob(context, pOut, nOut, sqlite3_free);
++    }else{
++      sqlite3_result_error(context, "input is not zlib compressed", -1);
++    }
++  }
++
++/*
++** Register the zlib extension functions with database db.
++*/
++SQLITE_PRIVATE int sqlite3ZlibInit(sqlite3 *db){
++  struct ZlibScalar {
++    const char *zName;                        /* Function name */
++    int nArg;                                 /* Number of arguments */
++    int enc;                                  /* Optimal text encoding */
++    void *pContext;                           /* sqlite3_user_data() context */
++    void (*xFunc)(sqlite3_context*,int,sqlite3_value**);
++  } scalars[] = {
++    {"compress",    1, SQLITE_ANY, 0, zlibCompressFunc},
++    {"decompress",  1, SQLITE_ANY, 0, zlibDecompressFunc},
++  };
++
++  int rc = SQLITE_OK;
++  int i;
++
++  for(i=0; rc==SQLITE_OK && i<(int)(sizeof(scalars)/sizeof(scalars[0])); i++){
++    struct ZlibScalar *p = &scalars[i];
++    rc = sqlite3_create_function(
++        db, p->zName, p->nArg, p->enc, p->pContext, p->xFunc, 0, 0
++    );
++  }
++
++  return rc;
++}
++
++#if !SQLITE_CORE
++#ifdef _WIN32
++__declspec(dllexport)
++#endif
++SQLITE_API int sqlite3_zlib_init(
++  sqlite3 *db, 
++  char **pzErrMsg,
++  const sqlite3_api_routines *pApi
++){
++  SQLITE_EXTENSION_INIT2(pApi)
++  return sqlite3ZlibInit(db);
++}
++#endif
++
++#endif
++
++/************** End of zlib.c ************************************************/
+ /************** Begin file fts3_icu.c ****************************************/
+ /*
+ ** 2007 June 22
+--- origsrc/sqlite-autoconf-3080300/sqlite3.h	2014-02-03 15:04:55.000000000 +0100
++++ src/sqlite-autoconf-3080300/sqlite3.h	2014-02-04 12:53:52.297923900 +0100
+@@ -108,8 +108,8 @@ extern "C" {
+ ** [sqlite_version()] and [sqlite_source_id()].
+ */
+ #define SQLITE_VERSION        "3.8.3"
+-#define SQLITE_VERSION_NUMBER 3008003
+-#define SQLITE_SOURCE_ID      "2014-02-03 14:04:11 6c643e45c274e755dc5a1a65673df79261c774be"
++#define SQLITE_VERSION_NUMBER 3008002
++#define SQLITE_SOURCE_ID      "2014-02-03 13:52:03 e816dd924619db5f766de6df74ea2194f3e3b538"
+ 
+ /*
+ ** CAPI3REF: Run-Time Library Version Numbers
+--- origsrc/sqlite-autoconf-3080300/sqliteicu.h	1970-01-01 01:00:00.000000000 +0100
++++ src/sqlite-autoconf-3080300/sqliteicu.h	2014-02-04 12:53:52.307924500 +0100
+@@ -0,0 +1,27 @@
++/*
++** 2008 May 26
++**
++** The author disclaims copyright to this source code.  In place of
++** a legal notice, here is a blessing:
++**
++**    May you do good and not evil.
++**    May you find forgiveness for yourself and forgive others.
++**    May you share freely, never taking more than you give.
++**
++******************************************************************************
++**
++** This header file is used by programs that want to link against the
++** ICU extension.  All it does is declare the sqlite3IcuInit() interface.
++*/
++#include "sqlite3.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif  /* __cplusplus */
++
++int sqlite3IcuInit(sqlite3 *db);
++
++#ifdef __cplusplus
++}  /* extern "C" */
++#endif  /* __cplusplus */
++
+--- origsrc/sqlite-autoconf-3080300/sqlitezlib.h	1970-01-01 01:00:00.000000000 +0100
++++ src/sqlite-autoconf-3080300/sqlitezlib.h	2014-02-04 12:53:52.313924800 +0100
+@@ -0,0 +1,27 @@
++/*
++** 2008 May 26
++**
++** The author disclaims copyright to this source code.  In place of
++** a legal notice, here is a blessing:
++**
++**    May you do good and not evil.
++**    May you find forgiveness for yourself and forgive others.
++**    May you share freely, never taking more than you give.
++**
++******************************************************************************
++**
++** This header file is used by programs that want to link against the
++** zlib extension.  All it does is declare the sqlite3ZlibInit() interface.
++*/
++#include "sqlite3.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif  /* __cplusplus */
++
++int sqlite3ZlibInit(sqlite3 *db);
++
++#ifdef __cplusplus
++}  /* extern "C" */
++#endif  /* __cplusplus */
++
+--- origsrc/sqlite-autoconf-3080300/tea/generic/tclsqlite3.c	2014-02-03 15:04:57.000000000 +0100
++++ src/sqlite-autoconf-3080300/tea/generic/tclsqlite3.c	2014-02-04 12:53:52.321925300 +0100
+@@ -174,6 +174,10 @@ static int strlen30(const char *z){
+   return 0x3fffffff & (int)(z2 - z);
+ }
+ 
++#ifdef USE_TCL_STUBS
++# define tclStubsPtr staticTclStubsPtr
++static const TclStubs *tclStubsPtr = NULL;
++#endif
+ 
+ #ifndef SQLITE_OMIT_INCRBLOB
+ /*
+@@ -3028,6 +3032,11 @@ static int DbMain(void *cd, Tcl_Interp *
+   memset(p, 0, sizeof(*p));
+   zFile = Tcl_GetStringFromObj(objv[2], 0);
+   zFile = Tcl_TranslateFileName(interp, zFile, &translatedFilename);
++#if (defined(_WIN32) || defined(__CYGWIN__)) && !defined(SQLITE_WIN32_NO_WIDE)
++  if( !zVfs ){
++    zVfs = "win32-longpath";
++  }
++#endif
+   rc = sqlite3_open_v2(zFile, &p->db, flags, zVfs);
+   Tcl_DStringFree(&translatedFilename);
+   if( p->db ){
+@@ -3069,6 +3078,18 @@ static int DbMain(void *cd, Tcl_Interp *
+ #ifndef USE_TCL_STUBS
+ # undef  Tcl_InitStubs
+ # define Tcl_InitStubs(a,b,c) TCL_VERSION
++#else
++# define Tcl_InitStubs staticTclInitStubs
++typedef struct {
++  char *result;
++  Tcl_FreeProc *freeProc;
++  int errorLine;
++  const struct TclStubs *stubTable;
++} PrivateTclInterp;
++static const char *Tcl_InitStubs(Tcl_Interp *interp, const char *version, int exact) {
++  tclStubsPtr = ((PrivateTclInterp *)interp)->stubTable;
++  return Tcl_PkgRequireEx(interp, "Tcl", version, 0, (void *)&tclStubsPtr);
++}
+ #endif
+ 
+ /*
+--- origsrc/sqlite-autoconf-3080300/tea/tclconfig/tcl.m4	2014-02-03 15:04:55.000000000 +0100
++++ src/sqlite-autoconf-3080300/tea/tclconfig/tcl.m4	2014-02-04 12:53:52.332925900 +0100
+@@ -1410,6 +1410,9 @@ dnl AC_CHECK_TOOL(AR, ar)
+ 	    SHLIB_LD='${CC} -shared'
+ 	    SHLIB_SUFFIX=".dll"
+ 	    EXE_SUFFIX=".exe"
++	    EXEEXT=".exe"
++	    do64bit_ok=yes
++	    SHARED_LIB_SUFFIX='3.dll'
+ 	    CC_SEARCH_FLAGS=""
+ 	    LD_SEARCH_FLAGS=""
+ 	    ;;
+@@ -3184,13 +3187,19 @@ AC_DEFUN([TEA_MAKE_LIB], [
+ 	if test "${SHARED_BUILD}" = "1" ; then
+ 	    # We force the unresolved linking of symbols that are really in
+ 	    # the private libraries of Tcl and Tk.
+-	    SHLIB_LD_LIBS="${SHLIB_LD_LIBS} \"`${CYGPATH} ${TCL_BIN_DIR}/${TCL_STUB_LIB_FILE}`\""
+ 	    if test x"${TK_BIN_DIR}" != x ; then
+ 		SHLIB_LD_LIBS="${SHLIB_LD_LIBS} \"`${CYGPATH} ${TK_BIN_DIR}/${TK_STUB_LIB_FILE}`\""
+ 	    fi
++	    SHLIB_LD_LIBS="${SHLIB_LD_LIBS} \"`${CYGPATH} ${TCL_BIN_DIR}/${TCL_STUB_LIB_FILE}`\""
++	    if test "$GCC" = "yes"; then
++		SHLIB_LD_LIBS="${SHLIB_LD_LIBS} -static-libgcc"
++	    fi
+ 	    eval eval "PKG_LIB_FILE=${PACKAGE_NAME}${SHARED_LIB_SUFFIX}"
+ 	else
+ 	    eval eval "PKG_LIB_FILE=${PACKAGE_NAME}${UNSHARED_LIB_SUFFIX}"
++	    if test "$GCC" = "yes"; then
++		PKG_LIB_FILE=lib${PKG_LIB_FILE}
++	    fi
+ 	fi
+ 	# Some packages build their own stubs libraries
+ 	eval eval "PKG_STUB_LIB_FILE=${PACKAGE_NAME}stub${UNSHARED_LIB_SUFFIX}"
+@@ -3207,7 +3216,7 @@ AC_DEFUN([TEA_MAKE_LIB], [
+ 	    if test x"${TK_BIN_DIR}" != x ; then
+ 		SHLIB_LD_LIBS="${SHLIB_LD_LIBS} ${TK_STUB_LIB_SPEC}"
+ 	    fi
+-	    eval eval "PKG_LIB_FILE=lib${PACKAGE_NAME}${SHARED_LIB_SUFFIX}"
++	    eval eval "PKG_LIB_FILE=tcl${PACKAGE_NAME}${SHARED_LIB_SUFFIX}"
+ 	    RANLIB=:
+ 	else
+ 	    eval eval "PKG_LIB_FILE=lib${PACKAGE_NAME}${UNSHARED_LIB_SUFFIX}"
+--- origsrc/sqlite-autoconf-3080300/zlib.c	1970-01-01 01:00:00.000000000 +0100
++++ src/sqlite-autoconf-3080300/zlib.c	2014-02-04 12:53:52.341926400 +0100
+@@ -0,0 +1,130 @@
++/*
++** 2014 January 6
++**
++** The author disclaims copyright to this source code.  In place of
++** a legal notice, here is a blessing:
++**
++**    May you do good and not evil.
++**    May you find forgiveness for yourself and forgive others.
++**    May you share freely, never taking more than you give.
++**
++*************************************************************************
++** $Id: zlib.c,v 1.0 2013/01/06 11:13:11 jan.nijtmans Exp $
++**
++** This file implements an integration between the zlib library ,
++** an open-source compression library and SQLite. The integration uses 
++** zlib to provide the following to SQLite:
++**
++**   * An implementation of the SQL compress() and decompress()
++**     functions.
++*/
++
++#if !defined(SQLITE_CORE) || defined(SQLITE_ENABLE_ZLIB)
++
++/* Include zlib headers */
++#include <zlib.h>
++
++#ifndef SQLITE_CORE
++  #include "sqlite3ext.h"
++  SQLITE_EXTENSION_INIT1
++#else
++  #include "sqlite3.h"
++#endif
++
++  /*
++  ** Implementation of the "compress(X)" SQL function.  The input X is
++  ** compressed using zLib and the output is returned.
++  */
++  static void zlibCompressFunc(
++    sqlite3_context *context,
++    int argc,
++    sqlite3_value **argv
++  ){
++    const unsigned char *pIn;
++    unsigned char *pOut;
++    unsigned int nIn;
++    unsigned long int nOut;
++
++    pIn = sqlite3_value_blob(argv[0]);
++    nIn = sqlite3_value_bytes(argv[0]);
++    nOut = 13 + nIn + (nIn+999)/1000;
++    pOut = sqlite3_malloc( nOut+4 );
++    pOut[0] = nIn>>24 & 0xff;
++    pOut[1] = nIn>>16 & 0xff;
++    pOut[2] = nIn>>8 & 0xff;
++    pOut[3] = nIn & 0xff;
++    compress(&pOut[4], &nOut, pIn, nIn);
++    sqlite3_result_blob(context, pOut, nOut+4, sqlite3_free);
++  }
++
++  /*
++  ** Implementation of the "decompress(X)" SQL function.  The argument X
++  ** is a blob which was obtained from compress(Y).  The output will be
++  ** the value Y.
++  */
++  static void zlibDecompressFunc(
++    sqlite3_context *context,
++    int argc,
++    sqlite3_value **argv
++  ){
++    const unsigned char *pIn;
++    unsigned char *pOut;
++    unsigned int nIn;
++    unsigned long int nOut;
++    int rc;
++
++    pIn = sqlite3_value_blob(argv[0]);
++    nIn = sqlite3_value_bytes(argv[0]);
++    nOut = (pIn[0]<<24) + (pIn[1]<<16) + (pIn[2]<<8) + pIn[3];
++    pOut = sqlite3_malloc( nOut+1 );
++    rc = uncompress(pOut, &nOut, &pIn[4], nIn-4);
++    if( rc==Z_OK ){
++      sqlite3_result_blob(context, pOut, nOut, sqlite3_free);
++    }else{
++      sqlite3_result_error(context, "input is not zlib compressed", -1);
++    }
++  }
++
++/*
++** Register the zlib extension functions with database db.
++*/
++int sqlite3ZlibInit(sqlite3 *db){
++  struct ZlibScalar {
++    const char *zName;                        /* Function name */
++    int nArg;                                 /* Number of arguments */
++    int enc;                                  /* Optimal text encoding */
++    void *pContext;                           /* sqlite3_user_data() context */
++    void (*xFunc)(sqlite3_context*,int,sqlite3_value**);
++  } scalars[] = {
++    {"compress",    1, SQLITE_ANY, 0, zlibCompressFunc},
++    {"decompress",  1, SQLITE_ANY, 0, zlibDecompressFunc},
++  };
++
++  int rc = SQLITE_OK;
++  int i;
++
++  for(i=0; rc==SQLITE_OK && i<(int)(sizeof(scalars)/sizeof(scalars[0])); i++){
++    struct ZlibScalar *p = &scalars[i];
++    rc = sqlite3_create_function(
++        db, p->zName, p->nArg, p->enc, p->pContext, p->xFunc, 0, 0
++    );
++  }
++
++  return rc;
++}
++
++#if !SQLITE_CORE
++#ifdef _WIN32
++__declspec(dllexport)
++#endif
++int sqlite3_zlib_init(
++  sqlite3 *db, 
++  char **pzErrMsg,
++  const sqlite3_api_routines *pApi
++){
++  SQLITE_EXTENSION_INIT2(pApi)
++  return sqlite3ZlibInit(db);
++}
++#endif
++
++#endif
