@@ -2,7 +2,7 @@
 
 pkgname=file
 pkgver=5.17
-pkgrel=1
+pkgrel=2
 pkgdesc="File type identification utility"
 arch=('i686' 'x86_64')
 license=('custom')
@@ -13,41 +13,49 @@ makedepends=('python2' 'python3' 'zlib-devel')
 options=('!libtool')
 source=(ftp://ftp.astron.com/pub/${pkgname}/${pkgname}-${pkgver}.tar.gz
         file-5.17-msys2.patch
-		file-5.15-fix-regexp.patch)
+		file-5.15-fix-regexp.patch
+		file-5.17-off-by-one.patch)
 md5sums=('e19c47e069ced7b01ccb4db402cc01d3'
          '1538c425504bce1cd01126a385b70eb1'
-         'f29d52a9c614967b5f3c7d67f0983103')
+         'f29d52a9c614967b5f3c7d67f0983103'
+         'f36a87784f1db2e415ce09badb38fbe8')
 
 prepare() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
-  patch -p1 -i ${srcdir}/file-5.17-msys2.patch
-  patch -p1 -i ${srcdir}/file-5.15-fix-regexp.patch
+	cd "${srcdir}/${pkgname}-${pkgver}"
+	patch -p1 -i ${srcdir}/file-5.17-msys2.patch
+	patch -p1 -i ${srcdir}/file-5.15-fix-regexp.patch
+	patch -p1 -i ${srcdir}/file-5.17-off-by-one.patch
 
-  autoreconf -fi
+	autoreconf -fi
 }
 
 build() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
-  ./configure --prefix=/usr --enable-fsect-man5
-  make 
+	cd "${srcdir}/${pkgname}-${pkgver}"
+	./configure \
+		--prefix=/usr \
+		--build=${CHOST} \
+		--host=${CHOST} \
+		--target=${CHOST} \
+		--enable-fsect-man5
+	make 
 }
 
 package() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
-  make DESTDIR=${pkgdir} install
-  
-  install -Dm644 COPYING ${pkgdir}/usr/share/licenses/${pkgname}/COPYING
-  
-  PYTHON_SITELIB=$(python2 -c 'from distutils.sysconfig import * ; print get_python_lib(0,0);')
-  PYTHON3_SITELIB=$(python3 -c 'from distutils.sysconfig import * ; print(get_python_lib(0,0));')
+	cd "${srcdir}/${pkgname}-${pkgver}"
+	make DESTDIR=${pkgdir} install
 
-  mkdir -p ${pkgdir}/$PYTHON_SITELIB
-  mkdir -p ${pkgdir}/$PYTHON3_SITELIB
-  cp -f ${srcdir}/${pkgname}-${pkgver}/python/magic.py ${pkgdir}/$PYTHON_SITELIB
-  cp -f ${srcdir}/${pkgname}-${pkgver}/python/magic.py ${pkgdir}/$PYTHON3_SITELIB
+	install -Dm644 COPYING ${pkgdir}/usr/share/licenses/${pkgname}/COPYING
 
-  cat ${srcdir}/${pkgname}-${pkgver}/magic/Magdir/* > ${pkgdir}/usr/share/misc/magic
-  cp -rf ${pkgdir}/usr/share/misc/magic ${pkgdir}/usr/share/magic
-  mkdir -p ${pkgdir}/usr/share/file
-  cp -rf ${pkgdir}/usr/share/magic ${pkgdir}/usr/share/file/magic
+	PYTHON_SITELIB=$(python2 -c 'from distutils.sysconfig import * ; print get_python_lib(0,0);')
+	PYTHON3_SITELIB=$(python3 -c 'from distutils.sysconfig import * ; print(get_python_lib(0,0));')
+
+	mkdir -p ${pkgdir}/$PYTHON_SITELIB
+	mkdir -p ${pkgdir}/$PYTHON3_SITELIB
+	cp -f ${srcdir}/${pkgname}-${pkgver}/python/magic.py ${pkgdir}/$PYTHON_SITELIB
+	cp -f ${srcdir}/${pkgname}-${pkgver}/python/magic.py ${pkgdir}/$PYTHON3_SITELIB
+
+	cat ${srcdir}/${pkgname}-${pkgver}/magic/Magdir/* > ${pkgdir}/usr/share/misc/magic
+	cp -rf ${pkgdir}/usr/share/misc/magic ${pkgdir}/usr/share/magic
+	mkdir -p ${pkgdir}/usr/share/file
+	cp -rf ${pkgdir}/usr/share/magic ${pkgdir}/usr/share/file/magic
 }
