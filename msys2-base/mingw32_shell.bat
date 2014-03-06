@@ -24,6 +24,8 @@ if NOT EXIST %WD%msys-2.0.dll set WD=%~dp0\bin\
 set MSYSTEM=MINGW32
 rem To activate windows native symlinks uncomment next line
 rem set MSYS=winsymlinks:nativestrict
+rem Set debugging program for errors
+rem set MSYS=error_start:%WD%../mingw32/bin/qtcreator.exe|-debug|<process-id>
 set MSYSCON=mintty.exe
 if "x%1" == "x-consolez" set MSYSCON=console.exe
 if "x%1" == "x-mintty" set MSYSCON=mintty.exe
