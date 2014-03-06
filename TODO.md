@@ -9,3 +9,7 @@ What we need to do:
 * ruby: Fix loading windows libraries (ticket #10).
 
 * ncurses: Fix it to properly work in Windows API based consoles.
+
+* readline: Fix building version 6.3.
+
+* bash: Port bash 4.3.
