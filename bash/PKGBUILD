@@ -1,142 +1,147 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=('bash' 'bash-devel')
-_basever=4.2
-_patchlevel=045 #prepare for some patches
-pkgver=$_basever.$_patchlevel
-pkgrel=6
+_basever=4.3
+_patchlevel=000 #prepare for some patches
+pkgver=$_basever #.$_patchlevel
+pkgrel=1
 pkgdesc="The GNU Bourne Again shell"
 arch=('i686' 'x86_64')
 license=('GPL')
 url="http://www.gnu.org/software/bash/bash.html"
 groups=('base')
 backup=(usr/etc/bash.bash{rc,_logout} usr/etc/skel/.bash{rc,_profile,_logout})
-makedepends=('gettext-devel' 'libreadline-devel')
+makedepends=('gettext-devel' 'libreadline-devel>=6.3')
 source=(http://ftp.gnu.org/gnu/bash/bash-$_basever.tar.gz{,.sig}
-        'dot.bashrc'
-        'dot.bash_profile'
-        'dot.bash_logout'
+		'dot.bashrc'
+		'dot.bash_profile'
+		'dot.bash_logout'
 		'dot.inputrc'
-        'system.bashrc'
-        'system.bash_logout'
+		'system.bashrc'
+		'system.bash_logout'
 		'system.profile'
 		'profile.tzset.sh'
 		'profile.lang.sh'
-        'bash-4.2-do-not-use-memcpy-on-overlapping-memory.patch'
-        'bash42-readline.patch'
-        'bash42-deprecations.patch'
-        'bash-4.2-add-pwd-W-option.patch'
-        'bash-4.2-msys2-fix-lineendings.patch'
-        'bash-4.2-cygwin-msys2.patch')
+		0001-bash-4.3-cygwin.patch
+		0002-bash-4.3-msysize.patch
+		0003-bash-4.3-readline.patch
+		0004-bash-4.3-deprecations.patch
+		0005-bash-4.3-msys2-fix-lineendings.patch
+		0006-bash-4.3-add-pwd-W-option.patch
+		0100-bash-4.3-debug-trap.patch
+		0110-bash-4.3-test-nameref.patch)
 if [ $_patchlevel -gt 000 ]; then
-    for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
-        source=(${source[@]} http://ftp.gnu.org/gnu/bash/bash-$_basever-patches/bash${_basever//./}-$(printf "%03d" $p){,.sig})
-    done
+	for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
+		source=(${source[@]} http://ftp.gnu.org/gnu/bash/bash-$_basever-patches/bash${_basever//./}-$(printf "%03d" $p){,.sig})
+	done
 fi
 
 prepare() {
-  cd ${srcdir}/${pkgname}-$_basever
+	cd ${srcdir}/${pkgname}-$_basever
 
-  for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
-    msg "applying patch bash${_basever//./}-$(printf "%03d" $p)"
-    patch -p0 -i $srcdir/bash${_basever//./}-$(printf "%03d" $p)
-  done
-  
-  patch -p1 -i $srcdir/bash-4.2-do-not-use-memcpy-on-overlapping-memory.patch
-  patch -p1 -i $srcdir/bash-4.2-cygwin-msys2.patch
-  patch -p1 -i $srcdir/bash42-readline.patch
-  patch -p1 -i $srcdir/bash42-deprecations.patch
-  patch -p1 -i $srcdir/bash-4.2-add-pwd-W-option.patch
-  patch -p1 -i $srcdir/bash-4.2-msys2-fix-lineendings.patch
-  
-  autoconf
+	for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
+		msg "applying patch bash${_basever//./}-$(printf "%03d" $p)"
+		patch -p0 -i $srcdir/bash${_basever//./}-$(printf "%03d" $p)
+	done
+
+	patch -p1 -i $srcdir/0001-bash-4.3-cygwin.patch
+	patch -p1 -i $srcdir/0002-bash-4.3-msysize.patch
+	patch -p1 -i $srcdir/0003-bash-4.3-readline.patch
+	patch -p1 -i $srcdir/0004-bash-4.3-deprecations.patch
+	patch -p1 -i $srcdir/0005-bash-4.3-msys2-fix-lineendings.patch
+	patch -p1 -i $srcdir/0006-bash-4.3-add-pwd-W-option.patch
+	patch -p1 -i $srcdir/0100-bash-4.3-debug-trap.patch
+	patch -p1 -i $srcdir/0110-bash-4.3-test-nameref.patch
+
+	autoconf
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-$_basever
-  
-  ./configure --build=${CHOST} \
-        --prefix=/usr \
-        --without-libintl-prefix \
-        --without-libiconv-prefix \
-        --with-installed-readline \
-        --without-bash-malloc \
-        --with-curses ac_cv_rl_version=6.2
- #       bash_cv_type_intmax_t=int64_t \
- #       bash_cv_type_uintmax_t=uint64_t
- 
-  # Prepopulate the release level.
-  expr ${pkgrel} - 2 > .build || :
- 
-  make HISTORY_LDFLAGS= READLINE_LDFLAGS= LOCAL_LDFLAGS='-Wl,--export-all,--out-implib,lib$(@:.exe=.dll.a)'
+	cd ${srcdir}/${pkgname}-$_basever
+
+	./configure --build=${CHOST} \
+		--prefix=/usr \
+		--enable-readline \
+		--without-libintl-prefix \
+		--without-libiconv-prefix \
+		--with-installed-readline \
+		--without-bash-malloc \
+		--with-curses \
+		bash_cv_func_sigsetjmp=missing \
+		gt_cv_int_divbyzero_sigfpe=true
+
+	# Prepopulate the release level.
+	expr ${pkgrel} > .build || :
+
+	make HISTORY_LDFLAGS= READLINE_LDFLAGS= LOCAL_LDFLAGS='-Wl,--export-all,--out-implib,lib$(@:.exe=.dll.a)'
 }
 
 check() {
-  cd ${srcdir}/${pkgname}-$_basever
-  make check
+	cd ${srcdir}/${pkgname}-$_basever
+	make check
 }
 
 package_bash() {
-  depends=('libintl' 'libiconv' 'libreadline>=6.1' 'msys2-runtime' 'gcc-libs')
-  provides=('sh')
-  #install=bash.install
-  
-  cd ${srcdir}/${pkgname}-$_basever
-  make DESTDIR=${pkgdir} install
-  
-  cp -fp ${pkgdir}/usr/bin/{ba,}sh.exe
+	depends=('libintl' 'libiconv' 'libreadline>=6.3' 'msys2-runtime' 'gcc-libs')
+	provides=('sh')
+	#install=bash.install
 
-  cd ${pkgdir}/usr/share/man/man1 > /dev/null
-  echo '.so man1/bash.1' > sh.1
-  echo '.so man1/bash_builtins.1.gz' > alias.1
+	cd ${srcdir}/${pkgname}-$_basever
+	make DESTDIR=${pkgdir} install
 
-  gzip alias.1
-  for f in bg bind break builtin caller case cd command compgen complete \
-    continue declare dirs disown do done elif else enable esac eval exec \
-    exit export fc fg fi for function getopts hash help history if in jobs \
-    let local logout popd pushd read readonly return select set shift shopt \
-    source suspend then time times trap type typeset ulimit umask unalias \
-    unset until wait while [ ; do
-    cp -fp alias.1.gz $f.1.gz
-  done
+	cp -fp ${pkgdir}/usr/bin/{ba,}sh.exe
 
-  install -dm755 ${pkgdir}/usr/etc/skel/
-  
-  # system-wide configuration files
-  install -m644 ${srcdir}/system.bashrc ${pkgdir}/usr/etc/bash.bashrc
-  install -m644 ${srcdir}/system.bash_logout ${pkgdir}/usr/etc/bash.bash_logout
-  install -m644 ${srcdir}/system.profile ${pkgdir}/usr/etc/profile
-  
-  # user configuration file skeletons
-  install -m644 ${srcdir}/dot.bashrc ${pkgdir}/usr/etc/skel/.bashrc
-  install -m644 ${srcdir}/dot.inputrc ${pkgdir}/usr/etc/skel/.inputrc
-  install -m644 ${srcdir}/dot.bash_profile ${pkgdir}/usr/etc/skel/.bash_profile
-  install -m644 ${srcdir}/dot.bash_logout ${pkgdir}/usr/etc/skel/.bash_logout
-  
-  install -dm755 ${pkgdir}/usr/etc/profile.d/
-  install -m644 ${srcdir}/profile.tzset.sh ${pkgdir}/usr/etc/profile.d/tzset.sh
-  install -m644 ${srcdir}/profile.lang.sh ${pkgdir}/usr/etc/profile.d/lang.sh
+	cd ${pkgdir}/usr/share/man/man1 > /dev/null
+	echo '.so man1/bash.1' > sh.1
+	echo '.so man1/bash_builtins.1.gz' > alias.1
+
+	gzip alias.1
+	for f in bg bind break builtin caller case cd command compgen complete \
+		continue declare dirs disown do done elif else enable esac eval exec \
+		exit export fc fg fi for function getopts hash help history if in jobs \
+		let local logout popd pushd read readonly return select set shift shopt \
+		source suspend then time times trap type typeset ulimit umask unalias \
+		unset until wait while [ ; do
+		cp -fp alias.1.gz $f.1.gz
+	done
+
+	install -dm755 ${pkgdir}/usr/etc/skel/
+
+	# system-wide configuration files
+	install -m644 ${srcdir}/system.bashrc ${pkgdir}/usr/etc/bash.bashrc
+	install -m644 ${srcdir}/system.bash_logout ${pkgdir}/usr/etc/bash.bash_logout
+	install -m644 ${srcdir}/system.profile ${pkgdir}/usr/etc/profile
+
+	# user configuration file skeletons
+	install -m644 ${srcdir}/dot.bashrc ${pkgdir}/usr/etc/skel/.bashrc
+	install -m644 ${srcdir}/dot.inputrc ${pkgdir}/usr/etc/skel/.inputrc
+	install -m644 ${srcdir}/dot.bash_profile ${pkgdir}/usr/etc/skel/.bash_profile
+	install -m644 ${srcdir}/dot.bash_logout ${pkgdir}/usr/etc/skel/.bash_logout
+
+	install -dm755 ${pkgdir}/usr/etc/profile.d/
+	install -m644 ${srcdir}/profile.tzset.sh ${pkgdir}/usr/etc/profile.d/tzset.sh
+	install -m644 ${srcdir}/profile.lang.sh ${pkgdir}/usr/etc/profile.d/lang.sh
 }
 
 package_bash-devel() {
-  pkgdesc="Bash headers and libraries"
-  groups=('development')
-  options=('staticlibs')
-  backup=()
-  
-  
-  mkdir -p ${pkgdir}/usr/{include,lib}
-  cd ${srcdir}/bash-$_basever
-  cp -f libbash.dll.a ${pkgdir}/usr/lib/
-  
-  mkdir -p  ${pkgdir}/usr/include/bash
-  for f in [^y]*.h builtins/*.h include/*.h lib/{glob,tilde}/*.h
-  do
-    /bin/install ${f} ${pkgdir}/usr/include/bash
-  done
+	pkgdesc="Bash headers and libraries"
+	groups=('development')
+	options=('staticlibs')
+	backup=()
+
+
+	mkdir -p ${pkgdir}/usr/{include,lib}
+	cd ${srcdir}/bash-$_basever
+	cp -f libbash.dll.a ${pkgdir}/usr/lib/
+
+	mkdir -p  ${pkgdir}/usr/include/bash
+	for f in [^y]*.h builtins/*.h include/*.h lib/{glob,tilde}/*.h
+	do
+		/bin/install ${f} ${pkgdir}/usr/include/bash
+	done
 }
 
-md5sums=('3fb927c7c33022f1c327f14a81c0d4b0'
+md5sums=('81348932d5da294953e15d4814c74dd1'
          'SKIP'
          'e713dd521ef91e55e0a9a9443cfeff5f'
          '8c8d3d50a5ddeec7b1ad9fb30b313568'
@@ -144,102 +149,14 @@ md5sums=('3fb927c7c33022f1c327f14a81c0d4b0'
          '62ffc7ec125731ac55a1a6b653b0d2a7'
          '6fe29f98baec010642cbbaeef93b0422'
          'f04674a1f8bf8802b61d61c7b86d3781'
-         'a32b8a9abcc538c0ade0b7940d163b3f'
+         'bd413a2643b4c4c5479b7202cd12d1f7'
          'edb8c2727e45be31bdbcaa0aa7259f19'
          '423b1c9e51a5cf569158bf8798c5b4fc'
-         '9e55d01f2d9dda4a0c96031b25d19f45'
-         '35edb6bfa06773975f11e6fc076b9f13'
-         '8130384e8b0d40760be819c4cb7a4f24'
-         'd46bd1649df27811254254d5b909e4de'
-         'f868bc832daf8d91e2d5466fd6b0d2ed'
-         '7b92a9773a8f637e11be54846aae35ec'
-         '1100bc1dda2cdc06ac44d7e5d17864a3'
-         'SKIP'
-         '30e7948079921d3261efcc6a40722135'
-         'SKIP'
-         '9ea06decec43a198f3d7cf29acc602f8'
-         'SKIP'
-         'fb48f6134d7b013135929476aa0c250c'
-         'SKIP'
-         'e70e45de33426b38153b390be0dbbcd4'
-         'SKIP'
-         'ce4e5c484993705b27daa151eca242c2'
-         'SKIP'
-         '88d1f96db29461767602e2546803bda7'
-         'SKIP'
-         '24c574bf6d6a581e300823d9c1276af6'
-         'SKIP'
-         '4c5835f2fbab36c4292bb334977e5b6d'
-         'SKIP'
-         '0a51602b535ef661ee707be6c8bdb373'
-         'SKIP'
-         '58deacf3d57cbd75575444ff6a3b0806'
-         'SKIP'
-         '72d5059820015231483bb7415d09e9db'
-         'SKIP'
-         '608336ebe215984ef126e3c29d2d3409'
-         'SKIP'
-         'ed19da878e3f630834c62b9d9dcc6fce'
-         'SKIP'
-         '2d07daba0b8ca8f876d2aa052ff594b4'
-         'SKIP'
-         '53d246537e1fffd1aaa02ba5c056211c'
-         'SKIP'
-         '304fd129a58fee2d8a34f8b4704db0aa'
-         'SKIP'
-         '6921a0b4228fe89b6537a5c29f027c89'
-         'SKIP'
-         '1195d85447f3d048d2c9bcd075fa765c'
-         'SKIP'
-         'b09000bba08da6ac753124593850cdf7'
-         'SKIP'
-         '09d3f96a16b881334cfaee0cf320b47e'
-         'SKIP'
-         '597bf71a2aac6feb510b7505cdd3d4f7'
-         'SKIP'
-         '3fab459b4e09daea529cacad025b13b3'
-         'SKIP'
-         '4ad8d11e72afc6090e701073ff034cf4'
-         'SKIP'
-         'c7d2493e44490f01dd20bdc8feb0a6a7'
-         'SKIP'
-         '9f19c199dd8d1fa9254eebe738759272'
-         'SKIP'
-         'a6ed82daf034587aee2f2581ba5fe829'
-         'SKIP'
-         'da9265aa2527fd4a7481baa3e0550287'
-         'SKIP'
-         'ec444d229e8899fbaaf6fc7de2d82ae6'
-         'SKIP'
-         'b4bc1c4dc1b508ff9cdfc44f1a5039b5'
-         'SKIP'
-         '89390ff6a3c2ef7e09dd4b8b097a8e56'
-         'SKIP'
-         'eee08003395c417f677d1a4bf8c548ee'
-         'SKIP'
-         '2fe070dd6d75d8ff16f269184a16e9c4'
-         'SKIP'
-         '4e610506c1711bf3483b965800ac3d5d'
-         'SKIP'
-         '7cd9bfdf7cbfd45274d07620ee94c8d9'
-         'SKIP'
-         '9c3142956064d175a880bcb186e51ef9'
-         'SKIP'
-         'c10692f447d4966c879f8fb8d7c8ebc9'
-         'SKIP'
-         '9ef3c308cde413e95866c1266cfb4e98'
-         'SKIP'
-         'cd48f57a404498d4e5c73a3501c4b1a5'
-         'SKIP'
-         '00a2371b6c05acbfce6bc850c6d982f8'
-         'SKIP'
-         '7bc4942a66ca4024ee964db7ede07896'
-         'SKIP'
-         '1cf7701017ebfc8e129de92c8f8b798c'
-         'SKIP'
-         '9e61168fca692d8d1a733c389a63712e'
-         'SKIP'
-         'b4b11d64b45ea9ec50dcc74c6c3861f6'
-         'SKIP'
-         '1661bcc83c4715f54368877452ff2247'
-         'SKIP')
+         '38de129c387f1261ed3a9a373459b97a'
+         '03696955885df2bae6ecc647157cf808'
+         'c9e601e7ed62007affc1e6e2833595a8'
+         'fc268eb1264c79b7d0c6f43f82d3d6be'
+         '26734e34adf9bec225bf29dab4c2767f'
+         'fd89ff75ed13a89fb35291129ab60f0f'
+         'baa4ada139d6c59d28ad2009c5c6c271'
+         'e722986dfc07df1ccf85dbcb436ff258')

@@ -1,0 +1,754 @@
+diff -Naur a/bashline.c b/bashline.c
+--- a/bashline.c	2014-02-10 04:56:58.000000000 +0400
++++ b/bashline.c	2014-03-13 16:36:05.375000000 +0400
+@@ -263,6 +263,11 @@
+    are the only possible matches, even if FIGNORE says to. */
+ int force_fignore = 1;
+ 
++#if __CYGWIN__
++/* If set, shorten "foo.exe" to "foo" when they are the same file.  */
++int completion_strip_exe;
++#endif /* __CYGWIN__ */
++
+ /* Perform spelling correction on directory names during word completion */
+ int dircomplete_spelling = 0;
+ 
+@@ -490,11 +495,12 @@
+   kseq[0] = CTRL('J');
+   kseq[1] = '\0';
+   func = rl_function_of_keyseq (kseq, emacs_meta_keymap, (int *)NULL);
+-  if (func == rl_vi_editing_mode)
++  extern rl_command_func_t *_imp__rl_vi_editing_mode;
++  if (func == rl_vi_editing_mode || func == _imp__rl_vi_editing_mode)
+     rl_unbind_key_in_map (CTRL('J'), emacs_meta_keymap);
+   kseq[0] = CTRL('M');
+   func = rl_function_of_keyseq (kseq, emacs_meta_keymap, (int *)NULL);
+-  if (func == rl_vi_editing_mode)
++  if (func == rl_vi_editing_mode || func == _imp__rl_vi_editing_mode)
+     rl_unbind_key_in_map (CTRL('M'), emacs_meta_keymap);
+ #if defined (VI_MODE)
+   rl_unbind_key_in_map (CTRL('E'), vi_movement_keymap);
+@@ -513,7 +519,8 @@
+   kseq[0] = '~';
+   kseq[1] = '\0';
+   func = rl_function_of_keyseq (kseq, emacs_meta_keymap, (int *)NULL);
+-  if (func == 0 || func == rl_tilde_expand)
++  extern rl_command_func_t *_imp__rl_tilde_expand;
++  if (func == 0 || func == rl_tilde_expand || func == _imp__rl_tilde_expand)
+     rl_bind_keyseq_in_map (kseq, bash_complete_username, emacs_meta_keymap);
+ 
+   rl_bind_key_if_unbound_in_map ('~', bash_possible_username_completions, emacs_ctlx_keymap);
+@@ -536,7 +543,8 @@
+   kseq[0] = TAB;
+   kseq[1] = '\0';
+   func = rl_function_of_keyseq (kseq, emacs_meta_keymap, (int *)NULL);
+-  if (func == 0 || func == rl_tab_insert)
++  extern rl_command_func_t *_imp__rl_tab_insert;
++  if (func == 0 || func == rl_tab_insert || func == _imp__rl_tab_insert)
+     rl_bind_key_in_map (TAB, dynamic_complete_history, emacs_meta_keymap);
+ 
+   /* Tell the completer that we want a crack first. */
+@@ -2105,9 +2113,33 @@
+       else
+ #endif
+ 	cval = val;
++#if defined(__CYGWIN__)
++      /* executable_or_directory will do the right thing on //server,
++	 but calling stat("//server") is an order of magnitude slower
++	 than noting that readdir("//") only returns directories.  */
++      if (match && (searching_path ? executable_file (val)
++		    : ((val[0] == '/' && val[1] == '/'
++			&& ! strchr (&val[2], '/'))
++		       || executable_or_directory (val))))
++#endif
+ 
+       if (match && executable_completion ((searching_path ? val : cval), searching_path))
+ 	{
++#if __CYGWIN__
++	  if (completion_strip_exe)
++	    {
++	      int val_len = strlen (val);
++	      char *candidate;
++	      if (val_len > 4 && !strcasecmp (&val[val_len - 4], ".exe")
++	        && (candidate = strdup (val)))
++	        {
++	          candidate[val_len - 4] = '\0';
++	          if (same_file (val, candidate, NULL, NULL))
++	            temp[strlen (temp) - 4] = '\0';
++	          free (candidate);
++	         }
++	    }
++#endif
+ 	  if (cval != val)
+ 	    free (cval);
+ 	  free (val);
+@@ -2843,6 +2875,17 @@
+   int r;
+ 
+   fn = bash_tilde_expand (name, 0);
++#if __CYGWIN__
++  /* stat("//server") can only be successful as a directory, but takes
++     a several-second timeout to fail.  It is much faster to assume
++     that //server is a valid name than it is to wait for the stat,
++     even though it gives false positives on bad names.  */
++  if (fn[0] == '/' && fn[1] == '/' && ! strchr (&fn[2], '/'))
++    {
++      free (fn);
++      return 1;
++    }
++#endif /* __CYGWIN__ */
+   r = file_isdir (fn);
+   free (fn);
+ 
+diff -Naur a/builtins/set.def b/builtins/set.def
+--- a/builtins/set.def	2013-04-19 15:20:34.000000000 +0400
++++ b/builtins/set.def	2014-03-13 16:36:05.375000000 +0400
+@@ -56,6 +56,13 @@
+ #if defined (READLINE)
+ extern int no_line_editing;
+ #endif /* READLINE */
++#if __CYGWIN__
++extern int igncr;
++static int set_minus_o_option_maybe (int, const char *, int);
++# define INTERACTIVE_ONLY ,1
++#else /* ! __CYGWIN__ */
++# define INTERACTIVE_ONLY
++#endif
+ 
+ $BUILTIN set
+ $FUNCTION set_builtin
+@@ -92,6 +99,9 @@
+ #if defined (HISTORY)
+           history      enable command history
+ #endif
++#if __CYGWIN__
++          igncr        on cygwin, ignore \r in line endings
++#endif
+           ignoreeof    the shell will not exit upon reading EOF
+           interactive-comments
+                        allow comments to appear in interactive commands
+@@ -188,29 +198,41 @@
+   int *variable;
+   setopt_set_func_t *set_func;
+   setopt_get_func_t *get_func;
++#if __CYGWIN__
++  /* Cygwin users have taken to exporting SHELLOPTS for the
++     cygwin-specific igncr.  As a result, we need to make sure
++     SHELLOPTS parsing does not turn on interactive options when
++     exported from an interactive shell, but parsed in a
++     non-interactive setting, since some interactive options violate
++     POSIX /bin/sh rules.  */
++  int interactive_only;
++#endif /* __CYGWIN__ */
+ } o_options[] = {
+   { "allexport",  'a', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL },
+ #if defined (BRACE_EXPANSION)
+   { "braceexpand",'B', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
+ #endif
+ #if defined (READLINE)
+-  { "emacs",     '\0', (int *)NULL, set_edit_mode, get_edit_mode },
++  { "emacs",     '\0', (int *)NULL, set_edit_mode, get_edit_mode INTERACTIVE_ONLY},
+ #endif
+   { "errexit",	  'e', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
+   { "errtrace",	  'E', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
+   { "functrace",  'T', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
+   { "hashall",    'h', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
+ #if defined (BANG_HISTORY)
+-  { "histexpand", 'H', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
++  { "histexpand", 'H', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  INTERACTIVE_ONLY},
+ #endif /* BANG_HISTORY */
+ #if defined (HISTORY)
+-  { "history",   '\0', &enable_history_list, bash_set_history, (setopt_get_func_t *)NULL },
++  { "history",   '\0', &enable_history_list, bash_set_history, (setopt_get_func_t *)NULL INTERACTIVE_ONLY},
++#endif
++#if __CYGWIN__
++  { "igncr", '\0', &igncr, NULL, (setopt_get_func_t *)NULL },
+ #endif
+   { "ignoreeof", '\0', &ignoreeof, set_ignoreeof, (setopt_get_func_t *)NULL },
+   { "interactive-comments", '\0', &interactive_comments, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL },
+   { "keyword",    'k', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
+ #if defined (JOB_CONTROL)
+-  { "monitor",	  'm', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
++  { "monitor",	  'm', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  INTERACTIVE_ONLY},
+ #endif
+   { "noclobber",  'C', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
+   { "noexec",	  'n', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
+@@ -229,7 +251,7 @@
+   { "privileged", 'p', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
+   { "verbose",	  'v', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
+ #if defined (READLINE)
+-  { "vi",        '\0', (int *)NULL, set_edit_mode, get_edit_mode },
++  { "vi",        '\0', (int *)NULL, set_edit_mode, get_edit_mode INTERACTIVE_ONLY},
+ #endif
+   { "xtrace",	  'x', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
+   {(char *)NULL, 0 , (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL },
+@@ -416,6 +438,15 @@
+ set_minus_o_option (on_or_off, option_name)
+      int on_or_off;
+      char *option_name;
++#if __CYGWIN__
++{
++  /* See cygwin comments above.  */
++  return set_minus_o_option_maybe (on_or_off, option_name, 0);
++}
++static int
++set_minus_o_option_maybe (int on_or_off, const char *option_name,
++			  int avoid_interactive)
++#endif /* __CYGWIN__ */
+ {
+   register int i;
+ 
+@@ -423,6 +454,10 @@
+     {
+       if (STREQ (option_name, o_options[i].name))
+ 	{
++#if __CYGWIN__
++	  if (o_options[i].interactive_only && avoid_interactive)
++	    return EXECUTION_SUCCESS;
++#endif /* __CYGWIN__ */
+ 	  if (o_options[i].letter == 0)
+ 	    {
+ 	      SET_BINARY_O_OPTION_VALUE (i, on_or_off, option_name);
+@@ -548,7 +583,11 @@
+   vptr = 0;
+   while (vname = extract_colon_unit (value, &vptr))
+     {
++#if __CYGWIN__
++    set_minus_o_option_maybe (FLAG_ON, vname, !interactive_shell);
++#else /* !__CYGWIN__ */
+       set_minus_o_option (FLAG_ON, vname);
++#endif
+       free (vname);
+     }
+ }
+diff -Naur a/builtins/shopt.def b/builtins/shopt.def
+--- a/builtins/shopt.def	2013-02-27 18:43:20.000000000 +0400
++++ b/builtins/shopt.def	2014-03-13 16:36:05.375000000 +0400
+@@ -91,6 +91,10 @@
+ extern int glob_asciirange;
+ extern int lastpipe_opt;
+ 
++#if __CYGWIN__
++extern int completion_strip_exe;
++#endif
++
+ #if defined (EXTENDED_GLOB)
+ extern int extended_glob;
+ #endif
+@@ -161,6 +165,9 @@
+   { "compat40", &shopt_compat40, set_compatibility_level },
+   { "compat41", &shopt_compat41, set_compatibility_level },
+   { "compat42", &shopt_compat41, set_compatibility_level },
++#if __CYGWIN__
++  { "completion_strip_exe", &completion_strip_exe, NULL },
++#endif
+ #if defined (READLINE)
+   { "complete_fullquote", &complete_fullquote, (shopt_set_func_t *)NULL},
+   { "direxpand", &dircomplete_expand, shopt_set_complete_direxpand },
+diff -Naur a/config-top.h b/config-top.h
+--- a/config-top.h	2012-08-19 04:51:30.000000000 +0400
++++ b/config-top.h	2014-03-13 16:36:05.375000000 +0400
+@@ -80,10 +80,10 @@
+ #define KSH_COMPATIBLE_SELECT
+ 
+ /* System-wide .bashrc file for interactive shells. */
+-/* #define SYS_BASHRC "/etc/bash.bashrc" */
++#define SYS_BASHRC "/etc/bash.bashrc"
+ 
+ /* System-wide .bash_logout for login shells. */
+-/* #define SYS_BASH_LOGOUT "/etc/bash.bash_logout" */
++#define SYS_BASH_LOGOUT "/etc/bash.bash_logout"
+ 
+ /* Define this to make non-interactive shells begun with argv[0][0] == '-'
+    run the startup files when not in posix mode. */
+@@ -93,7 +93,7 @@
+    sshd and source the .bashrc if so (like the rshd behavior).  This checks
+    for the presence of SSH_CLIENT or SSH2_CLIENT in the initial environment,
+    which can be fooled under certain not-uncommon circumstances. */
+-/* #define SSH_SOURCE_BASHRC */
++#define SSH_SOURCE_BASHRC
+ 
+ /* Define if you want the case-capitalizing operators (~[~]) and the
+    `capcase' variable attribute (declare -c). */
+diff -Naur a/doc/bash.1 b/doc/bash.1
+--- a/doc/bash.1	2014-02-06 18:03:52.000000000 +0400
++++ b/doc/bash.1	2014-03-13 16:36:05.390600000 +0400
+@@ -1658,6 +1658,14 @@
+ Expands to the effective user ID of the current user, initialized at
+ shell startup.  This variable is readonly.
+ .TP
++.B EXECIGNORE
++A colon-separated list of extended glob (see \fBPattern Matching\fP)
++patterns. Files with full paths matching one of these patterns are
++not considered executable for the purposes of completion and PATH
++searching, but the \fB[\fP, \fB[[\fP, and \fBtest\fP builtins are not
++affected. Use this variable to deal with systems that set the
++executable bit on files that are not actually executable.
++.TP
+ .B FUNCNAME
+ An array variable containing the names of all shell functions
+ currently in the execution call stack.
+@@ -9332,6 +9340,10 @@
+ attempts spelling correction on directory names during word completion
+ if the directory name initially supplied does not exist.
+ .TP 8
++.B completion_strip_exe
++If set, whenever bash sees `foo.exe' during completion, it checks if
++`foo' is the same file and strips the suffix.
++.TP 8
+ .B dotglob
+ If set, 
+ .B bash
+diff -Naur a/doc/bashref.texi b/doc/bashref.texi
+--- a/doc/bashref.texi	2014-02-22 22:20:36.000000000 +0400
++++ b/doc/bashref.texi	2014-03-13 16:36:05.390600000 +0400
+@@ -4999,6 +4999,10 @@
+ buffer.
+ If not set, Bash attempts to preserve what the user typed.
+ 
++@item completion_strip_exe
++If set, whenever bash sees `foo.exe' during completion, it checks if
++`foo' is the same file and strips the suffix.
++
+ @item dirspell
+ If set, Bash
+ attempts spelling correction on directory names during word completion 
+@@ -5578,6 +5582,14 @@
+ The numeric effective user id of the current user.  This variable
+ is readonly.
+ 
++@item EXECIGNORE
++A colon-separated list of extended glob ((@pxref{Pattern Matching})
++patterns. Files with full paths matching one of these patterns are
++not considered executable for the purposes of completion and PATH
++searching, but the @code{[}, @code{[[}, and @code{test} builtins are
++not affected. Use this variable to deal with systems that set the
++executable bit on files that are not actually executable.
++
+ @item FCEDIT
+ The editor used as a default by the @option{-e} option to the @code{fc}
+ builtin command.
+diff -Naur a/doc/builtins.1 b/doc/builtins.1
+--- a/doc/builtins.1	2012-02-21 23:32:05.000000000 +0400
++++ b/doc/builtins.1	2014-03-13 16:36:05.390600000 +0400
+@@ -19,6 +19,6 @@
+ ulimit, umask, unalias, unset, wait \- bash built-in commands, see \fBbash\fR(1)
+ .SH BASH BUILTIN COMMANDS
+ .nr zZ 1
+-.so bash.1
++.so man1/bash.1
+ .SH SEE ALSO
+ bash(1), sh(1)
+diff -Naur a/doc/Makefile.in b/doc/Makefile.in
+--- a/doc/Makefile.in	2013-10-31 00:18:12.000000000 +0400
++++ b/doc/Makefile.in	2014-03-13 16:36:05.390600000 +0400
+@@ -176,7 +176,7 @@
+ 	$(TEXI2HTML) -menu -monolithic -I $(TEXINPUTDIR) $(srcdir)/bashref.texi
+ 
+ bash.info: bashref.info
+-	${SHELL} ${INFOPOST} < $(srcdir)/bashref.info > $@ ; \
++	${SHELL} ${INFOPOST} < bashref.info > $@ ; \
+ 
+ bash.txt: bash.1
+ bash.ps: bash.1
+@@ -237,9 +237,9 @@
+ 	-$(INSTALL_DATA) $(srcdir)/bashbug.1 $(DESTDIR)$(man1dir)/bashbug${man1ext}
+ 	-$(INSTALL_DATA) $(OTHER_DOCS) $(DESTDIR)$(docdir)
+ # uncomment the next lines to install the builtins man page
+-#	sed 's:bash\.1:man1/&:' $(srcdir)/builtins.1 > $${TMPDIR:-/var/tmp}/builtins.1
+-#	-$(INSTALL_DATA) $${TMPDIR:-/var/tmp}/builtins.1 $(DESTDIR)$(man1dir)/bash_builtins${man1ext}
+-#	-$(RM) $${TMPDIR:-/var/tmp}/builtins.1
++	sed 's:bash\.1:man1/&:' $(srcdir)/builtins.1 > $${TMPDIR:-/tmp}/builtins.1
++	-$(INSTALL_DATA) $${TMPDIR:-/tmp}/builtins.1 $(DESTDIR)$(man1dir)/bash_builtins${man1ext}
++	-$(RM) $${TMPDIR:-/tmp}/builtins.1
+ 	-if test -f bash.info; then d=.; else d=$(srcdir); fi; \
+ 	  $(INSTALL_DATA) $$d/bash.info $(DESTDIR)$(infodir)/bash.info
+ # run install-info if it is present to update the info directory
+diff -Naur a/execute_cmd.c b/execute_cmd.c
+--- a/execute_cmd.c	2014-01-31 19:54:52.000000000 +0400
++++ b/execute_cmd.c	2014-03-13 16:36:05.406200000 +0400
+@@ -5280,6 +5280,13 @@
+ 	  internal_error (_("%s: cannot execute binary file: %s"), command, strerror (i));
+ 	  return (EX_BINARY_FILE);
+ 	}
++#if __CYGWIN__
++      extern int sh_setlinebuf (FILE *);
++      /* Let stdio know that fd may have changed from text to binary.  */
++      freopen (NULL, "w", stdout);
++      /* Bash builtins (foolishly) rely on line-buffering. */
++      sh_setlinebuf (stdout);
++#endif /* __CYGWIN__ */
+     }
+ 
+   /* We have committed to attempting to execute the contents of this file
+diff -Naur a/findcmd.c b/findcmd.c
+--- a/findcmd.c	2012-10-15 15:45:04.000000000 +0400
++++ b/findcmd.c	2014-03-13 16:36:05.406200000 +0400
+@@ -48,6 +48,8 @@
+ extern int errno;
+ #endif
+ 
++#include <glob/strmatch.h>
++
+ extern int posixly_correct;
+ extern int last_command_exit_value;
+ 
+@@ -77,6 +79,38 @@
+    containing the file of interest. */
+ int dot_found_in_search = 0;
+ 
++static struct ignorevar execignore =
++{
++  "EXECIGNORE",
++  (struct ign *)0,
++  0,
++  (char *)0,
++  (sh_iv_item_func_t *)0,
++};
++
++void
++setup_exec_ignore (char *varname)
++{
++  setup_ignore_patterns (&execignore);
++}
++
++/* Return whether we should never consider file executable
++ * even if the system tells us it is. */
++static int
++is_on_exec_blacklist (char *name)
++{
++  struct ign *p;
++  int flags = FNM_EXTMATCH | FNM_CASEFOLD;
++
++  for (p = execignore.ignores; p && p->val; p++)
++    {
++      if (strmatch (p->val, (char *)name, flags) != FNM_NOMATCH)
++      return (1);
++    }
++
++  return (0);
++}
++
+ /* Return some flags based on information about this file.
+    The EXISTS bit is non-zero if the file is found.
+    The EXECABLE bit is non-zero the file is executble.
+@@ -104,7 +138,7 @@
+      file access mechanisms into account.  eaccess uses the effective
+      user and group IDs, not the real ones.  We could use sh_eaccess,
+      but we don't want any special treatment for /dev/fd. */
+-  if (eaccess (name, X_OK) == 0)
++  if (!is_on_exec_blacklist (name) && eaccess (name, X_OK) == 0)
+     r |= FS_EXECABLE;
+   if (eaccess (name, R_OK) == 0)
+     r |= FS_READABLE;
+diff -Naur a/findcmd.h b/findcmd.h
+--- a/findcmd.h	2012-01-15 03:56:25.000000000 +0400
++++ b/findcmd.h	2014-03-13 16:36:05.406200000 +0400
+@@ -31,5 +31,6 @@
+ extern char *find_path_file __P((const char *));
+ extern char *search_for_command __P((const char *, int));
+ extern char *user_command_matches __P((const char *, int, int));
++extern void setup_exec_ignore __P((char *));
+ 
+ #endif /* _FINDCMD_H_ */
+diff -Naur a/input.c b/input.c
+--- a/input.c	2014-02-07 18:13:08.000000000 +0400
++++ b/input.c	2014-03-13 16:36:05.406200000 +0400
+@@ -44,6 +44,10 @@
+ #include "quit.h"
+ #include "trap.h"
+ 
++#if __CYGWIN__
++int igncr;
++#endif /* __CYGWIN__ */
++
+ #if !defined (errno)
+ extern int errno;
+ #endif /* !errno */
+@@ -561,6 +565,19 @@
+ {
+   CHECK_TERMSIG;
+ 
++#if __CYGWIN__
++  /* shopt igncr means to discard carriage returns from input stream.
++     If cr is the only character in the buffer, then recurse to pick
++     up the next character; otherwise flatten the buffer.  */
++  if (igncr)
++    {
++      int ch;
++      while ((ch = bufstream_getc (buffers[bash_input.location.buffered_fd]))
++	     == '\r')
++	;
++      return ch;
++    }
++#endif /* __CYGWIN__ */
+ #if !defined (DJGPP)
+   return (bufstream_getc (buffers[bash_input.location.buffered_fd]));
+ #else
+diff -Naur a/lib/sh/pathcanon.c b/lib/sh/pathcanon.c
+--- a/lib/sh/pathcanon.c	2012-07-30 03:55:01.000000000 +0400
++++ b/lib/sh/pathcanon.c	2014-03-13 16:36:05.421800000 +0400
+@@ -194,6 +194,8 @@
+ 	    *q++ = DIRSEP;
+ 	  while (*p && (ISDIRSEP(*p) == 0))
+ 	    *q++ = *p++;
++	}
++    }
+ 	  /* Check here for a valid directory with _path_isdir. */
+ 	  if (flags & PATH_CHECKEXISTS)
+ 	    {
+@@ -211,8 +213,7 @@
+ 		}
+ 	      *q = c;
+ 	    }
+-	}
+-    }
++
+ 
+   /* Empty string is really ``.'' or `/', depending on what we started with. */
+   if (q == result)
+diff -Naur a/lib/sh/pathphys.c b/lib/sh/pathphys.c
+--- a/lib/sh/pathphys.c	2013-05-28 23:33:58.000000000 +0400
++++ b/lib/sh/pathphys.c	2014-03-13 16:36:05.421800000 +0400
+@@ -35,6 +35,7 @@
+ #include <stdio.h>
+ #include <chartypes.h>
+ #include <errno.h>
++#include <stdlib.h>
+ 
+ #include "shell.h"
+ 
+@@ -76,6 +77,10 @@
+      char *path;
+      int flags;
+ {
++#if __CYGWIN__
++  /* realpath does this right without all the hassle */
++  return realpath (path, NULL);
++#else
+   char tbuf[PATH_MAX+1], linkbuf[PATH_MAX+1];
+   char *result, *p, *q, *qsave, *qbase, *workpath;
+   int double_slash_path, linklen, nlink;
+@@ -249,6 +254,7 @@
+     }
+ 
+   return (result);
++#endif /* !__CYGWIN__ */
+ }
+ 
+ char *
+diff -Naur a/lib/sh/tmpfile.c b/lib/sh/tmpfile.c
+--- a/lib/sh/tmpfile.c	2013-12-19 02:50:13.000000000 +0400
++++ b/lib/sh/tmpfile.c	2014-03-13 16:36:05.421800000 +0400
+@@ -96,7 +96,7 @@
+   if (tdir && (file_iswdir (tdir) == 0 || strlen (tdir) > PATH_MAX))
+     tdir = 0;
+ 
+-  if (tdir == 0)
++  if (tdir == 0 || !file_iswdir (tdir))
+     tdir = get_sys_tmpdir ();
+ 
+ #if defined (HAVE_PATHCONF) && defined (_PC_NAME_MAX)
+@@ -118,14 +118,15 @@
+   struct stat sb;
+   int r, tdlen;
+ 
+-  filename = (char *)xmalloc (PATH_MAX + 1);
++  filename = NULL;
+   tdir = get_tmpdir (flags);
+   tdlen = strlen (tdir);
+ 
+   lroot = nameroot ? nameroot : DEFAULT_NAMEROOT;
+ 
+ #ifdef USE_MKTEMP
+-  sprintf (filename, "%s/%s.XXXXXX", tdir, lroot);
++  if (asprintf (&filename, "%s/%s.XXXXXX", tdir, lroot) < 0)
++    return NULL;
+   if (mktemp (filename) == 0)
+     {
+       free (filename);
+@@ -138,7 +139,9 @@
+ 		(unsigned long) time ((time_t *)0) ^
+ 		(unsigned long) dollar_dollar_pid ^
+ 		(unsigned long) ((flags & MT_USERANDOM) ? random () : ntmpfiles++);
+-      sprintf (filename, "%s/%s-%lu", tdir, lroot, filenum);
++      free (filename);
++      if (asprintf (&filename, "%s/%s-%lu", tdir, lroot, filenum) < 0)
++        return NULL;
+       if (tmpnamelen > 0 && tmpnamelen < 32)
+ 	filename[tdlen + 1 + tmpnamelen] = '\0';
+ #  ifdef HAVE_LSTAT
+@@ -163,14 +166,19 @@
+   char *filename, *tdir, *lroot;
+   int fd, tdlen;
+ 
+-  filename = (char *)xmalloc (PATH_MAX + 1);
++  filename = NULL;
+   tdir = get_tmpdir (flags);
+   tdlen = strlen (tdir);
+ 
+   lroot = nameroot ? nameroot : DEFAULT_NAMEROOT;
+ 
+ #ifdef USE_MKSTEMP
+-  sprintf (filename, "%s/%s.XXXXXX", tdir, lroot);
++  if (asprintf (&filename, "%s/%s.XXXXXX", tdir, lroot) < 0)
++    {
++      if (namep)
++        *namep = NULL;
++      return -1;
++    }
+   fd = mkstemp (filename);
+   if (fd < 0 || namep == 0)
+     {
+@@ -187,7 +195,13 @@
+ 		(unsigned long) time ((time_t *)0) ^
+ 		(unsigned long) dollar_dollar_pid ^
+ 		(unsigned long) ((flags & MT_USERANDOM) ? random () : ntmpfiles++);
+-      sprintf (filename, "%s/%s-%lu", tdir, lroot, filenum);
++      free (filename);
++      if (asprintf (&filename, "%s/%s-%lu", tdir, lroot, filenum) < 0)
++        {
++          if (namep)
++            *namep = NULL;
++          return -1;
++        }
+       if (tmpnamelen > 0 && tmpnamelen < 32)
+ 	filename[tdlen + 1 + tmpnamelen] = '\0';
+       fd = open (filename, BASEOPENFLAGS | ((flags & MT_READWRITE) ? O_RDWR : O_WRONLY), 0600);
+diff -Naur a/parse.y b/parse.y
+--- a/parse.y	2014-02-11 18:42:10.000000000 +0400
++++ b/parse.y	2014-03-13 16:36:05.437400000 +0400
+@@ -1526,14 +1526,20 @@
+   string = bash_input.location.string;
+ 
+   /* If the string doesn't exist, or is empty, EOF found. */
+-  if (string && *string)
++  while (string && *string)
+     {
+       c = *string++;
+       bash_input.location.string = string;
++#if __CYGWIN__
++      {
++        extern int igncr;
++        if (igncr && c == '\r')
++          continue;
++      }
++#endif /* __CYGWIN__ */
+       return (c);
+     }
+-  else
+-    return (EOF);
++  return (EOF);
+ }
+ 
+ static int
+diff -Naur a/pathexp.h b/pathexp.h
+--- a/pathexp.h	2009-01-04 22:32:40.000000000 +0300
++++ b/pathexp.h	2014-03-13 16:36:05.437400000 +0400
+@@ -86,7 +86,7 @@
+ typedef int sh_iv_item_func_t __P((struct ign *));
+ 
+ struct ignorevar {
+-  char *varname;	/* FIGNORE or GLOBIGNORE */
++  char *varname;	/* FIGNORE or GLOBIGNORE or EXECIGNORE */
+   struct ign *ignores;	/* Store the ignore strings here */
+   int num_ignores;	/* How many are there? */
+   char *last_ignoreval;	/* Last value of variable - cached for speed */
+diff -Naur a/shell.c b/shell.c
+--- a/shell.c	2014-01-14 17:04:32.000000000 +0400
++++ b/shell.c	2014-03-13 16:36:05.437400000 +0400
+@@ -336,7 +336,10 @@
+   struct stat sb;
+ 
+   if (stat ("/tmp", &sb) < 0)
+-    internal_warning (_("could not find /tmp, please create!"));
++    {
++      if (mkdir ("/tmp", S_IRWXU | S_IRWXG | S_IRWXO | S_ISVTX) != 0)
++        internal_warning (_("could not find /tmp, please create!"));
++    }
+   else
+     {
+       if (S_ISDIR (sb.st_mode) == 0)
+diff -Naur a/subst.c b/subst.c
+--- a/subst.c	2014-01-24 01:26:37.000000000 +0400
++++ b/subst.c	2014-03-13 16:36:05.453000000 +0400
+@@ -5260,7 +5260,13 @@
+ #endif
+ 	  continue;
+ 	}
+-
++#if __CYGWIN__
++      {
++	extern int igncr;
++	if (igncr && c == '\r')
++	  continue;
++      }
++#endif /* __CYGWIN__ */
+       /* Add the character to ISTRING, possibly after resizing it. */
+       RESIZE_MALLOCED_BUFFER (istring, istring_index, 2, istring_size, DEFAULT_ARRAY_SIZE);
+ 
+@@ -5376,6 +5382,27 @@
+       sys_error (_("cannot make pipe for command substitution"));
+       goto error_exit;
+     }
++#if __CYGWIN__
++  /* Passing a pipe through std fds can cause hangs when talking to a
++     non-cygwin child.  Move it.  */
++  if (fildes[0] < 3)
++    {
++      int fd = fcntl (fildes[0], F_DUPFD, 3);
++      close (fildes[0]);
++      fildes[0] = fd;
++    }
++  if (fildes[1] < 3)
++    {
++      int fd = fcntl (fildes[1], F_DUPFD, 3);
++      close (fildes[1]);
++      fildes[1] = fd;
++    }
++  if (fildes[0] < 0 || fildes[1] < 0)
++    {
++      sys_error (_("cannot make pipe for command substitution"));
++      goto error_exit;
++    }
++#endif /* __CYGWIN__ */
+ 
+   old_pid = last_made_pid;
+ #if defined (JOB_CONTROL)
+diff -Naur a/variables.c b/variables.c
+--- a/variables.c	2014-02-14 20:55:12.000000000 +0400
++++ b/variables.c	2014-03-13 16:36:05.453000000 +0400
+@@ -4622,6 +4622,8 @@
+ 
+   { "FUNCNEST", sv_funcnest },
+ 
++  { "EXECIGNORE", sv_execignore },
++
+   { "GLOBIGNORE", sv_globignore },
+ 
+ #if defined (HISTORY)
+@@ -4818,6 +4820,13 @@
+     setup_glob_ignore (name);
+ }
+ 
++/* What to do when EXECIGNORE changes. */
++void
++sv_execignore (char *name)
++{
++  setup_exec_ignore (name);
++}
++
+ #if defined (READLINE)
+ void
+ sv_comp_wordbreaks (name)
+diff -Naur a/variables.h b/variables.h
+--- a/variables.h	2014-01-09 00:33:29.000000000 +0400
++++ b/variables.h	2014-03-13 16:36:05.468600000 +0400
+@@ -373,6 +373,7 @@
+ extern void sv_mail __P((char *));
+ extern void sv_funcnest __P((char *));
+ extern void sv_globignore __P((char *));
++extern void sv_execignore __P((char *));
+ extern void sv_ignoreeof __P((char *));
+ extern void sv_strict_posix __P((char *));
+ extern void sv_optind __P((char *));
