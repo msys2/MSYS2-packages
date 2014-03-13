@@ -2,8 +2,8 @@
 
 pkgbase=readline
 pkgname=('libreadline' 'libreadline-devel')
-_basever=6.2
-_patchlevel=005 #prepare for some patches
+_basever=6.3
+_patchlevel=000 #prepare for some patches
 pkgver=$_basever.$_patchlevel
 pkgrel=1
 pkgdesc="GNU readline library"
@@ -17,25 +17,21 @@ makedepends=('ncurses-devel')
 options=('!emptydirs')
 install=readline.install
 source=(http://ftp.gnu.org/gnu/readline/readline-$_basever.tar.gz{,.sig}
-        readline-6.2-msys2.patch)
+		readline-6.3-cygwin.patch
+        readline-6.3-msys2.patch
+		readline-6.3-dispatch-multikey.patch
+		readline-6.3-vi-last.patch)
 if [ $_patchlevel -gt 00 ]; then
     for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
         source=(${source[@]} http://ftp.gnu.org/gnu/readline/readline-$_basever-patches/readline${_basever//./}-$(printf "%03d" $p){,.sig})
     done
 fi
-md5sums=('67948acb2ca081f23359d0256e9a271c'
+md5sums=('33c8fb279e981274f485fd91da77e94a'
          'SKIP'
-         '0e3392c9789a9cd8284218d515fa8f03'
-         '83287d52a482f790dfb30ec0a8746669'
-         'SKIP'
-         '0665020ea118e8434bd145fb71f452cc'
-         'SKIP'
-         'c9d5d79718856e711667dede87cb7622'
-         'SKIP'
-         'c08e787f50579ce301075c523fa660a4'
-         'SKIP'
-         'd20eb0134cc3ff8956c218f0df8e1be1'
-         'SKIP')
+         '1bc758a31a4bdcccbfbf7bcf334edc4a'
+         '303e24bd011e0f812a268b4d84e19bd6'
+         'ee4e0df0dbf7e80783b7aa198c67fb45'
+         'fcfe0a50c69f56f66ad04127a927862e')
 
 prepare() {
 	cd ${srcdir}/${pkgbase}-$_basever
@@ -43,7 +39,14 @@ prepare() {
 		msg "applying patch readline${_basever//./}-$(printf "%03d" $p)"
 		patch -p0 -i $srcdir/readline${_basever//./}-$(printf "%03d" $p)
 	done
-	patch -p1 -i $srcdir/readline-6.2-msys2.patch
+	patch -p1 -i $srcdir/readline-6.3-cygwin.patch
+	patch -p1 -i $srcdir/readline-6.3-msys2.patch
+
+	# patch from upstream mailing list to fix vi mode
+	patch -p2 -i $srcdir/readline-6.3-vi-last.patch
+
+	# patch from upstream mailing list to fix the crash after pressing Delete twice
+	patch -p2 -i $srcdir/readline-6.3-dispatch-multikey.patch
 }
 
 build() {
@@ -58,7 +61,7 @@ build() {
 		--host=${CHOST} \
 		--with-curses \
 		bash_cv_termcap_lib=libncurses
-	make
+	make VERBOSE=1
 
 	make DESTDIR=$srcdir/dest install
 }
