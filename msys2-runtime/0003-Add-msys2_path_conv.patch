@@ -1,0 +1,885 @@
+From 2a0f14f7449bc4ebbe3f8c0344603ddedbd02231 Mon Sep 17 00:00:00 2001
+From: Ray Donnelly <mingw.android@gmail.com>
+Date: Fri, 14 Mar 2014 00:42:28 +0000
+Subject: [PATCH] Add msys2_path_conv
+
+---
+ winsup/cygwin/Makefile.in        |   4 +-
+ winsup/cygwin/msys2_path_conv.cc | 289 ++++++++++++++++++++++
+ winsup/cygwin/msys2_path_conv.h  |   9 +
+ winsup/cygwin/path.cc            | 500 +++------------------------------------
+ 4 files changed, 338 insertions(+), 464 deletions(-)
+ create mode 100644 winsup/cygwin/msys2_path_conv.cc
+ create mode 100644 winsup/cygwin/msys2_path_conv.h
+
+diff --git a/winsup/cygwin/Makefile.in b/winsup/cygwin/Makefile.in
+index 5567e8e..6d22635 100644
+--- a/winsup/cygwin/Makefile.in
++++ b/winsup/cygwin/Makefile.in
+@@ -169,8 +169,8 @@ DLL_OFILES:=advapi32.o arc4random.o assert.o autoload.o base64.o bsdlib.o ctype.
+ 	glob_pattern_p.o globals.o grp.o heap.o hookapi.o inet_addr.o \
+ 	inet_network.o init.o ioctl.o ipc.o kernel32.o ldap.o libstdcxx_wrapper.o \
+ 	localtime.o lsearch.o malloc_wrapper.o minires-os-if.o minires.o \
+-	miscfuncs.o mktemp.o mmap.o msg.o mount.o net.o netdb.o nfs.o nftw.o \
+-	nlsfuncs.o ntea.o passwd.o path.o pinfo.o pipe.o poll.o posix_ipc.o \
++	miscfuncs.o mktemp.o mmap.o msg.o msys2_path_conv.o mount.o net.o netdb.o nfs.o \
++	nftw.o nlsfuncs.o ntea.o passwd.o path.o pinfo.o pipe.o poll.o posix_ipc.o \
+ 	pseudo-reloc.o pthread.o random.o regcomp.o regerror.o regexec.o regfree.o \
+ 	registry.o resource.o rexec.o rcmd.o scandir.o sched.o sec_acl.o \
+ 	sec_auth.o sec_helper.o security.o select.o sem.o setlsapwd.o shared.o \
+diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
+new file mode 100644
+index 0000000..4baef1f
+--- /dev/null
++++ b/winsup/cygwin/msys2_path_conv.cc
+@@ -0,0 +1,289 @@
++#include "msys2_path_conv.h"
++
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include <ctype.h>
++
++typedef enum PATH_TYPE_E {
++    NONE = 0,
++    SIMPLE_WINDOWS_PATH,
++    ESCAPE_WINDOWS_PATH,
++    WINDOWS_PATH_LIST,
++    UNC,
++    ESCAPED_PATH,
++    ROOTED_PATH,
++    POSIX_PATH_LIST,
++    URL,
++} path_type;
++
++
++path_type find_path_start_and_type(const char** src, int recurse, const char* end);
++void copy_to_dst(const char* from, const char* to, char** dst, const char* dstend);
++void convert_path(const char* from, const char* to, path_type type, char** dst, const char* dstend, const char* root);
++
++void swp_convert(const char* from, const char* to, char** dst, const char* dstend);
++void ewp_convert(const char* from, const char* to, char** dst, const char* dstend);
++void wpl_convert(const char* from, const char* to, char** dst, const char* dstend);
++void unc_convert(const char* from, const char* to, char** dst, const char* dstend);
++void ep_convert(const char* from, const char* to, char** dst, const char* dstend);
++void rp_convert(const char* from, const char* to, char** dst, const char* dstend, const char* root);
++void url_convert(const char* from, const char* to, char** dst, const char* dstend);
++void ppl_convert(const char* from, const char* to, char** dst, const char* dstend, const char* root);
++
++const char* convert(char *dst, size_t dstlen, const char *src, const char *root) {
++    path_type type;
++    const char* srcit = src;
++    const char* srcbeg = src;
++    char* dstit = dst;
++    char* dstend = dst + dstlen;
++    type = find_path_start_and_type(&srcit, false, NULL);
++
++    if (type != NONE) {
++        copy_to_dst(srcbeg, srcit, &dstit, dstend);
++        convert_path(srcit, NULL, type, &dstit, dstend, root);
++    }
++
++    if (dstit != dstend) {
++        *dstit = '\0';
++    }
++
++    return dst;
++}
++
++void copy_to_dst(const char* from, const char* to, char** dst, const char* dstend) {
++    for (; (*from != '\0') && (from != to) && (*dst != dstend); ++from, ++(*dst)) {
++        **dst = *from;
++    }
++}
++
++int is_spec_start_symbl(char ch) {
++    return (ch == '-') || (ch == '"') || (ch == '\'') || (ch == '@');
++}
++
++const char** move(const char** p, int count) {
++    *p += count;
++    return p;
++}
++
++path_type find_path_start_and_type(const char** src, int recurse, const char* end) {
++    const char* it = *src;
++
++    if (*it == '\0' || it == end) return NONE;
++
++    if (isalpha(*it) && *(it + 1) == ':') {
++        if ((recurse && *(it + 2) == '/') ||
++            (*(it + 2) == '\\')) {
++            return SIMPLE_WINDOWS_PATH;
++        }
++    }
++
++    if (*it == '/') {
++        it += 1;
++
++        if (isalpha(*it) && *(it + 1) == ':') {
++            return ESCAPE_WINDOWS_PATH;
++        }
++
++        if (*it == '.' && *(it + 1) == '.') {
++            return SIMPLE_WINDOWS_PATH;
++        }
++
++        int double_slashed = 0;
++        if (*it == '/') {
++            double_slashed = 1;
++            it += 1;
++        }
++
++        if (double_slashed && *it == ':') {
++            return URL;
++        }
++
++        path_type result = NONE;
++
++        for (; *it != '\0' && it != end; ++it) {
++            switch(*it) {
++                case '/': result = (double_slashed) ? UNC : ROOTED_PATH; break;
++                case ';': return WINDOWS_PATH_LIST;
++            }
++        }
++
++        if (result != NONE) {
++            return result;
++        }
++
++        return (double_slashed) ? ESCAPED_PATH : ROOTED_PATH;
++    }
++
++    if (*it == '@') {
++        return find_path_start_and_type(move(src, 1), true, end);
++    }
++
++    if (*it == '"' || *it == '\'') {
++        return find_path_start_and_type(move(src, 1), true, end);
++    }
++
++    if (*it == '-' && *(it + 1) == '/') {
++        return find_path_start_and_type(move(src, 1), true, end);
++    }
++
++    int starts_with_minus = (*it == '-');
++
++    int not_starte_with_spec = recurse == 0
++                                ? !is_spec_start_symbl(*it)
++                                : !is_spec_start_symbl(*(it - 1));
++
++    for (const char* it2 = it; *it2 != '\0' && it2 != end; ++it2) {
++        char ch = *it2;
++        if (ch == '=') {
++            *src = it2 + 1;
++            return find_path_start_and_type(src, true, end);
++        }
++
++        if (ch == ',' && starts_with_minus) {
++            *src = it2 + 1;
++            return find_path_start_and_type(src, true, end);
++        }
++
++        if (ch == ':' && not_starte_with_spec) {
++            it2 += 1;
++            ch = *it2;
++            if (ch == '/' || ch == ':' || ch == '.') {
++                return POSIX_PATH_LIST;
++            } else {
++                return SIMPLE_WINDOWS_PATH;
++            }
++        }
++    }
++
++    if (*it == '-' && *(it + 1) == 'I') {
++        return find_path_start_and_type(move(src, 2), true, end);
++    }
++
++    return SIMPLE_WINDOWS_PATH;
++}
++
++void convert_path(const char* from, const char* to, path_type type, char** dst, const char* dstend, const char* root) {
++    switch(type) {
++        case SIMPLE_WINDOWS_PATH: swp_convert(from, to, dst, dstend); break;
++        case ESCAPE_WINDOWS_PATH: ewp_convert(from, to, dst, dstend); break;
++        case WINDOWS_PATH_LIST: wpl_convert(from, to, dst, dstend); break;
++        case UNC: unc_convert(from, to, dst, dstend); break;
++        case ESCAPED_PATH: ep_convert(from, to, dst, dstend); break;
++        case ROOTED_PATH: rp_convert(from, to, dst, dstend, root); break;
++        case URL: url_convert(from, to, dst, dstend); break;
++        case POSIX_PATH_LIST: ppl_convert(from, to, dst, dstend, root); break;
++        case NONE: // prevent warnings;
++        default:
++                return;
++    }
++}
++
++void swp_convert(const char* from, const char* to, char** dst, const char* dstend) {
++    copy_to_dst(from, to, dst, dstend);
++}
++
++void ewp_convert(const char* from, const char* to, char** dst, const char* dstend) {
++    unc_convert(from + 1, to, dst, dstend);
++}
++
++void wpl_convert(const char* from, const char* to, char** dst, const char* dstend) {
++    swp_convert(from, to, dst, dstend);
++}
++
++void unc_convert(const char* from, const char* to, char** dst, const char* dstend) {
++    const char* it = from;
++    for (; (*it != '\0' && it != to) && (*dst != dstend); ++it, ++(*dst)) {
++        if (*it == '\\') {
++            **dst = '/';
++        } else {
++            **dst = *it;
++        }
++    }
++}
++
++void ep_convert(const char* from, const char* to, char** dst, const char* dstend) {
++    ewp_convert(from, to, dst, dstend);
++}
++
++void rp_convert(const char* from, const char* to, char** dst, const char* dstend, const char* root) {
++    copy_to_dst(root, NULL, dst, dstend);
++
++    const char* it = from;
++    if (*(it + 1) != '\0' && *(it + 1) != '\'' && *(it + 1) != '"') {
++        for (; (*it != '\0' && it != to) && (*dst != dstend); ++it, ++(*dst)) {
++            if (*it == '\\') {
++                **dst = '/';
++            } else {
++                **dst = *it;
++            }
++        }
++    } else {
++        it += 1;
++    }
++
++    if ((*dst != dstend) && (*it != '\0' && it != to)) {
++        char ch = *it;
++        if (ch == '\'' || ch == '"') {
++            **dst = ch;
++            *dst += 1;
++            it += 1;
++        }
++    }
++}
++
++void url_convert(const char* from, const char* to, char** dst, const char* dstend) {
++    unc_convert(from, to, dst, dstend);
++}
++
++void subp_convert(const char* from, const char* end, int is_url, char** dst, const char* dstend, const char* root) {
++    const char* begin = from;
++    path_type type = find_path_start_and_type(&from, 0, end);
++    copy_to_dst(begin, from, dst, dstend);
++
++    if (type == NONE) {
++        return;
++    }
++
++    char* start = *dst;
++    convert_path(from, end, type, dst, dstend, root);
++
++    if (!is_url) {
++        for (; start != *dst; ++start) {
++            if (*start == '/') {
++                *start = '\\';
++            }
++        }
++    }
++}
++
++void ppl_convert(const char* from, const char* to, char** dst, const char* dstend, const char* root) {
++    const char* it = from;
++    const char* beg = it;
++    int prev_was_simc = 0;
++    int is_url = 0;
++    for (; (*it != '\0') && (*dst != dstend); ++it) {
++        if (*it == ':') {
++            if (prev_was_simc) {
++                continue;
++            }
++            if (from + 2 < it && *(it - 2) == '/' && *(it - 1) == '/') {
++                is_url = 1;
++                continue;
++            }
++            prev_was_simc = 1;
++            subp_convert(beg, it, is_url, dst, dstend, root);
++            is_url = 0;
++
++            **dst = ';';
++            *dst += 1;
++        }
++
++        if (*it != ':' && prev_was_simc) {
++            prev_was_simc = 0;
++            beg = it;
++        }
++    }
++
++    subp_convert(beg, it, is_url, dst, dstend, root);
++}
+diff --git a/winsup/cygwin/msys2_path_conv.h b/winsup/cygwin/msys2_path_conv.h
+new file mode 100644
+index 0000000..a5b3417
+--- /dev/null
++++ b/winsup/cygwin/msys2_path_conv.h
+@@ -0,0 +1,9 @@
++#ifndef PATH_CONV_H_DB4IQBH3
++#define PATH_CONV_H_DB4IQBH3
++
++#include <stdlib.h>
++
++const char* convert(char *dst, size_t dstlen, const char *src, const char *root);
++
++#endif /* end of include guard: PATH_CONV_H_DB4IQBH3 */
++
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index f32d4ca..2de86e7 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -65,6 +65,7 @@
+ #include "cygtls.h"
+ #include "tls_pbuf.h"
+ #include "environ.h"
++#include "msys2_path_conv.h"
+ #include <assert.h>
+ #include <ntdll.h>
+ #include <wchar.h>
+@@ -3344,84 +3345,23 @@ fchdir (int fd)
+   return res;
+ }
+ 
+-static bool
+-isabswinpath (const char * path)
+-{
+-  int plen = strlen (path);
+-  bool p0alpha = isalpha (path[0]) != 0;
+-  bool p1colon = (plen > 1 && path[1] == ':');
+-  bool rval = 
+-         (   ((plen == 2) && p0alpha && p1colon)
+-          || (  (plen > 2) 
+-	      && p0alpha 
+-	      && p1colon 
+-	      && (strchr (&path[2], ':') == (char *)NULL)
+-	     )
+-	  || (   plen > 3 
+-	      && path[0] == '\\' 
+-	      && path[1] == '\\' 
+-	      && path[3] == '\\'
+-	     )
+-	 );
+-    return rval;
+-}
+-
+-static char *
+-ScrubRetpath (char * const retpath)
+-{ 
+-  char * sspath = (char *)retpath;
+-  //
+-  // Check for null path because Win32 doesn't like them.
+-  // I.E.:  Path lists of c:/foo;;c:/bar need changed to 
+-  // c:/foo;c:/bar.
+-  //
+-  // This need be executed only if we actually converted the path.
+-  //
+-  while (*sspath)
+-    {
+-      if (*sspath == ';' && sspath[1] == ';')
+-	  for (char *i = sspath; *i; i++)
+-	      *i = *(i + 1);
+-      else
+-	sspath++;
+-    }
+-  if (*(sspath - 1) == ';')
+-    *(sspath - 1) = '\0';
+-
+-  //
+-  // If we modified the path then convert all / to \ if we have a path list
+-  // else convert all \ to /.
+-  // 
+-  if ((strchr (retpath, ';')))
+-  {
+-    backslashify (retpath, retpath, 0);
+-  } else
+-  {
+-    slashify (retpath, retpath, 0);
+-  }
+-  debug_printf("returning: %s", retpath);
+-  return retpath;
+-}
+-
+ //
+-// The returned pointer should be freed with free unless,
+-// as it turns out, it is equal to the input pointer.
++// Important: If returned pointer == arg, then this function
++//            did not malloc that pointer; otherwise free it.
+ //
+ extern "C" char *
+ arg_heuristic_with_exclusions (char const * const arg, char const * exclusions, size_t exclusions_count)
+ {
++  char *arg_result;
+ 
+-  int arglen = (arg ? strlen (arg): 0);
+-  
+-  if (arglen == 0)
++  // Must return something ..
++  if (!arg)
+   {
+-    char *retpath = (char *)malloc (sizeof (char));
+-    memset (retpath, 0, sizeof (char));
+-    return retpath;
++    arg_result = (char *)malloc (sizeof (char));
++    arg_result[0] = '\0';
++    return arg_result;
+   }
+ 
+-  debug_printf("Input value: (%s)", arg);
+-
+   for (size_t excl = 0; excl < exclusions_count; ++excl)
+     {
+       if ( strstr (arg, exclusions) == arg )
+@@ -3429,408 +3369,44 @@ arg_heuristic_with_exclusions (char const * const arg, char const * exclusions,
+       exclusions += strlen (exclusions) + 1;
+     }
+ 
+-  //
+-  // copy of the path string that we can overwrite
+-  //
+-  char *spath = (char *)alloca (arglen + 1);
+-  memcpy (spath, arg, arglen + 1);
+-  
+-  char * sspath;
+-  
+-  //
+-  // retpath contains the converted path string to be returned
+-  //
+-  char *retpath = (char *)malloc(((MAX_PATH - arglen) > 0) ? 
+-      MAX_PATH : arglen + MAX_PATH);
+-  memset (retpath, 0, MAX_PATH);
+-  int retpath_len = 0;
+-  int retpath_buflen = MAX_PATH;
+-    
+-#define retpathcat(retstr) \
+-  retpath_len += strlen(retstr); \
+-  if (retpath_buflen <= retpath_len) \
+-    { \
+-      retpath_buflen = ((retpath_buflen * 2 <= retpath_len) ? \
+-	  retpath_len + 1 : retpath_buflen * 2); \
+-      retpath = (char *)realloc (retpath, retpath_buflen); \
+-    } \
+-  strcat (retpath, retstr);
+-
+-#define retpathcpy(retstr) \
+-  retpath_len = strlen (retstr); \
+-  *retpath = '\0'; \
+-  if (retpath_buflen <= retpath_len ) \
+-    { \
+-      retpath_buflen = ((retpath_buflen * 2 <= retpath_len) ? \
+-	  retpath_len + 1 : retpath_buflen * 2); \
+-      retpath = (char *)realloc (retpath, retpath_buflen); \
+-    } \
+-  strcpy (retpath, retstr);
+-
+-  //
+-  // Just return win32 paths and path lists.
+-  //
+-  if (isabswinpath (arg) 
+-      || (strchr (arg, ';') > 0)
+-      )
+-    {
+-      debug_printf("returning Win32 absolute path: %s", arg);
++  // Find out where root is.
++  path_conv p ("/", 0);
++  if (p.error)
++    {
++      set_errno(p.error);
+       return ((char *)arg);
+     }
+-  //
+-  // Multiple forward slashes are treated special,
+-  // Remove one and return for the form of //foo or ///bar
+-  // but just return for the form of //server/share.
+-  //
+-  else if (arg[0] == '/' && arg[1] == '/')
+-    {
+-      int tidx = 2;
+-      while (spath[tidx] && spath[tidx] == '/')
+-	  tidx++;
+-      if (strchr (&spath[tidx], '/'))
+-	{
+-	  retpathcpy (spath);
+-	}
+-      else
+-	{
+-	  retpathcpy (&spath[1]);
+-	}
+-      return ScrubRetpath (retpath);
++  size_t stack_len = strlen (arg)+1024;
++  char * stack_path = (char *)alloca (stack_len);
++  if (!stack_len)
++    {
++      debug_printf ("out of stack space?");
++      return (char *)arg;
+     }
+-  //
+-  // special case confusion elimination
+-  // Translate a path that looks similar to /c: to c:/.
+-  //
+-  else if (arg[0] == '/' && isabswinpath (arg + 1))
++  convert (stack_path, stack_len - 1, arg, p.get_win32());
++  debug_printf ("convert()'ed: %s\n.....->: %s", arg, stack_path);
++  // Don't allocate memory if no conversion happened.
++  if (!strcmp (arg, stack_path))
+     {
+-      retpathcpy (&arg[1]);
+-      return ScrubRetpath (retpath);
++      return ((char *)arg);
+     }
+-  //
+-  // Check for variable set.
+-  //
+-  else if ((sspath = strchr(spath, '=')) && isalpha (spath[0]))
++  // Use nul instead of /dev/null
++  if (!strcmp (arg, "/dev/null"))
+     {
+-      if (isabswinpath (sspath + 1)) {
+-	debug_printf("returning: %s", arg);
+-	return (char *)arg;
+-      }
+-      char *swin32_path = arg_heuristic(sspath + 1);
+-      if (swin32_path == (sspath + 1)) {
+-	debug_printf("returning: %s", arg);
+-	return (char *)arg;
+-      }
+-      *sspath = '\0';
+-      retpathcpy (spath);
+-      retpathcat ("=");
+-      retpathcat (swin32_path);
+-      free (swin32_path);
+-      return ScrubRetpath (retpath);
+-    }
+-  //
+-  // Check for paths after commas, if string begins with a '-' character.
+-  //
+-  else if ((sspath = strchr(spath, ',')) && spath[0] == '-')
+-    {
+-      if (isabswinpath (sspath + 1)) {
+-	debug_printf("returning: %s", arg);
+-	return (char *)arg;
+-      }
+-      char *swin32_path = arg_heuristic(sspath + 1);
+-      if (swin32_path == (sspath + 1)) {
+-	debug_printf("returning: %s", arg);
+-	return (char *)arg;
+-      }
+-      *sspath = '\0';
+-      retpathcpy (spath);
+-      retpathcat (",");
+-      retpathcat (swin32_path);
+-      free (swin32_path);
+-      return ScrubRetpath (retpath);
+-    }
+-  //
+-  // Check for POSIX path lists.
+-  // But we have to allow processing of quoted strings and switches first
+-  // which uses recursion so this code will be seen again.
+-  //
+-  else 
+-    {
+-      sspath = strchr (spath, ':');
+-      //
+-      // Prevent http://some.string/ from being modified.
+-      // 
+-      if ((sspath > 0 && strlen (sspath) > 2)
+-	  && (sspath[1] == '/')
+-	  && (sspath[2] == '/')
+-	  )
+-	{
+-	  debug_printf("returning: %s", arg);
+-	  return ((char *)arg);
+-	}
+-      else
+-      if ((sspath > 0)
+-	   && (strchr (spath, '/') > 0)
+-	   // 
+-	   // Prevent strings beginning with -, ", ', or @ from being processed,
+-	   // remember that this is a recursive routine.
+-	   // 
+-	   && (strchr ("-\"\'@", spath[0]) == 0)
+-	   // 
+-	   // Prevent ``foo:echo /bar/baz'' from being considered a path list.
+-	   // 
+-	   && (strlen (sspath) > 1 && strchr (":./", sspath[1]) > 0)
+-	   )
+-    {
+-      //
+-      // Yes, convert to Win32 path list.
+-      //
+-      while (sspath)
+-	{
+-	  *sspath = '\0';
+-	  char *swin32_path = arg_heuristic (spath);
+-	  //
+-	  // Just ignore sret; swin32_path has the value we need.
+-	  //
+-	  retpathcat (swin32_path);
+-	  if (swin32_path != spath)
+-	    free (swin32_path);
+-	  spath = sspath + 1;
+-	  sspath = strchr (spath, ':');
+-	  retpathcat (";");
+-	  //
+-	  // Handle the last path in the list.
+-	  //
+-	  if (!sspath)
+-	    {
+-	      char *swin32_path = arg_heuristic (spath);
+-	      retpathcat (swin32_path);
+-	      if (swin32_path != spath)
+-		free (swin32_path);
+-	    }
+-	}
+-      return ScrubRetpath (retpath);
++      arg_result = (char *)malloc (strlen ("nul")+1);
++      strcpy (arg_result, "nul");
++      return arg_result;
+     }
+-  else
++  arg_result = (char *)malloc (strlen (stack_path)+1);
++  strcpy (arg_result, stack_path);
++  // Windows doesn't like empty entries in PATH env. variables (;;)
++  char* semisemi = strstr(arg_result, ";;");
++  while (semisemi)
+     {
+-      switch (spath[0])
+-	{
+-	case '/':
+-	  //
+-	  // Just a normal POSIX path.
+-	  //
+-	  {
+-	    //
+-	    // Convert only up to a ".." path component, and
+-	    // keep all what follows as is.
+-	    //
+-	    sspath = strstr (spath, "/..");
+-	    if (sspath)
+-	      {
+-		*sspath = '\0';
+-		char *swin32_path = arg_heuristic (spath);
+-		if (swin32_path == spath)
+-		  {
+-		    debug_printf("returning: %s", arg);
+-		    return ((char *)arg);
+-		  }
+-		retpathcpy (swin32_path);
+-		retpathcat ("/");
+-		retpathcat (sspath+1);
+-		free (swin32_path);
+-		return ScrubRetpath (retpath);
+-	      }
+-		if (strcmp(spath, "/dev/null") == 0)
+-	      {
+-		retpathcpy("nul");
+-		return ScrubRetpath (retpath);
+-	      }
+-	    path_conv p (spath, 0);
+-	    if (p.error)
+-	      {
+-		set_errno(p.error);
+-		debug_printf("returning: %s", arg);
+-		return ((char *)arg);
+-	      }
+-	    retpathcpy (p.get_win32 ());
+-	    return ScrubRetpath (retpath);
+-	  }
+-	case '-':
+-	  //
+-	  // here we check for POSIX paths as attributes to a POSIX switch.
+-	  //
+-	  sspath = strchr (spath, '=');
+-	  if (sspath)
+-	    {
+-	      //
+-	      // just use recursion if we find a set variable token.
+-	      //
+-	      *sspath = '\0';
+-	      if (isabswinpath (sspath + 1)) {
+-		debug_printf("returning: %s", arg);
+-		return (char *)arg;
+-	      }
+-	      char *swin32_path = arg_heuristic(sspath + 1);
+-	      if (swin32_path == sspath + 1)
+-		{
+-		  debug_printf("returning: %s", arg);
+-		  return ((char *)arg);
+-		}
+-	      retpathcpy (spath);
+-	      retpathcat ("=");
+-	      retpathcat (swin32_path);
+-	      free (swin32_path);
+-	      return ScrubRetpath (retpath);
+-	    }
+-	  else
+-	    {
+-	      //
+-	      // Check for single letter option with a
+-	      // path argument attached, eg -I/include */
+-	      //
+-	      if (spath[1] && spath[2] == '/')
+-		{
+-		  debug_printf("spath = %s", spath);
+-		  sspath = spath + 2;
+-		  char *swin32_path = arg_heuristic (sspath);
+-		  if (swin32_path == sspath)
+-		    {
+-		      debug_printf("returning: %s", arg);
+-		      return ((char *)arg);
+-		    }
+-		  sspath = (char *)spath;
+-		  sspath++;
+-		  sspath++;
+-		  *sspath = '\0';
+-		  retpathcpy (spath);
+-		  *sspath = '/';
+-		  retpathcat (swin32_path);
+-		  free (swin32_path);
+-		  return ScrubRetpath (retpath);
+-		}
+-	      else
+-		{
+-		  debug_printf("returning: %s", arg);
+-		  return ((char *)arg);
+-		}
+-	    }
+-	  break;
+-	case '@':
+-	  //
+-	  // here we check for POSIX paths as attributes to a response
+-	  // file argument (@file). This is specifically to support
+-	  // MinGW binutils and gcc.
+-	  //
+-	  sspath = spath + 1;
+-	  if (isabswinpath (sspath))
+-	    {
+-	      debug_printf("returning: %s", arg);
+-	      return (char *)arg;
+-	    }
+-	  if (spath[1] == '/')
+-	    {
+-	      debug_printf("spath = %s", spath);
+-	      char *swin32_path = arg_heuristic (sspath);
+-	      if (swin32_path == sspath)
+-		{
+-		  debug_printf("returning: %s", arg);
+-		  return ((char *)arg);
+-		}
+-	      sspath = (char *)spath;
+-	      sspath++;
+-	      *sspath = '\0';
+-	      retpathcpy (spath);
+-	      *sspath = '/';
+-	      retpathcat (swin32_path);
+-	      free (swin32_path);
+-	      return ScrubRetpath (retpath);
+-	    }
+-	  else
+-	    {
+-	      debug_printf("returning: %s", arg);
+-	      return ((char *)arg);
+-	    }
+-	  break;
+-	case '"':
+-	  //
+-	  // Handle a double quote case.
+-	  //
+-	  debug_printf ("spath: %s", spath);
+-	  if (spath[1] == '/')
+-	    {
+-	      retpathcpy ("\"");
+-	      char *tpath = strchr(&spath[1], '"');
+-	      if (tpath)
+-		*tpath = (char)NULL;
+-	      char *swin32_path = arg_heuristic (&spath[1]);
+-	      if (swin32_path == &spath[1])
+-		{
+-		  debug_printf("returning: %s", arg);
+-		  return ((char *)arg);
+-		}
+-	      retpathcat (swin32_path);
+-	      free (swin32_path);
+-	      if (tpath)
+-		retpathcat ("\"");
+-	      return ScrubRetpath (retpath);
+-	    }
+-	  debug_printf("returning: %s", arg);
+-	  return ((char *)arg);
+-	case '\'':
+-	  //
+-	  // Handle a single quote case.
+-	  //
+-	  debug_printf ("spath: %s", spath);
+-	  if (spath[1] == '/')
+-	    {
+-	      retpathcpy ("'");
+-	      char *tpath = strchr(&spath[1], '\'');
+-	      if (tpath)
+-		*tpath = (char)NULL;
+-	      char *swin32_path = arg_heuristic (&spath[1]);
+-	      if (swin32_path == &spath[1])
+-		{
+-		  debug_printf("returning: %s", arg);
+-		  return ((char *)arg);
+-		}
+-	      retpathcat (swin32_path);
+-	      free (swin32_path);
+-	      if (tpath)
+-		retpathcat ("'");
+-	      return ScrubRetpath (retpath);
+-	    }
+-	  debug_printf("returning: %s", arg);
+-	  return ((char *)arg);
+-	default:
+-	  //
+-	  // This takes care of variable_foo=/bar/baz
+-	  //
+-	  if ((sspath = strchr(spath, '=')) && (sspath[1] == '/'))
+-	    {
+-	      sspath[1] = '\0';
+-	      retpathcpy (spath);
+-	      sspath[1] = '/';
+-	      char *swin32_path = arg_heuristic (&sspath[1]);
+-	      if (swin32_path == &sspath[1])
+-		{
+-		  debug_printf("returning: %s", arg);
+-		  return ((char *)arg);
+-		}
+-	      retpathcat (swin32_path);
+-	      free (swin32_path);
+-	      return ScrubRetpath (retpath);
+-	    }
+-	  //
+-	  // Oh well, nothing special found, set win32_path same as path.
+-	  //
+-	  debug_printf("returning: %s", arg);
+-	  return ((char *)arg);
+-	}
+-      }
++      memmove(semisemi, semisemi+1, strlen(semisemi));
++      semisemi = strstr(semisemi, ";;");
+     }
+-  // I should not get to this point.
+-  assert (false);
+-  debug_printf("returning: %s", arg);
+-  return ScrubRetpath (retpath);
++  return arg_result;
+ }
+ 
+ extern "C" char *
+-- 
+1.9.0
+
