@@ -10,6 +10,4 @@ What we need to do:
 
 * ncurses: Fix it to properly work in Windows API based consoles.
 
-* readline: Fix building version 6.3.
-
-* bash: Port bash 4.3.
+* Fix key shortcuts working in bash (like Ctrl+Home, Ctrl+End)
