@@ -3,9 +3,11 @@ MSYS2-packages
 
 Package scripts for MSYS2.
 
-To build these, run msys2_shell.bat then from the bash prompt:
-cd <package-name>
-makepkg
+To build these, run msys2_shell.bat then from the bash prompt.
 
-To install the build package(s):
-pacman -U <package-name>*.pkg.tar.xz
+    cd ${package-name}
+    makepkg
+
+To install the built package(s).
+
+    pacman -U ${package-name}*.pkg.tar.xz
