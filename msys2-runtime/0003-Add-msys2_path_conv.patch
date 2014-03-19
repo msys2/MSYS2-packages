@@ -1,22 +1,7 @@
-From 2a0f14f7449bc4ebbe3f8c0344603ddedbd02231 Mon Sep 17 00:00:00 2001
-From: Ray Donnelly <mingw.android@gmail.com>
-Date: Fri, 14 Mar 2014 00:42:28 +0000
-Subject: [PATCH] Add msys2_path_conv
-
----
- winsup/cygwin/Makefile.in        |   4 +-
- winsup/cygwin/msys2_path_conv.cc | 289 ++++++++++++++++++++++
- winsup/cygwin/msys2_path_conv.h  |   9 +
- winsup/cygwin/path.cc            | 500 +++------------------------------------
- 4 files changed, 338 insertions(+), 464 deletions(-)
- create mode 100644 winsup/cygwin/msys2_path_conv.cc
- create mode 100644 winsup/cygwin/msys2_path_conv.h
-
-diff --git a/winsup/cygwin/Makefile.in b/winsup/cygwin/Makefile.in
-index 5567e8e..6d22635 100644
---- a/winsup/cygwin/Makefile.in
-+++ b/winsup/cygwin/Makefile.in
-@@ -169,8 +169,8 @@ DLL_OFILES:=advapi32.o arc4random.o assert.o autoload.o base64.o bsdlib.o ctype.
+diff -Naur msys-orig/winsup/cygwin/Makefile.in src/msys2-runtime/winsup/cygwin/Makefile.in
+--- msys-orig/winsup/cygwin/Makefile.in	2014-03-14 00:44:45.762800000 +0400
++++ src/msys2-runtime/winsup/cygwin/Makefile.in	2014-03-15 00:02:55.906000000 +0400
+@@ -169,8 +169,8 @@
  	glob_pattern_p.o globals.o grp.o heap.o hookapi.o inet_addr.o \
  	inet_network.o init.o ioctl.o ipc.o kernel32.o ldap.o libstdcxx_wrapper.o \
  	localtime.o lsearch.o malloc_wrapper.o minires-os-if.o minires.o \
@@ -27,18 +12,68 @@ index 5567e8e..6d22635 100644
  	pseudo-reloc.o pthread.o random.o regcomp.o regerror.o regexec.o regfree.o \
  	registry.o resource.o rexec.o rcmd.o scandir.o sched.o sec_acl.o \
  	sec_auth.o sec_helper.o security.o select.o sem.o setlsapwd.o shared.o \
-diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
-new file mode 100644
-index 0000000..4baef1f
---- /dev/null
-+++ b/winsup/cygwin/msys2_path_conv.cc
-@@ -0,0 +1,290 @@
-+#include "msys2_path_conv.h"
+diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.cc src/msys2-runtime/winsup/cygwin/msys2_path_conv.cc
+--- msys-orig/winsup/cygwin/msys2_path_conv.cc	1970-01-01 03:00:00.000000000 +0300
++++ src/msys2-runtime/winsup/cygwin/msys2_path_conv.cc	2014-03-18 18:15:36.220600000 +0400
+@@ -0,0 +1,441 @@
++#
++# The BSD 3-Clause License. http://www.opensource.org/licenses/BSD-3-Clause
++#
++# This file is part of 'MSYS2' project.
++# Copyright (c) 2014 by Alexey Pavlov <alexpux@gmail.com>
++# Copyright (c) 2014 by niXman <i.nixman@autistici.org>
++# Copyright (c) 2014 by Ray Donnelly <mingw.android@gmail.com>
++# All rights reserved.
++#
++# Project: MSYS2 ( http://sourceforge.net/projects/msys2/ )
++#
++# Redistribution and use in source and binary forms, with or without 
++# modification, are permitted provided that the following conditions are met:
++# - Redistributions of source code must retain the above copyright 
++#     notice, this list of conditions and the following disclaimer.
++# - Redistributions in binary form must reproduce the above copyright 
++#     notice, this list of conditions and the following disclaimer in 
++#     the documentation and/or other materials provided with the distribution.
++# - Neither the name of the 'MinGW-W64' nor the names of its contributors may 
++#     be used to endorse or promote products derived from this software 
++#     without specific prior written permission.
++#
++# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
++# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
++# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
++# A PARTICULAR PURPOSE ARE DISCLAIMED.
++# IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY 
++# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES 
++# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS 
++# OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
++# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, 
++# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE 
++# USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++#
 +
-+#include <stdlib.h>
-+#include <stdio.h>
-+#include <string.h>
++#include "winsup.h"
++#include "miscfuncs.h"
 +#include <ctype.h>
++#include <winioctl.h>
++#include <shlobj.h>
++#include <sys/param.h>
++#include <sys/cygwin.h>
++#include "cygerrno.h"
++#include "security.h"
++#include "path.h"
++#include "fhandler.h"
++#include "dtable.h"
++#include "cygheap.h"
++#include "shared_info.h"
++#include "cygtls.h"
++#include "tls_pbuf.h"
++#include "environ.h"
++#include <assert.h>
++#include <ntdll.h>
++#include <wchar.h>
++#include <wctype.h>
++
++#include "msys2_path_conv.h"
 +
 +typedef enum PATH_TYPE_E {
 +    NONE = 0,
@@ -52,36 +87,92 @@ index 0000000..4baef1f
 +    URL,
 +} path_type;
 +
++int is_special_posix_path(const char* from, const char* to, char** dst, const char* dstend);
++void posix_to_win32_path(const char* from, const char* to, char** dst, const char* dstend);
++
 +
 +path_type find_path_start_and_type(const char** src, int recurse, const char* end);
 +void copy_to_dst(const char* from, const char* to, char** dst, const char* dstend);
-+void convert_path(const char* from, const char* to, path_type type, char** dst, const char* dstend, const char* root);
++void convert_path(const char** from, const char* to, path_type type, char** dst, const char* dstend);
 +
-+void swp_convert(const char* from, const char* to, char** dst, const char* dstend);
-+void ewp_convert(const char* from, const char* to, char** dst, const char* dstend);
-+void wpl_convert(const char* from, const char* to, char** dst, const char* dstend);
-+void unc_convert(const char* from, const char* to, char** dst, const char* dstend);
-+void ep_convert(const char* from, const char* to, char** dst, const char* dstend);
-+void rp_convert(const char* from, const char* to, char** dst, const char* dstend, const char* root);
-+void url_convert(const char* from, const char* to, char** dst, const char* dstend);
-+void ppl_convert(const char* from, const char* to, char** dst, const char* dstend, const char* root);
++//Transformations
++//SIMPLE_WINDOWS_PATH converter. Copy as is. Hold C:\Something\like\this
++void swp_convert(const char** from, const char* to, char** dst, const char* dstend);
++//ESCAPE_WINDOWS_PATH converter. Turn backslashes to slashes and skip first /. Hold /C:\Somethind\like\this
++void ewp_convert(const char** from, const char* to, char** dst, const char* dstend);
++//WINDOWS_PATH_LIST converter. Copy as is. Hold /something/like/this;
++void wpl_convert(const char** from, const char* to, char** dst, const char* dstend);
++//UNC convert converter. Copy as is. Hold //somethig/like/this
++void unc_convert(const char** from, const char* to, char** dst, const char* dstend);
++//ESCAPED_PATH converter. Turn backslashes to slashes and skip first /. Hold //something\like\this
++void ep_convert(const char** from, const char* to, char** dst, const char* dstend);
++//ROOTED_PATH converter. Prepend root dir to front. Hold /something/like/this
++void rp_convert(const char** from, const char* to, char** dst, const char* dstend);
++//URL converter. Copy as is.
++void url_convert(const char** from, const char* to, char** dst, const char* dstend);
++//POSIX_PATH_LIST. Hold x::x/y:z
++void ppl_convert(const char** from, const char* to, char** dst, const char* dstend);
 +
-+const char* convert(char *dst, size_t dstlen, const char *src, const char *root) {
-+    path_type type;
++
++void find_end_of_posix_list(const char** to, int in_string) {
++    for (; **to != '\0' && (in_string ? (**to != in_string) : **to != ' '); ++*to) {
++    }
++}
++
++void sub_convert(const char** from, const char** to, char** dst, const char* dstend, char end_with, int in_string) {
++    const char* copy_from = *from;
++    path_type type = find_path_start_and_type(from, false, *to);
++
++    if (type == POSIX_PATH_LIST) {
++        find_end_of_posix_list(to, in_string);
++    }
++
++    if (type != NONE) {
++        copy_to_dst(copy_from, *from, dst, dstend);
++        convert_path(from, *to, type, dst, dstend);
++    }
++
++    if (*dst != dstend) {
++        **dst = (in_string && type == POSIX_PATH_LIST) ? in_string : end_with;
++        *dst += 1;
++    }
++}
++
++const char* convert(char *dst, size_t dstlen, const char *src) {
 +    const char* srcit = src;
 +    const char* srcbeg = src;
 +    char* dstit = dst;
 +    char* dstend = dst + dstlen;
-+    type = find_path_start_and_type(&srcit, false, NULL);
 +
-+    if (type != NONE) {
-+        copy_to_dst(srcbeg, srcit, &dstit, dstend);
-+        convert_path(srcit, NULL, type, &dstit, dstend, root);
++    int prev_was_space = 0;
++    int in_string = false;
++
++    for (;*srcit!= '\0'; ++srcit) {
++        if (*srcit == '\'' || *srcit == '"') {
++            if (in_string == *srcit) {
++                in_string = 0;
++            } else {
++                in_string = *srcit;
++            }
++            continue;
++        }
++
++        if (isspace(*srcit)) {
++            if (prev_was_space) {
++                continue;
++            }
++
++            prev_was_space = true;
++            sub_convert(&srcbeg, &srcit, &dstit, dstend, ' ', in_string);
++        }
++
++        if (!isspace(*srcit) && prev_was_space) {
++            prev_was_space = false;
++            srcbeg = srcit;
++        }
 +    }
 +
-+    if (dstit != dstend) {
-+        *dstit = '\0';
-+    }
++    sub_convert(&srcbeg, &srcit, &dstit, dstend, '\0', in_string);
 +
 +    return dst;
 +}
@@ -93,7 +184,7 @@ index 0000000..4baef1f
 +}
 +
 +int is_spec_start_symbl(char ch) {
-+    return (ch == '-') || (ch == '"') || (ch == '\'') || (ch == '@');
++    return (ch == '-')  || (ch == '@');
 +}
 +
 +const char** move(const char** p, int count) {
@@ -105,6 +196,8 @@ index 0000000..4baef1f
 +    const char* it = *src;
 +
 +    if (*it == '\0' || it == end) return NONE;
++
++    path_type result = NONE;
 +
 +    if (isalpha(*it) && *(it + 1) == ':') {
 +        if ((recurse && *(it + 2) == '/') ||
@@ -134,13 +227,12 @@ index 0000000..4baef1f
 +            return URL;
 +        }
 +
-+        path_type result = NONE;
 +
 +        for (; *it != '\0' && it != end; ++it) {
 +            switch(*it) {
++                case ':': {char ch = *(it + 1); if (ch == '/' || ch == ':' || ch == '.') return POSIX_PATH_LIST;}
 +                case '/': result = (double_slashed) ? UNC : ROOTED_PATH; break;
 +                case ';': return WINDOWS_PATH_LIST;
-+                case ':': return POSIX_PATH_LIST;
 +            }
 +        }
 +
@@ -159,11 +251,20 @@ index 0000000..4baef1f
 +        return find_path_start_and_type(move(src, 1), true, end);
 +    }
 +
-+    if (*it == '-' && *(it + 1) == '/') {
-+        return find_path_start_and_type(move(src, 1), true, end);
-+    }
-+
 +    int starts_with_minus = (*it == '-');
++
++    if (starts_with_minus) {
++        char n2 = *(it + 2);
++        char n3 = *(it + 3);
++
++        if (n2 == '/') {
++            it += 2;
++            result = ROOTED_PATH;
++        } else if ((n2 == '\'' || n2 == '"') && n3 == '/') {
++            it += 3;
++            result = ROOTED_PATH;
++        }
++    }
 +
 +    int not_starte_with_spec = recurse == 0
 +                                ? !is_spec_start_symbl(*it)
@@ -181,54 +282,60 @@ index 0000000..4baef1f
 +            return find_path_start_and_type(src, true, end);
 +        }
 +
-+        if (ch == ':' && not_starte_with_spec) {
++        if (ch == ':' && not_starte_with_spec && !starts_with_minus) {
 +            it2 += 1;
 +            ch = *it2;
 +            if (ch == '/' || ch == ':' || ch == '.') {
-+                return POSIX_PATH_LIST;
++                if (ch == '/' && *(it2 + 1) == '/') {
++                    return URL;
++                } else {
++                    return POSIX_PATH_LIST;
++                }
 +            } else {
 +                return SIMPLE_WINDOWS_PATH;
 +            }
 +        }
 +    }
 +
-+    if (*it == '-' && isalpha(*(it + 1))) {
-+        return find_path_start_and_type(move(src, 2), true, end);
++    if (result != NONE) {
++        *src = it;
++        return result;
 +    }
 +
 +    return SIMPLE_WINDOWS_PATH;
 +}
 +
-+void convert_path(const char* from, const char* to, path_type type, char** dst, const char* dstend, const char* root) {
++void convert_path(const char** from, const char* to, path_type type, char** dst, const char* dstend) {
 +    switch(type) {
 +        case SIMPLE_WINDOWS_PATH: swp_convert(from, to, dst, dstend); break;
 +        case ESCAPE_WINDOWS_PATH: ewp_convert(from, to, dst, dstend); break;
 +        case WINDOWS_PATH_LIST: wpl_convert(from, to, dst, dstend); break;
 +        case UNC: unc_convert(from, to, dst, dstend); break;
 +        case ESCAPED_PATH: ep_convert(from, to, dst, dstend); break;
-+        case ROOTED_PATH: rp_convert(from, to, dst, dstend, root); break;
++        case ROOTED_PATH: rp_convert(from, to, dst, dstend); break;
 +        case URL: url_convert(from, to, dst, dstend); break;
-+        case POSIX_PATH_LIST: ppl_convert(from, to, dst, dstend, root); break;
++        case POSIX_PATH_LIST: ppl_convert(from, to, dst, dstend); break;
 +        case NONE: // prevent warnings;
 +        default:
 +                return;
 +    }
 +}
 +
-+void swp_convert(const char* from, const char* to, char** dst, const char* dstend) {
-+    copy_to_dst(from, to, dst, dstend);
++void swp_convert(const char** from, const char* to, char** dst, const char* dstend) {
++    copy_to_dst(*from, to, dst, dstend);
 +}
 +
-+void ewp_convert(const char* from, const char* to, char** dst, const char* dstend) {
-+    unc_convert(from + 1, to, dst, dstend);
++void ewp_convert(const char** from, const char* to, char** dst, const char* dstend) {
++    *from += 1;
++    unc_convert(from, to, dst, dstend);
 +}
 +
-+void wpl_convert(const char* from, const char* to, char** dst, const char* dstend) {
++void wpl_convert(const char** from, const char* to, char** dst, const char* dstend) {
 +    swp_convert(from, to, dst, dstend);
 +}
 +
-+void unc_convert(const char* from, const char* to, char** dst, const char* dstend) {
-+    const char* it = from;
++void unc_convert(const char** from, const char* to, char** dst, const char* dstend) {
++    const char* it = *from;
 +    for (; (*it != '\0' && it != to) && (*dst != dstend); ++it, ++(*dst)) {
 +        if (*it == '\\') {
 +            **dst = '/';
@@ -238,51 +345,46 @@ index 0000000..4baef1f
 +    }
 +}
 +
-+void ep_convert(const char* from, const char* to, char** dst, const char* dstend) {
++void ep_convert(const char** from, const char* to, char** dst, const char* dstend) {
 +    ewp_convert(from, to, dst, dstend);
 +}
 +
-+void rp_convert(const char* from, const char* to, char** dst, const char* dstend, const char* root) {
-+    copy_to_dst(root, NULL, dst, dstend);
++void rp_convert(const char** from, const char* to, char** dst, const char* dstend) {
++    const char* it = *from;
++    const char* real_to = to;
 +
-+    const char* it = from;
-+    if (*(it + 1) != '\0' && *(it + 1) != '\'' && *(it + 1) != '"') {
-+        for (; (*it != '\0' && it != to) && (*dst != dstend); ++it, ++(*dst)) {
-+            if (*it == '\\') {
-+                **dst = '/';
-+            } else {
-+                **dst = *it;
-+            }
++    if (*real_to == '\0')  {
++        real_to -= 1;
++        if (*real_to != '\'' && *real_to != '"') {
++            real_to += 1;
 +        }
-+    } else {
-+        it += 1;
 +    }
 +
-+    if ((*dst != dstend) && (*it != '\0' && it != to)) {
-+        char ch = *it;
-+        if (ch == '\'' || ch == '"') {
-+            **dst = ch;
-+            *dst += 1;
-+            it += 1;
-+        }
++    if (!is_special_posix_path(*from, real_to, dst, dstend)) {
++        posix_to_win32_path(it, real_to, dst, dstend);
++    }
++
++    if (real_to != to) {
++        **dst = *real_to;
++        *dst += 1;
 +    }
 +}
 +
-+void url_convert(const char* from, const char* to, char** dst, const char* dstend) {
++void url_convert(const char** from, const char* to, char** dst, const char* dstend) {
 +    unc_convert(from, to, dst, dstend);
 +}
 +
-+void subp_convert(const char* from, const char* end, int is_url, char** dst, const char* dstend, const char* root) {
-+    const char* begin = from;
-+    path_type type = find_path_start_and_type(&from, 0, end);
-+    copy_to_dst(begin, from, dst, dstend);
++void subp_convert(const char** from, const char* end, int is_url, char** dst, const char* dstend) {
++    const char* begin = *from;
++    path_type type = find_path_start_and_type(from, 0, end);
++    copy_to_dst(begin, *from, dst, dstend);
 +
 +    if (type == NONE) {
 +        return;
 +    }
 +
 +    char* start = *dst;
-+    convert_path(from, end, type, dst, dstend, root);
++    convert_path(from, end, type, dst, dstend);
 +
 +    if (!is_url) {
 +        for (; start != *dst; ++start) {
@@ -293,22 +395,22 @@ index 0000000..4baef1f
 +    }
 +}
 +
-+void ppl_convert(const char* from, const char* to, char** dst, const char* dstend, const char* root) {
-+    const char* it = from;
++void ppl_convert(const char** from, const char* to, char** dst, const char* dstend) {
++    const char* it = *from;
 +    const char* beg = it;
 +    int prev_was_simc = 0;
 +    int is_url = 0;
-+    for (; (*it != '\0') && (*dst != dstend); ++it) {
++    for (; (*it != '\0' && it != to) && (*dst != dstend); ++it) {
 +        if (*it == ':') {
 +            if (prev_was_simc) {
 +                continue;
 +            }
-+            if (from + 2 < it && *(it - 2) == '/' && *(it - 1) == '/') {
++            if (*(it + 1) == '/' && *(it + 2) == '/') {
 +                is_url = 1;
 +                continue;
 +            }
 +            prev_was_simc = 1;
-+            subp_convert(beg, it, is_url, dst, dstend, root);
++            subp_convert(&beg, it, is_url, dst, dstend);
 +            is_url = 0;
 +
 +            **dst = ';';
@@ -321,27 +423,91 @@ index 0000000..4baef1f
 +        }
 +    }
 +
-+    subp_convert(beg, it, is_url, dst, dstend, root);
++    subp_convert(&beg, it, is_url, dst, dstend);
 +}
-diff --git a/winsup/cygwin/msys2_path_conv.h b/winsup/cygwin/msys2_path_conv.h
-new file mode 100644
-index 0000000..a5b3417
---- /dev/null
-+++ b/winsup/cygwin/msys2_path_conv.h
-@@ -0,0 +1,9 @@
++
++int is_special_posix_path(const char* from, const char* to, char** dst, const char* dstend) {
++    const char dev_null[] = "/dev/null";
++
++    if ((to - from) == (sizeof(dev_null) - 1) && strncmp(from, "/dev/null", to - from) == 0) {
++        copy_to_dst("nul", NULL, dst, dstend);
++        return true;
++    }
++    return false;
++}
++
++void posix_to_win32_path(const char* from, const char* to, char** dst, const char* dstend) {
++    if ( from != to ) {
++        tmp_pathbuf tp;
++        char *one_path = tp.c_get();
++        strncpy(one_path, from, to-from);
++        one_path[to-from] = '\0';
++
++        path_conv conv (one_path, 0);
++        if (conv.error)
++        {
++          set_errno(conv.error);
++          copy_to_dst(one_path, NULL, dst, dstend);
++        } else {
++          const char* win32_path = tp.c_get();
++          stpcpy (win32_path, conv.get_win32 ());
++          for (; (*win32_path != '\0') && (*dst != dstend); ++win32_path, ++(*dst)) {
++             **dst = (*win32_path == '\\') ? '/' : *win32_path;
++          }
++        }
++    }
++}
+diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.h src/msys2-runtime/winsup/cygwin/msys2_path_conv.h
+--- msys-orig/winsup/cygwin/msys2_path_conv.h	1970-01-01 03:00:00.000000000 +0300
++++ src/msys2-runtime/winsup/cygwin/msys2_path_conv.h	2014-03-15 00:02:57.403600000 +0400
+@@ -0,0 +1,44 @@
++#
++# The BSD 3-Clause License. http://www.opensource.org/licenses/BSD-3-Clause
++#
++# This file is part of 'MSYS2' project.
++# Copyright (c) 2014 by Alexey Pavlov <alexpux@gmail.com>
++# Copyright (c) 2014 by niXman <i.nixman@autistici.org>
++# Copyright (c) 2014 by Ray Donnelly <mingw.android@gmail.com>
++# All rights reserved.
++#
++# Project: MSYS2 ( http://sourceforge.net/projects/msys2/ )
++#
++# Redistribution and use in source and binary forms, with or without 
++# modification, are permitted provided that the following conditions are met:
++# - Redistributions of source code must retain the above copyright 
++#     notice, this list of conditions and the following disclaimer.
++# - Redistributions in binary form must reproduce the above copyright 
++#     notice, this list of conditions and the following disclaimer in 
++#     the documentation and/or other materials provided with the distribution.
++# - Neither the name of the 'MinGW-W64' nor the names of its contributors may 
++#     be used to endorse or promote products derived from this software 
++#     without specific prior written permission.
++#
++# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
++# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
++# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
++# A PARTICULAR PURPOSE ARE DISCLAIMED.
++# IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY 
++# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES 
++# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS 
++# OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
++# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, 
++# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE 
++# USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++#
++
 +#ifndef PATH_CONV_H_DB4IQBH3
 +#define PATH_CONV_H_DB4IQBH3
 +
 +#include <stdlib.h>
 +
-+const char* convert(char *dst, size_t dstlen, const char *src, const char *root);
++const char* convert(char *dst, size_t dstlen, const char *src);
 +
 +#endif /* end of include guard: PATH_CONV_H_DB4IQBH3 */
 +
-diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index f32d4ca..2de86e7 100644
---- a/winsup/cygwin/path.cc
-+++ b/winsup/cygwin/path.cc
+diff -Naur msys-orig/winsup/cygwin/path.cc src/msys2-runtime/winsup/cygwin/path.cc
+--- msys-orig/winsup/cygwin/path.cc	2014-03-14 00:44:50.364800000 +0400
++++ src/msys2-runtime/winsup/cygwin/path.cc	2014-03-15 19:54:44.298800000 +0400
 @@ -65,6 +65,7 @@
  #include "cygtls.h"
  #include "tls_pbuf.h"
@@ -350,7 +516,7 @@ index f32d4ca..2de86e7 100644
  #include <assert.h>
  #include <ntdll.h>
  #include <wchar.h>
-@@ -3344,84 +3345,23 @@ fchdir (int fd)
+@@ -3344,84 +3345,23 @@
    return res;
  }
  
@@ -443,7 +609,7 @@ index f32d4ca..2de86e7 100644
    for (size_t excl = 0; excl < exclusions_count; ++excl)
      {
        if ( strstr (arg, exclusions) == arg )
-@@ -3429,408 +3369,44 @@ arg_heuristic_with_exclusions (char const * const arg, char const * exclusions,
+@@ -3429,408 +3369,30 @@
        exclusions += strlen (exclusions) + 1;
      }
  
@@ -491,13 +657,19 @@ index f32d4ca..2de86e7 100644
 -  if (isabswinpath (arg) 
 -      || (strchr (arg, ';') > 0)
 -      )
--    {
--      debug_printf("returning Win32 absolute path: %s", arg);
-+  // Find out where root is.
-+  path_conv p ("/", 0);
-+  if (p.error)
++  size_t stack_len = strlen (arg)+1024;
++  char * stack_path = (char *)alloca (stack_len);
++  if (!stack_len)
 +    {
-+      set_errno(p.error);
++      debug_printf ("out of stack space?");
++      return (char *)arg;
++    }
++  convert (stack_path, stack_len - 1, arg);
++  debug_printf ("convert()'ed: %s\n.....->: %s", arg, stack_path);
++  // Don't allocate memory if no conversion happened.
++  if (!strcmp (arg, stack_path))
+     {
+-      debug_printf("returning Win32 absolute path: %s", arg);
        return ((char *)arg);
      }
 -  //
@@ -519,34 +691,21 @@ index f32d4ca..2de86e7 100644
 -	  retpathcpy (&spath[1]);
 -	}
 -      return ScrubRetpath (retpath);
-+  size_t stack_len = strlen (arg)+1024;
-+  char * stack_path = (char *)alloca (stack_len);
-+  if (!stack_len)
-+    {
-+      debug_printf ("out of stack space?");
-+      return (char *)arg;
-     }
+-    }
 -  //
 -  // special case confusion elimination
 -  // Translate a path that looks similar to /c: to c:/.
 -  //
 -  else if (arg[0] == '/' && isabswinpath (arg + 1))
-+  convert (stack_path, stack_len - 1, arg, p.get_win32());
-+  debug_printf ("convert()'ed: %s\n.....->: %s", arg, stack_path);
-+  // Don't allocate memory if no conversion happened.
-+  if (!strcmp (arg, stack_path))
-     {
+-    {
 -      retpathcpy (&arg[1]);
 -      return ScrubRetpath (retpath);
-+      return ((char *)arg);
-     }
+-    }
 -  //
 -  // Check for variable set.
 -  //
 -  else if ((sspath = strchr(spath, '=')) && isalpha (spath[0]))
-+  // Use nul instead of /dev/null
-+  if (!strcmp (arg, "/dev/null"))
-     {
+-    {
 -      if (isabswinpath (sspath + 1)) {
 -	debug_printf("returning: %s", arg);
 -	return (char *)arg;
@@ -645,10 +804,7 @@ index f32d4ca..2de86e7 100644
 -	    }
 -	}
 -      return ScrubRetpath (retpath);
-+      arg_result = (char *)malloc (strlen ("nul")+1);
-+      strcpy (arg_result, "nul");
-+      return arg_result;
-     }
+-    }
 -  else
 +  arg_result = (char *)malloc (strlen (stack_path)+1);
 +  strcpy (arg_result, stack_path);
@@ -870,17 +1026,15 @@ index f32d4ca..2de86e7 100644
 -	  return ((char *)arg);
 -	}
 -      }
-+      memmove(semisemi, semisemi+1, strlen(semisemi));
-+      semisemi = strstr(semisemi, ";;");
-     }
+-    }
 -  // I should not get to this point.
 -  assert (false);
 -  debug_printf("returning: %s", arg);
 -  return ScrubRetpath (retpath);
++      memmove(semisemi, semisemi+1, strlen(semisemi));
++      semisemi = strstr(semisemi, ";;");
++    }
 +  return arg_result;
  }
  
  extern "C" char *
--- 
-1.9.0
-
