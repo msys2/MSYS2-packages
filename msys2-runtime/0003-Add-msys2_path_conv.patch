@@ -15,7 +15,7 @@ diff -Naur msys-orig/winsup/cygwin/Makefile.in src/msys2-runtime/winsup/cygwin/M
 diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.cc src/msys2-runtime/winsup/cygwin/msys2_path_conv.cc
 --- msys-orig/winsup/cygwin/msys2_path_conv.cc	1970-01-01 03:00:00.000000000 +0300
 +++ src/msys2-runtime/winsup/cygwin/msys2_path_conv.cc	2014-03-18 18:15:36.220600000 +0400
-@@ -0,0 +1,441 @@
+@@ -0,0 +1,477 @@
 +/*
 +  The BSD 3-Clause License. http://www.opensource.org/licenses/BSD-3-Clause
 +
@@ -84,7 +84,7 @@ diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.cc src/msys2-runtime/winsup/c
 +    ESCAPED_PATH,
 +    ROOTED_PATH,
 +    POSIX_PATH_LIST,
-+    URL,
++    URL
 +} path_type;
 +
 +int is_special_posix_path(const char* from, const char* to, char** dst, const char* dstend);
@@ -114,17 +114,46 @@ diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.cc src/msys2-runtime/winsup/c
 +void ppl_convert(const char** from, const char* to, char** dst, const char* dstend);
 +
 +
-+void find_end_of_posix_list(const char** to, int in_string) {
-+    for (; **to != '\0' && (in_string ? (**to != in_string) : **to != ' '); ++*to) {
++void find_end_of_posix_list(const char** to, int* in_string) {
++    for (; **to != '\0' && (in_string ? (**to != *in_string) : **to != ' '); ++*to) {
++    }
++
++    if (**to == *in_string) {
++        *in_string = 0;
 +    }
 +}
 +
-+void sub_convert(const char** from, const char** to, char** dst, const char* dstend, char end_with, int in_string) {
++void find_end_of_rooted_path(const char** to, int* in_string) {
++    for (; **to != '\0'; ++*to) {
++        if (*in_string == 0 && **to == ' ') {
++            return;
++        }
++
++        if (**to == *in_string) {
++            *in_string = 0;
++            return;
++        }
++
++        if (**to == '/') {
++            if (*(*to - 1) == ' ') {
++                *to -= 1;
++                return;
++            }
++        }
++    }
++}
++
++void sub_convert(const char** from, const char** to, char** dst, const char* dstend, int* in_string) {
 +    const char* copy_from = *from;
 +    path_type type = find_path_start_and_type(from, false, *to);
++    int in_string2 = *in_string;
 +
 +    if (type == POSIX_PATH_LIST) {
-+        find_end_of_posix_list(to, in_string);
++        find_end_of_posix_list(to, &in_string2);
++    }
++
++    if (type == ROOTED_PATH) {
++        find_end_of_rooted_path(to, &in_string2);
 +    }
 +
 +    if (type != NONE) {
@@ -133,9 +162,10 @@ diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.cc src/msys2-runtime/winsup/c
 +    }
 +
 +    if (*dst != dstend) {
-+        **dst = (in_string && type == POSIX_PATH_LIST) ? in_string : end_with;
++        **dst = **to;
 +        *dst += 1;
 +    }
++    *in_string = in_string2;
 +}
 +
 +const char* convert(char *dst, size_t dstlen, const char *src) {
@@ -163,7 +193,8 @@ diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.cc src/msys2-runtime/winsup/c
 +            }
 +
 +            prev_was_space = true;
-+            sub_convert(&srcbeg, &srcit, &dstit, dstend, ' ', in_string);
++            sub_convert(&srcbeg, &srcit, &dstit, dstend, &in_string);
++            srcbeg = srcit;
 +        }
 +
 +        if (!isspace(*srcit) && prev_was_space) {
@@ -172,7 +203,7 @@ diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.cc src/msys2-runtime/winsup/c
 +        }
 +    }
 +
-+    sub_convert(&srcbeg, &srcit, &dstit, dstend, '\0', in_string);
++    sub_convert(&srcbeg, &srcit, &dstit, dstend, &in_string);
 +
 +    return dst;
 +}
@@ -181,10 +212,6 @@ diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.cc src/msys2-runtime/winsup/c
 +    for (; (*from != '\0') && (from != to) && (*dst != dstend); ++from, ++(*dst)) {
 +        **dst = *from;
 +    }
-+}
-+
-+int is_spec_start_symbl(char ch) {
-+    return (ch == '-')  || (ch == '@');
 +}
 +
 +const char** move(const char** p, int count) {
@@ -256,6 +283,8 @@ diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.cc src/msys2-runtime/winsup/c
 +    if (starts_with_minus) {
 +        char n2 = *(it + 2);
 +        char n3 = *(it + 3);
++        char n4 = *(it + 4);
++        char n5 = *(it + 5);
 +
 +        if (n2 == '/') {
 +            it += 2;
@@ -264,11 +293,17 @@ diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.cc src/msys2-runtime/winsup/c
 +            it += 3;
 +            result = ROOTED_PATH;
 +        }
-+    }
 +
-+    int not_starte_with_spec = recurse == 0
-+                                ? !is_spec_start_symbl(*it)
-+                                : !is_spec_start_symbl(*(it - 1));
++        if (isalpha(n2) && n3 == ':' && n4 == '/') {
++            *src = it + 2;
++            return SIMPLE_WINDOWS_PATH;
++        }
++
++        if ((n2 == '\'' || n2 == '"') && isalpha(n3) && n4 == ':' && n5 == '/') {
++            *src = it + 3;
++            return SIMPLE_WINDOWS_PATH;
++        }
++    }
 +
 +    for (const char* it2 = it; *it2 != '\0' && it2 != end; ++it2) {
 +        char ch = *it2;
@@ -282,7 +317,7 @@ diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.cc src/msys2-runtime/winsup/c
 +            return find_path_start_and_type(src, true, end);
 +        }
 +
-+        if (ch == ':' && not_starte_with_spec && !starts_with_minus) {
++        if (ch == ':') {
 +            it2 += 1;
 +            ch = *it2;
 +            if (ch == '/' || ch == ':' || ch == '.') {
@@ -457,6 +492,7 @@ diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.cc src/msys2-runtime/winsup/c
 +        }
 +    }
 +}
++
 diff -Naur msys-orig/winsup/cygwin/msys2_path_conv.h src/msys2-runtime/winsup/cygwin/msys2_path_conv.h
 --- msys-orig/winsup/cygwin/msys2_path_conv.h	1970-01-01 03:00:00.000000000 +0300
 +++ src/msys2-runtime/winsup/cygwin/msys2_path_conv.h	2014-03-15 00:02:57.403600000 +0400
