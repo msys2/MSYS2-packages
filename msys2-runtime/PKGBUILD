@@ -16,11 +16,13 @@ makedepends=('cocom' 'git' 'perl' 'gcc' 'mingw-w64-cross-gcc' 'mingw-w64-cross-z
 source=('msys2-runtime'::'git+https://github.com/Alexpux/Cygwin.git#branch=develop'
         '0001-Expand-CYGWIN-error_start-processing.patch'
         '0002-revert-mounting.patch'
-        '0003-Add-msys2_path_conv.patch')
+        '0003-Add-msys2_path_conv.patch'
+        '0004-Fix-cygwin-path_conv-of-root.patch')
 md5sums=('SKIP'
          '85fabbc5d9cdb46cf73da9654f2c83bc'
          'ace414fde822ae633183fe94cbb0e1d9'
-         'abe6e96b4a12713345a8da05bb55abc2')
+         '399090b2c397da624de479db216eeb7e'
+         '71400d8cdb5e053257a002b500693774')
 
 pkgver() {
 	cd "$srcdir/msys2-runtime"
@@ -34,7 +36,9 @@ prepare() {
 # Experimental!
 #	patch -p1 -i ${srcdir}/0002-revert-mounting.patch
 # This is the new code, but it doesn't handle Unix PATH lists very well.
-	#patch -p1 -i ${srcdir}/0003-Add-msys2_path_conv.patch
+	patch -p1 -i ${srcdir}/0003-Add-msys2_path_conv.patch
+# This ensures that Cygwin's path_conv of "/" retains the trailing slash.
+	patch -p1 -i ${srcdir}/0004-Fix-cygwin-path_conv-of-root.patch
 }
 
 build() {
@@ -44,15 +48,18 @@ build() {
 	# Gives more verbose compile output when debugging.
 	if check_option "debug" "y"; then
 	  export CCWRAP_VERBOSE=1
+	  OPTIM="-O0"
+	else
+	  OPTIM="-O2"
 	fi
 
-	CFLAGS="-O2 -pipe -ggdb -fdebug-prefix-map=$srcdir/build-${CHOST}=/usr/src/debug/msys -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
+	CFLAGS="$OPTIM -pipe -ggdb"
 	CXX=g++
-	CXXFLAGS="-O2 -pipe -ggdb -fdebug-prefix-map=$srcdir/build-${CHOST}=/usr/src/debug/msys -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
+	CXXFLAGS="$OPTIM -pipe -ggdb"
 	F77=gfortran
-	FFLAGS+=" -ggdb -fdebug-prefix-map=$srcdir/build-${CHOST}=/usr/src/debug/msys -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
+	FFLAGS+=" -ggdb"
 	FC=gfortran
-	FCFLAGS+=" -ggdb -fdebug-prefix-map=$srcdir/build-${CHOST}=/usr/src/debug/msys -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
+	FCFLAGS+=" -ggdb"
 
 	${srcdir}/msys2-runtime/configure \
 		--prefix=/usr \
