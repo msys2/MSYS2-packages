@@ -4,7 +4,7 @@
 pkgname=('msys2-runtime' 'msys2-runtime-devel')
 _ver_base=2.0
 pkgver=2.0.15923.0cbf0b3
-pkgrel=1
+pkgrel=2
 pkgdesc="Cygwin POSIX emulation engine"
 arch=('i686' 'x86_64')
 url=""
@@ -16,13 +16,11 @@ makedepends=('cocom' 'git' 'perl' 'gcc' 'mingw-w64-cross-gcc' 'mingw-w64-cross-z
 source=('msys2-runtime'::'git+https://github.com/Alexpux/Cygwin.git#branch=develop'
         '0001-Expand-CYGWIN-error_start-processing.patch'
         '0002-revert-mounting.patch'
-        '0003-Add-msys2_path_conv.patch'
-        '0004-Fix-cygwin-path_conv-of-root.patch')
+        '0003-Add-msys2_path_conv.patch')
 md5sums=('SKIP'
          '85fabbc5d9cdb46cf73da9654f2c83bc'
          'ace414fde822ae633183fe94cbb0e1d9'
-         '399090b2c397da624de479db216eeb7e'
-         '71400d8cdb5e053257a002b500693774')
+         '20d6f4ba12086ade744e9360417b5b80')
 
 pkgver() {
 	cd "$srcdir/msys2-runtime"
@@ -37,34 +35,29 @@ prepare() {
 #	patch -p1 -i ${srcdir}/0002-revert-mounting.patch
 # This is the new code, but it doesn't handle Unix PATH lists very well.
 	patch -p1 -i ${srcdir}/0003-Add-msys2_path_conv.patch
-# This ensures that Cygwin's path_conv of "/" retains the trailing slash.
-	patch -p1 -i ${srcdir}/0004-Fix-cygwin-path_conv-of-root.patch
 }
 
 build() {
-	[[ -d $srcdir/build-${CHOST} ]] && rm -rf $srcdir/build-${CHOST}
+	#[[ -d $srcdir/build-${CHOST} ]] && rm -rf $srcdir/build-${CHOST}
 	mkdir -p $srcdir/build-${CHOST} && cd $srcdir/build-${CHOST}
 
 	# Gives more verbose compile output when debugging.
 	if check_option "debug" "y"; then
 	  export CCWRAP_VERBOSE=1
-	  OPTIM="-O0"
-	else
-	  OPTIM="-O2"
 	fi
 
-	CFLAGS="$OPTIM -pipe -ggdb"
+	#CFLAGS="-O2 -pipe -ggdb -fdebug-prefix-map=$srcdir/build-${CHOST}=/usr/src/debug/msys -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
 	CXX=g++
-	CXXFLAGS="$OPTIM -pipe -ggdb"
+	#CXXFLAGS="-O2 -pipe -ggdb -fdebug-prefix-map=$srcdir/build-${CHOST}=/usr/src/debug/msys -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
 	F77=gfortran
-	FFLAGS+=" -ggdb"
+	#FFLAGS+=" -ggdb -fdebug-prefix-map=$srcdir/build-${CHOST}=/usr/src/debug/msys -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
 	FC=gfortran
-	FCFLAGS+=" -ggdb"
+	#FCFLAGS+=" -ggdb -fdebug-prefix-map=$srcdir/build-${CHOST}=/usr/src/debug/msys -fdebug-prefix-map=$srcdir/msys2-runtime=/usr/src/debug/msys"
 
-	${srcdir}/msys2-runtime/configure \
-		--prefix=/usr \
-		--build=${CHOST} \
-		--sysconfdir=/etc
+	# ${srcdir}/msys2-runtime/configure \
+		# --prefix=/usr \
+		# --build=${CHOST} \
+		# --sysconfdir=/etc
 	LANG=C make
 	LANG=C make -j1 DESTDIR=${srcdir}/dest install
 	rm -rf ${srcdir}/dest/etc
