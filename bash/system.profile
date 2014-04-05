@@ -26,24 +26,25 @@ MANPATH="/usr/local/man:/usr/share/man:/usr/man:${MANPATH}"
 INFOPATH="/usr/local/info:/usr/share/info:/usr/info:${INFOPATH}"
 if [ -n "$MSYSTEM" ]
 then
-  case "$MSYSTEM" in
-    MINGW32)
-		PATH="/mingw32/bin:${MSYS2_PATH}:${PATH}"
-		PKG_CONFIG_PATH="/mingw32/lib/pkgconfig"
-		MANPATH="/mingw32/share/man:${MANPATH}"
-	;;
-	MINGW64)
-		PATH="/mingw64/bin:${MSYS2_PATH}:${PATH}"
-		PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
-		MANPATH="/mingw64/share/man:${MANPATH}"
-	;;
-	MSYS)
-		PATH="${MSYS2_PATH}:/opt/bin:${PATH}"
-	;;
-	*)
-		PATH="${MSYS2_PATH}:${PATH}"
-	;;
-  esac
+	case "$MSYSTEM" in
+		MINGW32)
+			PATH="/mingw32/bin:${MSYS2_PATH}:${PATH}"
+			PKG_CONFIG_PATH="/mingw32/lib/pkgconfig"
+			MANPATH="/mingw32/share/man:${MANPATH}"
+		;;
+		MINGW64)
+			PATH="/mingw64/bin:${MSYS2_PATH}:${PATH}"
+			PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
+			MANPATH="/mingw64/share/man:${MANPATH}"
+		;;
+		MSYS)
+			PATH="${MSYS2_PATH}:/opt/bin:${PATH}"
+			PKG_CONFIG_PATH="/lib/pkgconfig:/usr/lib/pkgconfig"
+		;;
+		*)
+			PATH="${MSYS2_PATH}:${PATH}"
+		;;
+	esac
 else
 	PATH="${MSYS2_PATH}:${PATH}"
 fi
@@ -397,7 +398,7 @@ else
   PS1="$ "
 fi
 
-export PATH MANPATH INFOPATH USER TMP TEMP PRINTER HOSTNAME PS1 SHELL tmp temp
+export PATH MANPATH INFOPATH PKG_CONFIG_PATH USER TMP TEMP PRINTER HOSTNAME PS1 SHELL tmp temp
 export TERM=xterm-256color
 
 # Check to see if mkpasswd/mkgroup needs to be run try and cut down the emails
