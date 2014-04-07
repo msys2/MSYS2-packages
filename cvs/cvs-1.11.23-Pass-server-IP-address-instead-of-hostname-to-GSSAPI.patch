@@ -1,0 +1,70 @@
+From 9a5eb874aaa49106d8c326e325c0d8a85b925ac0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Petr=20P=C3=ADsa=C5=99?= <ppisar@redhat.com>
+Date: Thu, 21 Jul 2011 15:34:35 +0200
+Subject: [PATCH] Pass server IP address instead of hostname to GSSAPI
+
+GSSAPI will do its own lookup for the "primary" hostname, with a
+rotating DNS alias it will end up occasionally with a different result
+than the machine we already connected to. This gives errors along the
+line of
+
+GSSAPI authentication failed: lxcvs08.cern.ch Miscellaneous
+failure/Unknown code krb5 144
+
+Since GSSAPI will do a forward+reverse lookup anyway to find the
+"canocical" hostname, we just feed it the IP we are currently
+connected to.
+---
+ src/client.c |   28 +++++++++++++++++++++++++---
+ 1 files changed, 25 insertions(+), 3 deletions(-)
+
+diff --git a/src/client.c b/src/client.c
+index 7212ebb..d0abd41 100644
+--- a/src/client.c
++++ b/src/client.c
+@@ -4289,17 +4289,39 @@ connect_to_gserver (root, sock, hostname)
+     gss_buffer_desc *tok_in_ptr, tok_in, tok_out;
+     OM_uint32 stat_min, stat_maj;
+     gss_name_t server_name;
++    struct sockaddr_storage peer;
++    socklen_t peer_len = sizeof(peer);
++    int retval;
+ 
+     str = "BEGIN GSSAPI REQUEST\012";
+ 
+     if (send (sock, str, strlen (str), 0) < 0)
+ 	error (1, 0, "cannot send: %s", SOCK_STRERROR (SOCK_ERRNO));
+ 
+-    if (strlen (hostname) > BUFSIZE - 5)
+-	error (1, 0, "Internal error: hostname exceeds length of buffer");
+-    sprintf (buf, "cvs@%s", hostname);
++    /* find out who we are really talking to - should not allow
++       GSSAPI to resolve the name again to something different */
++    if (getpeername (sock, (struct sockaddr*)&peer, &peer_len) < 0 )
++    {
++	error (1, 0, "cannot identify remote peer: %s",
++	       	SOCK_STRERROR (SOCK_ERRNO));
++    }
++    retval = getnameinfo ((struct sockaddr *)&peer, peer_len, buf+4, BUFSIZE-4,
++	    NULL, 0, NI_NUMERICHOST);
++    if (retval)
++    {
++	error (1, 0, "cannot format remote peer address: %s",
++	       	gai_strerror(retval));
++    }
++    /* ???: Delimit IPv6 address by brackets? */
++    memcpy (buf, "cvs@", 4);
++
+     tok_in.length = strlen (buf);
+     tok_in.value = buf;
++    if (trace) 
++    {
++	fprintf (stderr, " -> will use GSSAPI principal '%s' for %s\n",
++	       buf,hostname);
++    }
+     gss_import_name (&stat_min, &tok_in, GSS_C_NT_HOSTBASED_SERVICE,
+ 		     &server_name);
+ 
+-- 
+1.7.6
+
