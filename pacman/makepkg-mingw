@@ -17,7 +17,49 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-declare -r MINGW_INSTALLS="mingw32 mingw64"
+plain() {
+	local mesg=$1; shift
+	printf "${BOLD}    ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_warning() {
+	local mesg=$1; shift
+	printf "${YELLOW}=> WARNING:${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_msg1() {
+	local mesg=$1; shift
+	printf "${GREEN}==> ${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_msg2() {
+	local mesg=$1; shift
+	printf "${BLUE}  ->${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_error() {
+	local mesg=$1; shift
+	printf "${RED}==> ERROR:${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+if /bin/tput setaf 0 &>/dev/null; then
+	ALL_OFF="$(/bin/tput sgr0)"
+	BOLD="$(/bin/tput bold)"
+	BLUE="${BOLD}$(/bin/tput setaf 4)"
+	GREEN="${BOLD}$(/bin/tput setaf 2)"
+	RED="${BOLD}$(/bin/tput setaf 1)"
+	YELLOW="${BOLD}$(/bin/tput setaf 3)"
+else
+	ALL_OFF="\e[1;0m"
+	BOLD="\e[1;1m"
+	BLUE="${BOLD}\e[1;34m"
+	GREEN="${BOLD}\e[1;32m"
+	RED="${BOLD}\e[1;31m"
+	YELLOW="${BOLD}\e[1;33m"
+fi
+
+readonly ALL_OFF BOLD BLUE GREEN RED YELLOW
+declare -r MINGW_INSTALLS="mingw64 mingw32"
 
 for _mingw in ${MINGW_INSTALLS}; do
 	if [ -f "/${_mingw}/bin/gcc.exe" ]; then
@@ -26,6 +68,17 @@ for _mingw in ${MINGW_INSTALLS}; do
 		ACLOCAL_PATH="/${_mingw}/share/aclocal:/usr/share/aclocal" \
 		PATH=/${_mingw}/bin:$(echo $PATH | tr ':' '\n' | awk '$0 != "/opt/bin"' | paste -sd:) \
 		/usr/bin/makepkg --config /etc/makepkg_${_mingw}.conf $@ || exit 1
+	else
+		case $_mingw in
+			mingw32)
+				_arch=i686
+			;;
+			mingw64)
+				_arch=x86_64
+			;;
+		esac
+		print_warning "You don't have installed mingw-w64 toolchain for architecture ${_arch}."
+		print_warning "To install it run: 'pacman -S mingw-w64-${_arch}-toolchain'"
 	fi
 done
 
