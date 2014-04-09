@@ -1,9 +1,9 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=binutils
-#_basever=2.24.51
-#pkgver=${_basever}.20131119
-pkgver=2.24
+_basever=2.24.51
+pkgver=${_basever}.20140408
+#pkgver=2.24.51
 pkgrel=1
 pkgdesc="A set of programs to assemble and manipulate binary and object files"
 arch=('i686' 'x86_64')
@@ -16,26 +16,29 @@ makedepends=('libiconv-devel' 'gettext-devel' 'zlib-devel')
 options=('staticlibs' '!distcc' '!ccache')
 install=binutils.install
 source=(#http://sourceware.mirrors.tds.net/pub/sourceware.org/binutils/snapshots/binutils-${_basever}.tar.bz2
-        ftp://ftp.gnu.org/gnu/binutils/binutils-${pkgver}.tar.bz2{,.sig}
-        #binutils-2.23.2-texinfo-5.0.patch
-        cofflink.patch
+		#ftp://ftp.gnu.org/gnu/binutils/binutils-${pkgver}.tar.bz2{,.sig}
+		http://cygwin.parentingamerica.com/x86_64/release/binutils/binutils-2.24.51-2-src.tar.xz
+		02-x86-64-pc32-relocs.patch
 		2.23.52-install-libiberty.patch
-        binutils-trunk-msys2.patch)
-md5sums=('e0f71a7b2ddab0f8612336ac81d9636b'
-         'SKIP'
-         '65b166affc5cc9a422a9da90dd95bb9f'
+		binutils-trunk-msys2.patch)
+md5sums=('7f198636895e8e17489fc7d86342f148'
+         'e7e91814b32f4c4c63d4c777f5eabf7f'
          'bbedd06f1acf9cab0a8dda20380cf26b'
-         '6f7175b7ed29bc597f0d300500e2b651')
+         'ffafa01f790d8b338951382a7eee2759')
 
 prepare() {
-  cd ${srcdir}/binutils-$pkgver
-  if [ "${CARCH}" = "x86_64" ]; then
-	msg "Applying reloc patch"
-	patch -p0 -i $srcdir/cofflink.patch
-  fi
+  cd ${srcdir}/binutils-$_basever-2
+  #if [ "${CARCH}" = "x86_64" ]; then
+  #  msg "Applying reloc patch"
+  #  patch -p0 -i $srcdir/02-x86-64-pc32-relocs.patch
+  #fi
   
-  patch -p2 -i $srcdir/2.23.52-install-libiberty.patch
+  #patch -p2 -i $srcdir/2.23.52-install-libiberty.patch
   patch -p1 -i $srcdir/binutils-trunk-msys2.patch
+  
+  rm -rf gdb
+  
+  #autoreconf -fi
   
   # hack! - libiberty configure tests for header files using "$CPP $CPPFLAGS"
   sed -i "/ac_cpp=/s/\$CPPFLAGS/\$CPPFLAGS -O2/" libiberty/configure
@@ -51,14 +54,17 @@ build() {
   else
     local _conf=''
   fi
-  ${srcdir}/binutils-${pkgver}/configure --build=${CHOST} \
+  ${srcdir}/binutils-${_basever}-2/configure \
     --prefix=/usr \
+    --build=${CHOST} \
+    --host=${CHOST} \
+    --target=${CHOST} \
     --disable-werror \
-	$_conf \
+    $_conf \
     --without-libiconv-prefix \
     --without-libintl-prefix
-#	--enable-install-libiberty 
-  make
+    #--enable-install-libiberty 
+  make -j1
 }
 
 check() {
