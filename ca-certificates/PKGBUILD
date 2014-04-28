@@ -8,7 +8,7 @@ arch=('any')
 url='http://www.mozilla.org/projects/security/certs/'
 license=('MPL' 'GPL')
 source=(blacklist.txt
-		certdata.txt
+    certdata.txt
         nssckbi.h
         trust-fixes
         certdata2pem.py
@@ -50,11 +50,11 @@ prepare() {
 }
 
 build() {
-	cd $srcdir/$pkgname-$pkgver/
-	python2 certdata2pem.py
-	
-	(
-		cat <<EOF
+  cd $srcdir/$pkgname-$pkgver/
+  python2 certdata2pem.py
+  
+  (
+    cat <<EOF
 # This is a bundle of X.509 certificates of public Certificate
 # Authorities.  It was generated from the Mozilla root CA list.
 # These certificates are in the OpenSSL "TRUSTED CERTIFICATE"
@@ -64,96 +64,96 @@ build() {
 #
 # Generated from:
 EOF
-		grep -w NSS_BUILTINS_LIBRARY_VERSION ${S}/nssckbi.h | awk '{print "# " $2 " " $3}';
-		echo '#';
-	) > ca-bundle.trust.crt
+    grep -w NSS_BUILTINS_LIBRARY_VERSION ${S}/nssckbi.h | awk '{print "# " $2 " " $3}';
+    echo '#';
+  ) > ca-bundle.trust.crt
 
-	> info.trust
-	> info.notrust
+  > info.trust
+  > info.notrust
 
-	local f=
-	for f in *.crt
-	do
-		echo "processing $f"
-		tbits=`sed -n '/^# openssl-trust/{s/^.*=//;p;}' $f`
-		distbits=`sed -n '/^# openssl-distrust/{s/^.*=//;p;}' $f`
-		alias=`sed -n '/^# alias=/{s/^.*=//;p;q;}' $f | sed "s/'//g" | sed 's/"//g'`
-		targs=""
+  local f=
+  for f in *.crt
+  do
+    echo "processing $f"
+    tbits=`sed -n '/^# openssl-trust/{s/^.*=//;p;}' $f`
+    distbits=`sed -n '/^# openssl-distrust/{s/^.*=//;p;}' $f`
+    alias=`sed -n '/^# alias=/{s/^.*=//;p;q;}' $f | sed "s/'//g" | sed 's/"//g'`
+    targs=""
 
-		if [ -n "$tbits" ]
-		then
-			for t in $tbits
-			do
-				targs="${targs} -addtrust $t"
-			done
-		fi
-		if [ -n "$distbits" ]
-		then
-			for t in $distbits
-			do
-				targs="${targs} -addreject $t"
-			done
-		fi
-		if [ -n "$targs" ]
-		then
-			echo "trust flags $targs for $f" >> info.trust
-			openssl x509 -text -in "$f" -trustout $targs -setalias "$alias" >> ca-bundle.trust.crt
-		else
-			echo "no trust flags for $f" >> tee -a info.notrust
-			openssl x509 -text -in "$f" -setalias "$alias" >> ca-bundle.neutral-trust.crt
-		fi
-	done
-	for p in *.p11-kit
-	do
-		cat $p >> ca-bundle.supplement.p11-kit
-	done
-	cat trust-fixes >> ca-bundle.supplement.p11-kit
+    if [ -n "$tbits" ]
+    then
+      for t in $tbits
+      do
+        targs="${targs} -addtrust $t"
+      done
+    fi
+    if [ -n "$distbits" ]
+    then
+      for t in $distbits
+      do
+        targs="${targs} -addreject $t"
+      done
+    fi
+    if [ -n "$targs" ]
+    then
+      echo "trust flags $targs for $f" >> info.trust
+      openssl x509 -text -in "$f" -trustout $targs -setalias "$alias" >> ca-bundle.trust.crt
+    else
+      echo "no trust flags for $f" >> tee -a info.notrust
+      openssl x509 -text -in "$f" -setalias "$alias" >> ca-bundle.neutral-trust.crt
+    fi
+  done
+  for p in *.p11-kit
+  do
+    cat $p >> ca-bundle.supplement.p11-kit
+  done
+  cat trust-fixes >> ca-bundle.supplement.p11-kit
 
-	asciidoc -v -d manpage -b docbook -o update-ca-trust.8.xml update-ca-trust.8.txt
-	xsltproc --nonet -o update-ca-trust.8 /etc/asciidoc/docbook-xsl/manpage.xsl update-ca-trust.8.xml
+  asciidoc -v -d manpage -b docbook -o update-ca-trust.8.xml update-ca-trust.8.txt
+  xsltproc --nonet -o update-ca-trust.8 /etc/asciidoc/docbook-xsl/manpage.xsl update-ca-trust.8.xml
 }
 
 package() {
-	cd $srcdir/$pkgname-$pkgver/
-	
-	mkdir -p ${pkgdir}/usr/{etc,bin,lib,share}
-	mkdir -p ${pkgdir}/usr/share/man/man8
-	
-	cp -f update-ca-trust ${pkgdir}/usr/bin/
-	cp -f update-ca-trust.8 ${pkgdir}/usr/share/man/man8/
+  cd $srcdir/$pkgname-$pkgver/
+  
+  mkdir -p ${pkgdir}/usr/{etc,bin,lib,share}
+  mkdir -p ${pkgdir}/usr/share/man/man8
+  
+  cp -f update-ca-trust ${pkgdir}/usr/bin/
+  cp -f update-ca-trust.8 ${pkgdir}/usr/share/man/man8/
 
-	# for p11-kit
-	mkdir -p ${pkgdir}/usr/lib/p11-kit
-	cp -f update-ca-trust ${pkgdir}/usr/lib/p11-kit/p11-kit-extract-trust
-	
-	mkdir -p ${pkgdir}/usr/share/pki/ca-trust-source
-	for file in ca-bundle.{trust.crt,neutral-trust.crt,supplement.p11-kit}
-	do
-		cp -f $file ${pkgdir}/usr/share/pki/ca-trust-source
-	done
-	cp -f README.usr ${D}/usr/share/pki/ca-trust-source/README
+  # for p11-kit
+  mkdir -p ${pkgdir}/usr/lib/p11-kit
+  cp -f update-ca-trust ${pkgdir}/usr/lib/p11-kit/p11-kit-extract-trust
+  
+  mkdir -p ${pkgdir}/usr/share/pki/ca-trust-source
+  for file in ca-bundle.{trust.crt,neutral-trust.crt,supplement.p11-kit}
+  do
+    cp -f $file ${pkgdir}/usr/share/pki/ca-trust-source
+  done
+  cp -f README.usr ${D}/usr/share/pki/ca-trust-source/README
 
-	# touch all files overwritten by update-ca-trust for easy cleanup
-	mkdir -p ${pkgdir}/usr/etc/pki/ca-trust/{extracted,source}
-	mkdir -p ${pkgdir}/usr/etc/pki/ca-trust/source/{anchors,blacklist}
-	mkdir -p ${pkgdir}/usr/etc/pki/ca-trust/extracted/{openssl,pem,java}
-	
-	cp -f README.extr ${pkgdir}/usr/etc/pki/ca-trust/extracted/README
+  # touch all files overwritten by update-ca-trust for easy cleanup
+  mkdir -p ${pkgdir}/usr/etc/pki/ca-trust/{extracted,source}
+  mkdir -p ${pkgdir}/usr/etc/pki/ca-trust/source/{anchors,blacklist}
+  mkdir -p ${pkgdir}/usr/etc/pki/ca-trust/extracted/{openssl,pem,java}
+  
+  cp -f README.extr ${pkgdir}/usr/etc/pki/ca-trust/extracted/README
 
-	cp -f README.openssl ${pkgdir}/usr/etc/pki/ca-trust/extracted/openssl/README
-	touch ${pkgdir}/usr/etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt
+  cp -f README.openssl ${pkgdir}/usr/etc/pki/ca-trust/extracted/openssl/README
+  touch ${pkgdir}/usr/etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt
 
-	cp -f README.pem ${pkgdir}/usr/etc/pki/ca-trust/extracted/pem/README
-	touch ${pkgdir}/usr/etc/pki/ca-trust/extracted/pem/{tls,email,objsign}-ca-bundle.pem
+  cp -f README.pem ${pkgdir}/usr/etc/pki/ca-trust/extracted/pem/README
+  touch ${pkgdir}/usr/etc/pki/ca-trust/extracted/pem/{tls,email,objsign}-ca-bundle.pem
 
-	cp -f README.java ${pkgdir}/usr/etc/pki/ca-trust/extracted/java/README
-	touch ${pkgdir}/usr/etc/pki/ca-trust/extracted/java/cacerts
+  cp -f README.java ${pkgdir}/usr/etc/pki/ca-trust/extracted/java/README
+  touch ${pkgdir}/usr/etc/pki/ca-trust/extracted/java/cacerts
 
-	cp -f README.src ${pkgdir}/usr/etc/pki/ca-trust/source/README
+  cp -f README.src ${pkgdir}/usr/etc/pki/ca-trust/source/README
 
-	# for OpenSSL and static ca-certificates consumers
-	mkdir -p ${pkgdir}/usr/ssl/certs
-	cp -f ${pkgdir}/usr/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem ${pkgdir}/usr/ssl/certs/ca-bundle.crt
-	cp -f ${pkgdir}/usr/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem ${pkgdir}/usr/ssl/cert.pem
-	cp -f ${pkgdir}/usr/etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt ${pkgdir}/usr/ssl/certs/ca-bundle.trust.crt
+  # for OpenSSL and static ca-certificates consumers
+  mkdir -p ${pkgdir}/usr/ssl/certs
+  cp -f ${pkgdir}/usr/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem ${pkgdir}/usr/ssl/certs/ca-bundle.crt
+  cp -f ${pkgdir}/usr/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem ${pkgdir}/usr/ssl/cert.pem
+  cp -f ${pkgdir}/usr/etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt ${pkgdir}/usr/ssl/certs/ca-bundle.trust.crt
 }

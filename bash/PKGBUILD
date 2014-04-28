@@ -13,128 +13,128 @@ groups=('base')
 backup=(usr/etc/bash.bash{rc,_logout} usr/etc/skel/.bash{rc,_profile,_logout})
 makedepends=('gettext-devel' 'libreadline-devel>=6.3')
 source=(http://ftp.gnu.org/gnu/bash/bash-$_basever.tar.gz{,.sig}
-		'dot.bashrc'
-		'dot.bash_profile'
-		'dot.bash_logout'
-		'dot.inputrc'
-		'system.bashrc'
-		'system.bash_logout'
-		'system.profile'
-		'profile.tzset.sh'
-		'profile.lang.sh'
-		0001-bash-4.3-cygwin.patch
-		0002-bash-4.3-msysize.patch
-		0003-bash-4.3-readline.patch
-		0004-bash-4.3-deprecations.patch
-		0005-bash-4.3-msys2-fix-lineendings.patch
-		0006-bash-4.3-add-pwd-W-option.patch)
+    'dot.bashrc'
+    'dot.bash_profile'
+    'dot.bash_logout'
+    'dot.inputrc'
+    'system.bashrc'
+    'system.bash_logout'
+    'system.profile'
+    'profile.tzset.sh'
+    'profile.lang.sh'
+    0001-bash-4.3-cygwin.patch
+    0002-bash-4.3-msysize.patch
+    0003-bash-4.3-readline.patch
+    0004-bash-4.3-deprecations.patch
+    0005-bash-4.3-msys2-fix-lineendings.patch
+    0006-bash-4.3-add-pwd-W-option.patch)
 if [ $_patchlevel -gt 000 ]; then
-	for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
-		source=(${source[@]} http://ftp.gnu.org/gnu/bash/bash-$_basever-patches/bash${_basever//./}-$(printf "%03d" $p){,.sig})
-	done
+  for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
+    source=(${source[@]} http://ftp.gnu.org/gnu/bash/bash-$_basever-patches/bash${_basever//./}-$(printf "%03d" $p){,.sig})
+  done
 fi
 
 prepare() {
-	cd ${srcdir}/${pkgname}-$_basever
+  cd ${srcdir}/${pkgname}-$_basever
 
-	for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
-		msg "applying patch bash${_basever//./}-$(printf "%03d" $p)"
-		patch -p0 -i $srcdir/bash${_basever//./}-$(printf "%03d" $p)
-	done
+  for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
+    msg "applying patch bash${_basever//./}-$(printf "%03d" $p)"
+    patch -p0 -i $srcdir/bash${_basever//./}-$(printf "%03d" $p)
+  done
 
-	patch -p1 -i $srcdir/0001-bash-4.3-cygwin.patch
-	patch -p1 -i $srcdir/0002-bash-4.3-msysize.patch
-	patch -p1 -i $srcdir/0003-bash-4.3-readline.patch
-	patch -p1 -i $srcdir/0004-bash-4.3-deprecations.patch
-	patch -p1 -i $srcdir/0005-bash-4.3-msys2-fix-lineendings.patch
-	patch -p1 -i $srcdir/0006-bash-4.3-add-pwd-W-option.patch
+  patch -p1 -i $srcdir/0001-bash-4.3-cygwin.patch
+  patch -p1 -i $srcdir/0002-bash-4.3-msysize.patch
+  patch -p1 -i $srcdir/0003-bash-4.3-readline.patch
+  patch -p1 -i $srcdir/0004-bash-4.3-deprecations.patch
+  patch -p1 -i $srcdir/0005-bash-4.3-msys2-fix-lineendings.patch
+  patch -p1 -i $srcdir/0006-bash-4.3-add-pwd-W-option.patch
 
-	autoconf
+  autoconf
 }
 
 build() {
-	cd ${srcdir}/${pkgname}-$_basever
+  cd ${srcdir}/${pkgname}-$_basever
 
-	./configure --build=${CHOST} \
-		--prefix=/usr \
-		--enable-readline \
-		--without-libintl-prefix \
-		--without-libiconv-prefix \
-		--with-installed-readline \
-		--without-bash-malloc \
-		--with-curses \
-		bash_cv_func_sigsetjmp=missing \
-		gt_cv_int_divbyzero_sigfpe=true
+  ./configure --build=${CHOST} \
+    --prefix=/usr \
+    --enable-readline \
+    --without-libintl-prefix \
+    --without-libiconv-prefix \
+    --with-installed-readline \
+    --without-bash-malloc \
+    --with-curses \
+    bash_cv_func_sigsetjmp=missing \
+    gt_cv_int_divbyzero_sigfpe=true
 
-	# Prepopulate the release level.
-	expr ${pkgrel} > .build || :
+  # Prepopulate the release level.
+  expr ${pkgrel} > .build || :
 
-	make HISTORY_LDFLAGS= READLINE_LDFLAGS= LOCAL_LDFLAGS='-Wl,--export-all,--out-implib,lib$(@:.exe=.dll.a)'
+  make HISTORY_LDFLAGS= READLINE_LDFLAGS= LOCAL_LDFLAGS='-Wl,--export-all,--out-implib,lib$(@:.exe=.dll.a)'
 }
 
 check() {
-	cd ${srcdir}/${pkgname}-$_basever
-	make check
+  cd ${srcdir}/${pkgname}-$_basever
+  make check
 }
 
 package_bash() {
-	depends=('libintl' 'libiconv' 'libreadline>=6.3' 'msys2-runtime' 'gcc-libs')
-	provides=('sh')
-	#install=bash.install
+  depends=('libintl' 'libiconv' 'libreadline>=6.3' 'msys2-runtime' 'gcc-libs')
+  provides=('sh')
+  #install=bash.install
 
-	cd ${srcdir}/${pkgname}-$_basever
-	make DESTDIR=${pkgdir} install
+  cd ${srcdir}/${pkgname}-$_basever
+  make DESTDIR=${pkgdir} install
 
-	cp -fp ${pkgdir}/usr/bin/{ba,}sh.exe
+  cp -fp ${pkgdir}/usr/bin/{ba,}sh.exe
 
-	cd ${pkgdir}/usr/share/man/man1 > /dev/null
-	echo '.so man1/bash.1' > sh.1
-	echo '.so man1/bash_builtins.1.gz' > alias.1
+  cd ${pkgdir}/usr/share/man/man1 > /dev/null
+  echo '.so man1/bash.1' > sh.1
+  echo '.so man1/bash_builtins.1.gz' > alias.1
 
-	gzip alias.1
-	for f in bg bind break builtin caller case cd command compgen complete \
-		continue declare dirs disown do done elif else enable esac eval exec \
-		exit export fc fg fi for function getopts hash help history if in jobs \
-		let local logout popd pushd read readonly return select set shift shopt \
-		source suspend then time times trap type typeset ulimit umask unalias \
-		unset until wait while [ ; do
-		cp -fp alias.1.gz $f.1.gz
-	done
+  gzip alias.1
+  for f in bg bind break builtin caller case cd command compgen complete \
+    continue declare dirs disown do done elif else enable esac eval exec \
+    exit export fc fg fi for function getopts hash help history if in jobs \
+    let local logout popd pushd read readonly return select set shift shopt \
+    source suspend then time times trap type typeset ulimit umask unalias \
+    unset until wait while [ ; do
+    cp -fp alias.1.gz $f.1.gz
+  done
 
-	install -dm755 ${pkgdir}/usr/etc/skel/
+  install -dm755 ${pkgdir}/usr/etc/skel/
 
-	# system-wide configuration files
-	install -m644 ${srcdir}/system.bashrc ${pkgdir}/usr/etc/bash.bashrc
-	install -m644 ${srcdir}/system.bash_logout ${pkgdir}/usr/etc/bash.bash_logout
-	install -m644 ${srcdir}/system.profile ${pkgdir}/usr/etc/profile
+  # system-wide configuration files
+  install -m644 ${srcdir}/system.bashrc ${pkgdir}/usr/etc/bash.bashrc
+  install -m644 ${srcdir}/system.bash_logout ${pkgdir}/usr/etc/bash.bash_logout
+  install -m644 ${srcdir}/system.profile ${pkgdir}/usr/etc/profile
 
-	# user configuration file skeletons
-	install -m644 ${srcdir}/dot.bashrc ${pkgdir}/usr/etc/skel/.bashrc
-	install -m644 ${srcdir}/dot.inputrc ${pkgdir}/usr/etc/skel/.inputrc
-	install -m644 ${srcdir}/dot.bash_profile ${pkgdir}/usr/etc/skel/.bash_profile
-	install -m644 ${srcdir}/dot.bash_logout ${pkgdir}/usr/etc/skel/.bash_logout
+  # user configuration file skeletons
+  install -m644 ${srcdir}/dot.bashrc ${pkgdir}/usr/etc/skel/.bashrc
+  install -m644 ${srcdir}/dot.inputrc ${pkgdir}/usr/etc/skel/.inputrc
+  install -m644 ${srcdir}/dot.bash_profile ${pkgdir}/usr/etc/skel/.bash_profile
+  install -m644 ${srcdir}/dot.bash_logout ${pkgdir}/usr/etc/skel/.bash_logout
 
-	install -dm755 ${pkgdir}/usr/etc/profile.d/
-	install -m644 ${srcdir}/profile.tzset.sh ${pkgdir}/usr/etc/profile.d/tzset.sh
-	install -m644 ${srcdir}/profile.lang.sh ${pkgdir}/usr/etc/profile.d/lang.sh
+  install -dm755 ${pkgdir}/usr/etc/profile.d/
+  install -m644 ${srcdir}/profile.tzset.sh ${pkgdir}/usr/etc/profile.d/tzset.sh
+  install -m644 ${srcdir}/profile.lang.sh ${pkgdir}/usr/etc/profile.d/lang.sh
 }
 
 package_bash-devel() {
-	pkgdesc="Bash headers and libraries"
-	groups=('development')
-	options=('staticlibs')
-	backup=()
+  pkgdesc="Bash headers and libraries"
+  groups=('development')
+  options=('staticlibs')
+  backup=()
 
 
-	mkdir -p ${pkgdir}/usr/{include,lib}
-	cd ${srcdir}/bash-$_basever
-	cp -f libbash.dll.a ${pkgdir}/usr/lib/
+  mkdir -p ${pkgdir}/usr/{include,lib}
+  cd ${srcdir}/bash-$_basever
+  cp -f libbash.dll.a ${pkgdir}/usr/lib/
 
-	mkdir -p  ${pkgdir}/usr/include/bash
-	for f in [^y]*.h builtins/*.h include/*.h lib/{glob,tilde}/*.h
-	do
-		/bin/install ${f} ${pkgdir}/usr/include/bash
-	done
+  mkdir -p  ${pkgdir}/usr/include/bash
+  for f in [^y]*.h builtins/*.h include/*.h lib/{glob,tilde}/*.h
+  do
+    /bin/install ${f} ${pkgdir}/usr/include/bash
+  done
 }
 
 md5sums=('81348932d5da294953e15d4814c74dd1'

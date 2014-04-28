@@ -16,7 +16,7 @@ source=(http://www.cpan.org/src/5.0/perl-${pkgver}.tar.bz2
         perl-5.18.0-cygwin.patch
         perl-5.18.0-msys2.patch
         perl-5.18.0-pod-parser-msys2.patch
-		perl-nostdio.patch)
+    perl-nostdio.patch)
 install=perl.install
 options=('makeflags' '!purge')
 md5sums=('d549b16ee4e9210988da39193a9389c1'
@@ -30,19 +30,19 @@ md5sums=('d549b16ee4e9210988da39193a9389c1'
 
 # workaround to let the integrity check find the correct provides array
 #if [[ ${0##*/} = "parse_pkgbuilds.sh" ]]; then
-#	true && provides=($(bsdtar -q -O -xf "/srv/ftp/pool/packages/$pkgname-$pkgver-$pkgrel-$CARCH.pkg.tar.xz" .PKGINFO | sed -rn 's#^provides = (.*)#\1#p'))
+#  true && provides=($(bsdtar -q -O -xf "/srv/ftp/pool/packages/$pkgname-$pkgver-$pkgrel-$CARCH.pkg.tar.xz" .PKGINFO | sed -rn 's#^provides = (.*)#\1#p'))
 #fi
 
 prepare() {
-	chmod -R -644 ${srcdir}/${pkgname}-${pkgver}
-	cd ${srcdir}/${pkgname}-${pkgver}
+  chmod -R -644 ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/${pkgname}-${pkgver}
 
-	patch -p1 -i ${srcdir}/perl-5.18.0-cygwin.patch
-	patch -p1 -i ${srcdir}/perl-5.18.0-msys2.patch
-	patch -p1 -i ${srcdir}/perl-5.18.0-pod-parser-msys2.patch
-	patch -p1 -i ${srcdir}/perl-nostdio.patch
+  patch -p1 -i ${srcdir}/perl-5.18.0-cygwin.patch
+  patch -p1 -i ${srcdir}/perl-5.18.0-msys2.patch
+  patch -p1 -i ${srcdir}/perl-5.18.0-pod-parser-msys2.patch
+  patch -p1 -i ${srcdir}/perl-nostdio.patch
   
-	cat > Policy.sh <<_EOF
+  cat > Policy.sh <<_EOF
 #!/bin/sh
 prefix="/usr"
 siteprefix="/usr"
@@ -73,80 +73,80 @@ _EOF
 }
 
 build() {
-	cd ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/${pkgname}-${pkgver}
 
-	#export MSYS=winsymlinks:nativestrict
+  #export MSYS=winsymlinks:nativestrict
 
-	#MSYS=winsymlinks:nativestrict
-	./Configure -d -e -Dprefix=/usr -Dusethreads \
-		-Darchname=${ARCH}-msys-threads \
-		-Dmyarchname=${ARCH}-msys \
-		-Dlibperl=msys-perl5_18.dll \
-		-Dcc=gcc -Dld=g++
+  #MSYS=winsymlinks:nativestrict
+  ./Configure -d -e -Dprefix=/usr -Dusethreads \
+    -Darchname=${ARCH}-msys-threads \
+    -Dmyarchname=${ARCH}-msys \
+    -Dlibperl=msys-perl5_18.dll \
+    -Dcc=gcc -Dld=g++
 
 
-	LANG=C make
-	#unset MSYS
+  LANG=C make
+  #unset MSYS
 }
 
 check() {
-	cd ${srcdir}/${pkgname}-${pkgver}
-	TEST_JOBS=$(echo $MAKEFLAGS | sed 's/.*-j\([0-9][0-9]*\).*/\1/') make test_harness || true
-	#make test
+  cd ${srcdir}/${pkgname}-${pkgver}
+  TEST_JOBS=$(echo $MAKEFLAGS | sed 's/.*-j\([0-9][0-9]*\).*/\1/') make test_harness || true
+  #make test
 }
 
 package() {
-	# hack to work around makepkg running the subshell in check_sanity()
-	new_provides=($(cd "$srcdir/perl-$pkgver"; ./perl -Ilib "$srcdir/provides.pl" .))
-	provides=(${new_provides[@]})
+  # hack to work around makepkg running the subshell in check_sanity()
+  new_provides=($(cd "$srcdir/perl-$pkgver"; ./perl -Ilib "$srcdir/provides.pl" .))
+  provides=(${new_provides[@]})
 
-	cd ${srcdir}/${pkgname}-${pkgver}
-	make DESTDIR="$pkgdir" install
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make DESTDIR="$pkgdir" install
 
-	find ${pkgdir}/usr/lib -type f -exec chmod 0644 {} \;
-	# prevent xsinit-generated code from referencing boot_Win32CORE
-	sed -i -e "s/^\(static_ext\)=.*/\1=' '/" \
-		${pkgdir}/usr/lib/perl5/${pkgver%.*}/${CARCH}-msys-threads/Config_heavy.pl
+  find ${pkgdir}/usr/lib -type f -exec chmod 0644 {} \;
+  # prevent xsinit-generated code from referencing boot_Win32CORE
+  sed -i -e "s/^\(static_ext\)=.*/\1=' '/" \
+    ${pkgdir}/usr/lib/perl5/${pkgver%.*}/${CARCH}-msys-threads/Config_heavy.pl
 
-	### Perl Settings ###
-	# Change man page extensions for site and vendor module builds.
-	# Set no mail address since bug reports should go to the bug tracker
-	# and not someone's email.
-	#sed -e '/^man1ext=/ s/1perl/1p/' -e '/^man3ext=/ s/3perl/3pm/' \
-	#    -e "/^cf_email=/ s/'.*'/''/" \
-	#    -e "/^perladmin=/ s/'.*'/''/" \
-	#    -i ${pkgdir}/usr/lib/perl5/${pkgver%.*}/Config_heavy.pl
+  ### Perl Settings ###
+  # Change man page extensions for site and vendor module builds.
+  # Set no mail address since bug reports should go to the bug tracker
+  # and not someone's email.
+  #sed -e '/^man1ext=/ s/1perl/1p/' -e '/^man3ext=/ s/3perl/3pm/' \
+  #    -e "/^cf_email=/ s/'.*'/''/" \
+  #    -e "/^perladmin=/ s/'.*'/''/" \
+  #    -i ${pkgdir}/usr/lib/perl5/${pkgver%.*}/Config_heavy.pl
 
-	### CPAN Settings ###
-	# Set CPAN default config to use the site directories.
-	sed -e '/(makepl_arg =>/   s/""/"INSTALLDIRS=site"/' \
-		-e '/(mbuildpl_arg =>/ s/""/"installdirs=site"/' \
-		-i ${pkgdir}/usr/lib/perl5/${pkgver%.*}/CPAN/FirstTime.pm
+  ### CPAN Settings ###
+  # Set CPAN default config to use the site directories.
+  sed -e '/(makepl_arg =>/   s/""/"INSTALLDIRS=site"/' \
+    -e '/(mbuildpl_arg =>/ s/""/"installdirs=site"/' \
+    -i ${pkgdir}/usr/lib/perl5/${pkgver%.*}/CPAN/FirstTime.pm
 
-	### CPANPLUS Settings ###
-	# Set CPANPLUS default config to use the site directories.
-	sed -e "/{'makemakerflags'}/ s/'';/'INSTALLDIRS=site';/" \
-		-e "/{'buildflags'}/     s/'';/'installdirs=site';/" \
-		-i ${pkgdir}/usr/lib/perl5/${pkgver%.*}/CPANPLUS/Config.pm
+  ### CPANPLUS Settings ###
+  # Set CPANPLUS default config to use the site directories.
+  sed -e "/{'makemakerflags'}/ s/'';/'INSTALLDIRS=site';/" \
+    -e "/{'buildflags'}/     s/'';/'installdirs=site';/" \
+    -i ${pkgdir}/usr/lib/perl5/${pkgver%.*}/CPANPLUS/Config.pm
 
-	# Profile script to set paths to perl scripts.
-	#install -D -m755 ${srcdir}/perlbin.sh \
-	#                 ${pkgdir}/etc/profile.d/perlbin.sh
-	# Profile script to set paths to perl scripts on csh. (FS#22441)
-	#install -D -m755 ${srcdir}/perlbin.csh \
-	#                ${pkgdir}/etc/profile.d/perlbin.csh
+  # Profile script to set paths to perl scripts.
+  #install -D -m755 ${srcdir}/perlbin.sh \
+  #                 ${pkgdir}/etc/profile.d/perlbin.sh
+  # Profile script to set paths to perl scripts on csh. (FS#22441)
+  #install -D -m755 ${srcdir}/perlbin.csh \
+  #                ${pkgdir}/etc/profile.d/perlbin.csh
 
-	#(cd ${pkgdir}/usr/bin; mv perl${pkgver} perl)
-	#(cd ${pkgdir}/usr/bin/core_perl;  ln -sf c2ph pstruct; ln -sf s2p psed)
+  #(cd ${pkgdir}/usr/bin; mv perl${pkgver} perl)
+  #(cd ${pkgdir}/usr/bin/core_perl;  ln -sf c2ph pstruct; ln -sf s2p psed)
 
-	# Remove all pod files *except* those under /usr/share/perl5/core_perl/pod/
-	# (FS#16488)
-	#rm -f $pkgdir/usr/share/perl5/core_perl/*.pod
-	#for d in $pkgdir/usr/share/perl5/core_perl/*; do
-	#  if [ -d $d -a $(basename $d) != "pod" ]; then
-	#    find $d -name *.pod -delete
-	#  fi
-	#done
-	find $pkgdir/usr/lib -name *.pod -delete
-	find $pkgdir -name .packlist -delete
+  # Remove all pod files *except* those under /usr/share/perl5/core_perl/pod/
+  # (FS#16488)
+  #rm -f $pkgdir/usr/share/perl5/core_perl/*.pod
+  #for d in $pkgdir/usr/share/perl5/core_perl/*; do
+  #  if [ -d $d -a $(basename $d) != "pod" ]; then
+  #    find $d -name *.pod -delete
+  #  fi
+  #done
+  find $pkgdir/usr/lib -name *.pod -delete
+  find $pkgdir -name .packlist -delete
 }
