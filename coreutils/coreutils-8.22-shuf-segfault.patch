@@ -1,0 +1,74 @@
+From 24eb395471176e24762b08bfcef7562911537504 Mon Sep 17 00:00:00 2001
+From: Paul Eggert <eggert@cs.ucla.edu>
+Date: Sun, 23 Feb 2014 15:34:48 -0800
+Subject: [PATCH] shuf: with -r, don't dump core if the input is empty
+
+Problem reported by valiant xiao in <http://bugs.gnu.org/16855>.
+* NEWS: Document this.
+* src/shuf.c (main): With -r, report an error if the input is empty.
+* tests/misc/shuf.sh: Test for the bug.
+---
+ NEWS               |  3 +++
+ src/shuf.c         | 15 +++++++++++----
+ tests/misc/shuf.sh |  4 ++++
+ 3 files changed, 18 insertions(+), 4 deletions(-)
+
+diff --git a/NEWS b/NEWS
+index e72942b..2df246d 100644
+--- a/NEWS
++++ b/NEWS
+@@ -22,6 +22,9 @@ GNU coreutils NEWS                                    -*- outline -*-
+   it would display an error, requiring --no-dereference to avoid the issue.
+   [bug introduced in coreutils-5.3.0]
+ 
++  shuf -r no longer dumps core if the input is empty.
++  [bug introduced in coreutils-8.22]
++
+ ** New features
+ 
+   od accepts a new option: --endian=TYPE to handle inputs with different byte
+diff --git a/src/shuf.c b/src/shuf.c
+index d4641fe..2a91072 100644
+--- a/src/shuf.c
++++ b/src/shuf.c
+@@ -576,11 +576,18 @@ main (int argc, char **argv)
+   /* Generate output according to requested method */
+   if (repeat)
+     {
+-      if (input_range)
+-        i = write_random_numbers (randint_source, head_lines,
+-                                  lo_input, hi_input, eolbyte);
++      if (head_lines == 0)
++        i = 0;
+       else
+-        i = write_random_lines (randint_source, head_lines, line, n_lines);
++        {
++          if (n_lines == 0)
++            error (EXIT_FAILURE, 0, _("No lines to repeat"));
++          if (input_range)
++            i = write_random_numbers (randint_source, head_lines,
++                                      lo_input, hi_input, eolbyte);
++          else
++            i = write_random_lines (randint_source, head_lines, line, n_lines);
++        }
+     }
+   else
+     {
+diff --git a/tests/misc/shuf.sh b/tests/misc/shuf.sh
+index d3ea1f2..d7251d1 100755
+--- a/tests/misc/shuf.sh
++++ b/tests/misc/shuf.sh
+@@ -43,6 +43,10 @@ compare in out1 || { fail=1; echo "not a permutation" 1>&2; }
+ t=$(shuf -e a b c d e | sort | fmt)
+ test "$t" = 'a b c d e' || { fail=1; echo "not a permutation" 1>&2; }
+ 
++# coreutils-8.22 dumps core.
++shuf -er
++test $? -eq 1 || fail=1
++
+ # Before coreutils-6.3, this would infloop.
+ # "seq 1860" produces 8193 (8K + 1) bytes of output.
+ seq 1860 | shuf > /dev/null || fail=1
+-- 
+1.8.5.3
+
