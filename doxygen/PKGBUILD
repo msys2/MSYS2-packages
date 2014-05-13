@@ -1,0 +1,48 @@
+# Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+
+pkgname=doxygen
+pkgver=1.8.7
+pkgrel=1
+pkgdesc="A documentation system for C++, C, Java, IDL and PHP"
+arch=('any')
+url="http://www.doxygen.org/"
+options=('strip' 'staticlibs' '!makeflags')
+license=('GPL')
+depends=("gcc-libs")
+makedepends=("gcc" 'flex' "python2" 'sqlite3')
+source=("http://ftp.stack.nl/pub/users/dimitri/${pkgname}-${pkgver}.src.tar.gz"
+        '1.7.4-iconv.patch'
+        'remove-extra-slashes.patch')
+md5sums=('ff0529df773301f63db82c25137b7fd8'
+         '838712aecc168be786d95dc7497d5901'
+         '4f41e032e58eb0209e8dd19e7da9dda9')
+noextract=(${pkgname}-${pkgver}.src.tar.gz)
+
+prepare() {
+  cd ${srcdir}
+  [[ -d $srcdir/${pkgname}-${pkgver} ]] || tar -xzvf ${startdir}/${pkgname}-${pkgver}.src.tar.gz -C $srcdir
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  patch -p1 -i "${srcdir}/remove-extra-slashes.patch"
+  
+  patch -p2 -i "${srcdir}/1.7.4-iconv.patch"
+}
+
+build() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  ./configure \
+    --prefix /usr \
+    --with-sqlite3 \
+    --sqlite3-path /usr \
+    --shared \
+    --docdir /usr/share/doc/${pkgname} --platform linux-g++
+  make
+}
+
+package() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+
+  #make DESTDIR="${pkgdir}" install
+  make INSTALL="${pkgdir}"/usr MAN1DIR=share/man/man1 install
+  #rm -r "${pkgdir}"/usr/share/man
+}
