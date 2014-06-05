@@ -3,7 +3,7 @@ diff -Naur a/engine/SCons/Node/FS.py b/engine/SCons/Node/FS.py
 +++ b/engine/SCons/Node/FS.py	2013-07-25 23:37:33.856445300 +0400
 @@ -364,7 +364,7 @@
      return DefaultRCSBuilder
- 
+
  # Cygwin's os.path.normcase pretends it's on a case-sensitive filesystem.
 -_is_cygwin = sys.platform == "cygwin"
 +_is_cygwin = sys.platform in ["cygwin", "msys"]
@@ -60,15 +60,15 @@ diff -Naur a/engine/SCons/Platform/msys.py b/engine/SCons/Platform/msys.py
 +
 +__revision__ = "src/engine/SCons/Platform/cygwin.py  2014/03/02 14:18:15 garyo"
 +
-+import posix
++import posix, os, subprocess
 +from SCons.Platform import TempFileMunge
 +
 +def generate(env):
 +    posix.generate(env)
 +
-+    # /bin/gcc doesn't work on Cygwin because gcc attempts to
-+    # find libexec as /bin/../libexec. So prefer /usr/bin instead.
-+    env['ENV']['PATH']    = '/usr/local/bin:/opt/bin:/usr/bin:/bin'
++    env['ENV']['PATH'] = os.getenv('PATH')
++    env['SPAWN']       = (lambda sh, esc, cmd, args, env_param:
++                          subprocess.call(['sh', '-c', ' '.join(args)]))
 +    env['PROGPREFIX']  = ''
 +    env['PROGSUFFIX']  = '.exe'
 +    env['SHLIBPREFIX'] = ''
@@ -91,7 +91,7 @@ diff -Naur a/engine/SCons/Script/Main.py b/engine/SCons/Script/Main.py
 @@ -755,7 +755,7 @@
      def homedir(d):
          return os.path.expanduser('~/'+d)
- 
+
 -    if platform == 'win32' or platform == 'cygwin':
 +    if platform == 'win32' or platform == 'cygwin' or platform == 'msys':
          # Note we use $ here instead of %...% because older
@@ -129,7 +129,7 @@ diff -Naur a/engine/SCons/Tool/g77.py b/engine/SCons/Tool/g77.py
 +++ b/engine/SCons/Tool/g77.py	2013-07-25 23:39:42.200195300 +0400
 @@ -44,7 +44,7 @@
      add_f77_to_env(env)
- 
+
      fcomp = env.Detect(compilers) or 'g77'
 -    if env['PLATFORM'] in ['cygwin', 'win32']:
 +    if env['PLATFORM'] in ['cygwin', 'msys', 'win32']:
@@ -141,7 +141,7 @@ diff -Naur a/engine/SCons/Tool/gcc.py b/engine/SCons/Tool/gcc.py
 +++ b/engine/SCons/Tool/gcc.py	2013-07-25 23:40:01.637695300 +0400
 @@ -47,7 +47,7 @@
      cc.generate(env)
- 
+
      env['CC'] = env.Detect(compilers) or 'gcc'
 -    if env['PLATFORM'] in ['cygwin', 'win32']:
 +    if env['PLATFORM'] in ['cygwin', 'msys', 'win32']:
@@ -166,7 +166,7 @@ diff -Naur a/engine/SCons/Tool/hpc++.py b/engine/SCons/Tool/hpc++.py
 @@ -69,7 +69,7 @@
          if line.find('aCC: HP ANSI C++') == 0:
              env['CXXVERSION'] = line.split()[-1]
- 
+
 -        if env['PLATFORM'] == 'cygwin':
 +        if env['PLATFORM'] == 'cygwin' or env['PLATFORM'] == 'msys':
              env['SHCXXFLAGS'] = SCons.Util.CLVar('$CXXFLAGS')
@@ -192,7 +192,7 @@ diff -Naur a/engine/SCons/Tool/msyslink.py b/engine/SCons/Tool/msyslink.py
 +import gnulink
 +
 +def shlib_generator(target, source, env, for_signature):
-+    cmd = SCons.Util.CLVar(['$SHLINK']) 
++    cmd = SCons.Util.CLVar(['$SHLINK'])
 +
 +    dll = env.FindIxes(target, 'SHLIBPREFIX', 'SHLIBSUFFIX')
 +    if dll: cmd.extend(['-o', dll])
@@ -208,7 +208,7 @@ diff -Naur a/engine/SCons/Tool/msyslink.py b/engine/SCons/Tool/msyslink.py
 +            '-Wl,--whole-archive', '$SOURCES',
 +            '-Wl,--no-whole-archive', '$_LIBDIRFLAGS', '$_LIBFLAGS'
 +            ])
-+    
++
 +    else:
 +        cmd.extend(['$SOURCES', '$_LIBDIRFLAGS', '$_LIBFLAGS'])
 +    return [cmd]
@@ -219,7 +219,7 @@ diff -Naur a/engine/SCons/Tool/msyslink.py b/engine/SCons/Tool/msyslink.py
 +
 +    if not dll or len(target) > 1:
 +        raise SCons.Errors.UserError("A shared library should have exactly one target with the suffix: %s" % env.subst("$SHLIBSUFFIX"))
-+    
++
 +    # Remove any "lib" after the prefix
 +    pre = env.subst('$SHLIBPREFIX')
 +    if dll.name[len(pre):len(pre)+3] == 'lib':
@@ -235,13 +235,13 @@ diff -Naur a/engine/SCons/Tool/msyslink.py b/engine/SCons/Tool/msyslink.py
 +        target_strings = env.ReplaceIxes(orig_target[0],
 +                                         'SHLIBPREFIX', 'SHLIBSUFFIX',
 +                                         'IMPLIBPREFIX', 'IMPLIBSUFFIX')
-+        
++
 +        implib_target = env.fs.File(target_strings)
 +        implib_target.attributes.shared = 1
 +        target.append(implib_target)
 +
 +    return (target, source)
-+                         
++
 +
 +shlib_action = SCons.Action.Action(shlib_generator, generator=1)
 +
@@ -290,7 +290,7 @@ diff -Naur a/engine/SCons/Util.py b/engine/SCons/Util.py
 @@ -889,7 +889,7 @@
      else:
          return sep.join(paths)
- 
+
 -if sys.platform == 'cygwin':
 +if sys.platform in ['cygwin', 'msys']:
      def get_native_path(path):
@@ -298,8 +298,8 @@ diff -Naur a/engine/SCons/Util.py b/engine/SCons/Util.py
          Cygwin, this converts from a Cygwin path to a Windows one."""
 @@ -1020,7 +1020,7 @@
                      return None
- 
- 
+
+
 -if sys.platform == 'cygwin':
 +if sys.platform in ['cygwin', 'msys']:
      # On Cygwin, os.path.normcase() lies, so just report back the
