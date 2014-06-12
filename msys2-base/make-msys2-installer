@@ -1,0 +1,117 @@
+#!/bin/bash
+
+_thisdir="$(dirname $0)"
+test "${_thisdir}" = "." && _thisdir=${PWD}
+_ifwroot="${_thisdir}"/qt-ifw
+_arch=$(uname -m)
+_date=$(date +'%Y%m%d')
+_dateqif=$(date +'%Y-%m-%d')
+_version=${_date}
+_filename=msys2-${_arch}-${_date}.exe
+_log=/tmp/installer.log
+if [ "${_arch}" = "x86_64" ]; then
+  _bitness=64
+else
+  _bitness=32
+fi
+
+declare -a undo_commands
+
+exit_cleanly() {
+  local _exitcode=$1; shift;
+  local _message=$1; shift;
+  echo "${_message}"
+  for _cmd in ${undo_commands[@]}; do
+    eval "$_cmd"
+  done
+  exit ${_exitcode}
+}
+
+do_seds() {
+  find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" \) -exec sed -i "s|@DATE@|${_dateqif}|g" "{}" \;
+  find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" \) -exec sed -i "s|@VERSION@|${_version}|g" "{}" \;
+  find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" \) -exec sed -i "s|@BITNESS@|${_bitness}|g" "{}" \;
+  undo_commands+=("undo_seds")
+}
+
+undo_seds() {
+  find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" \) -exec sed -i "s|<ReleaseDate>${_dateqif}<|<ReleaseDate>@DATE@<|g" "{}" \;
+  find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" \) -exec sed -i "s|<Version>${_version}<|<Version>@VERSION@<|g" "{}" \;
+  find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" \) -exec sed -i "s|msys${_bitness}|msys@BITNESS@|g" "{}" \;
+}
+
+create_archives() {
+  local _data="${_ifwroot}"/packages/com.msys2.base/data
+  [ -d "${_data}" ] && rm -rf "${_data}"
+  mkdir -p "${_data}"
+  _dirs=
+  for curr_dir in /bin /etc /include /lib /libexec /sbin /share /ssl /${_arch}-pc-msys /tmp /var /mingw_shell.bat /msys.ico /msys2_shell.bat ; do
+    if [[ -d ${_newmsys}$curr_dir || -f ${_newmsys}$curr_dir ]]; then
+      _dirs="$_dirs ${_newmsys}$curr_dir"
+    fi
+  done
+  if [ -n "$_dirs" ]; then
+    _compress_cmd="${_archivegen} ${_data}/msys${_bitness}.7z ${_dirs}"
+    pushd / > /dev/null
+    eval ${_compress_cmd} | tee $_log 2>&1
+    _result=$?
+    if [ "$_result" -eq "0" ]; then
+          echo " archivegen succeeded. Created ${_data}/msys${_bitness}.7z"
+    else
+          exit_cleanly "3" "archivegen failed. See $_log"
+    fi
+    popd > /dev/null
+  fi
+}
+
+make_installer() {
+  "${_binarycreator}" \
+    -t "${_installerbase}" \
+    -p "${_ifwroot}/packages" \
+    -c "${_ifwroot}/config/config.xml" \
+    --offline-only \
+    "${_filename}"
+}
+
+_archivegen=/mingw${_bitness}/bin/archivegen.exe
+_binarycreator=/mingw${_bitness}/bin/binarycreator.exe
+_installerbase=/mingw${_bitness}/bin/installerbase.exe
+
+[ -d /tmp/newmsys ] && rm -rf /tmp/newmsys
+_newmsys=/tmp/newmsys/msys"${_bitness}"
+mkdir -p "${_newmsys}"
+pushd "${_newmsys}" > /dev/null
+
+# We *need* the symlink version to work, but actually, we
+# should stop binding /usr to / altogether at this stage.
+# cmd.exe /c "mklink /D usr $(cygpath -w ${_newmsys})"
+# ln -s ../ usr
+mkdir usr
+
+mkdir -p "${_newmsys}"/usr/var/lib/pacman
+pacman -Syu --root "${_newmsys}/usr"
+pacman -S base --noconfirm --root "${_newmsys}/usr"
+_result=$?
+if [ "$_result" -ne "0" ]; then
+  exit_cleanly "1" "failed to create newmsys2 via command 'pacman -S base --noconfirm --root ${_newmsys}'"
+fi
+popd > /dev/null
+
+if [ ! -f "${_archivegen}" ]; then
+  eval "pacman -S --asneeded --noconfirm mingw${_bitness}/mingw-w64-${_arch}-qt-installer-framework-git" | tee $_log 2>&1
+fi
+
+if [ ! -f "${_archivegen}" ]; then
+  exit_cleanly "2" "installation of qt installer framework failed. See $_log"
+fi
+
+echo "Creating MSYS2 installer /tmp/$_filename"
+
+if [ -f /tmp/$_filename ]; then
+  rm -f /tmp/$_filename
+fi
+
+do_seds
+create_archives
+make_installer
+exit_cleanly "0" "All done, see ${_filename}"
