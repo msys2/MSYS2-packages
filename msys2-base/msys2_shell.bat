@@ -35,7 +35,7 @@ if "x%MSYSCON%" == "xconsole.exe" goto startconsolez
 
 :startmintty
 if NOT EXIST %WD%mintty.exe goto startsh
-start %WD%mintty -i /msys.ico -
+start %WD%mintty -i /msys.ico /bin/bash --login
 exit
 
 :startconsolez
