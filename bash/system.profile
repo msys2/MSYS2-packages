@@ -21,32 +21,32 @@
 # Modifying these default path settings can be done in different ways.
 # To learn more about startup files, refer to your shell's man page.
 
-MSYS2_PATH="/usr/local/bin:/usr/bin"
-MANPATH="/usr/local/man:/usr/share/man:/usr/man:${MANPATH}"
-INFOPATH="/usr/local/info:/usr/share/info:/usr/info:${INFOPATH}"
+MSYS2_PATH="/usr/local/bin:/usr/bin:/bin"
+MANPATH="/usr/local/man:/usr/share/man:/usr/man:/share/man:${MANPATH}"
+INFOPATH="/usr/local/info:/usr/share/info:/usr/info:/share/info:${INFOPATH}"
 if [ -n "$MSYSTEM" ]
 then
-	case "$MSYSTEM" in
-		MINGW32)
-			PATH="/mingw32/bin:${MSYS2_PATH}:${PATH}"
-			PKG_CONFIG_PATH="/mingw32/lib/pkgconfig"
-			MANPATH="/mingw32/share/man:${MANPATH}"
-		;;
-		MINGW64)
-			PATH="/mingw64/bin:${MSYS2_PATH}:${PATH}"
-			PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
-			MANPATH="/mingw64/share/man:${MANPATH}"
-		;;
-		MSYS)
-			PATH="${MSYS2_PATH}:/opt/bin:${PATH}"
-			PKG_CONFIG_PATH="/lib/pkgconfig:/usr/lib/pkgconfig"
-		;;
-		*)
-			PATH="${MSYS2_PATH}:${PATH}"
-		;;
-	esac
+  case "$MSYSTEM" in
+    MINGW32)
+      PATH="/mingw32/bin:${MSYS2_PATH}:${PATH}"
+      PKG_CONFIG_PATH="/mingw32/lib/pkgconfig"
+      MANPATH="/mingw32/share/man:${MANPATH}"
+    ;;
+    MINGW64)
+      PATH="/mingw64/bin:${MSYS2_PATH}:${PATH}"
+      PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
+      MANPATH="/mingw64/share/man:${MANPATH}"
+    ;;
+    MSYS)
+      PATH="${MSYS2_PATH}:/opt/bin:${PATH}"
+      PKG_CONFIG_PATH="/usr/lib/pkgconfig:/lib/pkgconfig"
+    ;;
+    *)
+      PATH="${MSYS2_PATH}:${PATH}"
+    ;;
+  esac
 else
-	PATH="${MSYS2_PATH}:${PATH}"
+  PATH="${MSYS2_PATH}:${PATH}"
 fi
 
 MAYBE_FIRST_START=false
@@ -241,10 +241,10 @@ maybe_create_devs ()
   
   # Install /dev/fd, /dev/std{in,out,err}.  The bash builtin test was compiled
   # to assume these exist, so use /bin/test to really check.
-  /bin/test -h /dev/stdin  || ln -sf /proc/self/fd/0 /dev/stdin
-  /bin/test -h /dev/stdout || ln -sf /proc/self/fd/1 /dev/stdout
-  /bin/test -h /dev/stderr || ln -sf /proc/self/fd/2 /dev/stderr
-  /bin/test -h /dev/fd     || ln -sf /proc/self/fd   /dev/fd
+  /usr/bin/test -h /dev/stdin  || ln -sf /proc/self/fd/0 /dev/stdin
+  /usr/bin/test -h /dev/stdout || ln -sf /proc/self/fd/1 /dev/stdout
+  /usr/bin/test -h /dev/stderr || ln -sf /proc/self/fd/2 /dev/stderr
+  /usr/bin/test -h /dev/fd     || ln -sf /proc/self/fd   /dev/fd
 }
 
 
@@ -349,8 +349,8 @@ maybe_create_home ()
   fi
 
   # Start MSYS in selected folder
-  # c:\msys\bin\bash -c "cd '%curdir'; export 
-  # CHERE_INVOKING=1; exec /bin/bash --login -i"
+  # c:\msys\usr\bin\bash -c "cd '%curdir'; export 
+  # CHERE_INVOKING=1; exec /usr/bin/bash --login -i"
   # 
   # Make sure we start in home unless invoked by CHERE
   if [ ! -z "${CHERE_INVOKING}" ]; then
@@ -466,7 +466,7 @@ esac
 
 
 if [ "$MAYBE_FIRST_START" = "true" ]; then
-  sh /sbin/regen-info.sh
+  sh /usr/sbin/regen-info.sh
   
   if [ -f "/usr/bin/update-ca-trust" ]
   then 
@@ -475,7 +475,7 @@ if [ "$MAYBE_FIRST_START" = "true" ]; then
   
   if [ -f "/usr/bin/xmlcatalog" ]
   then
-    /bin/mkdir -p /etc/xml
+    /usr/bin/mkdir -p /etc/xml
     /usr/bin/xmlcatalog --noout --create /etc/xml/catalog
   fi
 
