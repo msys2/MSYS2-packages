@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 INFODIR=/usr/share/info
 rm -f $INFODIR/dir
