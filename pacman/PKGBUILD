@@ -2,7 +2,7 @@
 
 pkgname=pacman
 _base_ver=4.1.2
-pkgver=4.1.2.5730.0038af9
+pkgver=4.1.2.5733.6c1faf2
 pkgrel=1
 pkgdesc="A library-based package manager with dependency support (MSYS2 port)"
 arch=('i686' 'x86_64')
@@ -24,10 +24,10 @@ provides=('pacman-contrib')
 conflicts=('pacman-contrib')
 replaces=('pacman-contrib')
 #options=('!strip' 'debug')
-backup=("usr/etc/pacman.conf"
-        "usr/etc/makepkg.conf"
-        "usr/etc/makepkg_mingw32.conf"
-        "usr/etc/makepkg_mingw64.conf")
+backup=("etc/pacman.conf"
+        "etc/makepkg.conf"
+        "etc/makepkg_mingw32.conf"
+        "etc/makepkg_mingw64.conf")
 source=("$pkgname"::'git://github.com/Alexpux/MSYS2-pacman.git'
         "pacman.conf.i686"
         "pacman.conf.x86_64"
@@ -35,17 +35,15 @@ source=("$pkgname"::'git://github.com/Alexpux/MSYS2-pacman.git'
         "makepkg_mingw32.conf"
         "makepkg_mingw64.conf"
         "makepkg-mingw"
-        "0001-more-debugging-info.patch"
-        "0002-Revert-Revert-Revert-MSYS2-has-mounted-usr-to-and-we.patch")
+        "0001-more-debugging-info.patch")
 md5sums=('SKIP'
          'b079f3989407f048439649cf7f5b183a'
          'b079f3989407f048439649cf7f5b183a'
          'eb0486b7fab06af50b3ffd5953b46ea9'
          '78bb3bc59e01fc2af4f21dfa14ea0dee'
          '143cd4ce1e4f00396640d09b24be56f3'
-         'feb4d811cee5c2697abbfefd2018bbe3'
-         '76d3848fe31fd035e05d8ab1985d3a33'
-         '7ca7976ea1889f4b7ff5423e1c6576b2')
+         '6d09ad2af496334e3f9f546c1e586676'
+         '76d3848fe31fd035e05d8ab1985d3a33')
 
 pkgver() {
   cd "$srcdir/$pkgname"
@@ -55,16 +53,18 @@ pkgver() {
 
 prepare() {
   cd $srcdir/$pkgname
-#  git am $srcdir/0001-more-debugging-info.patch
-#  git am $srcdir/0002-Revert-Revert-Revert-MSYS2-has-mounted-usr-to-and-we.patch
+#  git am $srcdir/"0001-more-debugging-info.patch"
 }
 
 build() {
   cd $srcdir/$pkgname
   ./autogen.sh
 
-  ./configure --prefix=/usr --sysconfdir=/etc \
-    --localstatedir=/var --enable-doc \
+  ./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
+    --enable-doc \
     --with-scriptlet-shell=/usr/bin/bash \
     --with-pkg-ext=.pkg.tar.xz
   make -j1
@@ -80,13 +80,9 @@ package() {
   make -j1 DESTDIR=$pkgdir install
   make -j1 DESTDIR=$pkgdir -C contrib install
 
-  # Workaround for MSYS - place all files in /usr
-  mv -f $pkgdir/etc $pkgdir/usr/
-  mv -f $pkgdir/var $pkgdir/usr/
-
   # install Arch specific stuff
-  install -dm755 $pkgdir/usr/etc
-  install -m644 $srcdir/pacman.conf.$CARCH $pkgdir/usr/etc/pacman.conf
+  install -dm755 $pkgdir/etc
+  install -m644 $srcdir/pacman.conf.$CARCH $pkgdir/etc/pacman.conf
 
   case "$CARCH" in
   i686)    
@@ -101,22 +97,22 @@ package() {
   ;;
   esac
 
-  install -m644 $srcdir/makepkg.conf $pkgdir/usr/etc/
-  install -m644 $srcdir/makepkg_mingw32.conf $pkgdir/usr/etc/
-  install -m644 $srcdir/makepkg_mingw64.conf $pkgdir/usr/etc/
+  install -m644 $srcdir/makepkg.conf $pkgdir/etc/
+  install -m644 $srcdir/makepkg_mingw32.conf $pkgdir/etc/
+  install -m644 $srcdir/makepkg_mingw64.conf $pkgdir/etc/
   install -m755 $srcdir/makepkg-mingw $pkgdir/usr/bin/
 
   # set things correctly in the default conf file
-  sed -i $pkgdir/usr/etc/makepkg.conf \
+  sed -i $pkgdir/etc/makepkg.conf \
     -e "s|@CARCH[@]|$mycarch|g" \
     -e "s|@CHOST[@]|$mychost|g" \
     -e "s|@CARCHFLAGS[@]|$myflags|g"
 
   # put bash_completion in the right location
   install -dm755 ${pkgdir}/usr/share/bash-completion/completions
-  mv ${pkgdir}/usr/etc/bash_completion.d/pacman \
+  mv ${pkgdir}/etc/bash_completion.d/pacman \
     ${pkgdir}/usr/share/bash-completion/completions
-  rmdir ${pkgdir}/usr/etc/bash_completion.d
+  rmdir ${pkgdir}/etc/bash_completion.d
 
   for f in makepkg pacman-key; do
     ln -s pacman "$pkgdir/usr/share/bash-completion/completions/$f"
