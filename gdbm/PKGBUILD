@@ -1,0 +1,87 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('gdbm' 'libgdbm' 'libgdbm-devel')
+pkgver=1.11
+pkgrel=1
+pkgdesc="GNU database library"
+url="http://www.gnu.org/software/gdbm/gdbm.html"
+license=('GPL3')
+arch=('i686' 'x86_64')
+depends=('sh')
+source=(ftp://ftp.gnu.org/gnu/gdbm/${pkgname}-${pkgver}.tar.gz{,.sig}
+        gdbm-1.10-zeroheaders.patch
+        1.10-no-undefined.patch
+        1.11-parallel-make.patch
+        gdbm-1.11-msysize.patch)
+options=('!makeflags')
+md5sums=('72c832680cf0999caedbe5b265c8c1bd'
+         'SKIP'
+         'ac255b10452005237836cd2d3a470733'
+         '4f88419a165ec5216304459e31b8c902'
+         'c0ff77f46608173103e2e8c6c1f1e496'
+         '7ae95a34ee48144cc119a6c83d2f3180')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  # Prevent gdbm from storing uninitialized memory content
+  # to database files. This patch improves security, as the
+  # uninitialized memory might contain sensitive informations
+  # from other applications.
+  # https://bugzilla.redhat.com/show_bug.cgi?id=4457
+  # http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=208927
+  patch -Np1 -i ${srcdir}/gdbm-1.10-zeroheaders.patch
+  
+  patch -Np2 -i ${srcdir}/1.10-no-undefined.patch
+  patch -Np2 -i ${srcdir}/1.11-parallel-make.patch
+  patch -Np1 -i ${srcdir}/gdbm-1.11-msysize.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  ./configure \
+    --prefix=/usr \
+    --enable-libgdbm-compat
+  make
+  make DESTDIR=${srcdir}/dest install
+}
+
+check() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make check
+}
+
+package_gdbm() {
+  depends=(libgdbm=$pkgver)
+  groups=('Database')
+  install=gdbm.install
+  
+  mkdir -p ${pkgdir}/usr/{bin,share}
+
+  cp -f ${srcdir}/dest/usr/bin/*.exe ${pkgdir}/usr/bin/
+  #cp -rf ${srcdir}/dest/usr/share/doc ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/info ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/locale ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
+}
+
+package_libgdbm() {
+  depends=('gcc-libs')
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+}
+
+package_libgdbm-devel() {
+  pkgdesc="libgdbm headers and libraries"
+  options=('staticlibs')
+  depends=("libgdbm=${pkgver}")
+  groups=('development')
+  
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
