@@ -2,7 +2,7 @@
 
 pkgname=('p11-kit' 'libp11-kit' 'libp11-kit-devel')
 pkgver=0.20.2
-pkgrel=1
+pkgrel=2
 pkgdesc="Library to work with PKCS#11 modules"
 arch=(i686 x86_64)
 url="http://p11-glue.freedesktop.org"
@@ -12,13 +12,15 @@ source=($url/releases/$pkgname-$pkgver.tar.gz{,.sig}
         0.19.1-trust-shrext.patch
         p11-kit-0.18.7-msys2.patch
         p11-kit-fix-readlink.patch
-    0.18.7-win8-x64.patch)
+        0.18.7-win8-x64.patch
+        0.18.7-parallel-make.patch)
 md5sums=('757b97ee4ac0ce598661a90cd784c4f1'
          'SKIP'
          '4a1d9752bb1d3776b2dbc73504915912'
          '7a1384e8bc303a8b3991e9f6d43ac9e6'
          '32ac86a2d9f8b0bd5c9ac72a060bdcf7'
-         '07e2cffc8c80173f1806a6e10d789d27')
+         '07e2cffc8c80173f1806a6e10d789d27'
+         '57a647d0302ac3beeda5463a4d8667e9')
 
 prepare() {
   cd $pkgname-$pkgver
@@ -27,15 +29,21 @@ prepare() {
   patch -p1 -i $srcdir/p11-kit-0.18.7-msys2.patch
   patch -p1 -i $srcdir/p11-kit-fix-readlink.patch
   patch -p2 -i $srcdir/0.18.7-win8-x64.patch
+  patch -p1 -i $srcdir/0.18.7-parallel-make.patch
   
   autoreconf -fi
 }
 
 build() {
   cd $pkgname-$pkgver
-  ./configure --build=${CHOST} --prefix=/usr \
+  ./configure \
+    --build=${CHOST} \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
     --with-trust-paths=/etc/pki/ca-trust/source:/usr/share/pki/ca-trust-source \
-    --without-libiconv-prefix --without-libintl-prefix
+    --without-libiconv-prefix \
+    --without-libintl-prefix
   make
   
   make DESTDIR="$srcdir/dest" install
@@ -50,6 +58,7 @@ check() {
 package_p11-kit() {
   depends=('libffi' 'libp11-kit' 'libtasn1')
   mkdir -p $pkgdir/usr/{bin,lib,share}
+  cp -rf $srcdir/dest/etc $pkgdir/
   cp -f $srcdir/dest/usr/bin/*.exe $pkgdir/usr/bin/
   mkdir -p $pkgdir/usr/lib/pkcs11
   mkdir -p $pkgdir/usr/share/p11-kit/modules
