@@ -1,0 +1,60 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('libpipeline' 'libpipeline-devel')
+pkgver=1.3.0
+pkgrel=1
+pkgdesc="a C library for manipulating pipelines of subprocesses in a flexible and convenient way"
+url="http://libpipeline.nongnu.org/"
+groups=('libraries')
+arch=('i686' 'x86_64')
+license=('BSD')
+makedepends=('openssl-devel' 'zlib-devel')
+options=('!libtool')
+source=(http://download.savannah.gnu.org/releases/libpipeline/libpipeline-$pkgver.tar.gz{,.sig}
+        libpipeline-1.3.0-3.src.patch
+        libpipeline-1.3.0-msys2.patch)
+md5sums=('242428c01dca255cdcb2195073a9c6ed'
+         'SKIP'
+         'd2369528753a6bb6b2c119ff80e0b087'
+         'e426e17048bf0ddf1aa474c9aa398e0d')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  patch -p2 -i ${srcdir}/libpipeline-1.3.0-3.src.patch
+  patch -p1 -i ${srcdir}/libpipeline-1.3.0-msys2.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+
+  ./configure --build=${CHOST} --prefix=/usr
+  make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  make check
+}
+
+package_libpipeline() {
+  depends=('gcc-libs')
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+}
+
+package_libpipeline-devel() {
+  pkgdesc="libpipeline headers and libraries"
+  options=('!staticlibs')
+  depends=("libpipeline=${pkgver}")
+  groups=('development')
+  
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}

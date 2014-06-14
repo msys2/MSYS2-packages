@@ -1,0 +1,208 @@
+--- origsrc/libpipeline-1.3.0/NEWS	2014-03-26 12:12:46.000000000 +0100
++++ src/libpipeline-1.3.0/NEWS	2014-05-12 21:13:31.628020600 +0200
+@@ -1,3 +1,8 @@
++libpipeline 1.3.1
++=================
++
++Fix test failures on Cygwin.
++
+ libpipeline 1.3.0 (26 March 2014)
+ =================================
+ 
+--- origsrc/libpipeline-1.3.0/configure.ac	2014-03-26 12:12:58.000000000 +0100
++++ src/libpipeline-1.3.0/configure.ac	2014-05-12 21:13:30.335511300 +0200
+@@ -53,6 +53,7 @@ then
+ 	gl_WARN_ADD([-Wno-missing-field-initializers])
+ fi
+ AC_PROG_LN_S
++AC_DEFINE_UNQUOTED([SHELL], ["$SHELL"], [A POSIX shell interpreter.])
+ PKG_CHECK_MODULES([CHECK], [check >= 0.9.4], [run_tests=yes], [run_tests=no])
+ AM_CONDITIONAL([RUN_TESTS], [test "x$run_tests" = xyes])
+ 
+--- origsrc/libpipeline-1.3.0/tests/basic.c	2014-03-26 11:56:53.000000000 +0100
++++ src/libpipeline-1.3.0/tests/basic.c	2014-05-12 21:13:30.343513700 +0200
+@@ -54,6 +54,7 @@ START_TEST (test_basic_args)
+ 		     "Number of arguments != 2");
+ 	pipeline_start (p);
+ 	line = pipeline_readline (p);
++	fail_unless (line != NULL);
+ 	fail_unless (!strcmp (line, "foo\n"),
+ 		     "Incorrect output from 'echo foo': '%s'", line);
+ 	fail_unless (pipeline_wait (p) == 0, "'echo foo' did not return 0");
+@@ -65,6 +66,7 @@ START_TEST (test_basic_args)
+ 		     "Number of arguments != 3");
+ 	pipeline_start (p);
+ 	line = pipeline_readline (p);
++	fail_unless (line != NULL);
+ 	fail_unless (!strcmp (line, "foo bar\n"),
+ 		     "Incorrect output from 'echo foo bar': '%s'", line);
+ 	fail_unless (pipeline_wait (p) == 0,
+@@ -84,6 +86,7 @@ START_TEST (test_basic_pipeline)
+ 	pipeline_want_out (p, -1);
+ 	pipeline_start (p);
+ 	line = pipeline_readline (p);
++	fail_unless (line != NULL);
+ 	fail_unless (!strcmp (line, "bar\n"),
+ 		     "Incorrect output from 'echo foo | sed -e s/foo/bar/': "
+ 		     "'%s'", line);
+@@ -100,8 +103,8 @@ START_TEST (test_basic_wait_all)
+ 	int n_statuses;
+ 
+ 	p = pipeline_new ();
+-	pipeline_command_args (p, "sh", "-c", "exit 2", NULL);
+-	pipeline_command_args (p, "sh", "-c", "exit 3", NULL);
++	pipeline_command_args (p, SHELL, "-c", "exit 2", NULL);
++	pipeline_command_args (p, SHELL, "-c", "exit 3", NULL);
+ 	pipeline_command_args (p, "true", NULL);
+ 	pipeline_start (p);
+ 	fail_unless (pipeline_wait_all (p, &statuses, &n_statuses) == 127);
+@@ -118,7 +121,7 @@ START_TEST (test_basic_setenv)
+ {
+ 	pipeline *p;
+ 
+-	p = pipeline_new_command_args ("sh", "-c", "exit $TEST1", NULL);
++	p = pipeline_new_command_args (SHELL, "-c", "exit $TEST1", NULL);
+ 	pipecmd_setenv (pipeline_get_command (p, 0), "TEST1", "10");
+ 	fail_unless (pipeline_run (p) == 10, "TEST1 not set properly");
+ }
+@@ -131,20 +134,22 @@ START_TEST (test_basic_unsetenv)
+ 
+ 	setenv ("TEST2", "foo", 1);
+ 
+-	p = pipeline_new_command_args ("sh", "-c", "echo $TEST2", NULL);
++	p = pipeline_new_command_args (SHELL, "-c", "echo $TEST2", NULL);
+ 	pipeline_want_out (p, -1);
+ 	pipeline_start (p);
+ 	line = pipeline_readline (p);
++	fail_unless (line != NULL);
+ 	fail_unless (!strcmp (line, "foo\n"),
+ 		     "control returned '%s', expected 'foo\n'", line);
+ 	pipeline_wait (p);
+ 	pipeline_free (p);
+ 
+-	p = pipeline_new_command_args ("sh", "-c", "echo $TEST2", NULL);
++	p = pipeline_new_command_args (SHELL, "-c", "echo $TEST2", NULL);
+ 	pipecmd_unsetenv (pipeline_get_command (p, 0), "TEST2");
+ 	pipeline_want_out (p, -1);
+ 	pipeline_start (p);
+ 	line = pipeline_readline (p);
++	fail_unless (line != NULL);
+ 	fail_unless (!strcmp (line, "\n"),
+ 		     "unsetenv failed: returned '%s', expected '\n'", line);
+ 	pipeline_wait (p);
+@@ -159,15 +164,17 @@ START_TEST (test_basic_clearenv)
+ 
+ 	setenv ("TEST3", "foo", 1);
+ 
+-	p = pipeline_new_command_args ("sh", "-c", "echo $TEST3; echo $TEST4",
++	p = pipeline_new_command_args (SHELL, "-c", "echo $TEST3; echo $TEST4",
+ 				       NULL);
+ 	pipeline_want_out (p, -1);
+ 	pipeline_start (p);
+ 	line1 = pipeline_readline (p);
++	fail_unless (line1 != NULL);
+ 	fail_unless (!strcmp (line1, "foo\n"),
+ 		     "control returned first line '%s', expected 'foo\n'",
+ 		     line1);
+ 	line2 = pipeline_readline (p);
++	fail_unless (line2 != NULL);
+ 	fail_unless (!strcmp (line2, "\n"),
+ 		     "control returned second line '%s', expected '\n'",
+ 		     line2);
+@@ -176,10 +183,12 @@ START_TEST (test_basic_clearenv)
+ 	pipecmd_clearenv (pipeline_get_command (p, 0));
+ 	pipeline_start (p);
+ 	line1 = pipeline_readline (p);
++	fail_unless (line1 != NULL);
+ 	fail_unless (!strcmp (line1, "\n"),
+ 		     "clearenv failed: returned first line '%s', expected '\n'",
+ 		     line1);
+ 	line2 = pipeline_readline (p);
++	fail_unless (line2 != NULL);
+ 	fail_unless (!strcmp (line2, "\n"),
+ 		     "clearenv returned second line '%s', expected '\n'",
+ 		     line2);
+@@ -188,10 +197,12 @@ START_TEST (test_basic_clearenv)
+ 	pipecmd_setenv (pipeline_get_command (p, 0), "TEST4", "bar");
+ 	pipeline_start (p);
+ 	line1 = pipeline_readline (p);
++	fail_unless (line1 != NULL);
+ 	fail_unless (!strcmp (line1, "\n"),
+ 		     "clearenv+setenv failed: returned first line '%s', expected '\n'",
+ 		     line1);
+ 	line2 = pipeline_readline (p);
++	fail_unless (line2 != NULL);
+ 	fail_unless (!strcmp (line2, "bar\n"),
+ 		     "clearenv+setenv returned second line '%s', expected 'bar\n'",
+ 		     line2);
+@@ -202,10 +213,12 @@ START_TEST (test_basic_clearenv)
+ 	pipeline_want_out (p2, -1);
+ 	pipeline_start (p2);
+ 	line1 = pipeline_readline (p2);
++	fail_unless (line1 != NULL);
+ 	fail_unless (!strcmp (line1, "\n"),
+ 		     "clearenv+setenv+dup failed: returned first line '%s', expected '\n'",
+ 		     line1);
+ 	line2 = pipeline_readline (p2);
++	fail_unless (line2 != NULL);
+ 	fail_unless (!strcmp (line2, "bar\n"),
+ 		     "clearenv+setenv+dup returned second line '%s', expected 'bar\n'",
+ 		     line2);
+@@ -218,6 +231,7 @@ END_TEST
+ START_TEST (test_basic_chdir)
+ {
+ 	pipeline *p;
++	const char *raw_line;
+ 	char *line, *end;
+ 	char *child_base, *expected_base;
+ 
+@@ -225,7 +239,9 @@ START_TEST (test_basic_chdir)
+ 	pipecmd_chdir (pipeline_get_command (p, 0), temp_dir);
+ 	pipeline_want_out (p, -1);
+ 	pipeline_start (p);
+-	line = xstrdup (pipeline_readline (p));
++	raw_line = xstrdup (pipeline_readline (p));
++	fail_unless (raw_line != NULL);
++	line = xstrdup (raw_line);
+ 	end = line + strlen (line);
+ 	if (end > line && *(end - 1) == '\n')
+ 		*(end - 1) = '\0';
+@@ -258,6 +274,7 @@ START_TEST (test_basic_sequence)
+ 	pipeline_want_out (p, -1);
+ 	pipeline_start (p);
+ 	line = pipeline_readline (p);
++	fail_unless (line != NULL);
+ 	fail_unless (!strcmp (line, "foo bar baz\n"));
+ 	pipeline_wait (p);
+ 	pipeline_free (p);
+--- origsrc/libpipeline-1.3.0/tests/exec.c	2013-12-18 11:47:32.000000000 +0100
++++ src/libpipeline-1.3.0/tests/exec.c	2014-05-12 21:13:30.344514400 +0200
+@@ -48,7 +48,7 @@ START_TEST (test_exec_process)
+ 		if (i < 2) {
+ 			char *arg;
+ 
+-			cmd = pipecmd_new_args ("sh", "-c", NULL);
++			cmd = pipecmd_new_args (SHELL, "-c", NULL);
+ 			arg = xasprintf ("exit %d", i);
+ 			pipecmd_arg (cmd, arg);
+ 			free (arg);
+--- origsrc/libpipeline-1.3.0/tests/inspect.c	2013-11-30 18:06:28.000000000 +0100
++++ src/libpipeline-1.3.0/tests/inspect.c	2014-05-12 21:13:30.347517000 +0200
+@@ -90,6 +90,7 @@ START_TEST (test_inspect_pid)
+ 	pipeline_want_out (p, -1);
+ 	pipeline_start (p);
+ 	line = pipeline_readline (p);
++	fail_unless (line != NULL);
+ 	pid = (pid_t) atol (line);
+ 	fail_unless (pid == pipeline_get_pid (p, 0), "pids match");
+ 	/* Note that this test may hang if pipeline_get_pid does not work.
+--- origsrc/libpipeline-1.3.0/tests/redirect.c	2013-11-30 18:06:28.000000000 +0100
++++ src/libpipeline-1.3.0/tests/redirect.c	2014-05-12 21:13:30.350519200 +0200
+@@ -58,6 +58,7 @@ START_TEST (test_redirect_files)
+ 	pipeline_want_out (p, -1);
+ 	pipeline_start (p);
+ 	line = pipeline_readline (p);
++	fail_unless (line != NULL);
+ 	fail_unless (!strcmp (line, "test data out\n"));
+ 
+ 	fclose (fh);
