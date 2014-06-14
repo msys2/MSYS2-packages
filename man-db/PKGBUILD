@@ -1,0 +1,65 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=man-db
+pkgver=2.6.7.1
+pkgrel=1
+pkgdesc="A utility for reading man pages"
+arch=('i686' 'x86_64')
+url="http://www.nongnu.org/man-db/"
+license=('GPL' 'LGPL')
+groups=('base')
+depends=( 'bash' 'gdbm' 'zlib' 'groff' 'libpipeline' 'less')
+optdepends=('gzip')
+makedepends=('libgdbm-devel' 'libpipeline-devel' 'zlib-devel' 'pkg-config')
+backup=('etc/man_db.conf')
+conflicts=('man')
+provides=('man')
+replaces=('man')
+install=${pkgname}.install
+source=(http://download-mirror.savannah.gnu.org/releases/man-db/$pkgname-$pkgver.tar.xz{,.sig}
+        convert-mans
+        man-db-2.6.7.1-msysize.patch
+        man-db-2.6.7.1-noundefined.patch)
+md5sums=('ce7b697f8e8016a085d9f5975ae6c4fb'
+         'SKIP'
+         '0bd4b663cba0bbe85c4f457f775030bc'
+         '1a32cc0e6a7993d5155667a07f0efc49'
+         '4057a1c42d17223b42626f845db5a866')
+
+prepare() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  patch -p1 -i ${srcdir}/man-db-2.6.7.1-msysize.patch
+  #patch -p1 -i ${srcdir}/man-db-2.6.7.1-noundefined.patch
+  
+  autoreconf -fi
+}
+
+build() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  ./configure --prefix=/usr \
+    --sbindir=/usr/bin \
+    --sysconfdir=/etc \
+    --libexecdir=/usr/lib \
+    --with-db=gdbm \
+    --disable-setuid \
+    --enable-mandirs=GNU \
+    --with-sections="1 n l 8 3 0 2 5 4 9 6 7"
+  make
+}
+
+check() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make check
+}
+
+package() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make DESTDIR=${pkgdir} install
+
+  # part of groff pkg
+  rm -f ${pkgdir}/usr/bin/zsoelim
+
+  # script from LFS to convert manpages, see
+  # http://www.linuxfromscratch.org/lfs/view/6.4/chapter06/man-db.html
+  install -D -m755 ${srcdir}/convert-mans  ${pkgdir}/usr/bin/convert-mans
+}
