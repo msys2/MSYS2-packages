@@ -1,4 +1,4 @@
-From 23f531129960a23b0cdc6b1c81db35bce11180f8 Mon Sep 17 00:00:00 2001
+From b973680d889992c7e9399aa9bf7d845d3d081f77 Mon Sep 17 00:00:00 2001
 From: Ray Donnelly <mingw.android@gmail.com>
 Date: Sun, 15 Jun 2014 16:11:54 +0100
 Subject: [PATCH 2/2] Add util-msys2.{c,h} and rebase-db-msys2.{c,}
@@ -11,10 +11,11 @@ when installing in chroots when making new installer releases.
  lib/libalpm/rebase-db-msys2.h |  85 ++++++++++++++++
  lib/libalpm/util-msys2.c      | 218 ++++++++++++++++++++++++++++++++++++++++++
  lib/libalpm/util-msys2.h      |  20 ++++
- lib/libalpm/util.c            |  18 +++-
+ lib/libalpm/util.c            |   2 +-
  src/pacman/conf.h             |   2 +
  src/pacman/pacman.c           |   3 +
- 8 files changed, 484 insertions(+), 1 deletion(-)
+ src/pacman/sync.c             |  21 ++++
+ 9 files changed, 489 insertions(+), 1 deletion(-)
  create mode 100644 lib/libalpm/rebase-db-msys2.c
  create mode 100644 lib/libalpm/rebase-db-msys2.h
  create mode 100644 lib/libalpm/util-msys2.c
@@ -518,7 +519,7 @@ index 0000000..77c97ec
 +
 +int _alpm_load_msys_db(const char *db_name);
 diff --git a/lib/libalpm/util.c b/lib/libalpm/util.c
-index 4992716..51ccb77 100644
+index 4992716..72681a3 100644
 --- a/lib/libalpm/util.c
 +++ b/lib/libalpm/util.c
 @@ -307,7 +307,7 @@ char *get_command_line(const char* cmd, char *const argv[])
@@ -530,29 +531,6 @@ index 4992716..51ccb77 100644
      strcpy(result, cmd);
      strcat(result, " ");
      for (size_t arg = 0; arg < nargs; ++arg) {
-@@ -506,6 +506,22 @@ int _alpm_logaction(alpm_handle_t *handle, const char *prefix,
- 	return ret;
- }
- 
-+#if 0
-+/* copy the /etc/rebase.db.x86_64 */
-+if(config->rebase) {
-+    char db_filename_src[260];
-+    size_t len = get_rebasedb_filename(&db_filename_src, sizeof(db_filename_src));
-+    size_t len_root = strlen(conf->rootdir);
-+    char *db_filename_dst = (char*)alloca(len + len_root + 2);
-+    strcpy(db_filename_dst, conf->rootdir);
-+    if (db_filename_dst[strlen(db_filename_dst)-1] != '/') {
-+        strcat(db_filename_dst, "/");
-+    }
-+    strcat(db_filename_dst, db_filename_src);
-+    _alpm_copyfile(db_filename_src, db_filename_dst);
-+}
-+#endif
-+
- /** Execute a command with arguments in a chroot.
-  * @param handle the context handle
-  * @param cmd command to execute
 diff --git a/src/pacman/conf.h b/src/pacman/conf.h
 index e8cac50..9455f47 100644
 --- a/src/pacman/conf.h
@@ -594,6 +572,38 @@ index 618ea40..c9ea460 100644
  		{"recursive",  no_argument,       0, OP_RECURSIVE},
  		{"search",     no_argument,       0, OP_SEARCH},
  		{"unrequired", no_argument,       0, OP_UNREQUIRED},
+diff --git a/src/pacman/sync.c b/src/pacman/sync.c
+index bf19d57..2d4008a 100644
+--- a/src/pacman/sync.c
++++ b/src/pacman/sync.c
+@@ -908,6 +908,27 @@ int pacman_sync(alpm_list_t *targets)
+ 		return 1;
+ 	}
+ 
++#if defined(__MSYS__)
++    if (config->rebase) {
++		/* copy the /etc/rebase.db.x86_64 - this shouldn't be here since
++	      _alpm_copyfile is private to libalpm; fix this once it is all
++	      working correctly. */
++		int _alpm_copyfile(const char *src, const char *dest);
++		size_t get_rebasedb_filename(char *result, size_t maxlen);
++
++		char db_filename_src[260];
++		size_t len = get_rebasedb_filename(&db_filename_src[0], sizeof(db_filename_src));
++		size_t len_root = strlen(config->rootdir);
++		char *db_filename_dst = (char*)alloca(len + len_root + 2);
++		strcpy(db_filename_dst, config->rootdir);
++		if (db_filename_dst[strlen(db_filename_dst)-1] != '/') {
++			strcat(db_filename_dst, "/");
++		}
++		strcat(db_filename_dst, db_filename_src);
++		_alpm_copyfile(db_filename_src, db_filename_dst);
++	}
++#endif
++
+ 	sync_dbs = alpm_get_syncdbs(config->handle);
+ 
+ 	if(config->op_s_sync) {
 -- 
 2.0.0
 
