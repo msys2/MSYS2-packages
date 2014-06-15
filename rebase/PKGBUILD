@@ -2,7 +2,7 @@
 
 pkgname=rebase
 pkgver=4.4.1
-pkgrel=2
+pkgrel=3
 pkgdesc="The Cygwin rebase distribution contains four utilities, rebase, rebaseall, peflags, and peflagsall."
 groups=('base')
 arch=('i686' 'x86_64')
@@ -10,30 +10,47 @@ license=('custom')
 url="http://www.cygwin.com/"
 depends=('msys2-runtime' 'dash')
 makedepends=('coreutils' 'grep' 'gzip' 'sed')
-source=(rebase-4.4.1.tar.bz2
-        'rebase-4.4.0-msys2.patch'
-    'autorebase.bat'
-    rebaseall-add-python-exts.patch)
+# options=('debug' '!strip')
+source=('rebase-4.4.1.tar.bz2'
+        'rebase-4.4.1-msys2.patch'
+        'autorebase.bat'
+        'autorebasebase1st.bat'
+        'rebaseall-add-python-exts.patch'
+        'pacman-rec-filename-grep'
+        'allow-non-database-mode-when-__CYGWIN__-__MSYS__.patch')
 sha1sums=('8f60d206e708b4ad77eb3223601637b5b3205021'
-          '0df8af56cda5f1512798f8d4c216b684bcad5554'
-          'e25b323bda0e71fd7cda44c42be3945052d809c9'
-          '03f69430fba022ba968be7493705786d15ece79b')
+          'a05d023f9594a7cac160ec538f10f7ea23427331'
+          '7936b0fe01a1fd5b5562c511079301bbc331cfe5'
+          '4737ffcd798f8d2dcd245a2de1b44563c4c38863'
+          '03f69430fba022ba968be7493705786d15ece79b'
+          'd6b22dab6bc9fd9491c371263d3cab1b26c0d8ed'
+          '47efdc02e25611be06458d33098668a854f70d42')
 
 prepare() {
   cd "$srcdir/$pkgname-$pkgver"
 
-  patch -p1 -i $srcdir/rebase-4.4.0-msys2.patch
+  patch -p1 -i $srcdir/rebase-4.4.1-msys2.patch
   patch -p1 -i $srcdir/rebaseall-add-python-exts.patch
+  patch -p1 -i $srcdir/allow-non-database-mode-when-__CYGWIN__-__MSYS__.patch
+  
+  if check_option "strip" "n"; then
+    sed -i "s/ -s//g" Makefile.in
+  fi
   autoreconf -fi
 }
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"
 
+  local _dbgflags=
+  if check_option "debug" "y"; then
+    _dbgflags="-g -O0"
+  fi
+
   ./configure --prefix=/usr \
     --sysconfdir=/etc \
-    CXXFLAGS="-static -static-libgcc -static-libstdc++" \
-    CFLAGS="-static -static-libgcc"
+    CXXFLAGS="-static -static-libgcc -static-libstdc++ ${_dbgflags}" \
+    CFLAGS="-static -static-libgcc ${_dbgflags}"
   make
 }
 
@@ -42,4 +59,6 @@ package() {
 
   make DESTDIR=${pkgdir} install
   cp -f ${srcdir}/autorebase.bat ${pkgdir}/usr
+  cp -f ${srcdir}/autorebasebase1st.bat ${pkgdir}/usr
+  cp -f ${srcdir}/pacman-rec-filename-grep ${pkgdir}/usr/bin
 }

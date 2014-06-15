@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 _thisdir="$(dirname $0)"
 test "${_thisdir}" = "." && _thisdir=${PWD}
@@ -17,14 +17,20 @@ fi
 
 declare -a undo_commands
 
-exit_cleanly() {
-  local _exitcode=$1; shift;
-  local _message=$1; shift;
-  echo "${_message}"
+_exitcode=5
+
+exit_with_undo() {
   for _cmd in ${undo_commands[@]}; do
     eval "$_cmd"
   done
   exit ${_exitcode}
+}
+
+exit_cleanly() {
+  _exitcode=$1; shift;
+  local _message=$1; shift;
+  echo "${_message}"
+  exit_with_undo
 }
 
 do_seds() {
@@ -73,6 +79,8 @@ make_installer() {
     "${_filename}"
 }
 
+trap exit_with_undo 1 2 15
+
 _archivegen=/mingw${_bitness}/bin/archivegen.exe
 _binarycreator=/mingw${_bitness}/bin/binarycreator.exe
 _installerbase=/mingw${_bitness}/bin/installerbase.exe
@@ -89,8 +97,8 @@ pushd "${_newmsys}" > /dev/null
 mkdir usr
 
 mkdir -p "${_newmsys}"/var/lib/pacman
-pacman -Syu --root "${_newmsys}"
-pacman -S base --noconfirm --root "${_newmsys}"
+pacman -Syu --rootrebase "${_newmsys}"
+pacman -S base --noconfirm --rootrebase "${_newmsys}"
 _result=$?
 if [ "$_result" -ne "0" ]; then
   exit_cleanly "1" "failed to create newmsys2 via command 'pacman -S base --noconfirm --root ${_newmsys}'"
@@ -98,7 +106,7 @@ fi
 popd > /dev/null
 
 if [ ! -f "${_archivegen}" ]; then
-  eval "pacman -S --asneeded --noconfirm mingw${_bitness}/mingw-w64-${_arch}-qt-installer-framework-git" | tee $_log 2>&1
+  eval "pacman -S --noconfirm mingw${_bitness}/mingw-w64-${_arch}-qt-installer-framework-git" | tee $_log 2>&1
 fi
 
 if [ ! -f "${_archivegen}" ]; then

@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+#
+# Copyright (c) 2014, Ray Donnelly <mingw.android@gmail.com>
+#
+# Usage: pacman-rec-filename-grep <pkg_or_group> <outfile> |<regex>|
+#
+#      <pkg_or_group>  Name of Pacman package or group to search in.
+#
+#      <outfile>       Filename to write to. Pass '-' to use stdout.
+#
+#      <regex>         Optional extended regex to fnmatch using grep.
+#                       Defaults to matching all files by using '.*$'
+#
+# Exitcode: Only fails if less than two arguments are passed or when
+#           outfile is not writable. Otherwise succeeds, even if the
+#           package/group doesn't exist, where you just get an empty
+#           outfile (or no output to stdout).
+#
+# Example: To get a list of all the .dlls in the base group, use:
+#          pacman-rec-filename-grep base base-dlls.txt ".*\.dll$"
+
+pkg_or_group=$1; shift
+outfile=$1; shift
+regex=$1
+# Defaults to matching all filenames.
+[[ -z "${regex}" ]] && regex=".*$"
+debug=0
+
+declare -a dependencies
+declare -a new_dependencies
+
+# Maybe it's a group ..
+pacman -Sg $pkg_or_group > /dev/null 2>&1 && new_dependencies=($(pacman -Sg $pkg_or_group | cut -d' ' -f2))
+# .. or maybe it's a package.
+pacman -Qi $pkg_or_group > /dev/null 2>&1 && new_dependencies=("${pkg_or_group}")
+
+while [[ ${#dependencies[@]} -ne ${#new_dependencies[@]} ]]; do
+  [[ debug -eq 1 ]] && echo "sizes are dependencies=${#dependencies[@]} and new_dependencies=${#new_dependencies[@]}"
+  dependencies=(${new_dependencies[@]})
+  new_dependencies=()
+  for package in ${dependencies[@]}; do
+    new_dependencies+=("${package}")
+    pkg_deps=$(pacman -Si ${package} 2>/dev/null | sed -n "s/^Depends On \+:\(.*\)$/\1/p")
+    [[ debug -eq 1 ]] && echo "Dependencies of ${package} are ${pkg_deps}"
+    for pkg_dep in $pkg_deps; do
+      new_package=${pkg_dep%>=*}
+      new_dependencies+=("${new_package}")
+    done
+  done
+  [[ debug -eq 1 ]] && echo "new_dependencies (pre-sorting) ${new_dependencies[@]}"
+  new_dependencies=($(printf "%s\n" "${new_dependencies[@]}" | sort -u));
+  [[ debug -eq 1 ]] && echo "new_dependencies (post-sorting) ${new_dependencies[@]}"
+done
+
+# Some packages don't exist ('provides' ones such as 'sh' and also the 'no packages' identifier 'None')
+# Allowing them to make it this far is a bit quicker than filtering them earlier on.
+dependencies=()
+for package in ${new_dependencies[@]}; do
+  pacman -Qi ${package} > /dev/null 2>&1 && dependencies+=("${package}")
+done
+[[ debug -eq 1 ]] && echo "num recursively dependent packages is ${#dependencies[@]}"
+
+# Now grep for the filename match.
+declare -a matching_files
+for package in ${dependencies[@]}; do
+  matching_files+=($(pacman -Ql ${package} | cut -d' ' -f2 | grep -E "${regex}"))
+done
+
+matching_files=($(printf "%s\n" "${matching_files[@]}" | sort -u));
+
+if [ "${outfile}" = "-" -o -z "${outfile}" ]; then
+  echo ${matching_files[@]} | tr " " "\n"
+else
+  echo ${matching_files[@]} | tr " " "\n" > "${outfile}"
+fi
+
+exit 0

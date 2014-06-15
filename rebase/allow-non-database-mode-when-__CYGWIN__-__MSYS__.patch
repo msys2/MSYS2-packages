@@ -1,0 +1,224 @@
+diff -urN rebase-4.4.1.orig/rebase.c rebase-4.4.1/rebase.c
+--- rebase-4.4.1.orig/rebase.c	2014-06-14 14:11:24.073986700 +0100
++++ rebase-4.4.1/rebase.c	2014-06-14 23:18:28.632106000 +0100
+@@ -42,6 +42,7 @@
+ 
+ BOOL save_image_info ();
+ BOOL load_image_info ();
++void dedupe_image_info ();
+ BOOL merge_image_info ();
+ BOOL collect_image_info (const char *pathname);
+ void print_image_info ();
+@@ -67,6 +68,12 @@
+ BOOL image_storage_flag = FALSE;
+ BOOL image_oblivious_flag = FALSE;
+ BOOL force_rebase_flag = FALSE;
++/* Added to support MSYS2. If you do not use database mode (-s)
++then the files are not sorted by name. Also, duplicates are
++not removed from the list as a pre-process. Instead, a linear
++search is performed over the already-processed files and if
++the file in question was already done then it is skipped. */
++BOOL obey_order_flag = FALSE;
+ ULONG offset = 0;
+ int args_index = 0;
+ BOOL verbose = FALSE;
+@@ -193,6 +200,12 @@
+     }
+ #endif /* __CYGWIN__ */
+ 
++  /* Start from here .. */
++  if (obey_order_flag)
++    {
++	  image_base = cygwin_dll_image_base + cygwin_dll_image_size;
++	}
++
+   /* Collect file list, if specified. */
+   if (file_list)
+     {
+@@ -241,6 +254,8 @@
+     }
+   else if (!image_storage_flag)
+     {
++      dedupe_image_info ();
++
+       /* Rebase. */
+       ULONG64 new_image_base = image_base;
+       for (i = 0; i < img_info_size; ++i)
+@@ -583,32 +598,46 @@
+   return img->flag.cannot_rebase;
+ }
+ 
+-int
+-merge_image_info ()
++void
++dedupe_image_info ()
+ {
+-  int i, end;
+-  img_info_t *match;
+-  ULONG64 floating_image_base;
++  int i, j;
+ 
+-  /* Sort new files from command line by name. */
+-  qsort (img_info_list + img_info_rebase_start,
+-	 img_info_size - img_info_rebase_start, sizeof (img_info_t),
+-	 img_info_name_cmp);
++  if (!obey_order_flag)
++    {
++    /* Sort new files from command line by name. */
++    qsort (img_info_list + img_info_rebase_start,
++	   img_info_size - img_info_rebase_start, sizeof (img_info_t),
++	   img_info_name_cmp);
++	}
+   /* Iterate through new files and eliminate duplicates. */
+   for (i = img_info_rebase_start; i + 1 < img_info_size; ++i)
+-    if ((img_info_list[i].name_size == img_info_list[i + 1].name_size
+-	 && !strcmp (img_info_list[i].name, img_info_list[i + 1].name))
++    for (j = i + 1; j < ((obey_order_flag == TRUE) ? i + 2 : img_info_size); ++j)
++    if ((img_info_list[i].name_size == img_info_list[j].name_size
++	 && !strcmp (img_info_list[i].name, img_info_list[j].name))
+ #if defined(__CYGWIN__) || defined(__MSYS__)
+ 	|| !strcmp (img_info_list[i].name, CYGWIN_DLL)
+ #endif
+        )
+       {
+ 	free (img_info_list[i].name);
+-	memmove (img_info_list + i, img_info_list + i + 1,
++	memmove (img_info_list + i, img_info_list + j,
+ 		 (img_info_size - i - 1) * sizeof (img_info_t));
+ 	--img_info_size;
+ 	--i;
++	--j;
+       }
++}
++
++int
++merge_image_info ()
++{
++  int i, end;
++  img_info_t *match;
++  ULONG64 floating_image_base;
++
++  dedupe_image_info ();
++
+   /* Iterate through new files and see if they are already available in
+      existing database. */
+   if (img_info_rebase_start)
+@@ -1196,8 +1225,13 @@
+ 	  break;
+ 	}
+     }
+-
+-  if ((image_base == 0 && !image_info_flag && !image_storage_flag)
++#if defined(__CYGWIN__) || defined(__MSYS__)
++  if (image_base == 0)
++  {
++	  obey_order_flag = TRUE;
++  }
++#endif
++  if ((image_base == 0 && !image_info_flag && !image_storage_flag && !obey_order_flag)
+       || (image_base && image_info_flag))
+     {
+       usage ();
+diff -urN rebase-4.4.1.orig/rebaseall.in rebase-4.4.1/rebaseall.in
+--- rebase-4.4.1.orig/rebaseall.in	2014-06-14 14:11:24.073986700 +0100
++++ rebase-4.4.1/rebaseall.in	2014-06-14 14:11:36.750711700 +0100
+@@ -29,7 +29,7 @@
+ PATH=$(cd $tp2 && pwd):@bindir@:/bin
+ 
+ ProgramName=${0##*/}
+-ProgramOptions='48b:o:ps:tT:v'
++ProgramOptions='48b:io:ps:tT:v'
+ DefaultBaseAddress=0x70000000
+ DefaultOffset=@DEFAULT_OFFSET_VALUE@
+ DefaultTouch=
+@@ -37,17 +37,18 @@
+ DefaultVerbose=
+ DefaultFileList=
+ DefaultSuffixes='dll|so|oct'
++DatabaseFlag=-s
+ 
+ # Define functions
+ usage()
+ {
+-    echo "usage: ${ProgramName} [-b BaseAddress] [-o Offset] [-s DllSuffix] [-T FileList | -] [-4|-8] [-p] [-t] [-v]"
++    echo "usage: ${ProgramName} [-b BaseAddress] [-o Offset] [-s DllSuffix] [-T FileList | -] [-4|-8] [-p] [-t] [-i] [-v]"
+     exit 1
+ }
+ 
+ cleanup()
+ {
+-    rm -f "${TmpFile}" "${SortedFile}"
++    rm -f "${TmpFile}"
+     exit ${ExitCode}
+ }
+ 
+@@ -121,6 +122,8 @@
+     	Touch="-t";;
+     T)
+ 	FileList="${OPTARG}";;
++    i)
++	DatabaseFlag=;;
+     v)
+ 	Verbose="-v";;
+     \?)
+@@ -175,8 +178,8 @@
+ [ -f "${db_file}" ] && database_exists="yes"
+ 
+ # If BaseAddress has not been specified, and the rebase database doesn't exist
+-# yet, set BaseAddress to default.
+-if [ -z "${BaseAddress}" -a "${database_exists}" != "yes" ]
++# yet, set BaseAddress to default, unless ignore database has been specified.
++if [ -z "${BaseAddress}" -a "${database_exists}" != "yes" -a -n "${DatabaseFlag}" ]
+ then
+   BaseAddress=$DefaultBaseAddress
+ fi
+@@ -204,8 +207,15 @@
+ fi
+ 
+ # Set temp file
+-SortedFile="$TmpDir/rebase.lst"
+-TmpFile="${SortedFile}.in"
++TmpFile="$TmpDir/rebase.lst"
++# Prepend user supplied file list, if any
++if [ -n "${FileList}" ]
++then
++    cat "${FileList}" >"${TmpFile}"
++else
++    [ -f "${TmpFile}" ] && rm -f "${TmpFile}"
++    touch "${TmpFile}"
++fi
+ 
+ # Create rebase list
+ case $Platform in
+@@ -214,7 +224,7 @@
+       grep -E "\.($Suffixes)\$" |
+       sed -e '/\/cygwin1\.dll$/d' -e '/\/cyglsa.*\.dll$/d' \
+           -e '/sys-root\/mingw/d' -e 's/^/\//' \
+-          -e '/\/d\?ash\.exe$/d' -e '/\/rebase\.exe$/d' >"${TmpFile}"
++          -e '/\/d\?ash\.exe$/d' -e '/\/rebase\.exe$/d' >>"${TmpFile}"
+     # some interpreters include a method for installing addons outside of the
+     # package manager, such as CPAN and RubyGems.
+     for d in /usr/lib/perl5/site_perl /usr/lib/py*/site-packages \
+@@ -257,20 +267,11 @@
+     ;;
+ esac
+ 
+-# Append user supplied file list, if any
+-if [ -n "${FileList}" ]
+-then
+-    cat "${FileList}" >>"${TmpFile}"
+-fi
+-
+-# Remove duplicates
+-sort -u "${TmpFile}" > "${SortedFile}"
+-
+ if [ -z "${BaseAddress}" ]
+ then
+-  rebase "${Verbose}" "${Touch}" "${NoDyn}" -s "${Mach}" -T "${SortedFile}"
++  rebase "${Verbose}" "${Touch}" "${NoDyn}" "${DatabaseFlag}" "${Mach}" -T "${TmpFile}"
+ else
+-  rebase "${Verbose}" "${Touch}" "${NoDyn}" -s "${Mach}" -b "${BaseAddress}" -o "${Offset}" -T "${SortedFile}"
++  rebase "${Verbose}" "${Touch}" "${NoDyn}" "${DatabaseFlag}" "${Mach}" -b "${BaseAddress}" -o "${Offset}" -T "${TmpFile}"
+ fi
+ ExitCode=$?
+ 
