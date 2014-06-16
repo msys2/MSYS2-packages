@@ -1,4 +1,4 @@
 @echo off
 
-set PATH=%~dp0\bin;%PATH%
-dash /bin/rebaseall -p
+set PATH=%~dp0\usr\bin;%PATH%
+dash /usr/bin/rebaseall -p

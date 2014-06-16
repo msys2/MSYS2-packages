@@ -2,7 +2,7 @@
 
 REM Copyright (c) 2014, Ray Donnelly <mingw.android@gmail.com>
 
-set PATH=%~dp0\bin;%PATH%
+set PATH=%~dp0\usr\bin;%PATH%
 echo Querying 'base' packages for DLLs ..
 bash /usr/bin/pacman-rec-filename-grep base base-dlls-unix.txt ".*\.(dll|so|oct)$"
 bash /usr/bin/paths-from-unix-to-windows base-dlls-unix.txt base-dlls.txt %CD:\=/%
