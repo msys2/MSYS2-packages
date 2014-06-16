@@ -36,29 +36,30 @@ exit_cleanly() {
 do_seds() {
   find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" \) -exec sed -i "s|@DATE@|${_dateqif}|g" "{}" \;
   find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" \) -exec sed -i "s|@VERSION@|${_version}|g" "{}" \;
-  find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" \) -exec sed -i "s|@BITNESS@|${_bitness}|g" "{}" \;
+  find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" -or -name "installscript.js" \) -exec sed -i "s|@BITNESS@|${_bitness}|g" "{}" \;
   undo_commands+=("undo_seds")
 }
 
 undo_seds() {
   find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" \) -exec sed -i "s|<ReleaseDate>${_dateqif}<|<ReleaseDate>@DATE@<|g" "{}" \;
   find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" \) -exec sed -i "s|<Version>${_version}<|<Version>@VERSION@<|g" "{}" \;
-  find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" \) -exec sed -i "s|msys${_bitness}|msys@BITNESS@|g" "{}" \;
+  find "${_ifwroot}" \( -name "package.xml" -or -name "config.xml" -or -name "installscript.js" \) -exec sed -i "s|msys${_bitness}|msys@BITNESS@|g" "{}" \;
 }
 
 create_archives() {
-  local _data="${_ifwroot}"/packages/com.msys2.base/data
+  local _data="${_ifwroot}"/packages/com.msys2.root.base/data
   [ -d "${_data}" ] && rm -rf "${_data}"
   mkdir -p "${_data}"
   _dirs=
-  for curr_dir in /bin /etc /include /lib /libexec /sbin /share /ssl /${_arch}-pc-msys /tmp /var /mingw_shell.bat /msys.ico /msys2_shell.bat ; do
+  for curr_dir in /etc /var /tmp /usr/bin /usr/sbin /usr/include /usr/lib /usr/share /usr/ssl /${_arch}-pc-msys /mingw32_shell.bat /mingw64_shell.bat /msys2_shell.bat /msys.ico ; do
     if [[ -d ${_newmsys}$curr_dir || -f ${_newmsys}$curr_dir ]]; then
-      _dirs="$_dirs ${_newmsys}$curr_dir"
+      _dirs="${_dirs} ${_newmsys}$curr_dir"
     fi
   done
   if [ -n "$_dirs" ]; then
     _compress_cmd="${_archivegen} ${_data}/msys${_bitness}.7z ${_dirs}"
     pushd / > /dev/null
+    echo ${_compress_cmd}
     eval ${_compress_cmd} | tee $_log 2>&1
     _result=$?
     if [ "$_result" -eq "0" ]; then
@@ -76,7 +77,8 @@ make_installer() {
     -p "${_ifwroot}/packages" \
     -c "${_ifwroot}/config/config.xml" \
     --offline-only \
-    "${_filename}"
+    "${_filename}" \
+    -v
 }
 
 trap exit_with_undo 1 2 15
@@ -84,26 +86,25 @@ trap exit_with_undo 1 2 15
 _archivegen=/mingw${_bitness}/bin/archivegen.exe
 _binarycreator=/mingw${_bitness}/bin/binarycreator.exe
 _installerbase=/mingw${_bitness}/bin/installerbase.exe
-
-[ -d /tmp/newmsys ] && rm -rf /tmp/newmsys
 _newmsys=/tmp/newmsys/msys"${_bitness}"
-mkdir -p "${_newmsys}"
-pushd "${_newmsys}" > /dev/null
 
-# We *need* the symlink version to work, but actually, we
-# should stop binding /usr to / altogether at this stage.
-# cmd.exe /c "mklink /D usr $(cygpath -w ${_newmsys})"
-# ln -s ../ usr
-mkdir usr
+create_chroot_system() {
+  [ -d /tmp/newmsys ] && rm -rf /tmp/newmsys
+  mkdir -p "${_newmsys}"
+  pushd "${_newmsys}" > /dev/null
 
-mkdir -p "${_newmsys}"/var/lib/pacman
-pacman -Syu --rootrebase "${_newmsys}"
-pacman -S base --noconfirm --rootrebase "${_newmsys}"
-_result=$?
-if [ "$_result" -ne "0" ]; then
-  exit_cleanly "1" "failed to create newmsys2 via command 'pacman -S base --noconfirm --root ${_newmsys}'"
-fi
-popd > /dev/null
+  mkdir -p var/lib/pacman
+  mkdir -p var/log
+  mkdir -p tmp
+
+  pacman -Syu --rootrebase "${_newmsys}"
+  pacman -S base --noconfirm --rootrebase "${_newmsys}"
+  _result=$?
+  if [ "$_result" -ne "0" ]; then
+    exit_cleanly "1" "failed to create newmsys2 via command 'pacman -S base --noconfirm --root ${_newmsys}'"
+  fi
+  popd > /dev/null
+}
 
 if [ ! -f "${_archivegen}" ]; then
   eval "pacman -S --noconfirm mingw${_bitness}/mingw-w64-${_arch}-qt-installer-framework-git" | tee $_log 2>&1
@@ -113,8 +114,10 @@ if [ ! -f "${_archivegen}" ]; then
   exit_cleanly "2" "installation of qt installer framework failed. See $_log"
 fi
 
-echo "Creating MSYS2 installer /tmp/$_filename"
+echo "Creating MSYS2 chroot system ${_newmsys}"
+create_chroot_system
 
+echo "Creating MSYS2 installer /tmp/$_filename"
 if [ -f /tmp/$_filename ]; then
   rm -f /tmp/$_filename
 fi

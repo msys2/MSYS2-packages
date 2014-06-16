@@ -35,16 +35,16 @@ if "x%MSYSCON%" == "xconsole.exe" goto startconsolez
 
 :startmintty
 if NOT EXIST %WD%mintty.exe goto startsh
-start %WD%mintty -i /msys.ico /bin/bash --login
+start %WD%mintty -i /msys.ico /bin/bash --login %*
 exit
 
 :startconsolez
 cd %WD%..\lib\ConsoleZ
-start console -t "MinGW"
+start console -t "MinGW" -r "%*"
 exit
 
 :startsh
-start %WD%sh --login -i
+start %WD%sh --login -i %*
 exit
 
 :EOF
