@@ -14,18 +14,18 @@ goto EOF
 rem ember that we execute here if we recursed.
 :_Resume
 for %%F in (1 2 3) do shift
-if NOT EXIST %WD%msys-2.0.dll set WD=.\bin\
+if NOT EXIST %WD%msys-2.0.dll set WD=.\usr\bin\
 
 rem ember that we get here even in command.com.
 :_WindowsNT
 
-if NOT EXIST %WD%msys-2.0.dll set WD=%~dp0\bin\
+if NOT EXIST %WD%msys-2.0.dll set WD=%~dp0\usr\bin\
 
 set MSYSTEM=MSYS
 rem To activate windows native symlinks uncomment next line
 rem set MSYS=winsymlinks:nativestrict
 rem Set debugging program for errors
-rem set MSYS=error_start:%WD%../mingw32/bin/qtcreator.exe|-debug|<process-id>
+rem set MSYS=error_start:%WD%../../mingw32/bin/qtcreator.exe|-debug|<process-id>
 set MSYSCON=mintty.exe
 if "x%1" == "x-consolez" set MSYSCON=console.exe
 if "x%1" == "x-mintty" set MSYSCON=mintty.exe
@@ -35,7 +35,7 @@ if "x%MSYSCON%" == "xconsole.exe" goto startconsolez
 
 :startmintty
 if NOT EXIST %WD%mintty.exe goto startsh
-start %WD%mintty -i /msys.ico /bin/bash --login %*
+start %WD%mintty -i /msys2.ico /usr/bin/bash --login %*
 exit
 
 :startconsolez
