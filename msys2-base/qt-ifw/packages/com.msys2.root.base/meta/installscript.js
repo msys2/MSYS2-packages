@@ -32,6 +32,9 @@ function createShortcuts()
                             cmdLocation,
                             "@StartMenuDir@/MinGW-w64 Win64 Shell.lnk",
                             "/A /Q /K " + installer.value("TargetDir") + "\\mingw64_shell.bat");
+
+   component.addOperation( "Execute",
+                           ["@TargetDir@\\msys2_shell.bat", "-c", "exit"]);
 }
 
 Component.prototype.createOperations = function()

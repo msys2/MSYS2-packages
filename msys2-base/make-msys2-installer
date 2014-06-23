@@ -8,6 +8,7 @@ _date=$(date +'%Y%m%d')
 _dateqif=$(date +'%Y-%m-%d')
 _version=${_date}
 _filename=msys2-${_arch}-${_date}.exe
+_filename2=${_arch}-msys2-${_date}.tar.xz
 _log=/tmp/installer.log
 if [ "${_arch}" = "x86_64" ]; then
   _bitness=64
@@ -67,6 +68,17 @@ create_archives() {
           exit_cleanly "3" "archivegen failed. See $_log"
     fi
     popd > /dev/null
+
+    pushd ${_newmsysbase}
+     _compress_cmd2="/usr/bin/tar --transform='s/:/_/g' --dereference --hard-dereference -cvJf ${_thisdir}/${_filename2} msys${_bitness}"
+    eval ${_compress_cmd2} | tee $_log 2>&1
+    _result=$?
+    if [ "$_result" -eq "0" ]; then
+          echo " tar succeeded. Created "
+    else
+          die "MSYS2 compressing fail. See $_log"
+    fi
+    popd > /dev/null
   fi
 }
 
@@ -86,10 +98,11 @@ trap exit_with_undo 1 2 15
 _archivegen=/mingw${_bitness}/bin/archivegen.exe
 _binarycreator=/mingw${_bitness}/bin/binarycreator.exe
 _installerbase=/mingw${_bitness}/bin/installerbase.exe
-_newmsys=/tmp/newmsys/msys"${_bitness}"
+_newmsysbase=/tmp/newmsys
+_newmsys=${_newmsysbase}/msys"${_bitness}"
 
 create_chroot_system() {
-  [ -d /tmp/newmsys ] && rm -rf /tmp/newmsys
+  [ -d ${_newmsysbase} ] && rm -rf ${_newmsysbase}
   mkdir -p "${_newmsys}"
   pushd "${_newmsys}" > /dev/null
 
