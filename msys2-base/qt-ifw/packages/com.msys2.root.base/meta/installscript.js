@@ -34,7 +34,7 @@ function createShortcuts()
                             "/A /Q /K " + installer.value("TargetDir") + "\\mingw64_shell.bat");
 
    component.addOperation( "Execute",
-                           ["@TargetDir@\\msys2_shell.bat", "-c", "exit"]);
+                           ["@TargetDir@\\usr\\bin\\bash.exe", "--login", "-c", "exit"]);
 }
 
 Component.prototype.createOperations = function()
