@@ -2,42 +2,47 @@
 
 pkgname=('ruby' 'ruby-docs')
 pkgver=2.1.2
-pkgrel=1
+pkgrel=3
 arch=('i686' 'x86_64')
 url='http://www.ruby-lang.org/en/'
 license=('BSD' 'custom')
-makedepends=('openssl' 'libffi' 'doxygen' 'libyaml')
+makedepends=('openssl' 'libffi' 'doxygen' 'libyaml' 'gdbm')
 options=('!emptydirs' '!makeflags' 'staticlibs')
 source=("http://cache.ruby-lang.org/pub/ruby/${pkgver%.*}/ruby-${pkgver//_/-}.tar.bz2"
         'gemrc'
         'ruby-2.1.2-msys2.patch')
 md5sums=('ed9b8565bdeccb401d628ec8d54a0774'
          '6fb8e7a09955e0f64be3158fb4a27e7a'
-         '3dec97a1c9f54d387b0e7fb55da01761')
+         'dd180303f9e5374b2884b4660c401529')
 
 prepare() {
-  cd ruby-${pkgver//_/-}
+  cd ${srcdir}/ruby-${pkgver//_/-}
   
   patch -p1 -i ${srcdir}/ruby-2.1.2-msys2.patch
   autoreconf -fi
 }
 
 build() {
-  cd ruby-${pkgver//_/-}
+  mkdir -p ${srcdir}/build-${CHOST} && cd ${srcdir}/build-${CHOST}
 
-  PKG_CONFIG=/usr/bin/pkg-config ./configure \
+  CFLAGS+=" -fno-strict-aliasing "
+  CXXFLAGS+=" -fno-strict-aliasing "
+  ../ruby-${pkgver//_/-}/configure \
     --build=${CHOST} \
     --prefix=/usr \
+    --exec_prefix=/usr \
     --sysconfdir=/etc \
+    --localstatedir=/var \
+    --sharedstatedir=/var/lib \
+    --libexecdir=/usr/lib/ruby \
     --enable-shared \
-    --enable-shared \
+    --disable-rpath \
+    --with-dbm-type=gdbm_compat \
     LDSHARED="gcc -shared" \
-    DLDFLAGS="-Wl,--export-all-symbols" \
-    CFLAGS="${CFLAGS} -fno-strict-aliasing " \
-    CXXFLAGS="${CXXFLAGS} -fno-strict-aliasing "
+    DLDFLAGS="-Wl,--export-all-symbols"
 
   # Workaround for generation docs
-  mv doc/ChangeLog-1.9.3 ./
+  mv ${srcdir}/ruby-${pkgver//_/-}/doc/ChangeLog-1.9.3 ${srcdir}/
   
   make
 }
@@ -50,7 +55,7 @@ check() {
 
 package_ruby() {
   pkgdesc='An object-oriented language for quick and easy programming'
-  depends=('openssl' 'libffi' 'libyaml')
+  depends=('openssl' 'libffi' 'libyaml' 'gdbm')
   optdepends=(#'tk: for Ruby/TK'
               'ruby-docs: Ruby documentation')
   provides=('rubygems' 'rake')
@@ -58,23 +63,23 @@ package_ruby() {
   backup=('etc/gemrc')
   install='ruby.install'
 
-  cd ruby-${pkgver//_/-}
+  cd ${srcdir}/build-${CHOST}
 
   make DESTDIR="${pkgdir}" install-nodoc
 
-  install -D -m644 ${srcdir}/gemrc "${pkgdir}/usr/etc/gemrc"
+  install -D -m644 ${srcdir}/gemrc "${pkgdir}/etc/gemrc"
 
-  install -D -m644 COPYING "${pkgdir}/usr/share/licenses/ruby/LICENSE"
-  install -D -m644 BSDL "${pkgdir}/usr/share/licenses/ruby/BSDL"
+  install -D -m644 ${srcdir}/ruby-${pkgver//_/-}/COPYING "${pkgdir}/usr/share/licenses/ruby/LICENSE"
+  install -D -m644 ${srcdir}/ruby-${pkgver//_/-}/BSDL "${pkgdir}/usr/share/licenses/ruby/BSDL"
 }
 
 package_ruby-docs() {
   pkgdesc='Documentation files for ruby'
 
-  cd ruby-${pkgver//_/-}
+  cd ${srcdir}/build-${CHOST}
 
   make DESTDIR="${pkgdir}" install-doc install-capi
 
-  install -D -m644 COPYING "${pkgdir}/usr/share/licenses/ruby-docs/LICENSE"
-  install -D -m644 BSDL "${pkgdir}/usr/share/licenses/ruby-docs/BSDL"
+  install -D -m644 ${srcdir}/ruby-${pkgver//_/-}/COPYING "${pkgdir}/usr/share/licenses/ruby-docs/LICENSE"
+  install -D -m644 ${srcdir}/ruby-${pkgver//_/-}/BSDL "${pkgdir}/usr/share/licenses/ruby-docs/BSDL"
 }
