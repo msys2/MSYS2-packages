@@ -1,0 +1,100 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('db' 'libdb' 'libdb-devel' 'db-docs')
+pkgver=5.3.28
+pkgrel=1
+pkgdesc="The Berkeley DB embedded database system"
+url="http://www.oracle.com/technology/software/products/berkeley-db/index.html"
+license=('custom')
+arch=('i686' 'x86_64')
+depends=('sh')
+source=(http://download.oracle.com/berkeley-db/db-${pkgver}.tar.gz
+        5.3-java.patch
+        5.3-tcl.patch
+        5.3-vpath.patch
+        db-5.3.28-msys2.patch)
+options=('!makeflags')
+md5sums=('b99454564d5b4479750567031d66fe24'
+         '78b946e5ce7a942bfb447cdb2298fa84'
+         'b348d5e357bfc844ed159fc49317963a'
+         'ffd862de5ec0f41f1c5a4bc0e7f0dd33'
+         'a3e2a49d1cf66aeea12233d21809ab7d')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  
+  patch -Np2 -i ${srcdir}/5.3-java.patch
+  patch -Np2 -i ${srcdir}/5.3-tcl.patch
+  patch -Np2 -i ${srcdir}/5.3-vpath.patch
+  patch -Np1 -i ${srcdir}/db-5.3.28-msys2.patch
+  
+  cd dist
+  ac_macrodir=aclocal libtoolize --copy --force --install
+  ./s_config
+}
+
+build() {
+  cd "${srcdir}"/$pkgname-${pkgver}/build_unix
+  ../dist/configure \
+    --prefix=/usr \
+    --enable-compat185 \
+    --enable-shared \
+    --enable-static \
+    --enable-dynamic \
+    --enable-cxx \
+    --enable-dbm \
+    --disable-java \
+    --disable-tcl \
+    --disable-test
+  make
+  make DESTDIR=${srcdir}/dest docdir=/usr/share/doc/db/html emode=755 fmode=644 install
+}
+
+check() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make check
+}
+
+package_db() {
+  depends=(libdb=$pkgver)
+  groups=('Database')
+  
+  mkdir -p ${pkgdir}/usr/{bin,share}
+
+  cp -f ${srcdir}/dest/usr/bin/*.exe ${pkgdir}/usr/bin/
+}
+
+package_libdb() {
+  depends=('gcc-libs')
+  groups=('libraries')
+  
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+}
+
+package_libdb-devel() {
+  pkgdesc="libdb headers and libraries"
+  options=('staticlibs')
+  depends=("libdb=${pkgver}")
+  groups=('development')
+  
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+  
+  # replace unslotted libs with symlinks
+  rm -f ${pkgdir}/usr/lib/libdb{_cxx,}.a
+  cp -f ${pkgdir}/usr/lib/libdb-${pkgver%.*}.a  ${pkgdir}/usr/lib/libdb.a
+  cp -f ${pkgdir}/usr/lib/libdb-${pkgver%.*}.dll.a ${pkgdir}/usr/lib/libdb.dll.a
+  cp -f ${pkgdir}/usr/lib/libdb_cxx-${pkgver%.*}.a ${pkgdir}/usr/lib/libdb_cxx.a
+  cp -f ${pkgdir}/usr/lib/libdb_cxx-${pkgver%.*}.dll.a ${pkgdir}/usr/lib/libdb_cxx.dll.a
+  #cp -f ${pkgdir}/usr/lib/libdb_sql-${pkgver%.*}.a ${pkgdir}/usr/lib/libdb_sql.a
+  #cp -f ${pkgdir}/usr/lib/libdb_sql-${pkgver%.*}.dll.a ${pkgdir}/usr/lib/libdb_sql.dll.a
+}
+
+package_db-docs() {
+  pkgdesc="BerkleyDB documentation"
+  
+  mkdir -p ${pkgdir}/usr/share
+  cp -rf ${srcdir}/dest/usr/share/doc ${pkgdir}/usr/share/
+}
