@@ -16,35 +16,7 @@ diff -Naur perl-5.18.0-orig/Configure perl-5.18.0/Configure
 diff -Naur perl-5.18.0-orig/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Cygwin.pm perl-5.18.0/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Cygwin.pm
 --- perl-5.18.0-orig/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Cygwin.pm	2013-05-01 02:52:54.000000000 +0000
 +++ perl-5.18.0/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Cygwin.pm	2013-06-15 17:48:24.347656300 +0000
-@@ -100,41 +100,99 @@
- 
- =item maybe_command
- 
--If our path begins with F</cygdrive/> then we use C<ExtUtils::MM_Win32>
--to determine if it may be a command.  Otherwise we use the tests
--from C<ExtUtils::MM_Unix>.
-+Determine whether a file is native to Cygwin by checking whether it
-+resides inside the Cygwin installation (using Windows paths).  If so,
-+use C<ExtUtils::MM_Unix> to determine if it may be a command.
-+Otherwise use the tests from C<ExtUtils::MM_Win32>.
- 
- =cut
- 
- sub maybe_command {
-     my ($self, $file) = @_;
- 
--    if ($file =~ m{^/cygdrive/}i) {
--        return ExtUtils::MM_Win32->maybe_command($file);
--    }
-+    my $cygpath = Cygwin::posix_to_win_path('/', 1);
-+    my $filepath = Cygwin::posix_to_win_path($file, 1);
- 
--    return $self->SUPER::maybe_command($file);
-+    return (substr($filepath,0,length($cygpath)) eq $cygpath)
-+        ? $self->SUPER::maybe_command($file) 	     # Unix
-+        : ExtUtils::MM_Win32->maybe_command($file); # Win32
- }
- 
+@@ -121,21 +121,77 @@
  =item dynamic_lib
  
  Use the default to produce the *.dll's.
@@ -66,7 +38,7 @@ diff -Naur perl-5.18.0-orig/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Cygwin.pm pe
      my $ori = "$self->{INSTALLARCHLIB}/auto/$self->{FULLEXT}/$self->{BASEEXT}.$self->{DLEXT}";
 +    my $rebase = "$self->{INSTALLVENDORARCH}/auto/.rebase";
 +    my $imagebase = '';
-+    my $rebaseverstr = -f '/bin/rebase' ? `/bin/rebase -V 2>&1` : '0';
++    my $rebaseverstr = -f '/usr/bin/rebase' ? `/usr/bin/rebase -V 2>&1` : '0';
 +    my ($rebasever) = $rebaseverstr =~ /rebase version ([0-9.]+)/;
 +    $rebasever =~ s/(\d\.\d+)\./$1/;
 +    if (-f $rebase and $rebasever < 3.02) {
@@ -81,7 +53,7 @@ diff -Naur perl-5.18.0-orig/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Cygwin.pm pe
 -            $LDDLFLAGS =~ s/-Wl,--enable-auto-image-base/-Wl,--image-base=0x$imagebase/;
 -            $s =~ s/ \$\(LDDLFLAGS\) / $LDDLFLAGS /m;
 -        }
-+      $imagebase = `/bin/objdump -p $ori | /bin/grep ImageBase | /bin/cut -c12-`;
++      $imagebase = `/usr/bin/objdump -p $ori | /usr/bin/grep ImageBase | /usr/bin/cut -c12-`;
 +      chomp $imagebase;
 +      if ($imagebase gt "40000000" and $imagebase lt "80000000") {
 +        my $LDDLFLAGS = $self->{LDDLFLAGS};
@@ -95,7 +67,7 @@ diff -Naur perl-5.18.0-orig/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Cygwin.pm pe
 +      $s =~ s/ \$\(INST_DYNAMIC_DEP\)/ \$(INST_DYNAMIC_DEP) _rebase/;
 +      $s =~ s/ \$\(LDDLFLAGS\) / $LDDLFLAGS /m;
 +      # Here we create all DLL's per project with the same imagebase. With rebase 3.0.2 we do better
-+      $s .= "\t/bin/rebase -v -b 0x$imagebase \$@ | ";
++      $s .= "\t/usr/bin/rebase -v -b 0x$imagebase \$@ | ";
 +      $s .= "\$(FULLPERL) -n _rebase > \$(INSTALLVENDORARCH)/auto/.rebase\n";
 +      # Need a tempfile, because gmake expands $_ in the perl cmdline
 +      $s .= "\n_rebase : \$(OBJECT)\n";
@@ -120,7 +92,7 @@ diff -Naur perl-5.18.0-orig/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Cygwin.pm pe
 +    return '' unless $s;
 +    return $s unless %{$self->{XS}};
 +
-+    my $rebaseverstr = -f '/bin/rebase' ? `/bin/rebase -V 2>&1` : '0';
++    my $rebaseverstr = -f '/usr/bin/rebase' ? `/usr/bin/rebase -V 2>&1` : '0';
 +    my ($rebasever) = $rebaseverstr =~ /rebase version ([0-9.]+)/;
 +    $rebasever =~ s/(\d\.\d+)\./$1/;
 +    if ($rebasever > 3.01) {  # new rebase 3.0.2 with database
