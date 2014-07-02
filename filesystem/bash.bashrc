@@ -7,12 +7,6 @@
 
 # /etc/bash.bashrc: executed by bash(1) for interactive shells.
 
-# The latest version as installed by the MSYS2 Setup program can
-# always be found at /etc/defaults/etc/bash.bashrc
-
-# Modifying /etc/bash.bashrc directly will prevent
-# setup from updating it.
-
 # System-wide bashrc file
 
 # Check that we haven't already been sourced.

@@ -7,17 +7,11 @@
 
 # ~/.bashrc: executed by bash(1) for interactive shells.
 
-# The latest version as installed by the MSYS2 Setup program can
-# always be found at /etc/defaults/etc/skel/.bashrc
-
-# Modifying /etc/skel/.bashrc directly will prevent
-# setup from updating it.
-
 # The copy in your home directory (~/.bashrc) is yours, please
 # feel free to customise it to create a shell
 # environment to your liking.  If you feel a change
 # would be benifitial to all, please feel free to send
-# a patch to the cygwin mailing list.
+# a patch to the msys2 mailing list.
 
 # User dependent .bashrc file
 
