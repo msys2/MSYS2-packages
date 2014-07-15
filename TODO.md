@@ -6,8 +6,6 @@ What we need to do:
 * msys2-runtime: skip trying mangling arguments that contain absolute 
   windows paths with '/' as path separator. 
 
-* ruby: Fix loading windows libraries (ticket #10).
-
 * ncurses: Fix it to properly work in Windows API based consoles.
 
 * Fix key shortcuts working in bash (like Ctrl+Home, Ctrl+End)
