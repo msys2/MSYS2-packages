@@ -1,0 +1,47 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=tmux-git
+_ver_base=1.9
+pkgver=1.9.4851.f8481f9
+pkgrel=1
+pkgdesc='A terminal multiplexer'
+url='http://tmux.sourceforge.net/'
+arch=('i686' 'x86_64')
+license=('BSD')
+provides=('tmux')
+conflicts=('tmux')
+depends=('ncurses' 'libevent')
+makedepends=('git')
+source=("$pkgname"::'git+http://git.code.sf.net/p/tmux/tmux-code'
+        LICENSE)
+md5sums=('SKIP'
+         '71601bc37fa44e4395580b321963018e')
+
+pkgver() {
+  cd ${srcdir}/${pkgname}
+  printf "%s.%s.%s" "$_ver_base" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd ${srcdir}/${pkgname}
+  ./autogen.sh
+}
+
+build() {
+  cd ${srcdir}/${pkgname}
+  ./configure --prefix=/usr CFLAGS="${CFLAGS} -I/usr/include/ncurses"
+  make
+}
+
+package() {
+  cd ${srcdir}/${pkgname}
+  make DESTDIR=${pkgdir} install
+  install -Dm644 ../LICENSE ${pkgdir}/usr/share/licenses/tmux/LICENSE
+
+  install -dm755 ${pkgdir}/usr/share/tmux/
+  install -m644 examples/* ${pkgdir}/usr/share/tmux/
+  install -Dm644 examples/tmux.vim ${pkgdir}/usr/share/vim/vimfiles/syntax/tmux.vim
+
+  install -d ${pkgdir}/usr/share/bash-completion/completions/
+  mv ${pkgdir}/usr/share/tmux/bash_completion_tmux.sh ${pkgdir}/usr/share/bash-completion/completions/tmux
+}
