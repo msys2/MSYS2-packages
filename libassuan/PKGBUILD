@@ -1,0 +1,61 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('libassuan' 'libassuan-devel')
+pkgver=2.1.1
+pkgrel=1
+pkgdesc="A IPC library used by some GnuPG related software"
+arch=('i686' 'x86_64')
+url="http://www.gnupg.org/related_software/libassuan"
+license=('GPL')
+makedepends=('libgpg-error-devel')
+options=('strip' 'libtool')
+source=(ftp://ftp.gnupg.org/gcrypt/$pkgname/$pkgname-$pkgver.tar.bz2
+        'msysize.patch')
+md5sums=('757243cc4a71b30ed8d8dbe784035d36'
+         '8de6222118cf66b6899fab5cd385e869')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  patch -Np1 -i "$srcdir/msysize.patch"
+  
+  autoreconf -fi
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+
+  ./configure \
+    --prefix=/usr \
+    --enable-shared \
+    --disable-static
+  make no_undefined="-no-undefined"
+  make DESTDIR="${srcdir}/dest" install
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+
+  make check
+}
+
+package_libassuan() {
+  groups=('libraries')
+  depends=('gcc-libs' 'libgpg-error')
+  install=libassuan.install
+  
+  mkdir -p $pkgdir/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll $pkgdir/usr/bin/
+  cp -rf ${srcdir}/dest/usr/share $pkgdir/usr/
+  install -D -m644 ${srcdir}/${pkgname}-${pkgver}/COPYING $pkgdir/usr/share/licenses/libassuan/COPYING
+}
+
+package_libassuan-devel() {
+  pkgdesc="Libassuan headers and libraries"
+  groups=('development')
+  options=('!staticlibs')
+  depends=("libassuan=${pkgver}" 'libgpg-error-devel')
+  
+  mkdir -p $pkgdir/usr
+  cp -rf ${srcdir}/dest/usr/include $pkgdir/usr/
+  cp -rf ${srcdir}/dest/usr/lib $pkgdir/usr/
+}
