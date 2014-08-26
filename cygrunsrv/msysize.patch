@@ -1,0 +1,109 @@
+diff -Naur cygrunsrv-orig/config.guess cygrunsrv/config.guess
+--- cygrunsrv-orig/config.guess	2013-03-19 17:21:45.000000000 +0400
++++ cygrunsrv/config.guess	2014-08-26 13:03:11.450800000 +0400
+@@ -849,6 +849,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur cygrunsrv-orig/configure.ac cygrunsrv/configure.ac
+--- cygrunsrv-orig/configure.ac	2013-03-05 22:43:05.000000000 +0400
++++ cygrunsrv/configure.ac	2014-08-26 14:17:46.816600000 +0400
+@@ -8,7 +8,7 @@
+ AC_PROG_INSTALL
+ 
+ case "${target}" in
+-  *-cygwin)
++  *-cygwin | *-msys)
+   	;;
+   *)
+   	echo "The only supported target is cygwin."
+@@ -16,7 +16,7 @@
+ 	;;
+ esac
+ 
+-AC_CHECK_TOOL(CXX, ${target_cpu}-pc-cygwin-g++, ${target_cpu}-pc-cygwin-g++)
++AC_CHECK_TOOL(CXX, ${target_cpu}-pc-msys-g++, ${target_cpu}-pc-msys-g++)
+ if test -z "$CXX"; then
+   AC_CHECK_TOOL(CXX, g++, g++)
+   if test -z "$CXX"; then
+diff -Naur cygrunsrv-orig/cygrunsrv.cc cygrunsrv/cygrunsrv.cc
+--- cygrunsrv-orig/cygrunsrv.cc	2014-08-21 19:31:08.000000000 +0400
++++ cygrunsrv/cygrunsrv.cc	2014-08-26 13:08:22.514800000 +0400
+@@ -740,13 +740,21 @@
+       ptr = cygpath;
+     if (ptr[0] == 0 || (ptr[0] == '/' && ptr[1] == 0))
+       strcat (ptr, ".");
++#ifdef __MSYS__
++    strcat (ptr, "/msys-2.0.dll");
++#else
+     strcat (ptr, "/cygwin1.dll");
++#endif
+     if (stat (ptr, &sb) == 0)
+       {
+        if (!cygsize)
+          cygsize = sb.st_size;
+        else if (sb.st_size != cygsize)
++#ifdef __MSYS__
++         syslog (LOG_INFO, "Possible duplicate msys-2.0.dll: %s.",
++#else
+          syslog (LOG_INFO, "Possible duplicate cygwin1.dll: %s.",
++#endif
+                  ptr);
+       }
+   } while (ptr != cygpath);
+@@ -1663,14 +1671,25 @@
+ 	    }
+ 	char *env_path = getenv ("PATH");
+ 	if (!env_path)
++#ifdef __MSYS__
++	  setenv ("PATH", "/usr/bin", 1);
++#else
+ 	  setenv ("PATH", "/bin", 1);
++#endif
+ 	else
+ 	  {
+ 	    char env_tmp[strlen (env_path) + 6];
++#ifdef __MSYS__
++	    if (PATH_set)
++	      stpcpy (stpcpy (env_tmp, env_path), ":/usr/bin");
++	    else
++	      stpcpy (stpcpy (env_tmp, "/usr/bin:"), env_path);
++#else
+ 	    if (PATH_set)
+ 	      stpcpy (stpcpy (env_tmp, env_path), ":/bin");
+ 	    else
+ 	      stpcpy (stpcpy (env_tmp, "/bin:"), env_path);
++#endif
+ 	    setenv ("PATH", env_tmp, 1);
+ 	    check_cygwin1 (env_tmp);
+ 	  }
+diff -Naur cygrunsrv-orig/Makefile.in cygrunsrv/Makefile.in
+--- cygrunsrv-orig/Makefile.in	2013-03-10 00:41:08.000000000 +0400
++++ cygrunsrv/Makefile.in	2014-08-26 13:09:16.615600000 +0400
+@@ -16,7 +16,7 @@
+ exec_prefix:=@exec_prefix@
+ bindir:=@bindir@
+ datarootdir:=@datarootdir@
+-docdir:=$(datarootdir)/doc/Cygwin
++docdir:=$(datarootdir)/doc/MSYS
+ 
+ INSTALL:=@INSTALL@
+ INSTALL_PROGRAM:=@INSTALL_PROGRAM@
+diff -Naur cygrunsrv-orig/utils.cc cygrunsrv/utils.cc
+--- cygrunsrv-orig/utils.cc	2014-08-21 19:31:08.000000000 +0400
++++ cygrunsrv/utils.cc	2014-08-26 13:09:44.804800000 +0400
+@@ -163,7 +163,7 @@
+ "                            You can add up to " MAX_ENV_STR " environment strings using\n"
+ "                            the `--env' option.\n"
+ "                            Note: /bin is always added to $PATH to allow all\n"
+-"                            started applications to find cygwin DLLs.\n"
++"                            started applications to find MSYS2 DLLs.\n"
+ "  -d, --disp <display name> Optional string which contains the display name\n"
+ "                            of the service. Defaults to service name.\n"
+ "  -f, --desc <description>  Optional string which contains the service\n"
