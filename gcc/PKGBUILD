@@ -11,10 +11,16 @@ arch=('i686' 'x86_64')
 groups=('msys2-devel')
 license=('GPL' 'LGPL' 'FDL' 'custom')
 url="http://gcc.gnu.org"
-makedepends=('binutils>=2.23' 'mpc-devel' 'cloog-devel' 'gmp-devel' 'mpfr-devel' 'doxygen')
+makedepends=('binutils>=2.23'
+             'mpc-devel'
+             'cloog-devel'
+             'gmp-devel'
+             'mpfr-devel'
+             'isl-devel'
+             'doxygen')
 checkdepends=('dejagnu')
-options=('!emptydirs' 'debug' '!strip')
-source=(ftp://gcc.gnu.org/pub/gcc/releases/gcc-${pkgver}/gcc-${pkgver}.tar.bz2
+options=('!emptydirs') # 'debug' '!strip')
+source=(https://ftp.gnu.org/gnu/gcc/gcc-${pkgver}/gcc-${pkgver}.tar.bz2
         gcc-4.8-filename-output.patch
         gcc-4.8-lambda-ICE.patch
         4.5-java-FIONREAD.patch
@@ -82,15 +88,19 @@ md5sums=('a3d7d63b9cb6b6ea049469a0c4a43c9d'
 prepare() {
   cd ${srcdir}/gcc-${pkgver}
 
-  [ -f gcc/testsuite/g++.dg/cpp0x/lambda/lambda-names1.C ] && rm -f gcc/testsuite/g++.dg/cpp0x/lambda/lambda-names1.C
   [ -f gcc/ada/a-intnam-cygwin.ads ] && rm -f gcc/ada/a-intnam-cygwin.ads
-  [ -f gcc/ada/gcc-interface/Makefile.in ] && rm -f gcc/ada//gcc-interface/Makefile.in
   [ -f gcc/ada/indepsw-cygwin.adb ] && rm -f gcc/ada/indepsw-cygwin.adb
-  [ -f gcc/ada//mlib-tgt-specific-cygwin.adb ] && rm -f gcc/ada//mlib-tgt-specific-cygwin.adb
+  [ -f gcc/ada//mlib-tgt-specific-cygwin.adb ] && rm -f gcc/ada/mlib-tgt-specific-cygwin.adb
   [ -f gcc/ada/s-gloloc-cygwin.adb ] && rm -f gcc/ada/s-gloloc-cygwin.adb
   [ -f gcc/ada/s-osinte-cygwin.ads ] && rm -f gcc/ada/s-osinte-cygwin.ads
   [ -f gcc/ada/s-taprop-cygwin.adb ] && rm -f gcc/ada/s-taprop-cygwin.adb
   [ -f gcc/ada/system-cygwin.ads ] && rm -f gcc/ada/system-cygwin.ads
+  [ -f gcc/config/i386/cygwin.opt ] && rm -f gcc/config/i386/cygwin.opt
+  [ -f gcc/config/i386/msys-w64.h ] && rm -f gcc/config/i386/msys-w64.h
+  [ -f gcc/config/i386/t-msys-w64 ] && rm -f gcc/config/i386/t-msys-w64
+  [ -f gcc/config/i386/msys.h ] && rm -f gcc/config/i386/msys.h
+  [ -f gcc/testsuite/g++.dg/cpp0x/lambda/lambda-names1.C ] && rm -f gcc/testsuite/g++.dg/cpp0x/lambda/lambda-names1.C
+  [ -f libgcc/config/i386/t-msys ] && rm -f libgcc/config/i386/t-msys
 
   # Do not run fixincludes
   #sed -i 's@\./fixinc\.sh@-c true@' gcc/Makefile.in
@@ -102,7 +112,7 @@ prepare() {
 
   # http://gcc.gnu.org/bugzilla/show_bug.cgi?id=57653
   patch -p0 -i ${srcdir}/gcc-4.8-filename-output.patch
-  
+
   # http://gcc.gnu.org/bugzilla//show_bug.cgi?id=56710 - commit 3d1f8279
   patch -p1 -i ${srcdir}/gcc-4.8-lambda-ICE.patch
 
@@ -145,7 +155,8 @@ prepare() {
   patch -p1 -i ${srcdir}/gcc-4.8.0-configure-msys2.patch
   patch -p1 -i ${srcdir}/gcc-4.8.0-msys2-spec.patch
   patch -p1 -i ${srcdir}/gcc-4.8.0-testsuite-msys2.patch
-	
+
+  [ -d ${srcdir}/gcc-build ] && rm -rf ${srcdir}/gcc-build
   mkdir ${srcdir}/gcc-build
 }
 
@@ -166,6 +177,14 @@ build() {
   # http://gcc.gnu.org/bugzilla/show_bug.cgi?id=48565
   CFLAGS=${CFLAGS/-pipe/}
   CXXFLAGS=${CXXFLAGS/-pipe/}
+
+  # Hmm, lots of Makefile.in and aclocal.m4 to worry about :-(
+  # if check_option "strip" "n"; then
+  # Makefile.in or aclocal.m4:
+  #  INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
+  #  INSTALL_STRIP_FLAG=-s
+  # configure:
+  #  INSTALL_STRIP_PROGRAM="\$(install_sh) -c -s"
 
   ${srcdir}/gcc-${pkgver}/configure --build=${CHOST} \
 		--prefix=/usr \
@@ -251,7 +270,7 @@ package_gcc-libs()
   #find ${pkgdir} -name *.a -delete
   
   # Install Runtime Library Exception
-  install -Dm644 ${srcdir}/gcc-${pkgver}COPYING.RUNTIME \
+  install -Dm644 ${srcdir}/gcc-${pkgver}/COPYING.RUNTIME \
     ${pkgdir}/usr/share/licenses/gcc-libs/RUNTIME.LIBRARY.EXCEPTION
 }
 
@@ -357,7 +376,7 @@ package_gcc-fortran()
   rm ${pkgdir}/usr/lib/gcc/$CHOST/${pkgver}/{*.o,libgc*}
   rm ${pkgdir}/usr/share/info/libquadmath.info
   rm -r ${pkgdir}/usr/lib/gcc/$CHOST/${pkgver}/include
-  #rm ${pkgdir}/usr/lib/gcc/$CHOST/${pkgver}libgfortran.a
+  #rm ${pkgdir}/usr/lib/gcc/$CHOST/${pkgver}/libgfortran.a
 
   # Install Runtime Library Exception
   install -Dm644 ${srcdir}/gcc-${pkgver}/COPYING.RUNTIME \
