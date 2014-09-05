@@ -1,0 +1,68 @@
+# Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+
+pkgname=("libtre-git" "libtre-devel-git")
+_ver_base=0.8.0
+pkgver=0.8.0.122.c2f5d13
+pkgrel=1
+epoch=
+pkgdesc="The free and portable approximate regex matching library (libraries)"
+arch=("i686" "x86_64")
+url="http://laurikari.net/tre/"
+license=('BSD')
+groups=('libraries')
+depends=("gettext" "libiconv" "libintl")
+makedepends=("gettext-devel" "libiconv-devel" "gcc")
+backup=()
+options=()
+install=
+changelog=
+source=("${pkgname}"::'git+https://github.com/laurikari/tre')
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "${srcdir}/${pkgname}"
+  printf "%s.%s.%s" "$_ver_base" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd "${srcdir}/${pkgname}"
+  mv -f ChangeLog.old  ChangeLog
+  autoreconf -ivf
+}
+
+build() {
+  cd "${srcdir}/${pkgname}"
+  ./configure --prefix=/usr
+  make
+  make DESTDIR="$srcdir/dest" install
+  install -Dm644 ./LICENSE $srcdir/dest/usr/share/licenses/libtre/LICENSE
+}
+
+check() {
+  cd "${srcdir}/${pkgname}"
+  make -k check
+}
+
+package_libtre-git() {
+  depends=("gettext" "libiconv" "libintl")
+  provides=("libtre=${pkgver}")
+  conflicts=("libtre")
+
+  mkdir -p $pkgdir/usr/bin
+  cp -rf $srcdir/dest/usr/bin $pkgdir/usr/
+
+  mkdir -p $pkgdir/usr/share
+  cp -rf $srcdir/dest/usr/share $pkgdir/usr/
+}
+
+package_libtre-devel-git() {
+  pkgdesc="Libtre headers and libraries (development)"
+  groups=('development')
+  depends=("libtre-git=${pkgver}" "gettext-devel" "libiconv-devel")
+  provides=("libtre-devel")
+  conflicts=("libtre-devel")
+
+  mkdir -p $pkgdir/usr
+  cp -rf $srcdir/dest/usr/include $pkgdir/usr/
+  cp -rf $srcdir/dest/usr/lib $pkgdir/usr/
+}
