@@ -1,0 +1,160 @@
+From 4f8fa4e9e81598aa8b4e994046b9e9a9b43c8330 Mon Sep 17 00:00:00 2001
+From: Ray Donnelly <mingw.android@gmail.com>
+Date: Fri, 5 Sep 2014 21:09:10 +0100
+Subject: [PATCH 3/3] mount: Add longest_native_sorted and longest_posix_sorted
+
+.. to mount_info.
+
+.. they are calculated as:
+strlen (ap->native_path) - strlen (ap->posix_path)
+.. and:
+strlen (ap->posix_path) - strlen (ap->native_path)
+.. respectively.
+
+.. and used in:
+conv_to_win32_path()
+.. and:
+conv_to_posix_path()
+.. respectively.
+
+The logic being that when converting any paths you always want the result
+that is the longest route to the node as the others will be shortcuts (or
+bind mounts).
+
+If I was brave enough, I'd just have changed the sorting of the existing
+posix_shared and native_shared to be (what I think is) correct.
+---
+ winsup/cygwin/mount.cc | 80 ++++++++++++++++++++++++++++++++++++++++++++++++--
+ winsup/cygwin/mount.h  |  2 ++
+ 2 files changed, 79 insertions(+), 3 deletions(-)
+
+diff --git a/winsup/cygwin/mount.cc b/winsup/cygwin/mount.cc
+index f218c96..8950e86 100644
+--- a/winsup/cygwin/mount.cc
++++ b/winsup/cygwin/mount.cc
+@@ -663,7 +663,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
+       const char *path;
+       int len;
+ 
+-      mi = mount + posix_sorted[i];
++      mi = mount + longest_native_sorted[i];
+       if (!cygheap->root.exists ()
+ 	  || (mi->posix_pathlen == 1 && mi->posix_path[0] == '/'))
+ 	{
+@@ -882,7 +882,7 @@ mount_info::conv_to_posix_path (const char *src_path, char *posix_path,
+   int pathbuflen = tail - pathbuf;
+   for (int i = 0; i < nmounts; ++i)
+     {
+-      mount_item &mi = mount[native_sorted[i]];
++      mount_item &mi = mount[longest_posix_sorted[i]];
+       if (!path_prefix_p (mi.native_path, pathbuf, mi.native_pathlen,
+ 			  mi.flags & MOUNT_NOPOSIX))
+ 	continue;
+@@ -1331,16 +1331,90 @@ sort_by_native_name (const void *a, const void *b)
+   return res;
+ }
+ 
++/* sort_by_longest_posix_name: qsort callback to sort the mount entries.
++   Sort user mounts ahead of system mounts to the same POSIX path. */
++/* FIXME: should the user should be able to choose whether to
++   prefer user or system mounts??? */
++static int
++sort_by_longest_posix_name (const void *a, const void *b)
++{
++  mount_item *ap = mounts_for_sort + (*((int*) a));
++  mount_item *bp = mounts_for_sort + (*((int*) b));
++
++  /* Base weighting on the conversion that would give the longest
++     posix path. */
++  ssize_t alen = (ssize_t) strlen (ap->posix_path) - (ssize_t) strlen (ap->native_path);
++  ssize_t blen = (ssize_t) strlen (bp->posix_path) - (ssize_t) strlen (bp->native_path);
++
++  int res = blen - alen;
++
++  if (res)
++    return res;		/* Path lengths differed */
++
++  /* The two paths were the same length, so just determine normal
++     lexical sorted order. */
++  res = strcmp (ap->posix_path, bp->posix_path);
++
++  if (res == 0)
++   {
++     /* need to select between user and system mount to same POSIX path */
++     if (!(bp->flags & MOUNT_SYSTEM))	/* user mount */
++      return 1;
++     else
++      return -1;
++   }
++
++  return res;
++}
++
++/* sort_by_longest_native_name: qsort callback to sort the mount entries.
++   Sort user mounts ahead of system mounts to the same POSIX path. */
++/* FIXME: should the user should be able to choose whether to
++   prefer user or system mounts??? */
++static int
++sort_by_longest_native_name (const void *a, const void *b)
++{
++  mount_item *ap = mounts_for_sort + (*((int*) a));
++  mount_item *bp = mounts_for_sort + (*((int*) b));
++
++  /* Base weighting on the conversion that would give the longest
++     native path. */
++  ssize_t alen = (ssize_t) strlen (ap->native_path) - (ssize_t) strlen (ap->posix_path);
++  ssize_t blen = (ssize_t) strlen (bp->native_path) - (ssize_t) strlen (bp->posix_path);
++
++  int res = blen - alen;
++
++  if (res)
++    return res;		/* Path lengths differed */
++
++  /* The two paths were the same length, so just determine normal
++     lexical sorted order. */
++  res = strcmp (ap->native_path, bp->native_path);
++
++  if (res == 0)
++   {
++     /* need to select between user and system mount to same POSIX path */
++     if (!(bp->flags & MOUNT_SYSTEM))	/* user mount */
++      return 1;
++     else
++      return -1;
++   }
++
++  return res;
++}
++
+ void
+ mount_info::sort ()
+ {
+   for (int i = 0; i < nmounts; i++)
+-    native_sorted[i] = posix_sorted[i] = i;
++    native_sorted[i] = posix_sorted[i] = longest_native_sorted[i] = longest_posix_sorted[i] = i;
+   /* Sort them into reverse length order, otherwise we won't
+      be able to look for /foo in /.  */
+   mounts_for_sort = mount;	/* ouch. */
+   qsort (posix_sorted, nmounts, sizeof (posix_sorted[0]), sort_by_posix_name);
+   qsort (native_sorted, nmounts, sizeof (native_sorted[0]), sort_by_native_name);
++  qsort (longest_posix_sorted, nmounts, sizeof (longest_posix_sorted[0]), sort_by_longest_posix_name);
++  qsort (longest_native_sorted, nmounts, sizeof (longest_native_sorted[0]), sort_by_longest_native_name);
+ }
+ 
+ /* Add an entry to the mount table.
+diff --git a/winsup/cygwin/mount.h b/winsup/cygwin/mount.h
+index ba0ef4c..2777c46 100644
+--- a/winsup/cygwin/mount.h
++++ b/winsup/cygwin/mount.h
+@@ -181,6 +181,8 @@ class mount_info
+  private:
+   int posix_sorted[MAX_MOUNTS];
+   int native_sorted[MAX_MOUNTS];
++  int longest_posix_sorted[MAX_MOUNTS];
++  int longest_native_sorted[MAX_MOUNTS];
+ 
+  public:
+   void init ();
+-- 
+2.1.0
+
