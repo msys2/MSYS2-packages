@@ -1,0 +1,113 @@
+--- origsrc/rcs-5.9.2/src/ci.c	2013-10-04 14:01:48.000000000 +0200
++++ src/rcs-5.9.2/src/ci.c	2014-06-28 09:14:46.885518000 +0200
+@@ -1085,6 +1085,18 @@ ci_main (const char *cmd, int argc, char
+                 *++diffp = NULL;
+                 if (DIFF_TROUBLE == runv (wfd, diffname, diffv))
+                   RFATAL ("diff failed");
++
++		/* Re-open the work file to sync the notion of the
++		   file position and the memory buffer.  These may
++		   have drifted apart due to sharing the fd with the
++		   diff subprocess.  */
++		fro_zclose (&work.fro);
++		if (!(work.fro = fro_open (mani_filename, FOPEN_R_WORK, &work.st)))
++		  {
++		    syserror_errno (mani_filename);
++		    continue;
++		  }
++
+                 if (newhead)
+                   {
+                     fro_bob (work.fro);
+--- origsrc/rcs-5.9.2/tests/Makefile.am	2013-04-20 20:08:38.000000000 +0200
++++ src/rcs-5.9.2/tests/Makefile.am	2014-06-28 09:14:46.885518000 +0200
+@@ -79,6 +79,7 @@ TESTS = \
+  t802 \
+  t803 \
+  t810 \
++ t820 \
+  t900 \
+  t999
+ 
+--- origsrc/rcs-5.9.2/tests/btdt.c	2013-10-04 13:45:57.000000000 +0200
++++ src/rcs-5.9.2/tests/btdt.c	2014-06-28 09:14:46.885518000 +0200
+@@ -164,6 +164,7 @@ main (int argc, char *argv[argc])
+ 
+   if (2 > argc || STR_SAME ("--help", argv[1]))
+     {
++    HELP:
+       printf ("Usage: %s COMPONENT [ARG...]\n", me);
+       for (size_t i = 0; i < NYEAH; i++)
+         printf ("- %-10s %s\n", yeah[i].component, yeah[i].usage);
+@@ -178,7 +179,7 @@ main (int argc, char *argv[argc])
+       printf ("License GPLv3+; GNU GPL version 3 or later"
+               " <http://gnu.org/licenses/gpl.html>\n\n");
+       argv[1] = "--help";
+-      return main (argc, argv);
++      goto HELP;
+     }
+ 
+   for (size_t i = 0; i < NYEAH; i++)
+--- origsrc/rcs-5.9.2/tests/t820	1970-01-01 01:00:00.000000000 +0100
++++ src/rcs-5.9.2/tests/t820	2014-06-28 09:14:46.885518000 +0200
+@@ -0,0 +1,60 @@
++# t820 --- RM_STDIO codepath
++#
++# Copyright (C) 2013 Thien-Thi Nguyen
++#
++# This program is free software: you can redistribute it and/or
++# modify it under the terms of the GNU General Public License as
++# published by the Free Software Foundation, either version 3 of
++# the License, or (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty
++# of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++# See the GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program.  If not, see <http://www.gnu.org/licenses/>.
++
++. $srcdir/common
++split_std_out_err no
++unset TMPDIR
++
++##
++# Check that using the RM_STDIO code path
++# doesn't truncate the work file on Cygwin.
++# This test derives from a 5.8 regression.
++##
++
++##
++# NB: We jam env ‘RCS_MEM_LIMIT=0’ to force stdio operation.
++##
++RCS_MEM_LIMIT=0
++export RCS_MEM_LIMIT
++
++cd $wd
++    set -x
++    pwd
++    mkdir RCS
++    for n in 65535 65536 65537 262143 262144 262150 262140 262142 262145
++    do
++        rm -f RCS/foo,v
++        # Check in initial revision (1.1), with small contents.
++        echo foo > foo
++        ci -l foo < /dev/null
++        must [ 4 == $(co -p foo | wc -c) ]
++        # Check in second revision (1.2), size $n bytes.
++        # Note, adding "-f" to the ci command prevents the bug.
++        yes | head -${n}c > foo
++        ci -m"blafasel" -l foo
++        cp -f RCS/foo,v RCS/foo,v.$n
++        # When n=262143, the following gives 262143 (correct);
++        # when n=262144, the following gives 65535 (wrong).
++        must [ $n == $(co -p foo | wc -c) ]
++        # The following succeeds with n=262143, but fails with n=262144:
++        #   co: RCS/foo,v:32805: edit script refers to line past end of file
++        #   co aborted
++        must co -p1.1 foo > /dev/null
++    done
++cd ..
++
++# t820 ends here
