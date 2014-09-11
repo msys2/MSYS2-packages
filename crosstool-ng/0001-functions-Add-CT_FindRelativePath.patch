@@ -1,0 +1,84 @@
+From b2be3db3b419fb46055e4780ef3378683314ba42 Mon Sep 17 00:00:00 2001
+From: Ray Donnelly <mingw.android@gmail.com>
+Date: Sat, 12 Apr 2014 15:57:20 +0100
+Subject: [PATCH 1/3] functions: Add CT_FindRelativePath
+
+.. needed for Windows due to it lacking a single
+hierarchy filesystem.
+---
+ scripts/functions | 62 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 62 insertions(+)
+
+diff --git a/scripts/functions b/scripts/functions
+index a309f2d..9a2be48 100644
+--- a/scripts/functions
++++ b/scripts/functions
+@@ -1396,3 +1396,65 @@ CT_DoLoadState(){
+     exec >>"${tmp_log_file}"
+     rm -f "${state_dir}/tail.log"
+ }
++
++# Based on https://github.com/Offirmo/offirmo-shell-lib/blob/master/bin/osl_lib_file.sh
++# .. modified to work with Dash.
++
++# both $1 and $2 are absolute paths beginning with /
++# returns relative path to $2/$target from $1/$source
++CT_FindRelativePath()
++{
++    local source=$1
++    local target=$2
++
++    #echo "source : \"$source\""
++    #echo "target : \"$target\""
++    return_value="OSL_FILE_compute_relative_path ERROR"
++
++    local common_part=$source # for now
++
++    local result=""
++
++    #echo "common_part is now : \"$common_part\""
++    #echo "result is now      : \"$result\""
++    #echo "target#common_part : \"${target#$common_part}\""
++    while [ "${target#$common_part}" = "${target}" ]; do
++        # no match, means that candidate common part is not correct
++        # go up one level (reduce common part)
++        common_part="$(dirname $common_part)"
++        # and record that we went back
++        if [ -z "${result}" ]; then
++            result=".."
++        else
++            result="../$result"
++        fi
++        #echo "common_part is now : \"$common_part\""
++        #echo "result is now      : \"$result\""
++        #echo "target#common_part : \"${target#$common_part}\""
++    done
++
++    #echo "common_part is     : \"$common_part\""
++
++    if [ "${common_part}" = "/" ]; then
++        # special case for root (no common path)
++        result="$result/"
++    fi
++
++    # since we now have identified the common part,
++    # compute the non-common part
++    forward_part="${target#$common_part}"
++    #echo "forward_part = \"$forward_part\""
++
++    if [ -n "${result}" -a -n "${forward_part}" ]; then
++        #echo "(simple concat)"
++        result="$result$forward_part"
++    elif [ -n "${forward_part}" ]; then
++        #echo "(concat with slash removal)"
++        result=$(echo $forward_part | awk '{ string=substr($0, 2, length($0)); print string; }' )
++    fi
++    #echo "result = \"$result\""
++    #return_value=$result
++    echo $result
++
++    return 0
++}
+-- 
+2.1.0
+
