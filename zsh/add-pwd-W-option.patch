@@ -1,0 +1,35 @@
+diff -rupN zsh-5.0.6/Src/builtin.c zsh-5.0.6-patch/Src/builtin.c
+--- zsh-5.0.6/Src/builtin.c	2014-08-01 04:41:49.000000000 +1000
++++ zsh-5.0.6-patch/Src/builtin.c	2014-09-26 22:48:35.215974400 +1000
+@@ -103,7 +103,7 @@ static struct builtin builtins[] =
+     BUILTIN("printf", 0, bin_print, 1, -1, BIN_PRINTF, NULL, NULL),
+     BUILTIN("pushd", BINF_SKIPINVALID | BINF_SKIPDASH | BINF_DASHDASHVALID, bin_cd, 0, 2, BIN_PUSHD, "qsPL", NULL),
+     BUILTIN("pushln", 0, bin_print, 0, -1, BIN_PRINT, NULL, "-nz"),
+-    BUILTIN("pwd", 0, bin_pwd, 0, 0, 0, "rLP", NULL),
++    BUILTIN("pwd", 0, bin_pwd, 0, 0, 0, "rLPW", NULL),
+     BUILTIN("r", 0, bin_fc, 0, -1, BIN_R, "nrl", NULL),
+     BUILTIN("read", 0, bin_read, 0, -1, 0, "cd:ek:%lnpqrst:%zu:AE", NULL),
+     BUILTIN("readonly", BINF_PLUSOPTS | BINF_MAGICEQUALS | BINF_PSPECIAL, bin_typeset, 0, -1, 0, "AE:%F:%HL:%R:%TUZ:%afghi:%lptux", "r"),
+@@ -672,7 +672,21 @@ int doprintdir = 0;		/* set in exec.c (f
+ int
+ bin_pwd(UNUSED(char *name), UNUSED(char **argv), Options ops, UNUSED(int func))
+ {
+-    if (OPT_ISSET(ops,'r') || OPT_ISSET(ops,'P') ||
++    if (OPT_ISSET(ops,'W')) {
++	char *wpath = zalloc(PATH_MAX);
++	if (cygwin_conv_path(CCP_POSIX_TO_WIN_A, zgetcwd(), wpath, PATH_MAX) < 0) {
++	    free(wpath);
++	    perror("cygwin_conv_path");
++	    return 1;
++	}
++
++	char *c = wpath;
++	while ((c = strchr(c, '\\')))
++	    *c = '/';
++
++	printf("%s\n", wpath);
++	free(wpath);
++    } else if (OPT_ISSET(ops,'r') || OPT_ISSET(ops,'P') ||
+ 	(isset(CHASELINKS) && !OPT_ISSET(ops,'L')))
+ 	printf("%s\n", zgetcwd());
+     else {
