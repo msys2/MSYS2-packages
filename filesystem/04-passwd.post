@@ -1,0 +1,33 @@
+maybe_create_passwd ()
+{
+  # Create default /etc/passwd and /etc/group files
+  local created_passwd=no
+  local created_group=no
+
+  if [ ! -e /etc/passwd -a ! -L /etc/passwd ] ; then
+    mkpasswd.exe -l -c > /etc/passwd
+    chmod 644 /etc/passwd
+    created_passwd=yes
+    MAYBE_FIRST_START=true
+  fi
+
+  if [ ! -e /etc/group -a ! -L /etc/group ] ; then
+    mkgroup.exe -l -c > /etc/group
+    chmod 644 /etc/group
+    created_group=yes
+    MAYBE_FIRST_START=true
+  fi
+
+  cp -fp /etc/group /tmp/group.mkgroup && \
+  ( [ -w /etc/group ] || chmod --silent a+w /etc/group ; ) && \
+  echo "root:S-1-5-32-544:0:" > /etc/group && \
+  sed -e '/root:S-1-5-32-544:0:/d' /tmp/group.mkgroup >> /etc/group && \
+  chmod --silent --reference=/etc/passwd /etc/group
+  rm -f /tmp/group.mkgroup
+
+   # Deferred to be sure root group entry exists
+  [ "$created_passwd" = "yes" ] && chgrp --silent root /etc/passwd
+  [ "$created_group" = "yes"  ] && chgrp --silent root /etc/group
+}
+
+maybe_create_passwd

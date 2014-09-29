@@ -1,0 +1,54 @@
+maybe_create_home ()
+{
+  # Set the user id
+  USER="$(id -un)"
+
+  # Default to removing the write permission for group and other
+  #  (files normally created with mode 777 become 755; files created with
+  #  mode 666 become 644)
+  umask 022
+
+  # Here is how HOME is set, in order of priority, when starting from Windows
+  #  1) From existing HOME in the Windows environment, translated to a Posix path
+  #  2) from /etc/passwd, if there is an entry with a non empty directory field
+  #  3) from HOMEDRIVE/HOMEPATH
+  #  4) / (root)
+  # If the home directory doesn't exist, create it.
+  if [ ! -d "${HOME}" ]; then
+    if mkdir -p "${HOME}"; then
+      echo "Copying skeleton files."
+      echo "These files are for the users to personalise their msys2 experience."
+      echo
+      echo "They will never be overwritten nor automatically updated."
+      echo
+      cd /etc/skel || echo "WARNING: Failed attempt to cd into /etc/skel!"
+      local f=
+      /usr/bin/find . -type f | while read f; do
+        local fDest=${f#.}
+        if [ ! -e "${HOME}${fDest}" -a ! -L "${HOME}${fDest}" ]; then
+          /usr/bin/install -D -p -v "${f}" "${HOME}/${fDest}"
+        fi
+      done
+    else
+      echo "${HOME} could not be created."
+      { [ -d "${TEMP}" ] && HOME="${TEMP}"; } ||
+      { [ -d "${TMP}" ] && HOME="${TMP}"; } ||
+      { [ -d /tmp ] && HOME=/tmp; } ||
+      HOME=/
+      echo "Setting HOME to ${HOME}."
+    fi
+  fi
+
+  # Start MSYS in selected folder
+  # c:\msys\usr\bin\bash -c "cd '%curdir'; export 
+  # CHERE_INVOKING=1; exec /usr/bin/bash --login -i"
+  # 
+  # Make sure we start in home unless invoked by CHERE
+  if [ ! -z "${CHERE_INVOKING}" ]; then
+    unset CHERE_INVOKING
+  else
+    cd "${HOME}" || echo "WARNING: Failed attempt to cd into ${HOME}!"
+  fi
+}
+
+maybe_create_home
