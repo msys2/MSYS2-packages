@@ -1,0 +1,54 @@
+From de683f37a07470047c05fdc48a1eb96746f12758 Mon Sep 17 00:00:00 2001
+From: Ray Donnelly <mingw.android@gmail.com>
+Date: Thu, 2 Oct 2014 22:58:40 +0100
+Subject: [PATCH 5/5] Move need_directory check out of "if (opt & PC_NOFULL)"
+ scope
+
+In path_conv::check() '\' should be appended to converted
+absolute paths (as well as relative ones) when the source
+path ended with '/'
+
+This fixes path conversion of the root mount, e.g.:
+'/' -> 'C:/msys64'
+.. in this example, the result of converting '/' would be
+'C:\msys64' when it clearly should be 'C:\msys64\', I say
+clearly because it is obvious that converting a path that
+ends in / should result in a path ending in \ every time.
+---
+ winsup/cygwin/path.cc | 19 ++++++++++---------
+ 1 file changed, 10 insertions(+), 9 deletions(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 07a4754..b675b40 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -1181,16 +1181,17 @@ path_conv::check (const char *src, unsigned opt,
+ 		cfree (wide_path);
+ 	      wide_path = NULL;
+ 	    }
+-	  if (need_directory)
++	}
++
++      if (need_directory)
++	{
++	  size_t n = strlen (this->path);
++	  /* Do not add trailing \ to UNC device names like \\.\a: */
++	  if (this->path[n - 1] != '\\' &&
++	      (strncmp (this->path, "\\\\.\\", 4) != 0))
+ 	    {
+-	      size_t n = strlen (this->path);
+-	      /* Do not add trailing \ to UNC device names like \\.\a: */
+-	      if (this->path[n - 1] != '\\' &&
+-		  (strncmp (this->path, "\\\\.\\", 4) != 0))
+-		{
+-		  this->modifiable_path ()[n] = '\\';
+-		  this->modifiable_path ()[n + 1] = '\0';
+-		}
++	      this->modifiable_path ()[n] = '\\';
++	      this->modifiable_path ()[n + 1] = '\0';
+ 	    }
+ 	}
+ 
+-- 
+2.1.0
+
