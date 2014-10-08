@@ -1,0 +1,58 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=("aspell" "aspell-devel")
+pkgver=0.60.6.1
+pkgrel=1
+pkgdesc=" a Free and Open Source spell checker (libraries)"
+arch=('i686' 'x86_64')
+url="http://aspell.net/"
+license=('LGPL')
+groups=('libraries')
+makedepends=('gcc' 'gettext-devel' 'libiconv-devel' 'ncurses-devel')
+options=()
+source=("http://ftp.gnu.org/gnu/aspell/$pkgname-$pkgver.tar.gz"{,.sig}
+        "msys-platform.patch")
+sha256sums=('f52583a83a63633701c5f71db3dc40aab87b7f76b29723aeb27941eff42df6e1'
+            'SKIP'
+            'ed9a09ee29c031b979b76a9146c60fadd8c591b072f09c1a29fd640be0bbca8a')
+
+prepare() {
+  cd "$srcdir/$pkgname-$pkgver"
+  patch -p1 -i ${srcdir}/msys-platform.patch
+  autoreconf -ivf
+}
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  ./configure --prefix=/usr --build=${CHOST} --enable-static
+  make
+  make DESTDIR="$srcdir/dest" install
+}
+
+check() {
+  cd "$srcdir/$pkgname-$pkgver"
+  make -k check
+}
+
+package_aspell() {
+  depends=("gcc-libs" "gettext" "libiconv" "ncurses")
+
+  mkdir -p $pkgdir/usr/bin
+  cp -rf $srcdir/dest/usr/bin $pkgdir/usr/
+
+  mkdir -p $pkgdir/usr/lib/aspell-0.60
+  cp -rf $srcdir/dest/usr/lib/aspell-0.60 $pkgdir/usr/lib/
+
+  mkdir -p $pkgdir/usr/share
+  cp -rf $srcdir/dest/usr/share $pkgdir/usr/
+}
+
+package_aspell-devel() {
+  pkgdesc="Aspell headers and libraries (development)"
+  groups=('development')
+  depends=("aspell=${pkgver}" "gettext-devel" "libiconv-devel" "ncurses-devel")
+
+  mkdir -p $pkgdir/usr/lib
+  cp -rf $srcdir/dest/usr/include $pkgdir/usr/
+  cp -f $srcdir/dest/usr/lib/*.a $pkgdir/usr/lib
+}
