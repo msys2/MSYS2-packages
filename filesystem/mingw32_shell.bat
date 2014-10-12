@@ -19,7 +19,7 @@ if NOT EXIST %WD%msys-2.0.dll set WD=.\usr\bin\
 rem ember that we get here even in command.com.
 :_WindowsNT
 
-if NOT EXIST %WD%msys-2.0.dll set WD=%~dp0\usr\bin\
+if NOT EXIST %WD%msys-2.0.dll set WD=%~dp0usr\bin\
 
 set MSYSTEM=MINGW32
 rem To activate windows native symlinks uncomment next line
