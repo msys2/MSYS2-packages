@@ -1,0 +1,49 @@
+--- origsrc/util-linux-2.24.2/term-utils/agetty.c	2014-04-24 02:37:04.462705900 -0500
++++ src/util-linux-2.24.2/term-utils/agetty.c	2014-07-08 21:07:06.378498800 -0500
+@@ -64,6 +64,14 @@
+ #  ifndef DEFAULT_STERM
+ #    define DEFAULT_STERM  "vt102"
+ #  endif
++#elif defined(__CYGWIN__)
++#  define USE_SYSLOG
++#  ifndef DEFAULT_VCTERM
++#    define DEFAULT_VCTERM "cygwin"
++#  endif
++#  ifndef DEFAULT_STERM
++#    define DEFAULT_STERM "vt102"
++#  endif
+ #else
+ #  ifndef DEFAULT_VCTERM
+ #    define DEFAULT_VCTERM "vt100"
+@@ -896,7 +904,9 @@ static void update_utmp(struct options *
+ #endif
+ 	ut.ut_type = LOGIN_PROCESS;
+ 	ut.ut_pid = pid;
++#ifndef __CYGWIN__
+ 	ut.ut_session = sid;
++#endif
+ 
+ 	pututline(&ut);
+ 	endutent();
+@@ -983,8 +993,12 @@ static void open_tty(char *tty, struct t
+ 
+ 		if (op->flags & F_HANGUP) {
+ 
++#ifdef TIOCNOTTY
+ 			if (ioctl(fd, TIOCNOTTY))
+ 				debug("TIOCNOTTY ioctl failed\n");
++#else
++			setsid();
++#endif
+ 
+ 			/*
+ 			 * Let's close all file decriptors before vhangup
+@@ -1722,7 +1736,7 @@ static void termio_final(struct options
+ 	tp->c_cc[VQUIT] = DEF_QUIT;
+ 	tp->c_cc[VEOF] = DEF_EOF;
+ 	tp->c_cc[VEOL] = DEF_EOL;
+-#ifdef __linux__
++#if defined(VSWTC)
+ 	tp->c_cc[VSWTC] = DEF_SWITCH;
+ #elif defined(VSWTCH)
+ 	tp->c_cc[VSWTCH] = DEF_SWITCH;

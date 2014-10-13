@@ -1,0 +1,146 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=("util-linux" "libutil-linux" "libutil-linux-devel")
+pkgver=2.24.2
+pkgrel=1
+pkgdesc="Miscellaneous system utilities for Linux"
+arch=('i686' 'x86_64')
+license=('GPL3')
+url="http://www.kernel.org/pub/linux/utils/util-linux/"
+groups=('base')
+depends=('coreutils' 'libintl' 'libiconv')
+options=('staticlibs')
+makedepends=('gettext-devel' 'libiconv-devel')
+source=(ftp://ftp.kernel.org/pub/linux/utils/$pkgname/v${pkgver%.*}/$pkgname-$pkgver.tar.xz
+        2.24.2-libintl.patch
+        2.24.2-cygwin-include.patch
+        2.24.2-agetty.patch
+        2.24.2-sys-utils.patch
+        2.24.2-libblkid-topology.patch
+        2.24.2-msysize.patch)
+md5sums=('3f191727a0d28f7204b755cf1b6ea0aa'
+         'db24717018176a3375860059b70478c8'
+         '50285a244eda304bf6caa55ac4f98622'
+         '7bfa7a252cf44b70d489580dead33b4a'
+         'dc5bd0ab554bbd9e2b427b7ea44b132d'
+         '4a6a486f374d90985ca4d636c6305b51'
+         'cf620fa98a6e8ab34627b3de770b336e')
+
+prepare() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+
+  patch -p2 -i $srcdir/2.24.2-libintl.patch
+  patch -p2 -i $srcdir/2.24.2-cygwin-include.patch
+  patch -p2 -i $srcdir/2.24.2-agetty.patch
+  patch -p2 -i $srcdir/2.24.2-sys-utils.patch
+  patch -p2 -i $srcdir/2.24.2-libblkid-topology.patch
+  patch -p1 -i ${srcdir}/2.24.2-msysize.patch
+
+  autoreconf -fi
+}
+
+build() {
+  [[ -d $srcdir/build-${CHOST} ]] && rm -rf $srcdir/build-${CHOST}
+  mkdir -p $srcdir/build-${CHOST} && cd $srcdir/build-${CHOST}
+  
+  CPPFLAGS+=" -D__USE_LINUX_IOCTL_DEFS"
+  ../${pkgname}-${pkgver}/configure \
+    --build=${CHOST} \
+    --prefix=/usr \
+    --bindir=/usr/bin \
+    --sbindir=/usr/bin \
+    --libexecdir=/usr/lib \
+    --libdir=/usr/lib \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
+    --enable-libuuid \
+    --enable-libblkid \
+    --disable-libmount \
+    --disable-mount \
+    --disable-losetup \
+    --disable-cytune \
+    --disable-fsck \
+    --disable-partx \
+    --enable-uuidd \
+    --disable-mountpoint \
+    --disable-fallocate \
+    --disable-unshare \
+    --disable-nsenter \
+    --disable-setpriv \
+    --disable-eject \
+    --enable-agetty \
+    --enable-cramfs \
+    --enable-bfs \
+    --disable-fdformat \
+    --disable-hwclock \
+    --disable-wdctl \
+    --disable-switch_root \
+    --disable-pivot_root \
+    --disable-tunelp \
+    --disable-kill \
+    --disable-last \
+    --disable-utmpdump \
+    --disable-line \
+    --disable-mesg \
+    --disable-raw \
+    --enable-rename \
+    --disable-reset \
+    --disable-vipw \
+    --disable-newgrp \
+    --disable-chfn-chsh \
+    --disable-login \
+    --disable-nologin \
+    --disable-sulogin \
+    --disable-su \
+    --disable-runuser \
+    --enable-ul \
+    --enable-more \
+    --enable-pg \
+    --disable-setterm \
+    --disable-schedutils \
+    --disable-wall \
+    --disable-write \
+    --disable-socket-activation \
+    --disable-use-tty-group \
+    --disable-makeinstall-chown \
+    --disable-makeinstall-setuid \
+    --without-libintl-prefix \
+    --without-libiconv-prefix \
+    ac_cv_func___fpending=yes \
+    SOLIB_LDFLAGS=-no-undefined
+
+  make
+  make DESTDIR=${srcdir}/dest install
+}
+
+package_util-linux() {
+  pkgdesc="Collection of basic system utilities"
+  depends=("coreutils" "libutil-linux" "libiconv")
+  provides=('getopt')
+  conflicts=('getopt')
+  replaces=('getopt')
+  
+  mkdir -p ${pkgdir}/usr/{bin,sbin}
+  cp ${srcdir}/dest/usr/bin/*.exe ${pkgdir}/usr/bin/
+  cp ${srcdir}/dest/usr/sbin/*.exe ${pkgdir}/usr/sbin/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+}
+
+package_libutil-linux() {
+  pkgdesc="Block device ID and Universally Unique ID libraries"
+  provides=("libblkid" "libuuid")
+  depends=("gcc-libs" "libintl" "msys2-runtime")
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+}
+
+package_libutil-linux-devel() {
+  pkgdesc="Block device ID and Universally Unique ID headers and libraries."
+  provides=("libblkid-devel" "libuuid-devel")
+  depends=("libutil-linux")
+
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+}
