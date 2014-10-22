@@ -2,14 +2,14 @@
 
 pkgname=('libidn' 'libidn-devel')
 pkgver=1.29
-pkgrel=1
+pkgrel=2
 pkgdesc="Implementation of the Stringprep, Punycode and IDNA specifications"
 url="http://www.gnu.org/software/libidn/"
 arch=('i686' 'x86_64')
 license=('GPL3' 'LGPL')
 depends=('texinfo')
 makedepends=('pkg-config')
-options=('!libtool')
+options=('!libtool' 'staticlibs')
 source=(http://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.gz
         libidn-1.26-msys2.patch)
 install=libidn.install
@@ -19,21 +19,32 @@ sha1sums=('e0959eec9a03fd8053379b0aeab447c546c05ab2'
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
   patch -p1 -i $srcdir/libidn-1.26-msys2.patch
-  autoreconf -fi
+  
+  mkdir ${srcdir}/mytemp
+  cp -rf ${srcdir}/${pkgname}-${pkgver}/build-aux/snippet ${srcdir}/mytemp/
+  autoreconf -ivf
+  cp -rf ${srcdir}/mytemp/snippet ${srcdir}/${pkgname}-${pkgver}/build-aux/
+  rm -rf ${srcdir}/mytemp
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  ./configure --build=${CHOST} --prefix=/usr
+  [[ -d ${srcdir}/build-${CHOST} ]] && rm -rf ${srcdir}/build-${CHOST}
+  mkdir ${srcdir}/build-${CHOST}
+  cd ${srcdir}/build-${CHOST}
+  ../${pkgname}-${pkgver}/configure \
+    --prefix=/usr \
+    --build=${CHOST} \
+    --enable-shared \
+    --enable-static
   make
-  make DESTDIR=${srcdir}/dest install
+  make DESTDIR=${srcdir}/dest-${CHOST} install
 }
 
 package_libidn() {
   groups=('libraries') 
   mkdir -p $pkgdir/usr/bin
-  cp -f $srcdir/dest/usr/bin/*.dll $pkgdir/usr/bin/
-  cp -rf $srcdir/dest/usr/share $pkgdir/usr/
+  cp -f $srcdir/dest-${CHOST}/usr/bin/*.dll $pkgdir/usr/bin/
+  cp -rf $srcdir/dest-${CHOST}/usr/share $pkgdir/usr/
 }
 
 package_libidn-devel() {
@@ -42,7 +53,7 @@ package_libidn-devel() {
   depends=("libidn=${pkgver}")
   
   mkdir -p $pkgdir/usr/bin
-  cp -f $srcdir/dest/usr/bin/*.exe $pkgdir/usr/bin/
-  cp -rf $srcdir/dest/usr/include $pkgdir/usr/
-  cp -rf $srcdir/dest/usr/lib $pkgdir/usr/
+  cp -f $srcdir/dest-${CHOST}/usr/bin/*.exe $pkgdir/usr/bin/
+  cp -rf $srcdir/dest-${CHOST}/usr/include $pkgdir/usr/
+  cp -rf $srcdir/dest-${CHOST}/usr/lib $pkgdir/usr/
 }
