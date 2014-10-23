@@ -2,10 +2,10 @@
 
 pkgbase="sqlite"
 pkgname=('sqlite' 'libsqlite' 'libsqlite-devel' 'sqlite-doc') 
-_amalgamationver=3080300
+_amalgamationver=3080600
 _docver=${_amalgamationver}
-pkgver=3.8.3
-pkgrel=2
+pkgver=3.8.6
+pkgrel=1
 pkgdesc="A C library that implements an SQL database engine"
 arch=('i686' 'x86_64')
 license=('custom:Public Domain')
@@ -13,24 +13,24 @@ url="http://www.sqlite.org/"
 depends=('libreadline' 'icu' 'zlib')
 makedepends=('libreadline-devel' 'icu-devel' 'zlib-devel')
 source=( # tarball containing the amalgamation for SQLite >= 3.7.5 together with a configure script and makefile for building it; includes now also the Tcl Extension Architecture (TEA)
-  http://www.sqlite.org/2014/sqlite-autoconf-$_amalgamationver.tar.gz
-  http://www.sqlite.org/2014/sqlite-doc-${_docver}.zip
-  license.txt
-  'sqlite-3.8.0.1-msys2.patch'
-  'sqlite3-3.8.3-2.src.patch'
-  'sqlite-3.8.3-cygwin-need-_XOPEN_SORCE.patch')
+        http://www.sqlite.org/2014/sqlite-autoconf-$_amalgamationver.tar.gz
+        http://www.sqlite.org/2014/sqlite-doc-${_docver}.zip
+        license.txt
+        'sqlite-3.8.0.1-msys2.patch'
+        'sqlite3-3.8.6-1.src.patch'
+        'sqlite-3.8.3-cygwin-need-_XOPEN_SORCE.patch')
 options=('!libtool' '!emptydirs')
-sha1sums=('c2a21d71d0c7dc3af71cf90f04dfd22ecfb280c2'
-          '199c977b948d3e6b9b0b165cb661275e0856d38e'
+sha1sums=('c4b2911bc4a6e1dc2b411aa21d8c4f524113eb64'
+          '8c3d3a9f97b10fb43d6fce61079ed1ab93472913'
           'f34f6daa4ab3073d74e774aad21d66878cf26853'
-          '0810721cc17128498f99863c185753e06a95ad79'
-          '408ba072efcd069c657bdfa498524fba6ebb559d'
+          '17b837df621e1471739e006397deec794b3d7aeb'
+          '60dd177220ac47cdba491e1a2d156264fdc26b78'
           '2ff3db98562a0a5c556ed6d0125de878466a9554')
 
 prepare() {
   cd "$srcdir"/sqlite-autoconf-$_amalgamationver
   
-  patch -p2 -i ${srcdir}/sqlite3-3.8.3-2.src.patch
+  patch -p2 -i ${srcdir}/sqlite3-3.8.6-1.src.patch
   patch -p1 -i ${srcdir}/sqlite-3.8.3-cygwin-need-_XOPEN_SORCE.patch
   patch -p1 -i ${srcdir}/sqlite-3.8.0.1-msys2.patch
   autoreconf -fi
@@ -38,28 +38,30 @@ prepare() {
 
 build() {
   export CPPFLAGS="$CPPFLAGS \
-    -DHAVE_MALLOC_H \
     -DHAVE_MALLOC_USABLE_SIZE \
-    -DSQLITE_DEFAULT_FILE_FORMAT=4 \
     -DSQLITE_ENABLE_COLUMN_METADATA=1 \
-    -DSQLITE_ENABLE_EXPLAIN_COMMENTS=1 \
-    -DSQLITE_ENABLE_FTS3=1 \
     -DSQLITE_ENABLE_FTS4=1 \
-    -DSQLITE_ENABLE_LOCKING_STYLE=1 \
     -DSQLITE_ENABLE_RTREE=1 \
     -DSQLITE_ENABLE_SQLLOG=1 \
     -DSQLITE_ENABLE_STAT4=1 \
     -DSQLITE_ENABLE_UNLOCK_NOTIFY=1 \
+    -DSQLITE_MAX_MMAP_SIZE=0x7fff0000 \
+    -DSQLITE_MAX_PATH_BYTES=4096 \
     -DSQLITE_OS_UNIX=1 \
     -DSQLITE_OS_WIN=1 \
     -DSQLITE_SOUNDEX=1 \
+    -DSQLITE_USE_FCNTL_TRACE=1 \
     -DSQLITE_WIN32_NO_ANSI=1 \
-    -DSQLITE_WINNT_MAX_PATH_CHARS=4096"
+    -DSQLITE_WIN32_MAX_PATH_BYTES=4096 \
+    -DUSE_SYSTEM_SQLITE=1"
 
   # build sqlite
   cd "$srcdir"/sqlite-autoconf-$_amalgamationver
-  ./configure --build=${CHOST} --prefix=/usr \
-    --disable-static
+  ./configure \
+    --prefix=/usr \
+    --build=${CHOST} \
+    --enable-shared \
+    --enable-static
   make
   
   make DESTDIR=${srcdir}/dest install
@@ -99,7 +101,7 @@ package_libsqlite-devel() {
   pkgdesc="sqlite headers and libraries"
   groups=('development')
   depends=("libsqlite=${pkgver}")
-  options=('!staticlibs')
+  options=('staticlibs')
  
   mkdir -p ${pkgdir}/usr
   cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
