@@ -1,0 +1,59 @@
+--- bash-4.3/bashline.c.orig	2014-10-25 21:20:39.964800000 +0400
++++ bash-4.3/bashline.c	2014-10-25 21:25:19.579200000 +0400
+@@ -501,12 +501,20 @@
+   kseq[0] = CTRL('J');
+   kseq[1] = '\0';
+   func = rl_function_of_keyseq (kseq, emacs_meta_keymap, (int *)NULL);
++#ifndef _STATIC_BUILD
+   extern rl_command_func_t *IMP(rl_vi_editing_mode);
+   if (func == rl_vi_editing_mode || func == IMP(rl_vi_editing_mode))
++#else
++  if (func == rl_vi_editing_mode)
++#endif
+     rl_unbind_key_in_map (CTRL('J'), emacs_meta_keymap);
+   kseq[0] = CTRL('M');
+   func = rl_function_of_keyseq (kseq, emacs_meta_keymap, (int *)NULL);
++#ifndef _STATIC_BUILD
+   if (func == rl_vi_editing_mode || func == IMP(rl_vi_editing_mode))
++#else
++  if (func == rl_vi_editing_mode)
++#endif
+     rl_unbind_key_in_map (CTRL('M'), emacs_meta_keymap);
+ #if defined (VI_MODE)
+   rl_unbind_key_in_map (CTRL('E'), vi_movement_keymap);
+@@ -525,8 +533,12 @@
+   kseq[0] = '~';
+   kseq[1] = '\0';
+   func = rl_function_of_keyseq (kseq, emacs_meta_keymap, (int *)NULL);
++#ifndef _STATIC_BUILD
+   extern rl_command_func_t *IMP(rl_tilde_expand);
+   if (func == 0 || func == rl_tilde_expand || func == IMP(rl_tilde_expand))
++#else
++  if (func == 0 || func == rl_tilde_expand)
++#endif
+     rl_bind_keyseq_in_map (kseq, bash_complete_username, emacs_meta_keymap);
+ 
+   rl_bind_key_if_unbound_in_map ('~', bash_possible_username_completions, emacs_ctlx_keymap);
+@@ -549,8 +561,12 @@
+   kseq[0] = TAB;
+   kseq[1] = '\0';
+   func = rl_function_of_keyseq (kseq, emacs_meta_keymap, (int *)NULL);
++#ifndef _STATIC_BUILD
+   extern rl_command_func_t *IMP(rl_tab_insert);
+   if (func == 0 || func == rl_tab_insert || func == IMP(rl_tab_insert))
++#else
++  if (func == 0 || func == rl_tab_insert)
++#endif
+     rl_bind_key_in_map (TAB, dynamic_complete_history, emacs_meta_keymap);
+ 
+   /* Tell the completer that we want a crack first. */
+--- bash-4.3/configure.ac.orig	2014-10-25 14:51:50.370000000 +0400
++++ bash-4.3/configure.ac	2014-10-25 14:51:54.504000000 +0400
+@@ -495,6 +495,7 @@
+ 	# if we're using gcc, add `-static' to LDFLAGS, except on Solaris >= 2
+ 	if test -n "$GCC" || test "$ac_cv_prog_gcc" = "yes"; then
+ 		STATIC_LD="-static" 
++		CFLAGS="$CFLAGS -D_STATIC_BUILD"
+ 		case "$host_os" in
+ 		solaris2*)	;;
+ 		*)		LDFLAGS="$LDFLAGS -static" ;;	# XXX experimental
