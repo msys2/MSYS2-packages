@@ -1,0 +1,53 @@
+--- a/coreutils/pwd.c	2014-10-26 18:24:17.355079400 +0000
++++ b/coreutils/pwd.c	2014-10-26 18:39:51.371963700 +0000
+@@ -20,7 +20,7 @@
+ 
+ /* This is a NOFORK applet. Be very careful! */
+ 
+-static int logical_getcwd(void)
++static int logical_getcwd(bool winpath = false)
+ {
+ 	struct stat st1;
+ 	struct stat st2;
+@@ -55,10 +55,29 @@
+ 	if (st1.st_dev != st2.st_dev)
+ 		return 0;
+ 
++	if(winpath)
++    {
++	  char *wpath = zalloc(PATH_MAX);
++	  if (cygwin_conv_path(CCP_POSIX_TO_WIN_A, zgetcwd(), wpath, PATH_MAX) < 0) {
++	    free(wpath);
++	    return 0;
++	  }
++
++	  char *c = wpath;
++	  while ((c = strchr(c, '\\')))
++	    *c = '/';
++
++	  puts(wpath);
++	  free(wpath);
++	  return 1;
++    }
++
+ 	puts(wd);
+ 	return 1;
+ }
+ 
++
++
+ int pwd_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+ int pwd_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
+ {
+@@ -74,6 +93,11 @@
+ 			return fflush_all();
+ 	}
+ 
++
++	unsigned wopt = getopt32(argv, "W");
++	if ((wopt & 1) && logical_getcwd(true))
++			return fflush_all();
++
+ 	buf = xrealloc_getcwd_or_warn(NULL);
+ 
+ 	if (buf) {
