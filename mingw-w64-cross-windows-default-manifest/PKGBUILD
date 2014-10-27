@@ -1,0 +1,55 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=windows-default-manifest
+_mingw_suff=mingw-w64-cross
+pkgname=("${_mingw_suff}-${_realname}")
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+pkgver=6.4
+pkgrel=1
+pkgdesc='Default Windows application manifest'
+url='http://cygwin.com/'
+arch=('i686' 'x86_64')
+license=('BSD')
+makedepends=('cvs' 'gcc')
+source=(001-msysize.patch)
+md5sums=('2bf21e2fe716c60fd96c38584aff3075')
+CVSROOT=":pserver:anoncvs:@sourceware.org:/cvs/cygwin-apps"
+CVSMOD="$_realname"
+CVS_BRANCH="release-${pkgver//\./_}"
+
+_targets="i686-w64-mingw32 x86_64-w64-mingw32"
+
+prepare() {
+  cd ${srcdir}
+  msg "Connecting to sourceware.org CVS server...."
+  if [ -d $CVSMOD/CVS ]; then
+    cd $CVSMOD
+    cvs -z3 update -d
+  else
+    cvs -z3 -d $CVSROOT co -r $CVS_BRANCH -f $CVSMOD
+    cd $CVSMOD
+  fi
+  
+  patch -p1 -i ${srcdir}/001-msysize.patch
+  autoreconf -fiv
+}
+
+build() {
+  for _target in ${_targets}; do
+    [[ -d ${srcdir}/build-${_target} ]] && rm -rf build-${_target}
+    cp -rf ${srcdir}/${_realname} ${srcdir}/build-${_target}
+    cd ${srcdir}/build-${_target}
+    ./configure \
+      --build=${CHOST} \
+      --host=${_target} \
+      --prefix=/opt/${_target}
+    make
+  done
+}
+
+package() {
+  for _target in ${_targets}; do
+    cd ${srcdir}/build-${_target}
+    make DESTDIR=${pkgdir} install
+  done
+}
