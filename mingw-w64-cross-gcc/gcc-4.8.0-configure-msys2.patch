@@ -196,7 +196,7 @@ diff -Naur gcc-cygwin/config/dfp.m4 gcc-msys2/config/dfp.m4
      powerpc*-*-linux* | i?86*-*-linux* | x86_64*-*-linux* | s390*-*-linux* | \
      i?86*-*-gnu* | \
      i?86*-*-mingw* | x86_64*-*-mingw* | \
--    i?86*-*-cygwin* | x86_64*-*cygwin*)
+-    i?86*-*-cygwin* | x86_64*-*-cygwin*)
 +    i?86*-*-cygwin* | x86_64*-*-cygwin* | \
 +    i?86*-*-msys* | x86_64*-*-msys*)
        enable_decimal_float=yes
@@ -553,6 +553,41 @@ diff -Naur gcc-cygwin/fixincludes/mkfixinc.sh gcc-msys2/fixincludes/mkfixinc.sh
      i?86-*-mingw32* | \
      x86_64-*-mingw32* | \
      i?86-*-interix* | \
+diff -Naur gcc-cygwin/gcc/ada/gcc-interface/Makefile.in gcc-msys2/gcc/ada/gcc-interface/Makefile.in
+--- gcc-cygwin/gcc/ada/gcc-interface/Makefile.in	2013-03-17 10:43:37 +0400
++++ gcc-msys2/gcc/ada/gcc-interface/Makefile.in	2013-03-20 07:01:37 +0400
+@@ -1605,15 +1605,19 @@
+   indepsw.adb<indepsw-gnu.adb
+ endif
+ 
+-# Cygwin/Mingw32
+-ifeq ($(strip $(filter-out cygwin% mingw32% pe,$(target_os))),)
++# Cygwin/MSYS/Mingw32
++ifeq ($(strip $(filter-out cygwin% msys% mingw32% pe,$(osys))),)
+   # Set target pair suffix for mingw or cygwin
+   W32_TARG=mingw
+   ifneq ($(strip $(filter cygwin%,$(osys))),)
+     W32_TARG=cygwin
+     LIBGNAT_SHARED_LIB_PREFIX=cyg
+   endif
+-  # Cygwin provides a full Posix environment, and so we use the default
++  ifneq ($(strip $(filter msys%,$(osys))),)
++    W32_TARG=cygwin
++    LIBGNAT_SHARED_LIB_PREFIX=msys-
++  endif
++  # Cygwin/MSYS provides a full Posix environment, and so we use the default
+   # versions of s-memory and g-socthi rather than the Windows-specific
+   # MinGW versions.  Ideally we would use all the default versions for
+   # Cygwin and none of the MinGW versions, but for historical reasons
+@@ -1712,7 +1716,7 @@
+     INSTALL_GNATLIB_WIN32 = install-gnatlib
+ 
+     # Mingw uses winsock-based sockets; cygwin uses POSIX sockets.
+-    ifneq ($(strip $(filter-out cygwin%,$(osys))),)
++    ifneq ($(strip $(filter-out cygwin% msys%,$(osys))),)
+       MISCLIB = -lwsock32
+     endif
+ 
 diff -Naur gcc-cygwin/gcc/configure gcc-msys2/gcc/configure
 --- gcc-cygwin/gcc/configure	2013-03-20 06:44:50 +0400
 +++ gcc-msys2/gcc/configure	2013-03-20 08:44:00 +0400
@@ -1323,6 +1358,18 @@ diff -Naur gcc-cygwin/libgcc/configure gcc-msys2/libgcc/configure
        enable_decimal_float=yes
        ;;
      *)
+diff -Naur gcc-cygwin/libgcc/gthr-posix.h gcc-msys2/libgcc/gthr-posix.h
+--- gcc-cygwin/libgcc/gthr-posix.h	2013-03-17 10:15:58 +0400
++++ gcc-msys2/libgcc/gthr-posix.h	2013-03-20 07:02:44 +0400
+@@ -82,7 +82,7 @@
+ # define __GTHREAD_COND_INIT_FUNCTION __gthread_cond_init_function
+ #endif
+ 
+-#if SUPPORTS_WEAK && GTHREAD_USE_WEAK
++#if SUPPORTS_WEAK && GTHREAD_USE_WEAK && !defined(__MINGW32__)
+ # ifndef __gthrw_pragma
+ #  define __gthrw_pragma(pragma)
+ # endif
 diff -Naur gcc-cygwin/libgfortran/acinclude.m4 gcc-msys2/libgfortran/acinclude.m4
 --- gcc-cygwin/libgfortran/acinclude.m4	2013-03-17 10:16:14 +0400
 +++ gcc-msys2/libgfortran/acinclude.m4	2013-03-20 07:02:44 +0400
@@ -1698,8 +1745,8 @@ diff -Naur gcc-cygwin/libgo/config/ltmain.sh gcc-msys2/libgo/config/ltmain.sh
  
  
    case $host in
--    *cygwin* | *mingw* | *pw32* | *cegcc*)
-+    *cygwin* | *msys* | *mingw* | *pw32* | *cegcc*)
+-    *cygwin* | *mingw* | *pw32* | *cegcc* | *solaris2* )
++    *cygwin* | *msys* | *mingw* | *pw32* | *cegcc* | *solaris2* )
        # don't eliminate duplications in $postdeps and $predeps
        opt_duplicate_compiler_generated_deps=:
        ;;
@@ -2537,10 +2584,81 @@ diff -Naur gcc-cygwin/libitm/configure.tgt gcc-msys2/libitm/configure.tgt
  	# POSIX system.  The OS is supported.
  	;;
  
-diff -Naur gcc-cygwin/libmudflap/configure gcc-msys2/libmudflap/configure
---- gcc-cygwin/libmudflap/configure	2013-03-17 10:42:38 +0400
-+++ gcc-msys2/libmudflap/configure	2013-03-20 07:02:44 +0400
-@@ -5161,7 +5161,7 @@
+diff -Naur gcc-cygwin/libjava/classpath/config.guess gcc-msys2/libjava/classpath/config.guess
+--- gcc-cygwin/libjava/classpath/config.guess	2013-03-17 10:14:11 +0400
++++ gcc-msys2/libjava/classpath/config.guess	2013-03-20 07:02:44 +0400
+@@ -804,6 +804,9 @@
+     i*:CYGWIN*:*)
+ 	echo ${UNAME_MACHINE}-pc-cygwin
+ 	exit ;;
++    i*:MSYS*:*)
++	echo ${UNAME_MACHINE}-pc-msys
++	exit ;;
+     *:MINGW*:*)
+ 	echo ${UNAME_MACHINE}-pc-mingw32
+ 	exit ;;
+@@ -844,6 +847,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur gcc-cygwin/libjava/classpath/config.rpath gcc-msys2/libjava/classpath/config.rpath
+--- gcc-cygwin/libjava/classpath/config.rpath	2013-03-17 10:14:21 +0400
++++ gcc-msys2/libjava/classpath/config.rpath	2013-03-20 07:02:44 +0400
+@@ -64,7 +64,7 @@
+           ;;
+       esac
+       ;;
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       ;;
+     hpux9* | hpux10* | hpux11*)
+       wl='-Wl,'
+@@ -138,7 +138,7 @@
+ hardcode_minus_L=no
+ 
+ case "$host_os" in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -188,7 +188,7 @@
+         ld_shlibs=no
+       fi
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+       # no search path for DLLs.
+       hardcode_libdir_flag_spec='-L$libdir'
+@@ -332,7 +332,7 @@
+       ;;
+     bsdi[45]*)
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -520,7 +520,7 @@
+   bsdi[45]*)
+     library_names_spec='$libname$shrext'
+     ;;
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     shrext=.dll
+     library_names_spec='$libname.dll.a $libname.lib'
+     ;;
+diff -Naur gcc-cygwin/libjava/classpath/configure gcc-msys2/libjava/classpath/configure
+--- gcc-cygwin/libjava/classpath/configure	2013-03-20 06:39:42 +0400
++++ gcc-msys2/libjava/classpath/configure	2013-03-20 07:02:44 +0400
+@@ -6361,7 +6361,7 @@
      lt_cv_sys_max_cmd_len=-1;
      ;;
  
@@ -2549,7 +2667,7 @@ diff -Naur gcc-cygwin/libmudflap/configure gcc-msys2/libmudflap/configure
      # On Win9x/ME, this test blows up -- it succeeds, but takes
      # about 5 minutes as the teststring grows exponentially.
      # Worse, since 9x/ME are not pre-emptively multitasking,
-@@ -5503,7 +5503,7 @@
+@@ -6703,7 +6703,7 @@
    lt_cv_file_magic_test_file=/shlib/libc.so
    ;;
  
@@ -2558,7 +2676,7 @@ diff -Naur gcc-cygwin/libmudflap/configure gcc-msys2/libmudflap/configure
    # func_win32_libid is a shell function defined in ltmain.sh
    lt_cv_deplibs_check_method='file_magic ^x86 archive import|^x86 DLL'
    lt_cv_file_magic_cmd='func_win32_libid'
-@@ -6083,7 +6083,7 @@
+@@ -7283,7 +7283,7 @@
  aix*)
    symcode='[BCDT]'
    ;;
@@ -2567,25 +2685,25 @@ diff -Naur gcc-cygwin/libmudflap/configure gcc-msys2/libmudflap/configure
    symcode='[ABCDGISTW]'
    ;;
  hpux*)
-@@ -7690,7 +7690,7 @@
+@@ -8868,7 +8868,7 @@
        # PIC is the default for these OSes.
        ;;
  
 -    mingw* | cygwin* | pw32* | os2* | cegcc*)
-+    mingw* | msys* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
        # This hack is so that the source file can tell whether it is being
        # built for inclusion in a dll (and should export symbols for example).
        # Although the cygwin gcc ignores -fPIC, still need this for old-style
-@@ -7772,7 +7772,7 @@
+@@ -8950,7 +8950,7 @@
        fi
        ;;
  
 -    mingw* | cygwin* | pw32* | os2* | cegcc*)
-+    mingw* | msys* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
        # This hack is so that the source file can tell whether it is being
        # built for inclusion in a dll (and should export symbols for example).
        lt_prog_compiler_pic='-DDLL_EXPORT'
-@@ -8234,7 +8234,7 @@
+@@ -9412,7 +9412,7 @@
    extract_expsyms_cmds=
  
    case $host_os in
@@ -2594,7 +2712,7 @@ diff -Naur gcc-cygwin/libmudflap/configure gcc-msys2/libmudflap/configure
      # FIXME: the MSVC++ port hasn't been tested in a loooong time
      # When not using gcc, we currently assume that we are using
      # Microsoft Visual C++.
-@@ -8349,7 +8349,7 @@
+@@ -9527,7 +9527,7 @@
        fi
        ;;
  
@@ -2603,7 +2721,7 @@ diff -Naur gcc-cygwin/libmudflap/configure gcc-msys2/libmudflap/configure
        # _LT_TAGVAR(hardcode_libdir_flag_spec, ) is actually meaningless,
        # as there is no search path for DLLs.
        hardcode_libdir_flag_spec='-L$libdir'
-@@ -8780,7 +8780,7 @@
+@@ -9964,7 +9964,7 @@
        export_dynamic_flag_spec=-rdynamic
        ;;
  
@@ -2612,7 +2730,7 @@ diff -Naur gcc-cygwin/libmudflap/configure gcc-msys2/libmudflap/configure
        # When not using gcc, we currently assume that we are using
        # Microsoft Visual C++.
        # hardcode_libdir_flag_spec is actually meaningless, as there is
-@@ -9681,14 +9681,14 @@
+@@ -10868,14 +10868,14 @@
    # libtool to hard-code these into programs
    ;;
  
@@ -2629,7 +2747,7 @@ diff -Naur gcc-cygwin/libmudflap/configure gcc-msys2/libmudflap/configure
      library_names_spec='$libname.dll.a'
      # DLL is installed to $(libdir)/../bin by postinstall_cmds
      postinstall_cmds='base_file=`basename \${file}`~
-@@ -9712,6 +9712,12 @@
+@@ -10899,6 +10899,12 @@
  
        sys_lib_search_path_spec="$sys_lib_search_path_spec /usr/lib/w32api"
        ;;
@@ -2642,7 +2760,7 @@ diff -Naur gcc-cygwin/libmudflap/configure gcc-msys2/libmudflap/configure
      mingw* | cegcc*)
        # MinGW DLLs use traditional 'lib' prefix
        soname_spec='${libname}`echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
-@@ -10348,7 +10354,7 @@
+@@ -11538,7 +11544,7 @@
      lt_cv_dlopen_libs=
      ;;
  
@@ -2651,6 +2769,1377 @@ diff -Naur gcc-cygwin/libmudflap/configure gcc-msys2/libmudflap/configure
      lt_cv_dlopen="dlopen"
      lt_cv_dlopen_libs=
      ;;
+@@ -14157,7 +14163,7 @@
+         esac
+         ;;
+ 
+-      cygwin* | mingw* | pw32* | cegcc*)
++      cygwin* | msys* | mingw* | pw32* | cegcc*)
+         # _LT_TAGVAR(hardcode_libdir_flag_spec, CXX) is actually meaningless,
+         # as there is no search path for DLLs.
+         hardcode_libdir_flag_spec_CXX='-L$libdir'
+@@ -15126,7 +15132,7 @@
+     beos* | irix5* | irix6* | nonstopux* | osf3* | osf4* | osf5*)
+       # PIC is the default for these OSes.
+       ;;
+-    mingw* | cygwin* | os2* | pw32* | cegcc*)
++    mingw* | cygwin* | msys* | os2* | pw32* | cegcc*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       # Although the cygwin gcc ignores -fPIC, still need this for old-style
+@@ -15666,7 +15672,7 @@
+   pw32*)
+     export_symbols_cmds_CXX="$ltdll_cmds"
+   ;;
+-  cygwin* | mingw* | cegcc*)
++  cygwin* | msys* | mingw* | cegcc*)
+     export_symbols_cmds_CXX='$NM $libobjs $convenience | $global_symbol_pipe | $SED -e '\''/^[BCDGRS][ ]/s/.*[ ]\([^ ]*\)/\1 DATA/;/^.*[ ]__nm__/s/^.*[ ]__nm__\([^ ]*\)[ ][^ ]*/\1 DATA/;/^I[ ]/d;/^[AITW][ ]/s/.* //'\'' | sort | uniq > $export_symbols'
+   ;;
+   *)
+@@ -15930,14 +15936,14 @@
+   # libtool to hard-code these into programs
+   ;;
+ 
+-cygwin* | mingw* | pw32* | cegcc*)
++cygwin* | msys* | mingw* | pw32* | cegcc*)
+   version_type=windows
+   shrext_cmds=".dll"
+   need_version=no
+   need_lib_prefix=no
+ 
+   case $GCC,$host_os in
+-  yes,cygwin* | yes,mingw* | yes,pw32* | yes,cegcc*)
++  yes,cygwin* | yes,msys* | yes,mingw* | yes,pw32* | yes,cegcc*)
+     library_names_spec='$libname.dll.a'
+     # DLL is installed to $(libdir)/../bin by postinstall_cmds
+     postinstall_cmds='base_file=`basename \${file}`~
+@@ -15960,6 +15966,11 @@
+       soname_spec='`echo ${libname} | sed -e 's/^lib/cyg/'``echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
+ 
+       ;;
++    msys*)
++      # Msys DLLs use 'msys-' prefix rather than 'lib'
++      soname_spec='`echo ${libname} | sed -e 's/^lib/msys-/'``echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
++
++      ;;
+     mingw* | cegcc*)
+       # MinGW DLLs use traditional 'lib' prefix
+       soname_spec='${libname}`echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
+diff -Naur gcc-cygwin/libjava/classpath/ltcf-c.sh gcc-msys2/libjava/classpath/ltcf-c.sh
+--- gcc-cygwin/libjava/classpath/ltcf-c.sh	2013-03-17 10:15:13 +0400
++++ gcc-msys2/libjava/classpath/ltcf-c.sh	2013-03-20 07:02:44 +0400
+@@ -39,7 +39,7 @@
+ 
+ ## Linker Characteristics
+ case $host_os in
+-cygwin* | mingw*)
++cygwin* | msys* | mingw*)
+   # FIXME: the MSVC++ port hasn't been tested in a loooong time
+   # When not using gcc, we currently assume that we are using
+   # Microsoft Visual C++.
+@@ -98,7 +98,7 @@
+     fi
+     ;;
+ 
+-  cygwin* | mingw*)
++  cygwin* | msys* | mingw*)
+     # hardcode_libdir_flag_spec is actually meaningless, as there is
+     # no search path for DLLs.
+     hardcode_libdir_flag_spec='-L$libdir'
+@@ -120,6 +120,11 @@
+     dll_entry=__cygwin_dll_entry@12
+     dll_exclude_symbols=DllMain@12,_cygwin_dll_entry@12,_cygwin_noncygwin_dll_entry@12~
+     case $host_os in
++    msys*)
++      # MSYS values
++      dll_entry=__msys_dll_entry@12
++      dll_exclude_symbols=DllMain@12,_msys_dll_entry@12,_msys_nonmsys_dll_entry@12~
++      ;;
+     mingw*)
+       # mingw values
+       dll_entry=_DllMainCRTStartup@12
+@@ -129,7 +134,7 @@
+ 
+     # mingw and cygwin differ, and it's simplest to just exclude the union
+     # of the two symbol sets.
+-    dll_exclude_symbols=DllMain@12,_cygwin_dll_entry@12,_cygwin_noncygwin_dll_entry@12,DllMainCRTStartup@12,DllEntryPoint@12
++    dll_exclude_symbols=DllMain@12,_cygwin_dll_entry@12,_cygwin_noncygwin_dll_entry@12,_msys_dll_entry@12,_msys_nonmsys_dll_entry@12,DllMainCRTStartup@12,DllEntryPoint@12
+ 
+     # recent cygwin and mingw systems supply a stub DllMain which the user
+     # can override, but on older systems we have to supply one (in ltdll.c)
+@@ -232,7 +237,7 @@
+     hardcode_libdir_flag_spec='${wl}--rpath ${wl}$libdir'
+     export_dynamic_flag_spec='${wl}--export-dynamic'
+     case $host_os in
+-    cygwin* | mingw*)
++    cygwin* | msys* | mingw*)
+       # dlltool doesn't understand --whole-archive et. al.
+       whole_archive_flag_spec=
+       ;;
+@@ -362,7 +367,7 @@
+     ld_shlibs=no
+     ;;
+ 
+-  cygwin* | mingw*)
++  cygwin* | msys* | mingw*)
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+     # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -696,7 +701,7 @@
+     beos* | irix5* | irix6* | osf3* | osf4* | osf5*)
+       # PIC is the default for these OSes.
+       ;;
+-    cygwin* | mingw* | os2*)
++    cygwin* | msys* | mingw* | os2*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       ac_cv_prog_cc_pic='-DDLL_EXPORT'
+@@ -740,7 +745,7 @@
+       # PIC (with -KPIC) is the default.
+       ;;
+ 
+-    cygwin* | mingw* | os2*)
++    cygwin* | msys* | mingw* | os2*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       ac_cv_prog_cc_pic='-DDLL_EXPORT'
+diff -Naur gcc-cygwin/libjava/classpath/ltcf-cxx.sh gcc-msys2/libjava/classpath/ltcf-cxx.sh
+--- gcc-cygwin/libjava/classpath/ltcf-cxx.sh	2013-03-17 10:14:11 +0400
++++ gcc-msys2/libjava/classpath/ltcf-cxx.sh	2013-03-20 07:02:44 +0400
+@@ -753,7 +753,7 @@
+   beos* | irix5* | irix6* | osf3* | osf4* | osf5*)
+     # PIC is the default for these OSes.
+     ;;
+-  cygwin* | mingw* | os2*)
++  cygwin* | msys* | mingw* | os2*)
+     # This hack is so that the source file can tell whether it is being
+     # built for inclusion in a dll (and should export symbols for example).
+     ac_cv_prog_cc_pic='-DDLL_EXPORT'
+diff -Naur gcc-cygwin/libjava/classpath/ltcf-gcj.sh gcc-msys2/libjava/classpath/ltcf-gcj.sh
+--- gcc-cygwin/libjava/classpath/ltcf-gcj.sh	2013-03-17 10:15:26 +0400
++++ gcc-msys2/libjava/classpath/ltcf-gcj.sh	2013-03-20 07:02:44 +0400
+@@ -42,7 +42,7 @@
+ 
+ ## Linker Characteristics
+ case $host_os in
+-cygwin* | mingw*)
++cygwin* | msys* | mingw*)
+   # FIXME: the MSVC++ port hasn't been tested in a loooong time
+   # When not using gcc, we currently assume that we are using
+   # Microsoft Visual C++.
+@@ -101,7 +101,7 @@
+     fi
+     ;;
+ 
+-  cygwin* | mingw*)
++  cygwin* | msys* | mingw*)
+     # hardcode_libdir_flag_spec is actually meaningless, as there is
+     # no search path for DLLs.
+     hardcode_libdir_flag_spec='-L$libdir'
+@@ -123,6 +123,11 @@
+     dll_entry=__cygwin_dll_entry@12
+     dll_exclude_symbols=DllMain@12,_cygwin_dll_entry@12,_cygwin_noncygwin_dll_entry@12~
+     case $host_os in
++    msys*)
++      # mingw values
++      dll_entry=__msys_dll_entry@12
++      dll_exclude_symbols=DllMain@12,_msys_dll_entry@12,_msys_nonmsys_dll_entry@12~
++      ;;
+     mingw*)
+       # mingw values
+       dll_entry=_DllMainCRTStartup@12
+@@ -132,7 +137,7 @@
+ 
+     # mingw and cygwin differ, and it's simplest to just exclude the union
+     # of the two symbol sets.
+-    dll_exclude_symbols=DllMain@12,_cygwin_dll_entry@12,_cygwin_noncygwin_dll_entry@12,DllMainCRTStartup@12,DllEntryPoint@12
++    dll_exclude_symbols=DllMain@12,_cygwin_dll_entry@12,_cygwin_noncygwin_dll_entry@12,_msys_dll_entry@12,_msys_nonmsys_dll_entry@12,DllMainCRTStartup@12,DllEntryPoint@12
+ 
+     # recent cygwin and mingw systems supply a stub DllMain which the user
+     # can override, but on older systems we have to supply one (in ltdll.c)
+@@ -231,7 +236,7 @@
+     hardcode_libdir_flag_spec='${wl}--rpath ${wl}$libdir'
+     export_dynamic_flag_spec='${wl}--export-dynamic'
+     case $host_os in
+-    cygwin* | mingw*)
++    cygwin* | msys* | mingw*)
+       # dlltool doesn't understand --whole-archive et. al.
+       whole_archive_flag_spec=
+       ;;
+@@ -361,7 +366,7 @@
+     ld_shlibs=no
+     ;;
+ 
+-  cygwin* | mingw*)
++  cygwin* | msys* | mingw*)
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+     # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -663,7 +668,7 @@
+       # DJGPP does not suppot shared libraries at all
+       ac_cv_prog_cc_pic=
+       ;;
+-    cygwin* | mingw* | os2*)
++    cygwin* | msys* | mingw* | os2*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       ac_cv_prog_cc_pic='-DDLL_EXPORT'
+diff -Naur gcc-cygwin/libjava/classpath/ltconfig gcc-msys2/libjava/classpath/ltconfig
+--- gcc-cygwin/libjava/classpath/ltconfig	2013-03-17 10:14:14 +0400
++++ gcc-msys2/libjava/classpath/ltconfig	2013-03-20 07:02:44 +0400
+@@ -1069,7 +1069,7 @@
+   # libtool to hard-code these into programs
+   ;;
+ 
+-cygwin* | mingw* | pw32*)
++cygwin* | msys* | mingw* | pw32*)
+   version_type=windows
+   need_version=no
+   need_lib_prefix=no
+@@ -1084,6 +1084,16 @@
+     postuninstall_cmds='dldll=`bash 2>&1 -c '\''. $file; echo \$dlname'\''`~
+       dlpath=$dir/\$dldll; $rm \$dlpath'
+     ;;
++  yes,msys*)
++    library_names_spec='$libname.dll.a'
++    soname_spec='`echo ${libname} | sed -e 's/^lib/msys-/'``echo ${release} | [sed -e 's/[.]/-/g']`${versuffix}.dll'
++    postinstall_cmds='dlpath=`bash 2>&1 -c '\''. $dir/${file}i; echo \$dlname'\''`~
++      dldir=$destdir/`dirname \$dlpath`~
++      test -d \$dldir || mkdir -p \$dldir~
++      $install_prog .libs/$dlname \$dldir/$dlname'
++    postuninstall_cmds='dldll=`bash 2>&1 -c '\''. $file; echo \$dlname'\''`~
++      dlpath=$dir/\$dldll; $rm \$dlpath'
++    ;;
+   yes,mingw*)
+     library_names_spec='${libname}`echo ${release} | sed -e 's/[.]/-/g'`${versuffix}.dll'
+     sys_lib_search_path_spec=`$CC -print-search-dirs | grep "^libraries:" | sed -e "s/^libraries://" -e "s/;/ /g"`
+@@ -1438,7 +1448,7 @@
+ aix*)
+   symcode='[BCDT]'
+   ;;
+-cygwin* | mingw* | pw32*)
++cygwin* | msys* | mingw* | pw32*)
+   symcode='[ABCDGISTW]'
+   ;;
+ hpux*) # Its linker distinguishes data from code symbols
+@@ -1590,7 +1600,7 @@
+ # Only try to build win32 dlls if AC_LIBTOOL_WIN32_DLL was used in
+ # configure.in, otherwise build static only libraries.
+ case $host_os in
+-cygwin* | mingw* | pw32* | os2*)
++cygwin* | msys* | mingw* | pw32* | os2*)
+   if test x$can_build_shared = xyes; then
+     test x$enable_win32_dll = xno && can_build_shared=no
+     echo "checking if package supports dlls... $can_build_shared" 1>&6
+@@ -2587,7 +2597,7 @@
+       ;;
+     esac
+     case $host in
+-    *-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2*)
++    *-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2*)
+       cat <<'EOF' >> "$ofile"
+       # This is a source program that is used to create dlls on Windows
+       # Don't remove nor modify the starting and closing comments
+diff -Naur gcc-cygwin/libjava/classpath/ltmain.sh gcc-msys2/libjava/classpath/ltmain.sh
+--- gcc-cygwin/libjava/classpath/ltmain.sh	2013-03-17 10:14:14 +0400
++++ gcc-msys2/libjava/classpath/ltmain.sh	2013-03-20 07:02:44 +0400
+@@ -976,7 +976,7 @@
+ 
+ 
+   case $host in
+-    *cygwin* | *mingw* | *pw32* | *cegcc*)
++    *cygwin* | *msys* | *mingw* | *pw32* | *cegcc*)
+       # don't eliminate duplications in $postdeps and $predeps
+       opt_duplicate_compiler_generated_deps=:
+       ;;
+@@ -1453,7 +1453,7 @@
+ 
+     # On Cygwin there's no "real" PIC flag so we must build both object types
+     case $host_os in
+-    cygwin* | mingw* | pw32* | os2* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | os2* | cegcc*)
+       pic_mode=default
+       ;;
+     esac
+@@ -2279,7 +2279,7 @@
+ 	      'exit $?'
+ 	  tstripme="$stripme"
+ 	  case $host_os in
+-	  cygwin* | mingw* | pw32* | cegcc*)
++	  cygwin* | msys* | mingw* | pw32* | cegcc*)
+ 	    case $realname in
+ 	    *.dll.a)
+ 	      tstripme=""
+@@ -2385,7 +2385,7 @@
+ 
+ 	# Do a test to see if this is really a libtool program.
+ 	case $host in
+-	*cygwin* | *mingw*)
++	*cygwin* | *msys* | *mingw*)
+ 	    if func_ltwrapper_executable_p "$file"; then
+ 	      func_ltwrapper_scriptname "$file"
+ 	      wrapper=$func_ltwrapper_scriptname_result
+@@ -2460,7 +2460,7 @@
+ 	# remove .exe since cygwin /usr/bin/install will append another
+ 	# one anyway
+ 	case $install_prog,$host in
+-	*/usr/bin/install*,*cygwin*)
++	*/usr/bin/install*,*cygwin*|*/usr/bin/install*,*msys*)
+ 	  case $file:$destfile in
+ 	  *.exe:*.exe)
+ 	    # this is ok
+@@ -2595,7 +2595,7 @@
+ 	      $RM $export_symbols
+ 	      ${SED} -n -e '/^: @PROGRAM@ $/d' -e 's/^.* \(.*\)$/\1/p' < "$nlist" > "$export_symbols"
+ 	      case $host in
+-	      *cygwin* | *mingw* | *cegcc* )
++	      *cygwin* | *msys* | *mingw* | *cegcc* )
+                 echo EXPORTS > "$output_objdir/$outputname.def"
+                 cat "$export_symbols" >> "$output_objdir/$outputname.def"
+ 	        ;;
+@@ -2607,7 +2607,7 @@
+ 	      $GREP -f "$output_objdir/$outputname.exp" < "$nlist" > "$nlist"T
+ 	      $MV "$nlist"T "$nlist"
+ 	      case $host in
+-	        *cygwin* | *mingw* | *cegcc* )
++	        *cygwin* | *msys* | *mingw* | *cegcc* )
+ 	          echo EXPORTS > "$output_objdir/$outputname.def"
+ 	          cat "$nlist" >> "$output_objdir/$outputname.def"
+ 	          ;;
+@@ -2663,7 +2663,7 @@
+ } lt_dlsymlist;
+ "
+ 	  case $host in
+-	  *cygwin* | *mingw* | *cegcc* )
++	  *cygwin* | *msys* | *mingw* | *cegcc* )
+ 	    echo >> "$output_objdir/$my_dlsyms" "\
+ /* DATA imports from DLLs on WIN32 con't be const, because
+    runtime relocations are performed -- see ld's documentation
+@@ -2749,7 +2749,7 @@
+ 	# Transform the symbol file into the correct name.
+ 	symfileobj="$output_objdir/${my_outputname}S.$objext"
+ 	case $host in
+-	*cygwin* | *mingw* | *cegcc* )
++	*cygwin* | *msys* | *mingw* | *cegcc* )
+ 	  if test -f "$output_objdir/$my_outputname.def"; then
+ 	    compile_command=`$ECHO "$compile_command" | $SED "s%@SYMFILE@%$output_objdir/$my_outputname.def $symfileobj%"`
+ 	    finalize_command=`$ECHO "$finalize_command" | $SED "s%@SYMFILE@%$output_objdir/$my_outputname.def $symfileobj%"`
+@@ -3192,7 +3192,7 @@
+             func_to_host_path_result=`( cmd //c echo "$1" ) 2>/dev/null |
+               $SED -e 's/[ ]*$//' -e "$lt_sed_naive_backslashify"`
+             ;;
+-          *cygwin* )
++          *cygwin* | *msys*)
+             func_to_host_path_result=`cygpath -w "$1" |
+ 	      $SED -e "$lt_sed_naive_backslashify"`
+             ;;
+@@ -3265,7 +3265,7 @@
+ 	      ( cmd //c echo "$func_to_host_pathlist_tmp1" ) 2>/dev/null |
+ 	      $SED -e 's/[ ]*$//' -e "$lt_sed_naive_backslashify"`
+             ;;
+-          *cygwin* )
++          *cygwin* | *msys* )
+             func_to_host_pathlist_result=`cygpath -w -p "$func_to_host_pathlist_tmp1" |
+               $SED -e "$lt_sed_naive_backslashify"`
+             ;;
+@@ -3571,7 +3571,7 @@
+ 	{
+ EOF
+ 	    case "$host" in
+-	      *mingw* | *cygwin* )
++	      *mingw* | *cygwin* | *msys* )
+ 		# make stdout use "unix" line endings
+ 		echo "          setmode(1,_O_BINARY);"
+ 		;;
+@@ -4233,7 +4233,7 @@
+ {
+     $opt_debug
+     case $host in
+-    *-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-cegcc*)
++    *-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-cegcc*)
+       # It is impossible to link a dll without this setting, and
+       # we shouldn't force the makefile maintainer to figure out
+       # which system we are compiling for in order to pass an extra
+@@ -4713,7 +4713,7 @@
+ 	  ;;
+ 	esac
+ 	case $host in
+-	*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-cegcc*)
++	*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-cegcc*)
+ 	  testbindir=`$ECHO "$dir" | $SED 's*/lib$*/bin*'`
+ 	  case :$dllsearchpath: in
+ 	  *":$dir:"*) ;;
+@@ -4733,7 +4733,7 @@
+       -l*)
+ 	if test "X$arg" = "X-lc" || test "X$arg" = "X-lm"; then
+ 	  case $host in
+-	  *-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-beos* | *-cegcc* | *-*-haiku*)
++	  *-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-beos* | *-cegcc* | *-*-haiku*)
+ 	    # These systems don't actually have a C or math library (as such)
+ 	    continue
+ 	    ;;
+@@ -4813,7 +4813,7 @@
+ 
+       -no-install)
+ 	case $host in
+-	*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-*-darwin* | *-cegcc*)
++	*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-*-darwin* | *-cegcc*)
+ 	  # The PATH hackery in wrapper scripts is required on Windows
+ 	  # and Darwin in order for the loader to find any dlls it needs.
+ 	  func_warning "\`-no-install' is ignored for $host"
+@@ -5772,7 +5772,7 @@
+ 	if test -n "$library_names" &&
+ 	   { test "$use_static_libs" = no || test -z "$old_library"; }; then
+ 	  case $host in
+-	  *cygwin* | *mingw* | *cegcc*)
++	  *cygwin* | *msys* | *mingw* | *cegcc*)
+ 	      # No point in relinking DLLs because paths are not encoded
+ 	      notinst_deplibs="$notinst_deplibs $lib"
+ 	      need_relink=no
+@@ -5842,7 +5842,7 @@
+ 	    elif test -n "$soname_spec"; then
+ 	      # bleh windows
+ 	      case $host in
+-	      *cygwin* | mingw* | *cegcc*)
++	      *cygwin* | *msys* | mingw* | *cegcc*)
+ 	        func_arith $current - $age
+ 		major=$func_arith_result
+ 		versuffix="-$major"
+@@ -6693,7 +6693,7 @@
+       if test "$build_libtool_libs" = yes; then
+ 	if test -n "$rpath"; then
+ 	  case $host in
+-	  *-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-*-beos* | *-cegcc* | *-*-haiku*)
++	  *-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-*-beos* | *-cegcc* | *-*-haiku*)
+ 	    # these systems don't actually have a c library (as such)!
+ 	    ;;
+ 	  *-*-rhapsody* | *-*-darwin1.[012])
+@@ -7194,7 +7194,7 @@
+ 
+ 	orig_export_symbols=
+ 	case $host_os in
+-	cygwin* | mingw* | cegcc*)
++	cygwin* | msys* | mingw* | cegcc*)
+ 	  if test -n "$export_symbols" && test -z "$export_symbols_regex"; then
+ 	    # exporting using user supplied symfile
+ 	    if test "x`$SED 1q $export_symbols`" != xEXPORTS; then
+@@ -7710,7 +7710,7 @@
+ 
+     prog)
+       case $host in
+-	*cygwin*) func_stripname '' '.exe' "$output"
++	*cygwin* | *msys*) func_stripname '' '.exe' "$output"
+ 	          output=$func_stripname_result.exe;;
+       esac
+       test -n "$vinfo" && \
+@@ -7823,7 +7823,7 @@
+ 	  esac
+ 	fi
+ 	case $host in
+-	*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-cegcc*)
++	*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-cegcc*)
+ 	  testbindir=`${ECHO} "$libdir" | ${SED} -e 's*/lib$*/bin*'`
+ 	  case :$dllsearchpath: in
+ 	  *":$libdir:"*) ;;
+@@ -7901,7 +7901,7 @@
+         # Disable wrappers for cegcc and mingw32ce hosts, we are cross compiling anyway.
+         wrappers_required=no
+         ;;
+-      *cygwin* | *mingw* )
++      *cygwin* | *msys* | *mingw* )
+         if test "$build_libtool_libs" != yes; then
+           wrappers_required=no
+         fi
+@@ -8029,14 +8029,14 @@
+ 	esac
+ 	# test for cygwin because mv fails w/o .exe extensions
+ 	case $host in
+-	  *cygwin*)
++	  *cygwin* | *msys*)
+ 	    exeext=.exe
+ 	    func_stripname '' '.exe' "$outputname"
+ 	    outputname=$func_stripname_result ;;
+ 	  *) exeext= ;;
+ 	esac
+ 	case $host in
+-	  *cygwin* | *mingw* )
++	  *cygwin* | *msys* | *mingw* )
+ 	    func_dirname_and_basename "$output" "" "."
+ 	    output_name=$func_basename_result
+ 	    output_path=$func_dirname_result
+@@ -8343,7 +8343,7 @@
+ 	  # tests/bindir.at for full details.
+ 	  tdlname=$dlname
+ 	  case $host,$output,$installed,$module,$dlname in
+-	    *cygwin*,*lai,yes,no,*.dll | *mingw*,*lai,yes,no,*.dll | *cegcc*,*lai,yes,no,*.dll)
++	    *cygwin*,*lai,yes,no,*.dll | *msys*,*lai,yes,no,*.dll | *mingw*,*lai,yes,no,*.dll | *cegcc*,*lai,yes,no,*.dll)
+ 	      # If a -bindir argument was supplied, place the dll there.
+ 	      if test "x$bindir" != x ;
+ 	      then
+diff -Naur gcc-cygwin/libjava/classpath/ltoptions.m4 gcc-msys2/libjava/classpath/ltoptions.m4
+--- gcc-cygwin/libjava/classpath/ltoptions.m4	2013-03-17 10:14:14 +0400
++++ gcc-msys2/libjava/classpath/ltoptions.m4	2013-03-20 07:02:44 +0400
+@@ -126,7 +126,7 @@
+ [enable_win32_dll=yes
+ 
+ case $host in
+-*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-cegcc*)
++*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-cegcc*)
+   AC_CHECK_TOOL(AS, as, false)
+   AC_CHECK_TOOL(DLLTOOL, dlltool, false)
+   AC_CHECK_TOOL(OBJDUMP, objdump, false)
+diff -Naur gcc-cygwin/libjava/configure gcc-msys2/libjava/configure
+--- gcc-cygwin/libjava/configure	2013-03-17 10:13:58 +0400
++++ gcc-msys2/libjava/configure	2013-03-20 07:02:44 +0400
+@@ -6118,14 +6118,14 @@
+   # libtool to hard-code these into programs
+   ;;
+ 
+-cygwin* | mingw* | pw32*)
++cygwin* | msys* | mingw* | pw32*)
+   version_type=windows
+   shrext=".dll"
+   need_version=no
+   need_lib_prefix=no
+ 
+   case $GCC,$host_os in
+-  yes,cygwin* | yes,mingw* | yes,pw32*)
++  yes,cygwin* | yes,msys* | yes,mingw* | yes,pw32*)
+     library_names_spec='$libname.dll.a'
+     # DLL is installed to $(libdir)/../bin by postinstall_cmds
+     postinstall_cmds='base_file=`basename \${file}`~
+@@ -6144,6 +6144,11 @@
+       soname_spec='`echo ${libname} | sed -e 's/^lib/cyg/'``echo ${release} | sed -e 's/[.]/-/g'`${versuffix}${shared_ext}'
+       sys_lib_search_path_spec="/lib /lib/w32api /usr/lib /usr/local/lib"
+       ;;
++    msys*)
++      # Msys DLLs use 'msys-' prefix rather than 'lib'
++      soname_spec='`echo ${libname} | sed -e 's/^lib/msys-/'``echo ${release} | sed -e 's/[.]/-/g'`${versuffix}${shared_ext}'
++      sys_lib_search_path_spec="/lib /lib/w32api /usr/lib /usr/local/lib"
++      ;;
+     mingw*)
+       # MinGW DLLs use traditional 'lib' prefix
+       soname_spec='${libname}`echo ${release} | sed -e 's/[.]/-/g'`${versuffix}${shared_ext}'
+@@ -6744,7 +6749,7 @@
+   GCJ_FOR_ECJX="${with_cross_host}-gcj"
+   GCC_FOR_ECJX="${with_cross_host}-gcc"
+   case "${with_cross_host}" in
+-     *mingw* | *cygwin*)
++     *mingw* | *cygwin* | *msys*)
+          cross_host_exeext=.exe
+      ;;
+   esac
+@@ -7625,7 +7630,7 @@
+     lt_cv_sys_max_cmd_len=-1;
+     ;;
+ 
+-  cygwin* | mingw* | cegcc*)
++  cygwin* | msys* | mingw* | cegcc*)
+     # On Win9x/ME, this test blows up -- it succeeds, but takes
+     # about 5 minutes as the teststring grows exponentially.
+     # Worse, since 9x/ME are not pre-emptively multitasking,
+@@ -7967,7 +7972,7 @@
+   lt_cv_file_magic_test_file=/shlib/libc.so
+   ;;
+ 
+-cygwin*)
++cygwin* | msys*)
+   # func_win32_libid is a shell function defined in ltmain.sh
+   lt_cv_deplibs_check_method='file_magic ^x86 archive import|^x86 DLL'
+   lt_cv_file_magic_cmd='func_win32_libid'
+@@ -8547,7 +8552,7 @@
+ aix*)
+   symcode='[BCDT]'
+   ;;
+-cygwin* | mingw* | pw32* | cegcc*)
++cygwin* | msys* | mingw* | pw32* | cegcc*)
+   symcode='[ABCDGISTW]'
+   ;;
+ hpux*)
+@@ -10430,7 +10435,7 @@
+       # PIC is the default for these OSes.
+       ;;
+ 
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       # Although the cygwin gcc ignores -fPIC, still need this for old-style
+@@ -10512,7 +10517,7 @@
+       fi
+       ;;
+ 
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       lt_prog_compiler_pic='-DDLL_EXPORT'
+@@ -10974,7 +10979,7 @@
+   extract_expsyms_cmds=
+ 
+   case $host_os in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -11089,7 +11094,7 @@
+       fi
+       ;;
+ 
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # _LT_TAGVAR(hardcode_libdir_flag_spec, ) is actually meaningless,
+       # as there is no search path for DLLs.
+       hardcode_libdir_flag_spec='-L$libdir'
+@@ -11526,7 +11531,7 @@
+       export_dynamic_flag_spec=-rdynamic
+       ;;
+ 
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -12430,14 +12435,14 @@
+   # libtool to hard-code these into programs
+   ;;
+ 
+-cygwin* | mingw* | pw32* | cegcc*)
++cygwin* | msys* | mingw* | pw32* | cegcc*)
+   version_type=windows
+   shrext_cmds=".dll"
+   need_version=no
+   need_lib_prefix=no
+ 
+   case $GCC,$host_os in
+-  yes,cygwin* | yes,mingw* | yes,pw32* | yes,cegcc*)
++  yes,cygwin* | yes,msys* | yes,mingw* | yes,pw32* | yes,cegcc*)
+     library_names_spec='$libname.dll.a'
+     # DLL is installed to $(libdir)/../bin by postinstall_cmds
+     postinstall_cmds='base_file=`basename \${file}`~
+@@ -12461,6 +12466,12 @@
+ 
+       sys_lib_search_path_spec="$sys_lib_search_path_spec /usr/lib/w32api"
+       ;;
++    msys*)
++      # Msys DLLs use 'msys-' prefix rather than 'lib'
++      soname_spec='`echo ${libname} | sed -e 's/^lib/msys-/'``echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
++
++      sys_lib_search_path_spec="$sys_lib_search_path_spec /usr/lib/w32api"
++      ;;
+     mingw* | cegcc*)
+       # MinGW DLLs use traditional 'lib' prefix
+       soname_spec='${libname}`echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
+@@ -13100,7 +13111,7 @@
+     lt_cv_dlopen_libs=
+     ;;
+ 
+-  cygwin*)
++  cygwin* | msys*)
+     lt_cv_dlopen="dlopen"
+     lt_cv_dlopen_libs=
+     ;;
+@@ -14343,7 +14354,7 @@
+         esac
+         ;;
+ 
+-      cygwin* | mingw* | pw32* | cegcc*)
++      cygwin* | msys* | mingw* | pw32* | cegcc*)
+         # _LT_TAGVAR(hardcode_libdir_flag_spec, CXX) is actually meaningless,
+         # as there is no search path for DLLs.
+         hardcode_libdir_flag_spec_CXX='-L$libdir'
+@@ -15312,7 +15323,7 @@
+     beos* | irix5* | irix6* | nonstopux* | osf3* | osf4* | osf5*)
+       # PIC is the default for these OSes.
+       ;;
+-    mingw* | cygwin* | os2* | pw32* | cegcc*)
++    mingw* | cygwin* | msys* | os2* | pw32* | cegcc*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       # Although the cygwin gcc ignores -fPIC, still need this for old-style
+@@ -15852,7 +15863,7 @@
+   pw32*)
+     export_symbols_cmds_CXX="$ltdll_cmds"
+   ;;
+-  cygwin* | mingw* | cegcc*)
++  cygwin* | msys* | mingw* | cegcc*)
+     export_symbols_cmds_CXX='$NM $libobjs $convenience | $global_symbol_pipe | $SED -e '\''/^[BCDGRS][ ]/s/.*[ ]\([^ ]*\)/\1 DATA/;/^.*[ ]__nm__/s/^.*[ ]__nm__\([^ ]*\)[ ][^ ]*/\1 DATA/;/^I[ ]/d;/^[AITW][ ]/s/.* //'\'' | sort | uniq > $export_symbols'
+   ;;
+   *)
+@@ -16116,14 +16127,14 @@
+   # libtool to hard-code these into programs
+   ;;
+ 
+-cygwin* | mingw* | pw32* | cegcc*)
++cygwin* | msys* | mingw* | pw32* | cegcc*)
+   version_type=windows
+   shrext_cmds=".dll"
+   need_version=no
+   need_lib_prefix=no
+ 
+   case $GCC,$host_os in
+-  yes,cygwin* | yes,mingw* | yes,pw32* | yes,cegcc*)
++  yes,cygwin* | yes,msys* | yes,mingw* | yes,pw32* | yes,cegcc*)
+     library_names_spec='$libname.dll.a'
+     # DLL is installed to $(libdir)/../bin by postinstall_cmds
+     postinstall_cmds='base_file=`basename \${file}`~
+@@ -16146,6 +16157,11 @@
+       soname_spec='`echo ${libname} | sed -e 's/^lib/cyg/'``echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
+ 
+       ;;
++    msys*)
++      # Cygwin DLLs use 'msys-' prefix rather than 'lib'
++      soname_spec='`echo ${libname} | sed -e 's/^lib/msys-/'``echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
++
++      ;;
+     mingw* | cegcc*)
+       # MinGW DLLs use traditional 'lib' prefix
+       soname_spec='${libname}`echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
+@@ -16754,7 +16770,7 @@
+ 
+ 
+ case $host in
+-  *-cygwin* | *-mingw*)
++  *-cygwin* | *-msys* | *-mingw*)
+     # 'host' will be top-level target in the case of a target lib,
+     # we must compare to with_cross_host to decide if this is a native
+     # or cross-compiler and select where to install dlls appropriately.
+@@ -17407,7 +17423,7 @@
+       # PIC is the default for these OSes.
+       ;;
+ 
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+       # Although the cygwin gcc ignores -fPIC, still need this for old-style
+@@ -17489,7 +17505,7 @@
+       fi
+       ;;
+ 
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       # This hack is so that the source file can tell whether it is being
+       # built for inclusion in a dll (and should export symbols for example).
+ 
+@@ -17936,7 +17952,7 @@
+   extract_expsyms_cmds=
+ 
+   case $host_os in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -18051,7 +18067,7 @@
+       fi
+       ;;
+ 
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # _LT_TAGVAR(hardcode_libdir_flag_spec, GCJ) is actually meaningless,
+       # as there is no search path for DLLs.
+       hardcode_libdir_flag_spec_GCJ='-L$libdir'
+@@ -18488,7 +18504,7 @@
+       export_dynamic_flag_spec_GCJ=-rdynamic
+       ;;
+ 
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -20575,7 +20591,7 @@
+     LIBSTDCXXSPEC=-lstdc++
+     LIBGCJTESTSPEC="-L`${PWDCMD-pwd}`/.libs -L`${PWDCMD-pwd}`/../libstdc++-v3/src/.libs -rpath `${PWDCMD-pwd}`/.libs:`${PWDCMD-pwd}`/../libstdc++-v3/src/.libs -lstdc++"
+     ;;
+-*-*-cygwin)
++*-*-cygwin | *-*-msys)
+     extra_ldflags_libjava=-liconv
+     ;;
+ *-*-mingw*)
+@@ -20739,7 +20755,7 @@
+ case "$THREADS" in
+  posix)
+     case "$host" in
+-     *-*-cygwin*)
++     *-*-cygwin* | *-*-msys*)
+ 	# Don't set THREADLIBS here.  Cygwin doesn't have -lpthread.
+ 	;;
+      *-*-freebsd[34].*)
+@@ -24895,7 +24911,7 @@
+   if test "x${host_cpu}" = "x"
+   then
+     case ${host} in
+-      *-mingw* | *-cygwin*)
++      *-mingw* | *-cygwin* | *-msys*)
+         host_cpu=x86;;
+       i486-* | i586-* | i686-*)
+         host_cpu=i386;;
+@@ -24913,7 +24929,7 @@
+   if test "x${host_os}" = "x"
+   then
+     case ${host} in
+-      *-mingw* | *-cygwin*)
++      *-mingw* | *-cygwin* | *-msys*)
+         host_os=win32;;
+       *-linux*)
+         host_os=linux;;
+diff -Naur gcc-cygwin/libjava/configure.ac gcc-msys2/libjava/configure.ac
+--- gcc-cygwin/libjava/configure.ac	2013-03-17 10:15:51 +0400
++++ gcc-msys2/libjava/configure.ac	2013-03-20 07:02:44 +0400
+@@ -419,7 +419,7 @@
+   GCJ_FOR_ECJX="${with_cross_host}-gcj"
+   GCC_FOR_ECJX="${with_cross_host}-gcc"
+   case "${with_cross_host}" in
+-     *mingw* | *cygwin*)
++     *mingw* | *cygwin* | *msys*)
+          cross_host_exeext=.exe
+      ;;
+   esac
+@@ -941,7 +941,7 @@
+     LIBSTDCXXSPEC=-lstdc++
+     LIBGCJTESTSPEC="-L`${PWDCMD-pwd}`/.libs -L`${PWDCMD-pwd}`/../libstdc++-v3/src/.libs -rpath `${PWDCMD-pwd}`/.libs:`${PWDCMD-pwd}`/../libstdc++-v3/src/.libs -lstdc++"
+     ;;
+-*-*-cygwin)
++*-*-cygwin | *-*-msys)
+     extra_ldflags_libjava=-liconv
+     ;;
+ *-*-mingw*)
+@@ -1061,7 +1061,7 @@
+ case "$THREADS" in
+  posix)
+     case "$host" in
+-     *-*-cygwin*)
++     *-*-cygwin* | *-*-msys*)
+ 	# Don't set THREADLIBS here.  Cygwin doesn't have -lpthread.
+ 	;;
+      *-*-freebsd[[34]].*)
+@@ -2012,7 +2012,7 @@
+   if test "x${host_cpu}" = "x"
+   then
+     case ${host} in
+-      *-mingw* | *-cygwin*)
++      *-mingw* | *-cygwin* | *-msys*)
+         host_cpu=x86;;
+       i486-* | i586-* | i686-*)
+         host_cpu=i386;;
+@@ -2029,7 +2029,7 @@
+   if test "x${host_os}" = "x"
+   then
+     case ${host} in
+-      *-mingw* | *-cygwin*)
++      *-mingw* | *-cygwin* | *-msys*)
+         host_os=win32;;
+       *-linux*)
+         host_os=linux;;
+diff -Naur gcc-cygwin/libjava/configure.host gcc-msys2/libjava/configure.host
+--- gcc-cygwin/libjava/configure.host	2013-03-17 10:15:51 +0400
++++ gcc-msys2/libjava/configure.host	2013-03-20 07:02:44 +0400
+@@ -336,7 +336,7 @@
+ 	CHECKREFSPEC=-fcheck-references
+ 	DIVIDESPEC=-fuse-divide-subroutine
+ 	;;
+-  *-cygwin*)
++  *-cygwin* | *-msys*)
+   	# The cygwin linker doesn't do 8-byte alignment by default, so
+ 	# disable hash synchronization for now.
+ 	enable_hash_synchronization_default=no
+@@ -354,7 +354,7 @@
+ esac
+ 
+ case "${host}" in
+-  *-cygwin* | *-mingw*)
++  *-cygwin* | *-msys* | *-mingw*)
+ 	fallback_backtrace_h=sysdep/i386/backtrace.h  
+ 	# We need a frame pointer on Windows, so override BACKTRACESPEC
+   	BACKTRACESPEC=
+diff -Naur gcc-cygwin/libjava/include/posix.h gcc-msys2/libjava/include/posix.h
+--- gcc-cygwin/libjava/include/posix.h	2013-03-20 06:39:42 +0400
++++ gcc-msys2/libjava/include/posix.h	2013-03-20 08:12:03 +0400
+@@ -42,7 +42,9 @@
+ #include <java/util/Properties.h>
+ 
+ // Prefix and suffix for shared libraries.
+-#ifdef __CYGWIN__
++#ifdef __MSYS__
++#define _Jv_platform_solib_prefix "msys-"
++#elseif __CYGWIN__
+ #define _Jv_platform_solib_prefix "cyg"
+ #else
+ #define _Jv_platform_solib_prefix "lib"
+diff -Naur gcc-cygwin/libjava/java/net/natVMURLConnection.cc gcc-msys2/libjava/java/net/natVMURLConnection.cc
+--- gcc-cygwin/libjava/java/net/natVMURLConnection.cc	2013-03-20 06:39:42 +0400
++++ gcc-msys2/libjava/java/net/natVMURLConnection.cc	2013-03-20 08:13:20 +0400
+@@ -32,7 +32,9 @@
+ java::net::VMURLConnection::init ()
+ {
+ #if defined (HAVE_MAGIC_T) && defined (HAVE_MAGIC_H) && defined (USE_LTDL)
+-#ifdef __CYGWIN__
++#ifdef __MSYS__
++  lt_dlhandle handle = lt_dlopenext ("msys-magic-1.dll");
++#elseif __CYGWIN__
+   lt_dlhandle handle = lt_dlopenext ("cygmagic-1.dll");
+ #else
+   lt_dlhandle handle = lt_dlopenext ("libmagic.so");
+diff -Naur gcc-cygwin/libjava/libltdl/acinclude.m4 gcc-msys2/libjava/libltdl/acinclude.m4
+--- gcc-cygwin/libjava/libltdl/acinclude.m4	2013-03-17 10:15:28 +0400
++++ gcc-msys2/libjava/libltdl/acinclude.m4	2013-03-20 07:02:44 +0400
+@@ -575,7 +575,7 @@
+   fi
+   ;;
+ AC_PROVIDE_IFELSE([AC_LIBTOOL_WIN32_DLL],
+-[*-*-cygwin* | *-*-mingw* | *-*-pw32*)
++[*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32*)
+   AC_CHECK_TOOL(DLLTOOL, dlltool, false)
+   AC_CHECK_TOOL(AS, as, false)
+   AC_CHECK_TOOL(OBJDUMP, objdump, false)
+@@ -695,7 +695,7 @@
+     lt_cv_sys_max_cmd_len=-1;
+     ;;
+ 
+-  cygwin* | mingw*)
++  cygwin* | msys* | mingw*)
+     # On Win9x/ME, this test blows up -- it succeeds, but takes
+     # about 5 minutes as the teststring grows exponentially.
+     # Worse, since 9x/ME are not pre-emptively multitasking,
+@@ -888,7 +888,7 @@
+     lt_cv_dlopen_libs=
+    ;;
+ 
+-  cygwin*)
++  cygwin* | msys*)
+     lt_cv_dlopen="dlopen"
+     lt_cv_dlopen_libs=
+    ;;
+@@ -1261,14 +1261,14 @@
+   # libtool to hard-code these into programs
+   ;;
+ 
+-cygwin* | mingw* | pw32*)
++cygwin* | msys* | mingw* | pw32*)
+   version_type=windows
+   shrext_cmds=".dll"
+   need_version=no
+   need_lib_prefix=no
+ 
+   case $GCC,$host_os in
+-  yes,cygwin* | yes,mingw* | yes,pw32*)
++  yes,cygwin* | yes,msys* | yes,mingw* | yes,pw32*)
+     library_names_spec='$libname.dll.a'
+     # DLL is installed to $(libdir)/../bin by postinstall_cmds
+     postinstall_cmds='base_file=`basename \${file}`~
+@@ -1287,6 +1287,11 @@
+       soname_spec='`echo ${libname} | sed -e 's/^lib/cyg/'``echo ${release} | $SED -e 's/[[.]]/-/g'`${versuffix}${shared_ext}'
+       sys_lib_search_path_spec="/usr/lib /lib/w32api /lib /usr/local/lib"
+       ;;
++    msys*)
++      # Msys DLLs use 'msys-' prefix rather than 'lib'
++      soname_spec='`echo ${libname} | sed -e 's/^lib/msys-/'``echo ${release} | $SED -e 's/[[.]]/-/g'`${versuffix}${shared_ext}'
++      sys_lib_search_path_spec="/usr/lib /lib/w32api /lib /usr/local/lib"
++      ;;
+     mingw*)
+       # MinGW DLLs use traditional 'lib' prefix
+       soname_spec='${libname}`echo ${release} | $SED -e 's/[[.]]/-/g'`${versuffix}${shared_ext}'
+@@ -2207,7 +2212,7 @@
+   lt_cv_file_magic_test_file=/shlib/libc.so
+   ;;
+ 
+-cygwin*)
++cygwin* | msys*)
+   # func_win32_libid is a shell function defined in ltmain.sh
+   lt_cv_deplibs_check_method='file_magic ^x86 archive import|^x86 DLL'
+   lt_cv_file_magic_cmd='func_win32_libid'
+@@ -2402,7 +2407,7 @@
+ [AC_REQUIRE([AC_CANONICAL_HOST])dnl
+ LIBM=
+ case $host in
+-*-*-beos* | *-*-cygwin* | *-*-pw32* | *-*-darwin*)
++*-*-beos* | *-*-cygwin* | *-*-msys* | *-*-pw32* | *-*-darwin*)
+   # These system don't have libm, or don't need it
+   ;;
+ *-ncr-sysv4.3*)
+@@ -2932,7 +2937,7 @@
+     ;;
+ 
+ 
+-  cygwin* | mingw* | pw32*)
++  cygwin* | msys* | mingw* | pw32*)
+     # _LT_AC_TAGVAR(hardcode_libdir_flag_spec, $1) is actually meaningless,
+     # as there is no search path for DLLs.
+     _LT_AC_TAGVAR(hardcode_libdir_flag_spec, $1)='-L$libdir'
+@@ -4507,7 +4512,7 @@
+ aix*)
+   symcode='[[BCDT]]'
+   ;;
+-cygwin* | mingw* | pw32*)
++cygwin* | msys* | mingw* | pw32*)
+   symcode='[[ABCDGISTW]]'
+   ;;
+ hpux*) # Its linker distinguishes data from code symbols
+@@ -4698,7 +4703,7 @@
+       # like `-m68040'.
+       _LT_AC_TAGVAR(lt_prog_compiler_pic, $1)='-m68020 -resident32 -malways-restore-a4'
+       ;;
+-    beos* | cygwin* | irix5* | irix6* | nonstopux* | osf3* | osf4* | osf5*)
++    beos* | cygwin* | msys* | irix5* | irix6* | nonstopux* | osf3* | osf4* | osf5*)
+       # PIC is the default for these OSes.
+       ;;
+     mingw* | os2* | pw32*)
+@@ -4965,7 +4970,7 @@
+       _LT_AC_TAGVAR(lt_prog_compiler_pic, $1)='-m68020 -resident32 -malways-restore-a4'
+       ;;
+ 
+-    beos* | cygwin* | irix5* | irix6* | nonstopux* | osf3* | osf4* | osf5*)
++    beos* | cygwin* | msys* | irix5* | irix6* | nonstopux* | osf3* | osf4* | osf5*)
+       # PIC is the default for these OSes.
+       ;;
+ 
+@@ -5194,7 +5199,7 @@
+   pw32*)
+     _LT_AC_TAGVAR(export_symbols_cmds, $1)="$ltdll_cmds"
+   ;;
+-  cygwin* | mingw*)
++  cygwin* | msys* | mingw*)
+     _LT_AC_TAGVAR(export_symbols_cmds, $1)='$NM $libobjs $convenience | $global_symbol_pipe | $SED -e '\''/^[[BCDGRS]] /s/.* \([[^ ]]*\)/\1 DATA/;/^.* __nm__/s/^.* __nm__\([[^ ]]*\) [[^ ]]*/\1 DATA/;/^I /d;/^[[AITW]] /s/.* //'\'' | sort | uniq > $export_symbols'
+   ;;
+   *)
+@@ -5241,7 +5246,7 @@
+   # Just being paranoid about ensuring that cc_basename is set.
+   _LT_CC_BASENAME([$compiler])
+   case $host_os in
+-  cygwin* | mingw* | pw32*)
++  cygwin* | msys* | mingw* | pw32*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -5323,7 +5328,7 @@
+       fi
+       ;;
+ 
+-    cygwin* | mingw* | pw32*)
++    cygwin* | msys* | mingw* | pw32*)
+       # _LT_AC_TAGVAR(hardcode_libdir_flag_spec, $1) is actually meaningless,
+       # as there is no search path for DLLs.
+       _LT_AC_TAGVAR(hardcode_libdir_flag_spec, $1)='-L$libdir'
+@@ -5580,7 +5585,7 @@
+       _LT_AC_TAGVAR(export_dynamic_flag_spec, $1)=-rdynamic
+       ;;
+ 
+-    cygwin* | mingw* | pw32*)
++    cygwin* | msys* | mingw* | pw32*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+diff -Naur gcc-cygwin/libjava/libltdl/configure gcc-msys2/libjava/libltdl/configure
+--- gcc-cygwin/libjava/libltdl/configure	2013-03-17 10:15:28 +0400
++++ gcc-msys2/libjava/libltdl/configure	2013-03-20 07:02:44 +0400
+@@ -4587,7 +4587,7 @@
+   lt_cv_file_magic_test_file=/shlib/libc.so
+   ;;
+ 
+-cygwin*)
++cygwin* | msys*)
+   # func_win32_libid is a shell function defined in ltmain.sh
+   lt_cv_deplibs_check_method='file_magic ^x86 archive import|^x86 DLL'
+   lt_cv_file_magic_cmd='func_win32_libid'
+@@ -4899,7 +4899,7 @@
+     CFLAGS="$SAVE_CFLAGS"
+   fi
+   ;;
+-*-*-cygwin* | *-*-mingw* | *-*-pw32*)
++*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32*)
+   if test -n "$ac_tool_prefix"; then
+   # Extract the first word of "${ac_tool_prefix}dlltool", so it can be a program name with args.
+ set dummy ${ac_tool_prefix}dlltool; ac_word=$2
+@@ -5491,7 +5491,7 @@
+     lt_cv_sys_max_cmd_len=-1;
+     ;;
+ 
+-  cygwin* | mingw*)
++  cygwin* | msys* | mingw*)
+     # On Win9x/ME, this test blows up -- it succeeds, but takes
+     # about 5 minutes as the teststring grows exponentially.
+     # Worse, since 9x/ME are not pre-emptively multitasking,
+@@ -5596,7 +5596,7 @@
+ aix*)
+   symcode='[BCDT]'
+   ;;
+-cygwin* | mingw* | pw32*)
++cygwin* | msys* | mingw* | pw32*)
+   symcode='[ABCDGISTW]'
+   ;;
+ hpux*) # Its linker distinguishes data from code symbols
+@@ -6511,7 +6511,7 @@
+       lt_prog_compiler_pic='-m68020 -resident32 -malways-restore-a4'
+       ;;
+ 
+-    beos* | cygwin* | irix5* | irix6* | nonstopux* | osf3* | osf4* | osf5*)
++    beos* | cygwin* | msys* | irix5* | irix6* | nonstopux* | osf3* | osf4* | osf5*)
+       # PIC is the default for these OSes.
+       ;;
+ 
+@@ -6883,7 +6883,7 @@
+ cc_basename=`$echo "X$cc_temp" | $Xsed -e 's%.*/%%' -e "s%^$host_alias-%%"`
+ 
+   case $host_os in
+-  cygwin* | mingw* | pw32*)
++  cygwin* | msys* | mingw* | pw32*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -6965,7 +6965,7 @@
+       fi
+       ;;
+ 
+-    cygwin* | mingw* | pw32*)
++    cygwin* | msys* | mingw* | pw32*)
+       # _LT_AC_TAGVAR(hardcode_libdir_flag_spec, ) is actually meaningless,
+       # as there is no search path for DLLs.
+       hardcode_libdir_flag_spec='-L$libdir'
+@@ -7266,7 +7266,7 @@
+       export_dynamic_flag_spec=-rdynamic
+       ;;
+ 
+-    cygwin* | mingw* | pw32*)
++    cygwin* | msys* | mingw* | pw32*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -7852,14 +7852,14 @@
+   # libtool to hard-code these into programs
+   ;;
+ 
+-cygwin* | mingw* | pw32*)
++cygwin* | msys* | mingw* | pw32*)
+   version_type=windows
+   shrext_cmds=".dll"
+   need_version=no
+   need_lib_prefix=no
+ 
+   case $GCC,$host_os in
+-  yes,cygwin* | yes,mingw* | yes,pw32*)
++  yes,cygwin* | yes,msys* | yes,mingw* | yes,pw32*)
+     library_names_spec='$libname.dll.a'
+     # DLL is installed to $(libdir)/../bin by postinstall_cmds
+     postinstall_cmds='base_file=`basename \${file}`~
+@@ -7878,6 +7878,11 @@
+       soname_spec='`echo ${libname} | sed -e 's/^lib/cyg/'``echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
+       sys_lib_search_path_spec="/usr/lib /lib/w32api /lib /usr/local/lib"
+       ;;
++    msys*)
++      # Msys DLLs use 'msys-' prefix rather than 'lib'
++      soname_spec='`echo ${libname} | sed -e 's/^lib/msys-/'``echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
++      sys_lib_search_path_spec="/usr/lib /lib/w32api /lib /usr/local/lib"
++      ;;
+     mingw*)
+       # MinGW DLLs use traditional 'lib' prefix
+       soname_spec='${libname}`echo ${release} | $SED -e 's/[.]/-/g'`${versuffix}${shared_ext}'
+@@ -8385,7 +8390,7 @@
+     lt_cv_dlopen_libs=
+    ;;
+ 
+-  cygwin*)
++  cygwin* | msys*)
+     lt_cv_dlopen="dlopen"
+     lt_cv_dlopen_libs=
+    ;;
+diff -Naur gcc-cygwin/libjava/libltdl/ltmain.sh gcc-msys2/libjava/libltdl/ltmain.sh
+--- gcc-cygwin/libjava/libltdl/ltmain.sh	2013-03-17 10:15:28 +0400
++++ gcc-msys2/libjava/libltdl/ltmain.sh	2013-03-20 07:02:44 +0400
+@@ -771,7 +771,7 @@
+ 
+     # On Cygwin there's no "real" PIC flag so we must build both object types
+     case $host_os in
+-    cygwin* | mingw* | pw32* | os2*)
++    cygwin* | msys* | mingw* | pw32* | os2*)
+       pic_mode=default
+       ;;
+     esac
+@@ -1011,7 +1011,7 @@
+   link | relink)
+     modename="$modename: link"
+     case $host in
+-    *-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2*)
++    *-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2*)
+       # It is impossible to link a dll without this setting, and
+       # we shouldn't force the makefile maintainer to figure out
+       # which system we are compiling for in order to pass an extra
+@@ -1463,7 +1463,7 @@
+ 	  ;;
+ 	esac
+ 	case $host in
+-	*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2*)
++	*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2*)
+ 	  case :$dllsearchpath: in
+ 	  *":$dir:"*) ;;
+ 	  *) dllsearchpath="$dllsearchpath:$dir";;
+@@ -1476,7 +1476,7 @@
+       -l*)
+ 	if test "X$arg" = "X-lc" || test "X$arg" = "X-lm"; then
+ 	  case $host in
+-	  *-*-cygwin* | *-*-pw32* | *-*-beos*)
++	  *-*-cygwin* | *-*-msys* | *-*-pw32* | *-*-beos*)
+ 	    # These systems don't actually have a C or math library (as such)
+ 	    continue
+ 	    ;;
+@@ -1563,7 +1563,7 @@
+ 
+       -no-install)
+ 	case $host in
+-	*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2*)
++	*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2*)
+ 	  # The PATH hackery in wrapper scripts is required on Windows
+ 	  # in order for the loader to find any dlls it needs.
+ 	  $echo "$modename: warning: \`-no-install' is ignored for $host" 1>&2
+@@ -1910,7 +1910,7 @@
+     esac
+ 
+     case $host in
+-    *cygwin* | *mingw* | *pw32*)
++    *cygwin* | *msys* | *mingw* | *pw32*)
+       # don't eliminate duplications in $postdeps and $predeps
+       duplicate_compiler_generated_deps=yes
+       ;;
+@@ -2498,7 +2498,7 @@
+ 	    elif test -n "$soname_spec"; then
+ 	      # bleh windows
+ 	      case $host in
+-	      *cygwin* | mingw*)
++	      *cygwin* | *msys* | mingw*)
+ 		major=`expr $current - $age`
+ 		versuffix="-$major"
+ 		;;
+@@ -3356,7 +3356,7 @@
+       if test "$build_libtool_libs" = yes; then
+ 	if test -n "$rpath"; then
+ 	  case $host in
+-	  *-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-*-beos*)
++	  *-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2* | *-*-beos*)
+ 	    # these systems don't actually have a c library (as such)!
+ 	    ;;
+ 	  *-*-rhapsody* | *-*-darwin1.[012])
+@@ -4162,7 +4162,7 @@
+ 
+     prog)
+       case $host in
+-	*cygwin*) output=`$echo $output | ${SED} -e 's,.exe$,,;s,$,.exe,'` ;;
++	*cygwin* | *msys*) output=`$echo $output | ${SED} -e 's,.exe$,,;s,$,.exe,'` ;;
+       esac
+       if test -n "$vinfo"; then
+ 	$echo "$modename: warning: \`-version-info' is ignored for programs" 1>&2
+@@ -4240,7 +4240,7 @@
+ 	  esac
+ 	fi
+ 	case $host in
+-	*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-os2*)
++	*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-os2*)
+ 	  case :$dllsearchpath: in
+ 	  *":$libdir:"*) ;;
+ 	  *) dllsearchpath="$dllsearchpath:$libdir";;
+@@ -4418,7 +4418,7 @@
+ "
+ 
+ 	    case $host in
+-	    *cygwin* | *mingw* )
++	    *cygwin* | *msys* | *mingw* )
+ 	  $echo >> "$output_objdir/$dlsyms" "\
+ /* DATA imports from DLLs on WIN32 can't be const, because
+    runtime relocations are performed -- see ld's documentation
+@@ -4656,13 +4656,13 @@
+ 	esac
+ 	# test for cygwin because mv fails w/o .exe extensions
+ 	case $host in
+-	  *cygwin*)
++	  *cygwin* | *msys*)
+ 	    exeext=.exe
+ 	    outputname=`$echo $outputname|${SED} 's,.exe$,,'` ;;
+ 	  *) exeext= ;;
+ 	esac
+ 	case $host in
+-	  *cygwin* | *mingw* )
++	  *cygwin* | *msys* | *mingw* )
+ 	    cwrappersource=`$echo ${objdir}/lt-${outputname}.c`
+ 	    cwrapper=`$echo ${output}.exe`
+ 	    $rm $cwrappersource $cwrapper
+@@ -5299,7 +5299,7 @@
+ 	  # place dlname in correct position for cygwin
+ 	  tdlname=$dlname
+ 	  case $host,$output,$installed,$module,$dlname in
+-	    *cygwin*,*lai,yes,no,*.dll | *mingw*,*lai,yes,no,*.dll) tdlname=../bin/$dlname ;;
++	    *cygwin*,*lai,yes,no,*.dll | *msys*,*lai,yes,no,*.dll | *mingw*,*lai,yes,no,*.dll) tdlname=../bin/$dlname ;;
+ 	  esac
+ 	  $echo > $output "\
+ # $outputname - a libtool library file
+@@ -5698,7 +5698,7 @@
+ 
+ 	# Do a test to see if this is really a libtool program.
+ 	case $host in
+-	*cygwin*|*mingw*)
++	*cygwin*|*msys*|*mingw*)
+ 	    wrapper=`$echo $file | ${SED} -e 's,.exe$,,'`
+ 	    ;;
+ 	*)
+@@ -5713,7 +5713,7 @@
+ 	  # finese the cygwin/MSYS system by explicitly sourcing "foo."
+ 	  # which disallows the automatic-append-.exe behavior.
+ 	  case $build in
+-	  *cygwin* | *mingw*) wrapperdot=${wrapper}. ;;
++	  *cygwin* | *msys* | *mingw*) wrapperdot=${wrapper}. ;;
+ 	  *) wrapperdot=${wrapper} ;;
+ 	  esac
+ 	  # If there is no directory component, then add one.
+@@ -5751,7 +5751,7 @@
+ 	  # finese the cygwin/MSYS system by explicitly sourcing "foo."
+ 	  # which disallows the automatic-append-.exe behavior.
+ 	  case $build in
+-	  *cygwin* | *mingw*) wrapperdot=${wrapper}. ;;
++	  *cygwin* | *msys* | *mingw*) wrapperdot=${wrapper}. ;;
+ 	  *) wrapperdot=${wrapper} ;;
+ 	  esac
+ 	  # If there is no directory component, then add one.
+@@ -5800,7 +5800,7 @@
+ 	# remove .exe since cygwin /usr/bin/install will append another
+ 	# one anyways
+ 	case $install_prog,$host in
+-	*/usr/bin/install*,*cygwin*)
++	*/usr/bin/install*,*cygwin*|*/usr/bin/install*,*msys*)
+ 	  case $file:$destfile in
+ 	  *.exe:*.exe)
+ 	    # this is ok
+diff -Naur gcc-cygwin/libjava/shlibpath.m4 gcc-msys2/libjava/shlibpath.m4
+--- gcc-cygwin/libjava/shlibpath.m4	2013-03-17 10:14:10 +0400
++++ gcc-msys2/libjava/shlibpath.m4	2013-03-20 07:02:44 +0400
+@@ -141,14 +141,14 @@
+   # libtool to hard-code these into programs
+   ;;
+ 
+-cygwin* | mingw* | pw32*)
++cygwin* | msys* | mingw* | pw32*)
+   version_type=windows
+   shrext=".dll"
+   need_version=no
+   need_lib_prefix=no
+ 
+   case $GCC,$host_os in
+-  yes,cygwin* | yes,mingw* | yes,pw32*)
++  yes,cygwin* | yes,msys* | yes,mingw* | yes,pw32*)
+     library_names_spec='$libname.dll.a'
+     # DLL is installed to $(libdir)/../bin by postinstall_cmds
+     postinstall_cmds='base_file=`basename \${file}`~
+@@ -167,6 +167,11 @@
+       soname_spec='`echo ${libname} | sed -e 's/^lib/cyg/'``echo ${release} | sed -e 's/[[.]]/-/g'`${versuffix}${shared_ext}'
+       sys_lib_search_path_spec="/lib /lib/w32api /usr/lib /usr/local/lib"
+       ;;
++    msys*)
++      # Msys DLLs use 'msys-' prefix rather than 'lib'
++      soname_spec='`echo ${libname} | sed -e 's/^lib/msys-/'``echo ${release} | sed -e 's/[[.]]/-/g'`${versuffix}${shared_ext}'
++      sys_lib_search_path_spec="/lib /lib/w32api /usr/lib /usr/local/lib"
++      ;;
+     mingw*)
+       # MinGW DLLs use traditional 'lib' prefix
+       soname_spec='${libname}`echo ${release} | sed -e 's/[[.]]/-/g'`${versuffix}${shared_ext}'
 diff -Naur gcc-cygwin/libobjc/configure gcc-msys2/libobjc/configure
 --- gcc-cygwin/libobjc/configure	2013-03-17 10:13:58 +0400
 +++ gcc-msys2/libobjc/configure	2013-03-20 07:02:44 +0400
@@ -9478,8 +10967,8 @@ diff -Naur gcc-cygwin/ltmain.sh gcc-msys2/ltmain.sh
  
  
    case $host in
--    *cygwin* | *mingw* | *pw32* | *cegcc*)
-+    *cygwin* | *msys* | *mingw* | *pw32* | *cegcc*)
+-    *cygwin* | *mingw* | *pw32* | *cegcc* | *solaris2* )
++    *cygwin* | *msys* | *mingw* | *pw32* | *cegcc* | *solaris2* )
        # don't eliminate duplications in $postdeps and $predeps
        opt_duplicate_compiler_generated_deps=:
        ;;
