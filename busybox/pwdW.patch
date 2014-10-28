@@ -1,23 +1,33 @@
 --- a/coreutils/pwd.c	2014-10-26 18:24:17.355079400 +0000
 +++ b/coreutils/pwd.c	2014-10-26 18:39:51.371963700 +0000
-@@ -20,7 +20,7 @@
+@@ -17,10 +17,13 @@
+ //usage:       "/root\n"
+ 
+ #include "libbb.h"
++#ifdef __CYGWIN__
++#include <sys/cygwin.h>
++#endif
  
  /* This is a NOFORK applet. Be very careful! */
  
 -static int logical_getcwd(void)
-+static int logical_getcwd(bool winpath = false)
++static int logical_getcwd(bool winpath)
  {
  	struct stat st1;
  	struct stat st2;
-@@ -55,10 +55,29 @@
+@@ -55,6 +55,29 @@
  	if (st1.st_dev != st2.st_dev)
  		return 0;
  
 +	if(winpath)
 +    {
-+	  char *wpath = zalloc(PATH_MAX);
-+	  if (cygwin_conv_path(CCP_POSIX_TO_WIN_A, zgetcwd(), wpath, PATH_MAX) < 0) {
++	  char *wpath = xzalloc(PATH_MAX);
++	  char *cwd = xzalloc(PATH_MAX);
++	  char *directory = getcwd(cwd, PATH_MAX);
++	  if (cygwin_conv_path(CCP_POSIX_TO_WIN_A|CCP_ABSOLUTE, directory, wpath, PATH_MAX+1) < 0) {
 +	    free(wpath);
++	    free(directory);
++	    free(cwd);
 +	    return 0;
 +	  }
 +
@@ -27,19 +37,20 @@
 +
 +	  puts(wpath);
 +	  free(wpath);
++	  free(directory);
++	  free(cwd);
 +	  return 1;
 +    }
 +
  	puts(wd);
  	return 1;
  }
- 
-+
-+
- int pwd_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
- int pwd_main(int argc UNUSED_PARAM, char **argv UNUSED_PARAM)
- {
-@@ -74,6 +93,11 @@
+@@ -74,10 +93,15 @@
+ 		 * POSIX requires a default of -L, but most scripts expect -P
+ 		 */
+ 		unsigned opt = getopt32(argv, "LP");
+-		if ((opt & 1) && logical_getcwd())
++		if ((opt & 1) && logical_getcwd(false))
  			return fflush_all();
  	}
  
