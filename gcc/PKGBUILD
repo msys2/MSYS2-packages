@@ -1,21 +1,24 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 # Contributor: Martell Malone <martellmalone@gmail.com>
+# Contributor: Ray Donnelly <mingw.android@gmail.com>
 
 # toolchain build order: win32-api-headers->msys2-runtime->binutils->gcc->binutils->msys2-runtime
 # NOTE: libtool requires rebuilt with each new gcc version
 
 pkgname=('gcc' 'gcc-libs' 'gcc-fortran')
-pkgver=4.9.1
-pkgrel=4
+pkgver=4.9.2
+pkgrel=1
 pkgdesc="The GNU Compiler Collection"
 arch=('i686' 'x86_64')
 groups=('msys2-devel')
 license=('GPL' 'LGPL' 'FDL' 'custom')
 url="http://gcc.gnu.org"
 makedepends=('binutils>=2.23' 'mpc-devel' 'cloog-devel' 'gmp-devel'
-             'mpfr-devel' 'mpc-devel' 'isl-devel' 'zlib-devel' 'windows-default-manifest')
-
-options=('!emptydirs')
+             'mpfr-devel' 'mpc-devel' 'isl-devel' 'zlib-devel'
+             'windows-default-manifest')
+STRIP_OPTION="strip"
+#STRIP_OPTION="!strip"
+options=('!emptydirs' "$STRIP_OPTION")
 source=(ftp://gcc.gnu.org/pub/gcc/releases/gcc-${pkgver}/gcc-${pkgver}.tar.bz2
         001-4.7-ada.patch
         005-4.7-boehm-gc-cygwin.patch
@@ -35,13 +38,12 @@ source=(ftp://gcc.gnu.org/pub/gcc/releases/gcc-${pkgver}/gcc-${pkgver}.tar.bz2
         050-4.5-skiptest.patch
         055-4.8-gcc-ada-DTR.patch
         060-4.8-Wimplicit-decls.patch
-        065-4.9.1-PR-c-61214.patch
         950-4.8.0-configure-msys2.patch
         951-4.8.0-msys2-spec.patch
         952-4.8.0-libgcc-msys2.patch
         953-4.9.1-testsuite-msys2.patch)
-md5sums=('fddf71348546af523353bd43d34919c1'
-         'd7294132a1330ec4dab1830865a67155'
+md5sums=('4df8ee253b7f3863ad0b86359cd39c43'
+         '62c46773400b16f693d7b89f43c00433'
          '170b28d7f480eec4b4721d503d96eab0'
          'b3700e51b0365894ce5520e8f5bbeeb7'
          '10ef60468b9718c59040db592b8419ed'
@@ -54,12 +56,11 @@ md5sums=('fddf71348546af523353bd43d34919c1'
          'dc4ecfa1b1caa272c845d55360cdffe3'
          'a42858255e308a6922d5e8d36f5b3c06'
          '3506054ca98d8a21fd36605b0b863533'
-         '99174cb7f737d8ef6e4e7dcf9b31e0de'
+         '07be14230e64a003d9095658df7e4c91'
          '3ce9a2de6fae8be2ed1d477783f18056'
          'c52b3fd6949751f4dc43f10d6f5ec751'
          '5ac0fc6a780aee8583b89d7225a85f34'
          'ee07cb9166090f95c0f810de0667ea3d'
-         'e57f353e8ca1d41a5a8ff3b9b69a5566'
          '6c1e48e2723cf1df7f9c826722fda193'
          'd27c17a4c6b9caadc281a4f8e204b2eb'
          '7df48a22637ae227ed91fec7d43667fd'
@@ -67,6 +68,15 @@ md5sums=('fddf71348546af523353bd43d34919c1'
 
 prepare() {
   cd ${srcdir}/gcc-${pkgver}
+
+  # Remove files created by 001-4.7-ada.patch
+  rm -f gcc/ada/a-intnam-cygwin.ads gcc/ada/mlib-tgt-specific-cygwin.adb \
+        gcc/ada/s-gloloc-cygwin.adb gcc/ada/s-osinte-cygwin.ads \
+        gcc/ada/s-taprop-cygwin.adb gcc/ada/system-cygwin.ads \
+        gcc/ada/indepsw-cygwin.adb > /dev/null 2>&1 | true
+
+  # Remove file created by 045-4.8-specs-cygwin.patch
+  rm -f  gcc/config/i386/cygwin.opt > /dev/null 2>&1 | true
 
   # Do not run fixincludes
   #sed -i 's@\./fixinc\.sh@-c true@' gcc/Makefile.in
@@ -100,9 +110,6 @@ prepare() {
   fi
 
   patch -p1 -i ${srcdir}/060-4.8-Wimplicit-decls.patch
-
-  # Upstream patches
-   patch -p1 -i ${srcdir}/065-4.9.1-PR-c-61214.patch
 
   #MSYS2 Patches
   patch -p1 -i ${srcdir}/950-4.8.0-configure-msys2.patch
@@ -219,11 +226,15 @@ package_gcc()
 {
   pkgdesc="The GNU Compiler Collection - C and C++ frontends"
   depends=("gcc-libs=$pkgver-$pkgrel" 'binutils>=2.23' 'mpc' 'cloog' 'msys2-runtime-devel' 'msys2-w32api-headers' 'msys2-w32api-runtime' 'windows-default-manifest')
-  options=('staticlibs')
+  options=('staticlibs' "$STRIP_OPTION")
   install=gcc.install
 
   cd ${srcdir}/gcc-build
   
+  if check_option "strip" "n"; then
+    export STRIP=true
+  fi
+
   make -j1 DESTDIR=${pkgdir} install
   if [ "$CARCH" = "x86_64" ]
   then
@@ -299,10 +310,15 @@ package_gcc-fortran()
 {
   pkgdesc="Fortran front-end for GCC"
   depends=("gcc=$pkgver-$pkgrel")
-  options=('staticlibs' '!emptydirs')
+  options=('staticlibs' '!emptydirs' "$STRIP_OPTION")
   install=gcc-fortran.install
 
   cd ${srcdir}/gcc-build
+
+  if check_option "strip" "n"; then
+    export STRIP=true
+  fi
+
   make -j1 DESTDIR=$pkgdir install-target-libgfortran
   make -j1 -C $CHOST/libgomp DESTDIR=$pkgdir install-nodist_fincludeHEADERS
   make -j1 -C gcc DESTDIR=$pkgdir fortran.install-{common,man,info}
@@ -317,7 +333,7 @@ package_gcc-fortran()
   rm ${pkgdir}/usr/lib/gcc/$CHOST/${pkgver}/{*.o,libgc*}
   rm ${pkgdir}/usr/share/info/libquadmath.info
   rm -r ${pkgdir}/usr/lib/gcc/$CHOST/${pkgver}/include
-  #rm ${pkgdir}/usr/lib/gcc/$CHOST/${pkgver}libgfortran.a
+  # rm ${pkgdir}/usr/lib/gcc/$CHOST/${pkgver}/libgfortran.a
 
   # Install Runtime Library Exception
   install -Dm644 ${srcdir}/gcc-${pkgver}/COPYING.RUNTIME \
