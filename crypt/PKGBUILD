@@ -2,36 +2,36 @@
 
 pkgname=('crypt' 'libcrypt' 'libcrypt-devel')
 pkgver=1.1
-pkgrel=2
+pkgrel=3
 pkgdesc="Encryption/Decryption utility and library"
 groups=('base')
 arch=('i686' 'x86_64')
 license=('custom')
 url="http://cygwin.com/"
-depends=()
-noextract=()
-source=(crypt.c
-        crypt.def
-        crypt.README
-        encrypt.c
-        encrypt.h
-        Makefile)
-sha1sums=('7c49ab4f6dd6933b06475984a014a52d66804637'
-          '32e6cb3e8e07c6a7434a9e5de9e1f140f7dd4a88'
-          'aed9710d9035c09a916b65887adc4a9a988d20af'
-          '5b79697549cff727545b087e225cf18537139242'
-          'adcab595d7f704ce153e34c9830237bcc13d15ff'
-          'd9b185c6c7c8c67a73d70f85e50ac8b581867666')
+makedepends=('gcc' 'cvs' 'make')
+source=(msysize.patch)
+md5sums=('94bbc62ce1317575e365950a1c5f299a')
+
+CVSROOT=":pserver:anoncvs:@sourceware.org:/cvs/cygwin-apps"
+CVSMOD="crypt"
+CVS_BRANCH="release-${pkgver//\./_}"
+
+prepare() {
+  cd ${srcdir}
+  msg "Connecting to sourceware.org CVS server...."
+  if [ -d $CVSMOD/CVS ]; then
+    cd $CVSMOD
+    cvs -z3 update -d
+  else
+    cvs -z3 -d $CVSROOT co -f $CVSMOD
+    cd $CVSMOD
+  fi
+
+  patch -p1 -i ${srcdir}/msysize.patch
+}
 
 build() {
-  mkdir -p $srcdir/$pkgname-$pkgver/
-  
-  local file=
-  for file in ${source[@]}; do
-    cp -f ${file} $srcdir/$pkgname-$pkgver/
-  done
-   
-  cd "$srcdir/$pkgname-$pkgver"
+  cd "$srcdir/$CVSMOD"
   make CC=gcc AR=ar CFLAGS="${CFLAGS}"
   
   make DESTDIR=${srcdir}/dest install
@@ -51,7 +51,7 @@ package_libcrypt() {
   pkgesc="Encryption/Decryption library"
   groups=('libraries')
   mkdir -p ${pkgdir}/usr/bin
-  
+
   cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
 }
 
@@ -60,9 +60,9 @@ package_libcrypt-devel() {
   groups=('development')
   depends=("libcrypt=${pkgver}")
   options=('staticlibs')
-  
+
   mkdir -p ${pkgdir}/usr/{include,lib}
-  
+
   cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
   cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
 }
