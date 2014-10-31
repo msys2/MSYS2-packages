@@ -1,15 +1,13 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
-pkgname=texinfo
+pkgname=('texinfo' 'info' 'texinfo-tex')
 pkgver=5.2
-pkgrel=4
+pkgrel=5
 pkgdesc="Utilities to work with and produce manuals, ASCII text, and on-line documentation from a single source file"
 arch=('i686' 'x86_64')
 url="http://www.gnu.org/software/texinfo/"
 license=('GPL3')
-groups=('base' 'base-devel')
-depends=('ncurses' 'findutils' 'gzip' 'perl' 'sh')
-install=texinfo.install
+makedepends=('ncurses-devel' 'gettext-devel' 'findutils' 'gzip' 'perl')
 source=(ftp://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig}
         texinfo-5.2-C-n-fix.patch
         0001-texinfo-5.1-msys2.patch
@@ -47,6 +45,7 @@ build() {
     gl_cv_func_wcwidth_works=yes
 
   make
+  make DESTDIR=${srcdir}/dest install
 }
 
 check() {
@@ -54,7 +53,49 @@ check() {
   make check
 }
 
-package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make DESTDIR=${pkgdir} install
+package_texinfo() {
+  depends=('info' 'perl' 'sh')
+  groups=('base-devel')
+  install=texinfo.install
+
+  mkdir -p ${pkgdir}/usr/bin
+  mkdir -p ${pkgdir}/usr/share/info
+  mkdir -p ${pkgdir}/usr/share/man/man{1,5}
+  for ff in makeinfo pod2texi texi2any; do
+    cp -f ${srcdir}/dest/usr/bin/${ff} ${pkgdir}/usr/bin/${ff}
+    cp -f ${srcdir}/dest/usr/share/man/man1/${ff}.1 ${pkgdir}/usr/share/man/man1/${ff}.1
+  done
+  cp -rf ${srcdir}/dest/usr/share/locale ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/texinfo ${pkgdir}/usr/share/
+  cp -f ${srcdir}/dest/usr/share/man/man5/texinfo.5 ${pkgdir}/usr/share/man/man5/
+  cp -f ${srcdir}/dest/usr/share/info/texinfo.info{,-1,-2,-3} ${pkgdir}/usr/share/info/
+}
+
+package_info() {
+  depends=('ncurses' 'libintl' 'gzip')
+  groups=(base)
+  install=info.install
+
+  mkdir -p ${pkgdir}/usr/{bin,share}
+  mkdir -p ${pkgdir}/usr/share/info
+  mkdir -p ${pkgdir}/usr/share/man/man{1,5}
+  for ff in info infokey install-info; do
+    cp -f ${srcdir}/dest/usr/bin/${ff}.exe ${pkgdir}/usr/bin/${ff}.exe
+    cp -f ${srcdir}/dest/usr/share/man/man1/${ff}.1 ${pkgdir}/usr/share/man/man1/${ff}.1
+  done
+  cp -f ${srcdir}/dest/usr/share/man/man5/info.5 ${pkgdir}/usr/share/man/man5/info.5
+  cp -f ${srcdir}/dest/usr/share/info/info.info ${pkgdir}/usr/share/info/info.info
+  cp -f ${srcdir}/dest/usr/share/info/info-stnd.info ${pkgdir}/usr/share/info/info-stnd.info
+}
+
+package_texinfo-tex() {
+  depends=('perl' 'sh')
+  groups=('base-devel')
+
+  mkdir -p ${pkgdir}/usr/{bin,share}
+  mkdir -p ${pkgdir}/usr/share/man/man1
+  for ff in texindex.exe texi2dvi texi2pdf pdftexi2dvi; do
+    cp -f ${srcdir}/dest/usr/bin/${ff} ${pkgdir}/usr/bin/${ff}
+    cp -f ${srcdir}/dest/usr/share/man/man1/${ff%.*}.1 ${pkgdir}/usr/share/man/man1/${ff%.*}.1
+  done
 }
