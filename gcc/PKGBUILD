@@ -77,7 +77,13 @@ prepare() {
   rm -f gcc/ada/a-intnam-cygwin.ads gcc/ada/mlib-tgt-specific-cygwin.adb \
         gcc/ada/s-gloloc-cygwin.adb gcc/ada/s-osinte-cygwin.ads \
         gcc/ada/s-taprop-cygwin.adb gcc/ada/system-cygwin.ads \
-        gcc/ada/indepsw-cygwin.adb > /dev/null 2>&1 | true
+        gcc/ada/indepsw-cygwin.adb libgcc/config/i386/t-msys \
+        gcc/config/i386/msys.h gcc/config/i386/msys-w64.h \
+        gcc/config/i386/t-msys-w64 \
+        libstdc++-v3/testsuite/30_threads/recursive_timed_mutex/try_lock_until/._2.cc \
+        libstdc++-v3/testsuite/30_threads/thread/cons/._2.cc \
+        libstdc++-v3/testsuite/30_threads/thread/members/._3.cc \
+          > /dev/null 2>&1 | true
 
   # Remove file created by 045-4.8-specs-cygwin.patch
   rm -f  gcc/config/i386/cygwin.opt > /dev/null 2>&1 | true
@@ -121,12 +127,12 @@ prepare() {
   patch -p1 -i ${srcdir}/953-4.9.1-testsuite-msys2.patch
   patch -p1 -i ${srcdir}/955-4.9.2-apply-hack-so-gcc_s-isnt-stripped.patch
 
-  mkdir ${srcdir}/gcc-build
+  [ -d ${srcdir}/build-$(arch) ] && rm -rf ${srcdir}/build-$(arch)
+  mkdir ${srcdir}/build-$(arch)
 }
 
 build() {
-  mkdir -p ${srcdir}/gcc-build
-  cd ${srcdir}/gcc-build
+  cd ${srcdir}/build-$(arch)
 
   case ${CARCH} in
     i686)
@@ -188,12 +194,12 @@ build() {
 }
 
 # setup() {
-#   cd ${srcdir}/gcc-build
+#   cd ${srcdir}/build-$(arch)
 #   make -j1 DESTDIR=${destdir} install
 # }
 
 check() {
-  cd ${srcdir}/gcc-build
+  cd ${srcdir}/build-$(arch)
 
   # do not abort on error as some are "expected"
   make -k check || true
@@ -207,7 +213,7 @@ package_gcc-libs()
   depends=('msys2-runtime')
   install=gcc-libs.install
 
-  cd ${srcdir}/gcc-build
+  cd ${srcdir}/build-$(arch)
   make -j1 -C $CHOST/libgcc DESTDIR=${pkgdir} install-shared
   for lib in libgomp libstdc++-v3/src; do
     make -j1 -C $CHOST/$lib DESTDIR=${pkgdir} install-toolexeclibLTLIBRARIES
@@ -240,7 +246,7 @@ package_gcc()
   options=('staticlibs' "$STRIP_OPTION" "$DEBUG_OPTION")
   install=gcc.install
 
-  cd ${srcdir}/gcc-build
+  cd ${srcdir}/build-$(arch)
   
   if check_option "strip" "n"; then
     export STRIP=true
@@ -324,7 +330,7 @@ package_gcc-fortran()
   options=('staticlibs' '!emptydirs' "$STRIP_OPTION" "$DEBUG_OPTION")
   install=gcc-fortran.install
 
-  cd ${srcdir}/gcc-build
+  cd ${srcdir}/build-$(arch)
 
   if check_option "strip" "n"; then
     export STRIP=true
