@@ -1,0 +1,135 @@
+diff -Naur zsh-5.0.7-orig/Completion/Unix/Command/_mount zsh-5.0.7/Completion/Unix/Command/_mount
+--- zsh-5.0.7-orig/Completion/Unix/Command/_mount	2014-08-14 22:43:00.000000000 +0300
++++ zsh-5.0.7/Completion/Unix/Command/_mount	2014-11-04 18:45:42.056000000 +0300
+@@ -1,6 +1,6 @@
+ #compdef mount umount
+ 
+-if [[ "$OSTYPE" == cygwin ]]; then
++if [[ "$OSTYPE" == cygwin || $OSTYPE = msys ]]; then
+   if [[ "$service" == mount ]] ; then
+     _arguments -s \
+       - mount \
+diff -Naur zsh-5.0.7-orig/config.guess zsh-5.0.7/config.guess
+--- zsh-5.0.7-orig/config.guess	2013-11-27 22:00:20.000000000 +0300
++++ zsh-5.0.7/config.guess	2014-11-04 18:37:39.158000000 +0300
+@@ -840,6 +840,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur zsh-5.0.7-orig/configure.ac zsh-5.0.7/configure.ac
+--- zsh-5.0.7-orig/configure.ac	2014-09-23 21:55:05.000000000 +0300
++++ zsh-5.0.7/configure.ac	2014-11-04 18:41:11.052800000 +0300
+@@ -2010,7 +2010,7 @@
+ AH_TEMPLATE([PATH_DEV_FD],
+ [Define to the path of the /dev/fd filesystem.])
+ AC_CACHE_CHECK(for /dev/fd filesystem, zsh_cv_sys_path_dev_fd,
+-[if test "$host_os" = cygwin; then
++[if test "$host_os" = cygwin || test "$host_os" = msys; then
+ dnl In current (2008/12/01) versions of Cygwin these are present but don't
+ dnl seem to work smoothly for process substitution; no great surprise
+ dnl since getting processes to work at all on Cygwin is a big challenge.
+@@ -2224,7 +2224,7 @@
+ dnl to provide what we want.  Simply enable them.
+ AC_CACHE_CHECK(if named FIFOs work,
+ zsh_cv_sys_fifo,
+-[if test "$host_os" = cygwin; then
++[if test "$host_os" = cygwin || test "$host_os" = msys; then
+ zsh_cv_sys_fifo=yes
+ else
+ AC_TRY_RUN([
+@@ -2698,7 +2698,7 @@
+   zsh_cv_sys_dynamic_strip_exe="${zsh_cv_sys_dynamic_strip_exe=yes}"
+   zsh_cv_sys_dynamic_strip_lib="${zsh_cv_sys_dynamic_strip_lib=yes}"
+   zsh_cv_shared_environ="${zsh_cv_shared_environ=yes}"
+-elif test "$host_os" = cygwin; then
++elif test "$host_os" = cygwin || test "$host_os" = msys; then
+   DL_EXT="${DL_EXT=dll}"
+ ##DLLD="${DLLD=dllwrap}"
+   DLLD="${DLLD=$CC}"
+@@ -2972,7 +2972,7 @@
+   if $strip_libldflags && test "$zsh_cv_sys_dynamic_strip_lib" = yes; then
+     LIBLDFLAGS="$LIBLDFLAGS -s"
+   fi
+-  if test "$host_os" = cygwin; then
++  if test "$host_os" = cygwin || test "$host_os" = msys; then
+     INSTLIB="install.cygwin-lib"
+     UNINSTLIB="uninstall.cygwin-lib"
+   fi
+@@ -3010,7 +3010,7 @@
+ AC_SUBST(INSTLIB)dnl
+ AC_SUBST(UNINSTLIB)dnl
+ 
+-if test "$host_os" = cygwin; then
++if test "$host_os" = cygwin || test "$host_os" = msys; then
+   EXTRAZSHOBJS="$EXTRAZSHOBJS zsh.res.o"
+ fi
+ 
+diff -Naur zsh-5.0.7-orig/Src/Makefile.in zsh-5.0.7/Src/Makefile.in
+--- zsh-5.0.7-orig/Src/Makefile.in	2013-11-27 22:00:20.000000000 +0300
++++ zsh-5.0.7/Src/Makefile.in	2014-11-04 18:47:07.013600000 +0300
+@@ -65,7 +65,7 @@
+ NSTMP = stamp-modobjs
+ NLIST = `cat stamp-modobjs`
+ 
+-LIBZSH = libzsh-$(VERSION).$(DL_EXT)
++LIBZSH = msys-zsh-$(VERSION).$(DL_EXT)
+ NIBZSH =
+ INSTLIB = @INSTLIB@
+ UNINSTLIB = @UNINSTLIB@
+diff -Naur zsh-5.0.7-orig/Src/mkmakemod.sh zsh-5.0.7/Src/mkmakemod.sh
+--- zsh-5.0.7-orig/Src/mkmakemod.sh	2014-07-31 21:41:49.000000000 +0300
++++ zsh-5.0.7/Src/mkmakemod.sh	2014-11-04 18:46:59.042000000 +0300
+@@ -222,7 +222,7 @@
+ 		    export="${depbase}.export"
+ 		    case "$dep" in
+ 			zsh/main )
+-			    mdll="\$(dir_top)/Src/libzsh-\$(VERSION).\$(DL_EXT) "
++			    mdll="\$(dir_top)/Src/msys-zsh-\$(VERSION).\$(DL_EXT) "
+ 			;;
+ 			* )
+ 			    mdll="${depbase}.\$(DL_EXT) "
+@@ -242,7 +242,7 @@
+ 		    esac
+ 		    case "$dep" in
+ 			zsh/main )
+-			    mdll="\$(dir_top)/Src/libzsh-\$(VERSION).\$(DL_EXT) "
++			    mdll="\$(dir_top)/Src/msys-zsh-\$(VERSION).\$(DL_EXT) "
+ 			;;
+ 			* )
+ 			    mdll="\$(dir_top)/$loc/${depbase}.\$(DL_EXT) "
+@@ -266,7 +266,7 @@
+ 		    esac
+ 		    case "$dep" in
+ 			zsh/main )
+-			    mdll="\$(dir_top)/Src/libzsh-\$(VERSION).\$(DL_EXT) "
++			    mdll="\$(dir_top)/Src/msys-zsh-\$(VERSION).\$(DL_EXT) "
+ 			;;
+ 			* )
+ 			    mdll="\$(dir_top)/$loc/${depbase}.\$(DL_EXT) "
+diff -Naur zsh-5.0.7-orig/Test/C02cond.ztst zsh-5.0.7/Test/C02cond.ztst
+--- zsh-5.0.7-orig/Test/C02cond.ztst	2014-05-16 22:21:25.000000000 +0300
++++ zsh-5.0.7/Test/C02cond.ztst	2014-11-04 18:45:27.454400000 +0300
+@@ -94,7 +94,7 @@
+   if (( EUID == 0 )); then
+     print -u$ZTST_fd 'Warning: Not testing [[ ! -r file ]] (root reads anything)'
+     [[ -r zerolength && -r unmodish ]]
+-  elif [[ $OSTYPE = cygwin ]]; then
++  elif [[ $OSTYPE = cygwin || $OSTYPE = msys ]]; then
+     print -u$ZTST_fd 'Warning: Not testing [[ ! -r file ]]
+    (all files created by user may be readable)'
+    [[ -r zerolength ]]
+@@ -133,7 +133,7 @@
+   sleep 2
+   cat unmodified
+   touch newnewnew
+-  if [[ $OSTYPE == "cygwin" ]]; then
++  if [[ $OSTYPE == "cygwin" || $OSTYPE = msys ]]; then
+     print -u$ZTST_fd "Warning: not testing [[ -N file ]] (not supported on Cygwin)"
+     true
+   elif [[ "$(find . -prune -fstype nfs 2>/dev/null)" == "." ]]; then
