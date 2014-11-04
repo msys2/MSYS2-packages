@@ -2,7 +2,7 @@
 
 pkgname=unzip
 pkgver=6.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Unpacks .zip archives such as those made by PKZIP"
 arch=('i686' 'x86_64')
 url="http://www.info-zip.org/"
@@ -10,8 +10,37 @@ license=('custom')
 groups=('compression')
 depends=('libbz2' 'bash')
 makedepends=('libbz2-devel')
-source=('http://downloads.sourceforge.net/infozip/unzip60.tar.gz')
-md5sums=('62b490407489521db863b523a7f86375')
+source=('http://downloads.sourceforge.net/infozip/unzip60.tar.gz'
+        unzip-6.0-attribs-overflow.patch
+        unzip-6.0-bzip2-configure.patch
+        unzip-6.0-caseinsensitive.patch
+        unzip-6.0-close.patch
+        unzip-6.0-fix-recmatch.patch
+        unzip-6.0-format-secure.patch
+        unzip-6.0-nostrip.patch
+        unzip-6.0-symlink.patch)
+md5sums=('62b490407489521db863b523a7f86375'
+         '19341ef8810558e0cb4e3fe25b3eff70'
+         'f67c65f71335fa44a95604b143b5441c'
+         '3b7146de6a2bf218505df57f44c46194'
+         'b383c235084cef96f57e05e804c2ccef'
+         '42115ad210f80df74e66b3a872f73407'
+         '1f089d890c5a52b43128515163f04b8d'
+         '006596fa54bcc8952a8d0d4a3953c076'
+         '2612ba34fa7416be4c7e28899d401d40')
+
+prepare() {
+  cd ${srcdir}/${pkgname}${pkgver/./}
+  patch -p1 -i ${srcdir}/unzip-6.0-bzip2-configure.patch
+  patch -p1 -i ${srcdir}/unzip-6.0-close.patch
+  patch -p1 -i ${srcdir}/unzip-6.0-attribs-overflow.patch
+  patch -p1 -i ${srcdir}/unzip-6.0-nostrip.patch
+  patch -p1 -i ${srcdir}/unzip-6.0-fix-recmatch.patch
+  patch -p1 -i ${srcdir}/unzip-6.0-symlink.patch
+  patch -p1 -i ${srcdir}/unzip-6.0-caseinsensitive.patch
+  patch -p1 -i ${srcdir}/unzip-6.0-format-secure.patch
+
+}
 
 build() {
   cd ${srcdir}/${pkgname}${pkgver/./}
@@ -25,16 +54,17 @@ build() {
   sed -i "/MANDIR =/s#)/#)/share/#" unix/Makefile
 
   # make -- from Debian
-  make -f unix/Makefile LOCAL_UNZIP="$CFLAGS" prefix=/usr LF2="" \
-  CC=gcc LD=gcc AS=gcc \
-  D_USE_BZ2=-DUSE_BZIP2 L_BZ2=-lbz2 E=".exe" CP="cp" LN="ln -s" unzips
+  make \
+    -f unix/Makefile generic_gcc CC=gcc LD=gcc AS=gcc \
+    CF_NOOPT="${CFLAGS} -DUNIX -I." \
+    E=".exe" CP="cp" LN="ln -s"
 }
 
 package() {
   cd ${srcdir}/${pkgname}${pkgver/./}
 
   # install -- from Debian
-  make -f unix/Makefile prefix=${pkgdir}/usr INSTALL_PROGRAM="install" install
+  make -f unix/Makefile prefix=${pkgdir}/usr LN="ln -s" MANDIR=${D}/usr/share/man/man1 INSTALL_PROGRAM="install" install
 
   # install the license file
   install -Dm644 LICENSE ${pkgdir}/usr/share/licenses/unzip/LICENSE
