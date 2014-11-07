@@ -1,4 +1,5 @@
 # Maintainer: Alexey Pavlov <Alexpux@gmail.com>
+# Contributor: Ray Donnelly <mingw.android@gmail.com>
 
 pkgname=doxygen
 pkgver=1.8.8
@@ -6,16 +7,18 @@ pkgrel=2
 pkgdesc="A documentation system for C++, C, Java, IDL and PHP"
 arch=('i686' 'x86_64')
 url="http://www.doxygen.org/"
-options=('strip' 'staticlibs' '!makeflags')
+options=('strip' 'staticlibs' '!makeflags') # 'debug')
 license=('GPL')
 depends=("gcc-libs" "libsqlite" "libiconv")
 makedepends=("gcc" "flex" "python2" "libsqlite-devel" "libiconv-devel")
 source=("http://ftp.stack.nl/pub/users/dimitri/${pkgname}-${pkgver}.src.tar.gz"
         '1.7.4-iconv.patch'
-        'remove-extra-slashes.patch')
+        'remove-extra-slashes.patch'
+        'msys2-change-debug-flags.patch')
 md5sums=('0cbe6912fcac302a984bfcfb9231fec9'
          '838712aecc168be786d95dc7497d5901'
-         '5eea3d1fddf646d0944e5b1dd95628d6')
+         '5eea3d1fddf646d0944e5b1dd95628d6'
+         'cfadbbc52daf91299960c582c3b20157')
 noextract=(${pkgname}-${pkgver}.src.tar.gz)
 
 prepare() {
@@ -23,18 +26,28 @@ prepare() {
   [[ -d $srcdir/${pkgname}-${pkgver} ]] || tar -xzvf ${startdir}/${pkgname}-${pkgver}.src.tar.gz -C $srcdir
   cd "${srcdir}/${pkgname}-${pkgver}"
 
-  patch -p1 -i "${srcdir}/remove-extra-slashes.patch"
-  patch -p2 -i "${srcdir}/1.7.4-iconv.patch"
+  patch -p2 -i "${srcdir}"/1.7.4-iconv.patch
+  patch -p1 -i "${srcdir}"/remove-extra-slashes.patch
+  patch -p1 -i "${srcdir}"/msys2-change-debug-flags.patch
 }
 
 build() {
+  local -a extra_config
+  if check_option "debug" "y"; then
+    extra_config+=("--debug")
+    CFLAGS="-Og"
+  else
+    extra_config+=("--release")
+  fi
+
   cd ${srcdir}/${pkgname}-${pkgver}
   ./configure \
     --prefix /usr \
     --with-sqlite3 \
     --sqlite3-path /usr \
     --shared \
-    --docdir /usr/share/doc/${pkgname} --platform linux-g++
+    --docdir /usr/share/doc/${pkgname} --platform linux-g++ \
+    "${extra_config[@]}"
   make
 }
 
