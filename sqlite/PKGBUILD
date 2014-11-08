@@ -5,7 +5,7 @@ pkgname=('sqlite' 'libsqlite' 'libsqlite-devel' 'sqlite-doc')
 _amalgamationver=3080701
 _docver=${_amalgamationver}
 pkgver=3.8.7.1
-pkgrel=1
+pkgrel=2
 pkgdesc="A C library that implements an SQL database engine"
 arch=('i686' 'x86_64')
 license=('custom:Public Domain')
@@ -17,19 +17,28 @@ source=( # tarball containing the amalgamation for SQLite >= 3.7.5 together with
         http://www.sqlite.org/2014/sqlite-doc-${_docver}.zip
         license.txt
         'sqlite-3.8.0.1-msys2.patch'
-        'sqlite3-3.8.7.1-1.src.patch')
-options=('!libtool' '!emptydirs')
+        'sqlite3-3.8.7.1-1.src.patch'
+        'sqlite3-cygwin-msys.patch'
+        'getproc-hack.patch')
+options=('!libtool' '!emptydirs' '!debug' 'strip')
 sha1sums=('5601be1263842209d7c5dbf6128f1cc0b6bbe2e5'
           '712b4ce64317646f27a046d5850515cd710bd00a'
           'f34f6daa4ab3073d74e774aad21d66878cf26853'
           'f357145f11da54b3dfd9c45e594d93960af87105'
-          'e3bd22d9906e1b94b1bf84ec3a6c3907f2183182')
+          '4d7565aa6b7ce75fcdbd6f67cbfdfa05f5aea486'
+          '69b3f261aae4990d23daa14ca0d2f0c8b53fb423'
+          '6dcfcc8c994ee5412395e5cba4933bddf9e2f6b7')
 
 prepare() {
   cd "$srcdir"/sqlite-autoconf-$_amalgamationver
   
   patch -p2 -i ${srcdir}/sqlite3-3.8.7.1-1.src.patch
+  patch -p1 -i ${srcdir}/sqlite3-cygwin-msys.patch
   patch -p1 -i ${srcdir}/sqlite-3.8.0.1-msys2.patch
+  
+  if [ "${CARCH}" = "i686" ]; then
+    patch -p1 -i ${srcdir}/getproc-hack.patch
+  fi
   autoreconf -fi
 }
 
@@ -53,26 +62,20 @@ build() {
     -DSQLITE_WIN32_MAX_PATH_BYTES=4096 \
     -DUSE_SYSTEM_SQLITE=1"
 
-  # build sqlite
   cd "$srcdir"/sqlite-autoconf-$_amalgamationver
   ./configure \
     --prefix=/usr \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
     --build=${CHOST} \
     --enable-shared \
     --enable-static
-  make
-  
-  make DESTDIR=${srcdir}/dest install
 
-  # build the tcl extension    
-  #cd "$srcdir"/sqlite-autoconf-$_amalgamationver/tea
-  #./configure --prefix=/usr \
-  #--with-system-sqlite
-  #make
+  make
+  make DESTDIR=${srcdir}/dest install
 }
 
 package_sqlite() {
- 
   pkgdesc="A C library that implements an SQL database engine"
   depends=('libreadline' 'libsqlite')
   provides=("sqlite3=$pkgver")
@@ -86,8 +89,7 @@ package_sqlite() {
 }
 
 package_libsqlite() {
- 
-  pkgdesc="sqlite library"
+  pkgdesc="Sqlite3 library"
   groups=('libraries')
  
   mkdir -p ${pkgdir}/usr/bin
@@ -95,11 +97,10 @@ package_libsqlite() {
 }
 
 package_libsqlite-devel() {
- 
-  pkgdesc="sqlite headers and libraries"
+  pkgdesc="Sqlite3 headers and libraries"
   groups=('development')
   depends=("libsqlite=${pkgver}")
-  options=('staticlibs')
+  options+=('staticlibs')
  
   mkdir -p ${pkgdir}/usr
   cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
@@ -107,11 +108,10 @@ package_libsqlite-devel() {
 }
 
 package_sqlite-doc() {
-
- pkgdesc="most of the static HTML files that comprise this website, including all of the SQL Syntax and the C/C++ interface specs and other miscellaneous documentation"
- #arch=('any') - not yet supported
- provides=("sqlite3-doc=$pkgver")
- replaces=("sqlite3-doc")
+  pkgdesc="Most of the static HTML files that comprise this website, including all of the SQL Syntax and the C/C++ interface specs and other miscellaneous documentation"
+  #arch=('any') - not yet supported
+  provides=("sqlite3-doc=$pkgver")
+  replaces=("sqlite3-doc")
  
   #cd ${srcdir}/sqlite-doc-${_amalgamationver}
   cd ${srcdir}/sqlite-doc-${_docver}
