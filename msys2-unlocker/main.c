@@ -192,7 +192,7 @@ typedef struct {
     char**        p_filenames;
 } Arguments;
 
-HWND FindConsoleHandleOld() {
+HWND FindConsoleHandle() {
     const char alphabet[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     char title[33];
     char old_title[512];
