@@ -15,6 +15,7 @@
 #include <windows.h>
 #include <psapi.h>
 #include <stdint.h>
+#include "resource.h"
 
 /* Returns the count, -GetLastError () or -ENOMEM */
 ssize_t EnumerateProcessModules(DWORD processId, HMODULE** pp_modules) {
@@ -35,16 +36,16 @@ ssize_t EnumerateProcessModules(DWORD processId, HMODULE** pp_modules) {
     do {
         DWORD bytes_needed;
         num_entries += 1024;
-        bytes_used = num_entries * sizeof(DWORD);
+        bytes_used = num_entries * sizeof (DWORD);
         modules = (HMODULE*)alloca (bytes_used);
         if (modules == NULL) {
             CloseHandle (proc_handle);
-            return -2;
+            return -ENOMEM;
         }
 
         result = EnumProcessModules (proc_handle, modules, bytes_used, &bytes_needed);
         if (result != FALSE) {
-            num_entries = bytes_needed / sizeof(DWORD);
+            num_entries = bytes_needed / sizeof (DWORD);
             bytes_used = bytes_needed;
         }
     } while (result == FALSE);
@@ -149,95 +150,153 @@ ssize_t GetHandlesForProcess(DWORD processId) {
 }
 */
 
-typedef enum
-{
+typedef enum {
     kArgParseFirst,
     kArgParseSwitches = kArgParseFirst,
     kArgParseFilenames,
     kArgParseCount,
 } kArgParsePass;
 
-typedef enum
-{
+typedef enum {
     kUnlockNone,
     kUnlockGUI,
     kUnlockForce,
 } kUnlockAction;
 
-typedef struct
-{
+typedef enum {
+
+    /* All is good */
+    kSuccess = 0,
+
+    /* User errors */
+    kUserNoFiles,
+    kUserTooManyFiles,
+    kUserExited,
+    kUserCancelled,
+
+    /* Failures */
+    kFailEnumProc,
+    kFailForce,
+
+} kExitCode;
+
+typedef struct {
     uint32_t lockedFilesMask;
     DWORD    processId;
 } LockingProcess;
 
-HWND FindConsoleHandle()
- {
-  static char temptitle[] = "{98C1C303-2A9E-11d4-9FF5-006067718D04}";
-  char title[512];
-  char me[64];
-  sprintf(me, "%s-%08x", temptitle, GetCurrentProcessId());
-  if(GetConsoleTitleA(title, sizeof(title)/sizeof(TCHAR)) == 0)
-    return NULL;
-  SetConsoleTitleA(me);
-  HWND wnd = FindWindow(NULL, me);
-  SetConsoleTitleA(title);
-  return wnd;
- }
+typedef struct {
+    kUnlockAction unlock_action;
+    HWND          appHWnd;
+    size_t        num_filenames;
+    char**        p_filenames;
+} Arguments;
 
+HWND FindConsoleHandleOld() {
+    const char alphabet[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    char title[33];
+    char old_title[512];
+
+    size_t size = sizeof (title);
+    size_t i;
+    for (i = 0; i < size - 1; ++i) {
+        title[i] = alphabet[rand() % (int) (sizeof (alphabet) - 1)];
+    }
+    title[i] = '\0';
+    
+    if (GetConsoleTitleA (old_title, sizeof(old_title)/sizeof(old_title[0])) == 0) {
+        return NULL;
+    }
+    SetConsoleTitleA (title);
+    Sleep(40);
+    HWND wnd = FindWindowA (NULL, title);
+    SetConsoleTitleA (old_title);
+    return wnd;
+}
 
 INT_PTR CALLBACK DialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    (void)lParam;
     switch(uMsg)
-        {
-        case WM_INITDIALOG:
+    {
+        case WM_INITDIALOG: {
             return TRUE;
-    
-        case WM_COMMAND:
+            break;
+        }
+
+        case WM_COMMAND: {
             switch(wParam)
             {
-            case IDOK:
-                EndDialog(hwndDlg, 0);
-                return TRUE;
+                case IDOK:
+                {
+                    EndDialog (hwndDlg, 0);
+                    return TRUE;
+                    break;
+                }
             }
             break;
         }
-    
-        return FALSE;
+
+        case WM_SIZE: {
+            HWND hEdit;
+            RECT rcClient;
+
+            GetClientRect (hwndDlg, &rcClient);
+
+            hEdit = GetDlgItem (hwndDlg, IDC_UNLOCKERDIALOG);
+            SetWindowPos (hEdit, NULL, 0, 0, rcClient.right, rcClient.bottom, SWP_NOZORDER);
+            break;
+        }
+
+        case WM_CLOSE: {
+            EndDialog (hwndDlg, kUserExited);
+            return TRUE;
+            break;
+        }
+
+        default: {
+            break;
+        }
+    }
+
+    return FALSE;
 }
 
-int main(int argc, char* argv[]) {
+kExitCode ProcessArguments(int argc, char* argv[], Arguments* args) {
+    args->unlock_action = kUnlockNone;
+    args->num_filenames = 0;
+    args->p_filenames = NULL;
+    args->appHWnd = NULL;
     int argi;
     kArgParsePass pass;
-    kUnlockAction unlock_action = kUnlockNone;
-    size_t num_filenames = 0;
     size_t num_filename_char = 0;
-    char** p_filenames;
     char* filename_chars;
+
+    args->appHWnd = FindConsoleHandle ();
 
     /* Process arguments */
     for (pass = kArgParseFirst; pass < kArgParseCount; ++pass) {
         if (pass == kArgParseFilenames) {
-            p_filenames = (char**)malloc ((sizeof(char*) * num_filenames) +
+            args->p_filenames = (char**)malloc ((sizeof(char*) * args->num_filenames) +
                                   (sizeof(char) * num_filename_char));
-            filename_chars = (char*)&p_filenames[num_filenames];
-            num_filenames = 0;
+            filename_chars = (char*)&args->p_filenames[args->num_filenames];
+            args->num_filenames = 0;
         }
         for (argi = 1; argi < argc; ++argi) {
             if (argv[argi] != NULL) {
                 if (!strcmp ("--gui", argv[argi])) {
-                    unlock_action = kUnlockGUI;
+                    args->unlock_action = kUnlockGUI;
                 } else if (!strcmp ("--force", argv[argi])) {
-                    unlock_action = kUnlockForce;
+                    args->unlock_action = kUnlockForce;
                 } else {
                     if (pass == kArgParseSwitches) {
-                        ++num_filenames;
-                        if (num_filenames > 32) {
-                            fprintf(stderr, "Too many filenames, max is 32.\n");
-                            return 1;
+                        ++args->num_filenames;
+                        if (args->num_filenames > 32) {
+                            return (kUserTooManyFiles);
                         }
                         num_filename_char += strlen (argv[argi]) + 1;
                     }
                     else if (pass == kArgParseFilenames) {
-                        p_filenames[num_filenames++] = filename_chars;
+                        args->p_filenames[args->num_filenames++] = filename_chars;
                         strcpy (filename_chars, argv[argi]);
                         filename_chars += strlen (argv[argi]) + 1;
                     }
@@ -245,31 +304,42 @@ int main(int argc, char* argv[]) {
             }
         }
     }
+    if (args->num_filenames == 0) {
+        return (kUserNoFiles);
+    }
+    return (kSuccess);
+}
 
-    if (num_filenames == 0) {
-        fprintf(stderr, "No filenames specified.\n");
-        return 2;
+int main(int argc, char* argv[]) {
+    Arguments args;
+    kExitCode args_result = ProcessArguments (argc, argv, &args);
+    if (args_result == kUserNoFiles) {
+        fprintf (stderr, "No filenames specified.\n");
+        return (kUserNoFiles);
+    } else if (args_result == kUserTooManyFiles) {
+        fprintf(stderr, "Too many filenames specified, max is 32.\n");
+        return (kUserTooManyFiles);
     }
 
     do {
         DWORD* p_processes = NULL;
         ssize_t i, num_entries = EnumerateProcesses (&p_processes);
         if (num_entries < 0) {
-            return -num_entries;
+            fprintf (stderr, "Failed to enumerate processes.\n");
+            return (kFailEnumProc);
         }
         for (i = 0; i < num_entries; ++i) {
-/*          ssize_t num_handles = GetHandlesForProcess (p_processes[i]); */
-            uint32_t conflicts = CheckForConflictingFiles (p_processes[i], p_filenames, num_filenames);
+            uint32_t conflicts = CheckForConflictingFiles (p_processes[i], args.p_filenames, args.num_filenames);
             if (conflicts) {
-                printf ("Yup, we conflict");
-//                DialogBox(FindConsoleHandle(), "Hello There!", NULL, 0);
-                int response = MessageBoxA( FindConsoleHandle(), 
-                                           "File read error, continue?", 
-                                           "File Error", 
-                                           MB_ICONERROR | MB_YESNO);
-                (void)response;
+                if (args.unlock_action == kUnlockGUI) {
+                    INT_PTR result = DialogBoxA(NULL, MAKEINTRESOURCEA(IDC_UNLOCKERDIALOG), args.appHWnd, DialogProc);
+                    if (result == kUserExited) {
+                        return (kUserExited);
+                    }
+                }
             }
         }
     } while (0);
-    return 0;
+
+    return (kSuccess);
 }
