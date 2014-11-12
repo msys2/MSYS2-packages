@@ -33,7 +33,12 @@ function createShortcuts()
                             "@StartMenuDir@/MinGW-w64 Win64 Shell.lnk",
                             "/A /Q /K " + installer.value("TargetDir") + "\\mingw64_shell.bat");
 
-   component.addOperation( "Execute",
+    if ("@BITNESS@bit" === "@BITNESS@bit") {
+        component.addOperation( "Execute",
+                               ["@TargetDir@\\autorebase.bat"]);
+    }
+
+    component.addOperation( "Execute",
                            ["@TargetDir@\\usr\\bin\\bash.exe", "--login", "-c", "exit"]);
 }
 
