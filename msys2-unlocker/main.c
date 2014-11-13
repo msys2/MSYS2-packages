@@ -13,6 +13,7 @@
 
 #include <windows.h>
 #include <psapi.h>
+#include <shellapi.h>
 
 #include <stdio.h>
 #include <stdint.h>
@@ -44,16 +45,20 @@ typedef enum {
 } kExitCode;
 
 typedef struct {
+  DWORD id;
+  char* name;
   uint32_t lockedFilesMask;
-  DWORD processId;
-} LockingProcess;
+} ProcessDetails;
 
 /* Global variables plus things
    that are updated dynamically */
 typedef struct {
   HWND appHWnd;
+
+  /* EnumerateProcesses() */
   size_t num_processes;
-  DWORD* p_processes;
+  ProcessDetails* p_processes;
+
 } GlobalState;
 
 /* Values from the commandline */
@@ -62,6 +67,11 @@ typedef struct {
   size_t num_filenames;
   char** p_filenames;
 } Arguments;
+
+enum {
+  kProcessIncrement = 512,
+  kModulesIncrement = 512,
+} kTweaks;
 
 HWND FindConsoleHandle(void);
 
@@ -133,6 +143,51 @@ kExitCode ProcessArguments(int argc, char* argv[], Arguments* args) {
   return (kSuccess);
 }
 
+ssize_t EnumerateOpenProcessModules(HANDLE proc_handle, HMODULE** pp_modules) {
+  ssize_t num_modules = 0;
+  HMODULE* modules = NULL;
+  size_t bytes_used = 0;
+  BOOL result = FALSE;
+
+  if (pp_modules == NULL) {
+    return 0;
+  }
+
+  do {
+    DWORD bytes_needed;
+    num_modules += kModulesIncrement;
+    bytes_used = num_modules * sizeof(DWORD);
+    modules = (HMODULE*)alloca(bytes_used);
+    if (modules == NULL) {
+      CloseHandle(proc_handle);
+      return -ENOMEM;
+    }
+
+    result =
+        EnumProcessModules(proc_handle, modules, bytes_used, &bytes_needed);
+
+    if (result != FALSE) {
+      if (bytes_used == bytes_needed) {
+        /* In this case, can't assume that all the processes were enumerated. */
+        result = FALSE;
+      }
+    }
+    if (result != FALSE) {
+      num_modules = bytes_needed / sizeof(DWORD);
+      bytes_used = bytes_needed;
+    }
+  } while (result == FALSE);
+
+  *pp_modules = malloc(bytes_used);
+  if (*pp_modules == NULL) {
+    CloseHandle(proc_handle);
+    return -ENOMEM;
+  }
+  memcpy(*pp_modules, modules, bytes_used);
+
+  return num_modules;
+}
+
 /* Returns the count, -GetLastError () or -ENOMEM */
 ssize_t EnumerateProcessModules(DWORD processId, HMODULE** pp_modules) {
   if (pp_modules == NULL) {
@@ -145,42 +200,15 @@ ssize_t EnumerateProcessModules(DWORD processId, HMODULE** pp_modules) {
     return -(ssize_t)GetLastError();
   }
 
-  ssize_t num_entries = 0;
-  HMODULE* modules = NULL;
-  size_t bytes_used = 0;
-  BOOL result = FALSE;
+  ssize_t num_modules = EnumerateOpenProcessModules(proc_handle, pp_modules);
 
-  do {
-    DWORD bytes_needed;
-    num_entries += 1024;
-    bytes_used = num_entries * sizeof(DWORD);
-    modules = (HMODULE*)alloca(bytes_used);
-    if (modules == NULL) {
-      CloseHandle(proc_handle);
-      return -ENOMEM;
-    }
-
-    result =
-        EnumProcessModules(proc_handle, modules, bytes_used, &bytes_needed);
-    if (result != FALSE) {
-      num_entries = bytes_needed / sizeof(DWORD);
-      bytes_used = bytes_needed;
-    }
-  } while (result == FALSE);
-
-  *pp_modules = malloc(bytes_used);
-  if (*pp_modules == NULL) {
-    CloseHandle(proc_handle);
-    return -ENOMEM;
-  }
-  memcpy(*pp_modules, modules, bytes_used);
   CloseHandle(proc_handle);
 
-  return num_entries;
+  return num_modules;
 }
 
-uint32_t CheckForConflictingFiles(DWORD processId, char** filenames,
-                                  size_t num_files) {
+uint32_t GetProcessConflictingModules(DWORD processId, char** filenames,
+                                      size_t num_files) {
   HMODULE* modules;
   uint32_t result = 0;
   ssize_t num_modules = EnumerateProcessModules(processId, &modules);
@@ -214,25 +242,45 @@ uint32_t CheckForConflictingFiles(DWORD processId, char** filenames,
   return (result);
 }
 
+uint32_t GetOpenProcessConflictingModules(Arguments* args, HANDLE proc_handle) {
+  HMODULE* modules;
+  uint32_t result = 0;
+  ssize_t num_modules = EnumerateOpenProcessModules(proc_handle, &modules);
+
+  if (modules) {
+    size_t fid;
+    ssize_t mid;
+    char module_name[1024];
+    for (mid = 0; mid < num_modules; ++mid) {
+      if (GetModuleFileNameExA(proc_handle, modules[mid], module_name,
+                               sizeof(module_name) / sizeof(module_name[0])))
+        printf("\t%s\n", module_name);
+      for (fid = 0; fid < args->num_filenames; ++fid) {
+        if (!strcmp(module_name, args->p_filenames[fid])) {
+          result |= (1 << fid);
+        }
+      }
+    }
+    free(modules);
+  }
+
+  return (result);
+}
+
 /* Returns error codes as negative numbers.
-   -1 == invalid input, pp_processes is NULL
-   -2 == alloca failed (out of stack space)
-   -3 == malloc failed (out of heap space)
+   -1 == alloca failed (out of stack space)
+   -2 == malloc failed (out of heap space)
  */
-ssize_t EnumerateProcesses(DWORD** pp_processes) {
-  ssize_t num_entries = 0;
+int EnumerateProcesses(Arguments* args, GlobalState* state) {
+  size_t i, num_processes = state->num_processes;
   DWORD* processes = NULL;
   size_t bytes_used = 0;
   BOOL result = FALSE;
-
-  if (pp_processes == NULL) {
-    return -1;
-  }
+  BOOL old_state_invalid = FALSE; /* Don't want to allocate un-necessarily. */
 
   do {
     DWORD bytes_needed;
-    num_entries += 1024;
-    bytes_used = num_entries * sizeof(DWORD);
+    bytes_used = num_processes * sizeof(DWORD);
     processes = (DWORD*)alloca(bytes_used);
     if (processes == NULL) {
       return -2;
@@ -240,17 +288,53 @@ ssize_t EnumerateProcesses(DWORD** pp_processes) {
 
     result = EnumProcesses(processes, bytes_used, &bytes_needed);
     if (result != FALSE) {
-      num_entries = bytes_needed / sizeof(DWORD);
+      if (bytes_used == bytes_needed) {
+        /* In this case, can't assume that all the processes were enumerated. */
+        result = FALSE;
+      }
+    }
+    if (result != FALSE) {
+      num_processes = bytes_needed / sizeof(DWORD);
       bytes_used = bytes_needed;
     }
+    num_processes += kProcessIncrement;
   } while (result == FALSE);
 
-  *pp_processes = malloc(bytes_used);
-  if (*pp_processes == NULL) {
+  if (num_processes != state->num_processes) {
+    old_state_invalid = TRUE;
+  }
+
+  size_t filename_length = 0;
+  for (i = 0; i < num_processes; ++i) {
+    HANDLE proc_handle =
+        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE,
+                    processes[i]);
+    char module_path[1024];
+    module_path[0] = '\0';
+    uint32_t lockedFiles = 0;
+    if (proc_handle != NULL) {
+      GetModuleFileNameExA(proc_handle, NULL, &module_path[0],
+                           sizeof(module_path));
+      lockedFiles = GetOpenProcessConflictingModules(args, proc_handle);
+    }
+    CloseHandle(proc_handle);
+
+    filename_length += strlen(module_path) + 1;
+    if (old_state_invalid == FALSE) {
+      if ((state->p_processes != NULL) &&
+          (processes[i] != state->p_processes[i].id ||
+           strcmp(module_path, state->p_processes[i].name))) {
+        old_state_invalid = TRUE;
+      }
+    }
+  }
+
+  state->p_processes = (DWORD*)realloc(state->p_processes, bytes_used);
+  if (state->p_processes == NULL) {
     return -3;
   }
-  memcpy(*pp_processes, processes, bytes_used);
-  return (num_entries);
+  memcpy(state->p_processes, processes, bytes_used);
+  return (num_processes);
 }
 
 /* NYI: http://processhacker.sourceforge.net/forums/viewtopic.php?f=8&t=1584
@@ -270,6 +354,18 @@ PROCESS_VM_READ, FALSE, processId);
     return 0;
 }
 */
+
+DWORD_PTR GetProcessIcon() {
+  /*
+    DWORD_PTR icon = SHGetFileInfo(pszPath,
+        DWORD dwFileAttributes,
+        _Inout_  SHFILEINFO *psfi,
+        UINT cbFileInfo,
+        UINT uFlags
+      );
+  */
+  return 0;
+}
 
 HWND FindConsoleHandle() {
   const char alphabet[] =
@@ -298,6 +394,7 @@ HWND FindConsoleHandle() {
 INT_PTR CALLBACK
 DialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
   GlobalState* state = (GlobalState*)lParam;
+  (void)state;
   switch (uMsg) {
     case WM_INITDIALOG: {
       return TRUE;
@@ -340,15 +437,13 @@ DialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 }
 
 kExitCode UpdateState(Arguments* args, GlobalState* state) {
-  ssize_t i, num_processes = EnumerateProcesses(&state->p_processes);
+  ssize_t i, num_processes = EnumerateProcesses(args, state);
   if (num_processes < 0) {
-    state->num_processes = 0;
     return (kFailEnumProc);
   }
-  state->num_processes = (size_t)num_processes;
   for (i = 0; i < num_processes; ++i) {
-    uint32_t conflicts = CheckForConflictingFiles(
-        state->p_processes[i], args->p_filenames, args->num_filenames);
+    uint32_t conflicts = GetProcessConflictingModules(
+        state->p_processes[i].id, args->p_filenames, args->num_filenames);
     if (conflicts) {
       if (args->unlock_action == kUnlockGUI) {
         INT_PTR result =
@@ -360,11 +455,14 @@ kExitCode UpdateState(Arguments* args, GlobalState* state) {
       }
     }
   }
+  return (kSuccess);
 }
 
 int main(int argc, char* argv[]) {
   Arguments args;
   GlobalState state;
+  state.num_processes = 0;
+  state.p_processes = NULL;
 
   state.appHWnd = FindConsoleHandle();
 
