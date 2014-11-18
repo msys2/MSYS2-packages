@@ -1,0 +1,137 @@
+# Maintainer: Martell Malone <martellmalone@gmail.com>
+
+_realname=conemu
+_mingw_suff=mingw-w64-cross
+pkgname="${_realname}-git"
+replaces="${_realname}"
+provides=("${_realname}")
+conflicts=("${_realname}")
+pkgver=r2173.14d8383
+pkgrel=1
+pkgdesc="Customizable Windows console emulator with tabs"
+arch=('i686' 'x86_64')
+url="http://code.google.com/p/conemu-maximus5/"
+license=('custom')
+
+makedepends=("git" "${_mingw_suff}-gcc" "${_mingw_suff}-binutils" "${_mingw_suff}-crt")
+options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
+
+source=(#"${_realname}"::"git+http://github.com/martell/ConEmu.git#branch=mingw64"
+        "${_realname}"::"git+https://github.com/Maximus5/ConEmu.git"
+        "0001-added-support-for-a-PREFIX-in-makefile.patch"
+        "0002-Dialog-Flags-added-to-Mingw-w64.patch"
+        "0003-SecureZeroMemory-support-already-exists-in-Mingw-w64.patch"
+        "0004-ShObjIdl-support-already-exists-in-mingw-w64.patch"
+        "0005-Use-InterlockedIncrement-when-compiling-under-mingw-.patch"
+        "0006-IID_IDragSourceHelper2-is-already-defined-in-mingw-w.patch"
+        "0007-wmemmove_s-is-available-in-mingw-w64.patch"
+        "0008-use-_printf-because-printf-can-be-undefined-in-this-.patch"
+        "0009-Internet-structs-and-defines-are-already-defined-in-.patch"
+        "0010-__forceinline-is-already-defined-in-mingw-w64.patch"
+        "0011-fixed-interlocked2-for-mingw-w64.patch"
+        "0012-AssertMessageBox-is-not-supported-in-mingw-w64.patch"
+        "0013-Add-guard-to-gestureinfo-as-it-is-defined-in-mingw-w.patch"
+        "0014-msxml-is-supported-in-mingw-w64.patch"
+        "0015-fix-writeprocessd-export-for-gcc.patch"
+        "0016-fix-ConEmuHK-linking-under-gcc.patch"
+        "0017-Add-guard-to-vista-transparency-for-mingw-w64.patch"
+        "0018-Fix-various-cross-initialization-errors-under-gcc.patch"
+        "ConEmu.xml")
+
+md5sums=("SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP"
+         "SKIP")
+
+pkgver() {
+  cd "$srcdir/$_realname"
+  printf 'r%s.%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd "$srcdir/$_realname"
+  git am "$srcdir/0001-added-support-for-a-PREFIX-in-makefile.patch"
+  git am "$srcdir/0002-Dialog-Flags-added-to-Mingw-w64.patch"
+  git am "$srcdir/0003-SecureZeroMemory-support-already-exists-in-Mingw-w64.patch"
+  git am "$srcdir/0004-ShObjIdl-support-already-exists-in-mingw-w64.patch"
+  git am "$srcdir/0005-Use-InterlockedIncrement-when-compiling-under-mingw-.patch"
+  git am "$srcdir/0006-IID_IDragSourceHelper2-is-already-defined-in-mingw-w.patch"
+  git am "$srcdir/0007-wmemmove_s-is-available-in-mingw-w64.patch"
+  git am "$srcdir/0008-use-_printf-because-printf-can-be-undefined-in-this-.patch"
+  git am "$srcdir/0009-Internet-structs-and-defines-are-already-defined-in-.patch"
+  git am "$srcdir/0010-__forceinline-is-already-defined-in-mingw-w64.patch"
+  git am "$srcdir/0011-fixed-interlocked2-for-mingw-w64.patch"
+  git am "$srcdir/0012-AssertMessageBox-is-not-supported-in-mingw-w64.patch"
+  git am "$srcdir/0013-Add-guard-to-gestureinfo-as-it-is-defined-in-mingw-w.patch"
+  git am "$srcdir/0014-msxml-is-supported-in-mingw-w64.patch"
+  git am "$srcdir/0015-fix-writeprocessd-export-for-gcc.patch"
+  git am "$srcdir/0016-fix-ConEmuHK-linking-under-gcc.patch"
+  git am "$srcdir/0017-Add-guard-to-vista-transparency-for-mingw-w64.patch"
+  git am "$srcdir/0018-Fix-various-cross-initialization-errors-under-gcc.patch"
+
+}
+
+build() {
+
+  case "${CARCH}" in
+    i686*)
+      _CC=i686-w64-mingw32
+    ;;
+    x86_64*)
+      _CC=x86_64-w64-mingw32
+    ;;
+  esac
+
+  cd "${_realname}/src"
+
+  # NOTE:
+  # The ugliest build system I've ever seen, yuck!
+  # NOTE:
+  # Don't remove `-static*' switches from `USERLIBSFIRST'! Otherwise when
+  # running `cmd.exe' (Command Prompt) in ConEmu, it cannot find
+  # `libstdc++-6.dll' if it is not in the current `PATH' environment variable.
+
+  PREFIX="${_CC}-" make -f makefile_all_gcc WIDE="1" \
+  USERCPP="-pipe -O3 -fomit-frame-pointer -fpermissive -std=c++11" \
+  USERLIBSFIRST="-static -static-libgcc -static-libstdc++"
+
+}
+
+package() {
+  cd "$srcdir/$_realname"
+
+  mkdir -p "${pkgdir}/opt/bin"
+
+  local suffix=''
+
+  if test "${CARCH}" == 'x86_64'; then
+    suffix='64'
+  fi
+
+  cp -r "$srcdir/ConEmu.xml" "${pkgdir}/opt/bin"
+
+  cd "$srcdir/$_realname/Release"
+  cp -r "ConEmu.exe" "${pkgdir}/opt/bin/ConEmu.exe"
+
+  cd "ConEmu"
+  cp -r "ConEmuC.exe"  "${pkgdir}/opt/bin/ConEmuC${suffix}.exe"
+  cp -r "ConEmuCD.dll" "${pkgdir}/opt/bin/ConEmuCD${suffix}.dll"
+  cp -r "ConEmuHk.dll" "${pkgdir}/opt/bin/ConEmuHk${suffix}.dll"
+}
+
