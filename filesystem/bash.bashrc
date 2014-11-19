@@ -15,8 +15,8 @@
 # If not running interactively, don't do anything
 [[ "$-" != *i* ]] && return
 
-# Set a default prompt of: user@host and current_directory
-PS1='\[\e]0;\w\a\]\n\[\e[32m\]\u@\h \[\e[33m\]\w\[\e[0m\]\n\$ '
+# Set a default prompt of: user@host, MSYSTEM variable, and current_directory
+PS1='\[\e]0;\w\a\]\n\[\e[32m\]\u@\h \[\e[35m\]$MSYSTEM\[\e[0m\] \[\e[33m\]\w\[\e[0m\]\n\$ '
 
 # Uncomment to use the terminal colours set in DIR_COLORS
 # eval "$(dircolors -b /etc/DIR_COLORS)"
