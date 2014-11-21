@@ -8,6 +8,17 @@ CppApplication {
         "resource.rc",
         "resource.h",
     ]
+    cpp.cppFlags: ["-std=c99"]
+    Properties {
+        condition: qbs.buildVariant == "debug"
+        cpp.defines: ["_DEBUG"]
+    }
+
+    Properties {
+        condition: qbs.buildVariant == "release"
+        cpp.defines: ["NDEBUG"]
+    }
+
     cpp.staticLibraries: "psapi"
 
     Group {     // Properties for the produced executable
