@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+# Most credit to:
+# http://billauer.co.il/blog/2009/07/gimp-xcf-jpg-jpeg-convert-bash-script/
+
+if ! which gimp > /dev/null 2>&1; then
+  [ -f /mingw64/bin/gimp.exe ] && PATH=/mingw64/bin:$PATH
+fi
+
+if ! which gimp > /dev/null 2>&1; then
+  [ -f /mingw32/bin/gimp.exe ] && PATH=/mingw32/bin:$PATH
+fi
+
+if ! which gimp > /dev/null 2>&1; then
+  echo "gimp not found, do you need to install it?"
+  exit 1
+fi
+
+if [ "1" = "0" ]; then
+{
+cat <<EOF
+(define (convert-xcf-to-jpeg filename outfile)
+  (let* (
+	 (image (car (gimp-file-load RUN-NONINTERACTIVE filename filename)))
+	 (drawable (car (gimp-image-merge-visible-layers image CLIP-TO-IMAGE)))
+	 )
+    (file-jpeg-save RUN-NONINTERACTIVE image drawable outfile outfile .9 0 0 0 " " 0 1 0 1)
+    (gimp-image-delete image) ; ... or the memory will explode
+    )
+  )
+
+(gimp-message-set-handler 1) ; Messages to standard output
+EOF
+
+for i in *.xcf; do
+  echo "(gimp-message \"$i\")"
+  echo "(convert-xcf-to-jpeg \"$i\" \"${i%%.xcf}.jpg\")"
+done
+
+echo "(gimp-quit 0)"
+} | gimp -i -b -
+fi
+
+FRAMES=0
+JPG_FILES=$(find . -name "*.jpg" -printf "%f\n" | sort)
+echo "" > ../splash_frames.rc.h
+echo "" > ../splash_frames.h
+for i in $JPG_FILES; do
+  FRAME_NUM=$(echo $i | sed 's|[^0-9]||g')
+  mv "${i}" ../
+  echo "#define IDC_SPLASH_JPG_${FRAME_NUM} IDC_SPLASH_START + ${FRAMES}" >> ../splash_frames.h
+  echo IDC_SPLASH_JPG_${FRAME_NUM} RCDATA MOVEABLE PURE \"${i}\" >> ../splash_frames.rc2
+  FRAMES=`expr $FRAMES + 1`
+done
+echo "#define IDC_SPLASH_COUNT ${FRAMES}" >> ../splash_frames.h

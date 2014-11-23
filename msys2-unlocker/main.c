@@ -14,6 +14,7 @@
 #include <windows.h>
 #include <psapi.h>
 #include <shellapi.h>
+#include <gdiplus.h>
 
 #include <stdio.h>
 #include <conio.h>
@@ -23,7 +24,7 @@
 
 typedef enum {
 
-  /* Conflict detection. */
+  /* For conflict detection. */
   kActionUnspeficied,
   /* --help */
   kActionHelpOnly,
@@ -36,7 +37,7 @@ typedef enum {
 
 typedef enum {
 
-  /* Conflict detection. */
+  /* For conflict detection. */
   kUnlockUnknown,
   /* --observe */
   kUnlockObserve,
@@ -49,18 +50,19 @@ typedef enum {
 
 typedef enum {
 
+  kInterfaceStyleNone = 0,
   /* --console */
-  kInterfaceTUI,
+  kInterfaceStyleTUI = (1<<0),
   /* --gui */
-  kInterfaceGUI,
+  kInterfaceStyleGUI = (1<<1),
 
-} kInterface;
+} kInterfaceStyle;
 
 typedef enum {
 
   /* All is good */
   kSuccess = 0,
-  /* Asked to move files, but the replacements
+  /* Asked to move files (--move-, but the replacements
      do not exist. */
   kSuccessNoReplacements,
 
@@ -78,6 +80,9 @@ typedef enum {
   kFailMalloc,
   kFailEnumProc,
   kFailForce,
+  kFailGdiplusStartup,
+  kFailGuiSplashGfxInit,
+  kFailTuiNYI,
 
 } kExitCode;
 
@@ -88,15 +93,28 @@ typedef struct {
 } ProcessDetails;
 
 typedef struct {
+  ULONG_PTR gdi_plus_token;
+  HRSRC splash_jpg_hrsrcs[IDC_SPLASH_COUNT];
+  HGLOBAL splash_jpg_bufs[IDC_SPLASH_COUNT];
+  GpBitmap* splash_jpg_bitmaps[IDC_SPLASH_COUNT];
+} GraphicalInterfaceState;
+
+typedef struct {
+} TextualInterfaceState;
+
+typedef struct {
   float n_secs;
   BOOL displayed_splash;
-  HRSRC splash_jpg;
-  HBITMAP splash_jpg_bitmap;
+  GraphicalInterfaceState gui;
+  TextualInterfaceState tui;
 } InterfaceState;
 
 /* Global variables plus things
    that are updated dynamically */
 typedef struct {
+  InterfaceState if_state;
+
+  // TODORMD :: Move this into GraphicalInterfaceState?
   HWND appHWnd;
 
   /* EnumerateLockingProcesses() */
@@ -118,7 +136,7 @@ typedef struct {
   char* move_suffix;
 
   kUnlockMode unlock_mode;
-  kInterface interface_style;
+  kInterfaceStyle interface_style; /* Bitmask, can have 2 modes active at once */
   size_t num_filenames;
   char** p_filenames;
 
@@ -148,6 +166,13 @@ BOOL debug = FALSE;
       fflush(stdout);                 \
     }                                 \
   } while (0)
+
+#define fatal_err_printf(...)                  \
+  do {                                         \
+      fprintf(stderr, "%s(): ", __FUNCTION__); \
+      printf(__VA_ARGS__);                     \
+      fflush(stdout);                          \
+    } while (1)
 
 typedef BOOL (*OpenProcessFilterFn)(void* p_in_args, HANDLE proc_handle,
                                     HANDLE module_handle, void* p_out_value);
@@ -202,10 +227,11 @@ kExitCode ParseArguments(int argc, char* argv[], Arguments* args) {
   args->num_filenames = 0;
   args->p_filenames = NULL;
   args->move_suffix = NULL;
+  args->interface_style = kInterfaceStyleNone;
   if (LaunchedFromConsole()) {
-    args->interface_style = kInterfaceTUI;
+    args->interface_style = kInterfaceStyleTUI;
   } else {
-    args->interface_style = kInterfaceGUI;
+    args->interface_style = kInterfaceStyleGUI;
   }
   int argi;
   size_t i;
@@ -228,9 +254,9 @@ kExitCode ParseArguments(int argc, char* argv[], Arguments* args) {
     for (argi = 1; argi < argc; ++argi) {
       if (argv[argi] != NULL) {
         if (!strcmp("--gui", argv[argi])) {
-          args->interface_style = kInterfaceGUI;
+          args->interface_style = args->interface_style|kInterfaceStyleGUI;
         } else if (!strcmp("--tui", argv[argi])) {
-          args->interface_style = kInterfaceTUI;
+          args->interface_style = args->interface_style|kInterfaceStyleTUI;
         } else if (!strcmp("--observe", argv[argi])) {
           args->action = kActionUnlocker;
           args->unlock_mode = kUnlockObserve;
@@ -670,7 +696,7 @@ kExitCode UpdateState(Arguments* args, GlobalState* state) {
   for (i = 0; i < state->num_locking_processes; ++i) {
     uint32_t conflicts = 0x1010101;
     if (conflicts) {
-      if (args->interface_style == kInterfaceGUI) {
+      if (args->interface_style & kInterfaceStyleGUI) {
         INT_PTR result =
             DialogBoxParamA(NULL, MAKEINTRESOURCEA(IDC_UNLOCKERDIALOG),
                             state->appHWnd, DialogProc, (LPARAM)state);
@@ -683,41 +709,168 @@ kExitCode UpdateState(Arguments* args, GlobalState* state) {
   return (kSuccess);
 }
 
-void InterfaceStateInit(InterfaceState* p_if_state) {
+kExitCode TextualInterfaceInit(Arguments* args, TextualInterfaceState* p_if_tui_state/*InterfaceState* p_if_state*/) {
+  (void)args;
+  (void)p_if_tui_state;
+  if (TRUE) {
+    dbg_printf("Error: TextualInterfaceInit NYI\n");
+    return (kFailTuiNYI);
+  }
+
+  return (kSuccess);
+}
+
+kExitCode LoadBitmapFromResource(HRSRC* p_hrsrc, HGLOBAL* p_buf, GpBitmap** pp_bitmap, DWORD rcid) {
+    *p_hrsrc = NULL;
+    *p_buf = NULL;
+
+    *p_hrsrc = FindResource(NULL, MAKEINTRESOURCE(rcid), MAKEINTRESOURCE(RT_RCDATA));
+    if (*p_hrsrc == NULL) {
+      return (kFailGuiSplashGfxInit);
+    }
+
+    DWORD size = SizeofResource(NULL, *p_hrsrc);
+    if (!size) {
+      return (kFailGuiSplashGfxInit);
+    }
+    *p_buf = GlobalAlloc(GMEM_MOVEABLE, size);
+    if (*p_buf == NULL) {
+      return (kFailGuiSplashGfxInit);
+    }
+    void* buf = GlobalLock(*p_buf);
+    if (buf == NULL) {
+      return (kFailGuiSplashGfxInit);
+    }
+    void* res_data = LockResource(LoadResource(NULL, *p_hrsrc));
+    if (res_data == NULL) {
+      return (kFailGuiSplashGfxInit);
+    }
+    memcpy(buf, res_data, size);
+    IStream* stream = NULL;
+    if (CreateStreamOnHGlobal(buf, FALSE, &stream) != S_OK) {
+      return (kFailGuiSplashGfxInit);
+    }
+    GdipLoadImageFromStream(stream, pp_bitmap);
+    return (kSuccess);
+}
+
+kExitCode GraphicalInterfaceInit(Arguments* args, GraphicalInterfaceState* p_if_gui_state/*InterfaceState* p_if_state*/) {
+//    typedef struct {
+//      ULONG_PTR gdi_plus_token;
+//      HRSRC splash_jpg;
+//      HBITMAP splash_jpg_bitmap;
+//    } GraphicalInterfaceState;
+    /* http://www.codeproject.com/Articles/3537/Loading-JPG-PNG-resources-using-GDI
+       http://stackoverflow.com/questions/9240188/how-to-load-a-custom-binary-resource-in-a-vc-static-library-as-part-of-a-dll
+       http://www.codeproject.com/Articles/15523/Own-thread-Win-splash-screen .. http://www.codeproject.com/Messages/3913756/Added-code-to-getImage-from-resource.aspx
+       
+    */
+//  GraphicalInterfaceState* p_if_gui_state = &p_if_state->gui;
+  (void)args;
+  GdiplusStartupInput gdi_plus_statup_input;
+  gdi_plus_statup_input.GdiplusVersion = 1;
+  gdi_plus_statup_input.DebugEventCallback = NULL;
+/*
+  http://msdn.microsoft.com/en-us/library/windows/desktop/ms534067(v=vs.85).aspx
+  
+  Boolean value that specifies whether to suppress the GDI+ background thread. If you set this member to
+  TRUE, GdiplusStartup returns (in its output parameter) a pointer to a hook function and a pointer to an
+  unhook function. You must call those functions appropriately to replace the background thread. If you
+  do not want to be responsible for calling the hook and unhook functions, set this member to FALSE.
+  The default value is FALSE.
+  
+  .. SINCE I'LL IMPLEMENT MY OWN THREAD I PROBABLY WANT SuppressBackgroundThread = TRUE FINALLY.
+*/
+  gdi_plus_statup_input.SuppressBackgroundThread = FALSE;
+  gdi_plus_statup_input.SuppressExternalCodecs = TRUE;
+  
+  GpStatus status = GdiplusStartup(&p_if_gui_state->gdi_plus_token, &gdi_plus_statup_input, NULL);
+  if (status != Ok) {
+    dbg_printf("Error: GdiplusStatup status %d", status);
+    return (kFailGdiplusStartup);
+  }
+  for (size_t i = 0; i < IDC_SPLASH_COUNT; ++i) {
+    kExitCode load_bitmap_exitcode = LoadBitmapFromResource (&p_if_gui_state->splash_jpg_hrsrcs[i], &p_if_gui_state->splash_jpg_bufs[i], &p_if_gui_state->splash_jpg_bitmaps[i], IDC_SPLASH_START + i);
+    if (load_bitmap_exitcode != kSuccess) {
+      return (load_bitmap_exitcode);
+    }
+    dbg_printf("splash_jpg[%02zd] = hrsrc=%p, buf=%p, bitmap=%p\n", i, p_if_gui_state->splash_jpg_hrsrcs[i], p_if_gui_state->splash_jpg_bufs[i], p_if_gui_state->splash_jpg_bitmaps[i]);
+  }
+  return (kSuccess);
+}
+
+kExitCode InterfaceStateInit(Arguments* args, InterfaceState* p_if_state) {
   p_if_state->n_secs = 0.0f;
 
-  /* http://www.codeproject.com/Articles/3537/Loading-JPG-PNG-resources-using-GDI
-     http://stackoverflow.com/questions/9240188/how-to-load-a-custom-binary-resource-in-a-vc-static-library-as-part-of-a-dll
-  */
-  p_if_state->splash_jpg = FindResource(NULL, MAKEINTRESOURCE(IDC_SPLASH_JPG),
-                                        MAKEINTRESOURCE(RT_RCDATA));
-  p_if_state->splash_jpg_bitmap =
-      LoadBitmap(NULL, MAKEINTRESOURCE(IDC_SPLASH_JPG));
-  dbg_printf("splash_jpg %p, splash_jpg_bitmap %p\n", p_if_state->splash_jpg,
-             p_if_state->splash_jpg_bitmap);
+  kExitCode status = kSuccess;
+  kExitCode status_tui = kSuccess;
+  kExitCode status_gui = kSuccess;
+
+  if (args->interface_style & kInterfaceStyleTUI) {
+      status_tui = TextualInterfaceInit(args, &p_if_state->tui);
+  }
+  if (args->interface_style & kInterfaceStyleGUI) {
+      status_gui = GraphicalInterfaceInit(args, &p_if_state->gui);
+  }
+  if (status_tui != kSuccess && status_gui != kSuccess) status = status_tui;
+
+  return (status);
+}
+
+kExitCode TextualInterfaceExit(Arguments* args, TextualInterfaceState* p_if_tui_state) {
+  (void)args;
+  (void)p_if_tui_state;
+  return (kSuccess);
+}
+
+kExitCode GraphicalInterfaceExit(Arguments* args, GraphicalInterfaceState* p_if_gui_state) {
+  (void)args;
+  (void)p_if_gui_state;
+  return (kSuccess);
+}
+
+kExitCode InterfaceStateExit(Arguments* args, InterfaceState* p_if_state) {
+    /* Tell the UI thread to die .. */
+    if (args->interface_style & kInterfaceStyleTUI) {
+      TextualInterfaceExit(args, &p_if_state->tui);
+    }
+    if (args->interface_style & kInterfaceStyleGUI) {
+      GraphicalInterfaceExit(args, &p_if_state->gui);
+    }
+    return (kSuccess);
+}
+
+void CleanupAndExit(Arguments* args, GlobalState* state, kExitCode exit_code) {
+  kExitCode cleanup_exit_code = InterfaceStateExit(args, &state->if_state);
+  if (cleanup_exit_code) {
+    fatal_err_printf("Error (on-exit, ignored): InterfaceStateExit failed.");
+  }
+  exit(exit_code);
 }
 
 int main(int argc, char* argv[]) {
   Arguments args;
   GlobalState state;
-  InterfaceState if_state;
   state.num_locking_processes = 0;
   state.p_locking_processes = NULL;
 
   state.appHWnd = FindConsoleHandle();
 
-  InterfaceStateInit(&if_state);
-
-  kExitCode args_result = ParseArguments(argc, argv, &args);
-  if (args_result == kUserNoFiles) {
+  kExitCode exit_code = ParseArguments(argc, argv, &args);
+  if (exit_code == kUserNoFiles) {
     PrintHelp();
     fprintf(stderr, "\nError: No filename(s) specified.");
-    return (kUserNoFiles);
-  } else if (args_result == kUserTooManyFiles) {
+    return (exit_code);
+  } else if (exit_code == kUserTooManyFiles) {
     fprintf(stderr, "\nError: Too many filenames specified, max is 32.\n");
-    return (kUserTooManyFiles);
-  } else if (args_result != kSuccess) {
-    return (args_result);
+    return (exit_code);
+  } else if (exit_code != kSuccess) {
+    return (exit_code);
+  }
+
+  exit_code = InterfaceStateInit(&args, &state.if_state);
+  if (exit_code != kSuccess) {
+    CleanupAndExit(&args, &state, exit_code);
   }
 
   if (args.action == kActionHelpOnly) {
