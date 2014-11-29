@@ -25,7 +25,7 @@ set MSYSTEM=MSYS
 rem To activate windows native symlinks uncomment next line
 rem set MSYS=winsymlinks:nativestrict
 rem Set debugging program for errors
-rem set MSYS=error_start:%WD%../../mingw32/bin/qtcreator.exe|-debug|<process-id>
+rem set MSYS=error_start:%WD%../../mingw32/bin/qtcreator.exe^|-debug^|^<process-id^>
 set MSYSCON=mintty.exe
 if "x%1" == "x-consolez" set MSYSCON=console.exe
 if "x%1" == "x-mintty" set MSYSCON=mintty.exe
