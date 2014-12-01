@@ -1,0 +1,125 @@
+# ArchLinux:
+# Maintainer: Adrian Perez <aperez@igalia.com>
+# Contributor: rway <rway07@gmail.com>
+# Contributor: wabi <aschrafl@jetnet.ch>
+# Contributor: Alexander RÃ¸dseth <rodseth@gmail.com>
+# Contributor: Andreas Schrafl <aschrafl@gmail.com>
+# Contributor: piojo <aur@zwell.net>
+# Contributor: hack.augusto <hack.augusto@gmail.com>
+# MSYS2:
+# Maintainer: Ray Donnelly <mingw.android@gmail.com>
+
+pkgname=depot-tools-git
+pkgver=r2542.77b74b5
+pkgrel=1
+pkgdesc='Build tools for working with Chromium development, include gclient'
+arch=('any')
+url='http://dev.chromium.org/developers/how-tos/install-depot-tools'
+source=("${pkgname}::git+https://chromium.googlesource.com/chromium/tools/depot_tools.git"
+        'depot_tools.sh' 'repo_fix.sh')
+license=('Custom')
+depends=('python2' 'python2-colorama') # 'python2-pylint')
+makedepends=('git' 'scons' 'setconf')
+provides=('depot_tools' 'gclient')
+conflicts=('gclient-svn' 'depot_tools-svn')
+options=('!strip')
+md5sums=('SKIP'
+         '39d5d3e78fa7456a1d8dd5ac10a1c8bb'
+         'fb0c546a078c312aa64c1f2a31599557')
+install="depot_tools.install"
+
+scripts_to_fix=(
+  apply_issue
+  drover
+  gcl
+  git-cl
+  git-gs
+  git-try
+  hammer
+  weekly
+  wtf
+  update_depot_tools
+  fetch
+  download_from_google_storage
+  gn
+  clang-format
+  git-runhooks
+  roll-dep
+)
+
+pkgver () {
+  cd "${pkgname}"
+  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare () {
+  cd "${pkgname}"
+
+  # This tools work with python2, but MSYS2 default is python3. Fix it.
+  # pylint is in extra, ninja is an executable and it does not need any change.
+  # gclient.py require a fix for work correctly with python2-colorama
+  # Another way is make default python2, but I don't think is a good idea!
+  # Fixing python scripts.
+  msg "Patching script for python2 usage..."
+  for script in *.py
+  do
+    sed -i -r -e 's/#!(.*)python.*/#!\1python2/' "${script}"
+  done
+
+  # Fixing gclient.py
+  sed -i -r -e 's/#!(.*)python.*/#!\1python2/' \
+            -e 's/from third_party import colorama/import colorama/' \
+            -e 's/from third_party.colorama import Fore/from colorama import Fore/' \
+               gclient.py
+  sed -i -e 's/exec python/exec python2/' \
+             gclient
+
+  # Fixing repo
+  sed -r -i -e 's/"exec" python/"exec" python2/' repo
+
+  # Fixing scripts in root folder
+  for script in "${scripts_to_fix[@]}"
+  do
+    sed -r -i -e 's/exec python/exec python2/' \
+              -e 's/#!(.*)python.*/#!\1python2/' \
+                 "${script}"
+  done
+
+  # Fixing scripts in other folders
+  # Is it safe remove those folders?? I don't know, further tests required. For now fix it and include all tools.
+  sed -r -i -e 's/python/python2/' git-cl-upload-hook
+
+  for script in {git_utils/git-tree-prune,support/chromite_wrapper,tests/sample_pre_commit_hook,third_party/pylint/epylint.py}
+  do
+    sed -r -i -e 's/env python/env python2/' "${script}"
+  done
+
+  for folder in {testing_support,tests,third_party}
+  do
+    cd "${folder}"
+    for script in *.py
+    do
+      sed -r -i -e 's/env python/env python2/' "${script}"
+    done
+    cd ..
+  done
+}
+
+package()
+{
+  # Creating directories
+  install -d "${pkgdir}/opt"
+
+  cp -r "${srcdir}/${pkgname}" "${pkgdir}/opt/"
+
+  # Export PATH
+  install -Dm755 "${srcdir}/depot_tools.sh" "${pkgdir}/etc/profile.d/depot_tools.sh"
+
+  # Install repo_fix.sh script
+  install -Dm 755 "${srcdir}/repo_fix.sh" "${pkgdir}/opt/${pkgname}"
+
+  # Install License
+  install -Dm644 "${pkgdir}/opt/${pkgname}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+  rm -rf "${pkgdir}/opt/${pkgname}/.git"
+}
