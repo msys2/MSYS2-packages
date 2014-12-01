@@ -13,7 +13,7 @@ depends=('gdbm' 'libbz2' 'libopenssl' 'zlib' 'libexpat' 'libsqlite' 'libffi' 'nc
 makedepends=('libbz2-devel' 'openssl-devel' 'zlib-devel' 'libexpat-devel' 'libgdbm-devel' 'libsqlite-devel' 'libffi-devel' 'ncurses-devel' 'libreadline-devel')
 #optdepends=('tk: for IDLE')
 conflicts=('python<3')
-options=('!makeflags')
+options=('!makeflags') # '!strip' 'debug')
 source=(http://www.python.org/ftp/python/${pkgver%rc?}/Python-${pkgver}.tar.xz
         0010-ctypes-util-find_library.patch
         0020-tkinter-x11.patch
@@ -91,8 +91,27 @@ prepare() {
   rm -r Modules/_ctypes/{darwin,libffi}*
 }
 
+check() {
+  cd "${srcdir}/Python-${pkgver}"
+  make test
+}
+
 build() {
   cd "${srcdir}/Python-${pkgver}"
+
+  if check_option "strip" "y"; then
+    LDFLAGS+=" -s "
+  fi
+  if check_option "debug" "n"; then
+    CFLAGS+=" -DNDEBUG "
+    CXXFLAGS+=" -DNDEBUG "
+  else
+    plain " -DDEBUG -DPy_DEBUG -D_DEBUG does not work unfortunately .."
+    #    CFLAGS+=" -DDEBUG -DPy_DEBUG -D_DEBUG "
+    #    CXXFLAGS+=" -DDEBUG -DPy_DEBUG -D_DEBUG "
+    CFLAGS+=" -O0 -ggdb"
+    CXXFLAGS+=" -O0 -ggdb"
+  fi
 
   export OPT="${CFLAGS}"
   ./configure --build=${CHOST} \
