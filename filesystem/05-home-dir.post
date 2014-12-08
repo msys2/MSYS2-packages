@@ -8,11 +8,217 @@ maybe_create_home ()
   #  mode 666 become 644)
   umask 022
 
-  # Here is how HOME is set, in order of priority, when starting from Windows
-  #  1) From existing HOME in the Windows environment, translated to a Posix path
-  #  2) from /etc/passwd, if there is an entry with a non empty directory field
-  #  3) from HOMEDRIVE/HOMEPATH
-  #  4) / (root)
+  # Here is how HOME is set, in order of priority, when starting from Windows.
+  #
+  # /etc/nsswitch.conf supports three settings to configure where to get the 
+  # pw_dir, pw_shell, and pw_gecos content of a passwd entry from:
+  #   db_home: schema...     # Define how to fetch the pw_dir entry.
+  #   db_shell: schema...    # Define how to fetch the pw_shell entry.
+  #   db_gecos: schema...    # Define how to fetch the pw_gecos entry.
+  #
+  # The db_home: setting
+  # The db_home: setting defines how Cygwin fetches the user's home directory, or,
+  # more precise, the content of the pw_dir member of the user's passwd entry. The 
+  # following list describes the meaning of each schema when used with db_home:
+  #
+  # - windows
+  # The user's home directory is set to the same directory which is used as 
+  # Windows home directory. This is the homeDrive AD attribute if set, or the homeDirectory 
+  # AD attribute if homeDrive is not set. For SAM accounts, this is equivalent to the "Home folder" 
+  # setting in SAM. If both attributes are unset, Cygwin falls back to the user's local profile 
+  # directory, typically something along the lines of C:\Users\$USERNAME. Of course, the Windows 
+  # directory is converted to POSIX-style by Cygwin.
+  #
+  # - cygwin
+  # AD only: The user's home directory is set to the POSIX path given in the cygwinHome attribute 
+  # from the cygwinUser auxiliary class.
+  #
+  # - unix
+  # AD only: The user's home directory is set to the POSIX path given in the unixHomeDirectory 
+  # attribute from the posixAccount auxiliary class.
+  #
+  # - desc
+  # The user's home directory is set to the POSIX path given in the home="..." XML-alike setting 
+  # in the user's description attribute in SAM or AD.
+  # @ad_attribute
+  # AD only: The user's home directory is set to the path given in the ad_attribute attribute. 
+  # The path can be given as Windows or POSIX path.
+  # /path
+  # The user's home directory is set to the given POSIX path.
+  #
+  # Fallback
+  # If none of the schemes given for db_home: define a non-empty directory, the user's home directory 
+  # is set to /home/$USERNAME. As has been briefly mentioned before, the default setting for db_home: is
+  #
+  #   db_home: cygwin desc
+  # So, for AD accounts Cygwin tries to fetch the path from the user's cygwinHome attribute first.
+  # If that's not available, or if the account is a local SAM account, Cygwin tries to get the home 
+  # directory from the home= attribute of the user's description field. If that's not available, 
+  # Cygwin falls back to the path /home/$USERNAME.
+  #
+  # The db_shell: setting
+  #
+  # The db_shell: setting defines how Cygwin fetches the user's login shell, the content of the 
+  # pw_shell member of the user's passwd entry.
+  # The following list describes the meaning of each schema when used with db_shell:
+  #
+  # - windows
+  # The windows schema is ignored for now. The logical choice would be CMD, but that introduces 
+  # some problems, for instance the fact that CMD has no concept of running as login shell. This may 
+  # change in future.
+  #
+  # - cygwin
+  # AD only: The user's home directory is set to the POSIX path given in the cygwinShell attribute 
+  # from the cygwinUser auxiliary class. See also the section called “The cygwin schema”.
+  #
+  # - unix
+  # AD only: The user's login shell is set to the POSIX path given in the loginShell attribute from 
+  # the posixAccount auxiliary class. See also the section called “The unix schema”.
+  #
+  # - desc
+  # The user's login shell is set to the POSIX path given in the shell="..." XML-alike setting in the 
+  # user's description attribute in SAM or AD. See the section called “The desc schema” for a detailed 
+  # description.
+  #
+  # @ad_attribute
+  # AD only: The user's login shell is set to the path given in the ad_attribute attribute. The path can 
+  # be given as Windows or POSIX path.
+  # /path
+  # The user's login shell is set to the given POSIX path. Albeit not being as important here, the wildcards 
+  # described in the section called “Settings defining how to create the passwd entry” are also available 
+  # for specifying a login shell path.
+  # Fallback
+  # If none of the schemes given for db_shell: define a non-empty pathname, the user's login shell is set to /bin/bash.
+  # As for db_home:, the default setting for db_shell: is
+  #
+  #   db_shell: cygwin desc
+  # So, for AD accounts Cygwin tries to fetch the path from the user's cygwinShell attribute first. If that's
+  # not available, or if the account is a local SAM account, Cygwin tries to get the home directory from the 
+  # shell= attribute of the user's description field. If that's not available, Cygwin falls back to /bin/bash.
+  #
+  # The db_gecos: setting
+  #
+  # The db_gecos: setting defines how to fetch additional content for the pw_gecos member of the user's passwd 
+  # entry. There's always a fixed, Cygwin-specific part in the pw_gecos field for identifying the account. 
+  # However, an administrator might want to add informative content like, for instance, the user's full name. 
+  # That's what the db_gecos: setting is for. The following list describes the meaning of each schema when used with db_gecos:
+  #
+  # - windows
+  # Add the AD displayName attribute or, for SAM accounts, the "Full name" entry to the pw_gecos field.
+  #
+  # - cygwin
+  # AD only: The content of the cygwinGecos attribute from the cygwinUser auxiliary class is added to pw_gecos.
+  #
+  # - unix
+  # AD only: The content of the gecos attribute from the posixAccount auxiliary class is added to pw_gecos.
+  #
+  # - desc
+  # The content of the gecos="..." XML-alike setting in the user's description attribute in SAM or AD is added to pw_gecos.
+  #
+  # @ad_attribute
+  # AD only: The content of the ad_attribute attribute is added to pw_gecos.
+  # /path
+  # The string following the slash is added to pw_gecos.
+  # Fallback
+  # If none of the schemes given for db_gecos: define a non-empty pathname, nothing is added to pw_gecos.
+  # As for db_home: and db_shell:, the default setting for db_gecos: is
+  #
+  #  db_gecos: cygwin desc
+  # So, for AD accounts Cygwin tries to fetch the string from the user's cygwinGecos attribute first. 
+  # If that's not available, or if the account is a local SAM account, Cygwin tries to get the home directory 
+  # from the gecos= attribute of the user's description field. If that's not available, Cygwin just doesn't add 
+  # anything to pw_gecos.
+  #
+  # The cygwin schema
+  #
+  # The cygwin schema is based on a Cygwin-specific Active Directory schema extension. Using this schema 
+  # extension allows to maintain Cygwin-specific settings entirely within AD, without colliding with any 
+  # other schema.
+  # The cygwin schema extension is available in a default Cygwin installation in the file 
+  # /usr/share/Msys/cygwin.ldif. To install the schema extension, you have to be schema admin, and you 
+  # have to run the ldifde command on the schema master. The installation itself is rather simple. 
+  # Assuming you're schema admin and running a shell with administrative privileges:
+  #
+  #   $ cd /usr/share/cygwin
+  #   $ ldifde -i -f cygwin.ldif -k -c "CN=schema,CN=Configuration,DC=X" #schemaNamingContext
+  # Afterwards, the auxiliary class cygwinUser is attached to the class User, and the auxiliary class cygwinGroup is attached to the class Group. The new attributes can be immediately edited using ADSI Edit.
+  #
+  # At the time of writing the following attributes are utilized by Cygwin:
+  #
+  # cygwinHome	Used as Cygwin home directory with db_home: cygwin. See the section called “The db_home: setting”.
+  # cygwinShell	Used as Cygwin login shell with db_shell: cygwin. See the section called “The db_shell: setting”.
+  # cygwinGecos	Content will be added to the pw_gecos field with db_gecos: cygwin. See the section called “The db_gecos: setting”.
+  # The unix schema
+  #
+  # The unix schema utilizes the posixAccount attribute extension. This is one of two schema extensions which are 
+  # connected to AD accounts, available by default starting with Windows Server 2003 R2. They are usually not set, 
+  # unless used by the Active Directory Server for NIS feature (deprecated since Server 2012 R2). Two schemata are interesting 
+  # for Cygwin, posixAccount, connected to user accounts, and posixGroup, connected to group accounts. Both follow the description 
+  # of RFC 2307, an Approach for Using LDAP as a Network Information Service. The user attributes utilized by Cygwin are:
+  #
+  # unixHomeDirectory - Used as Cygwin home directory with db_home: unix. See the section called “The db_home: setting”.
+  # loginShell - Used as Cygwin login shell with db_shell: unix. See the section called “The db_shell: setting”.
+  # gecos - Content will be added to the pw_gecos field with db_gecos: unix. See the section called “The db_gecos: setting”.
+  # uidNumber - See the section called “NFS account mapping” and the section called “Samba account mapping”.
+  # The group attributes utilized by Cygwin are:
+  #
+  # gidNumber	See the section called “NFS account mapping” and the section called “Samba account mapping”.
+  # Apart from power shell scripting or inventing new CLI tools, these attributes can be changed using the Attribute Editor 
+  # tab in the user properties dialog of the Active Directory Users and Computers MMC snap-in. Alternatively, if the Server 
+  # for NIS administration feature has been installed, there will be a UNIX Attributes tab which contains the required fields, 
+  # except for the gecos field. Last resort is ADSI Edit.
+  #
+  # The desc schema
+  #
+  # When using user accounts from the local account database, the SAM, there are only a very limited number of settings available. 
+  # In contrast to Active Directory there's no way to add fields to a user's entry. You have to make do with the fields available. 
+  # The method to utilize the description field has been mainly introduced for those accounts, usually the only ones a home user has. 
+  # However, for symmetry, and because there may be a reason to use this in an AD environment, this schema is also supported for AD users.
+  #
+  # Note
+  #
+  # The presentation of local user account settings on Windows is confusing, to say the least. The description field is not visible at all 
+  # in the user settings available via the User Accounts control settings. And while it's called Description in the Local Users and Groups MMC 
+  # snap-in (available, for instance, via the Computer Management GUI), in the command line tool net user the same field is called comment. 
+  # The latter is especially confusing for AD admins, because the comment attribute in AD is called usercomment on the command line. Confused? 
+  # Never mind, you're not the only one...
+  #
+  # Fortunately you can utilize the description field even if you're running a "home edition" of Windows, by using the command line. The net user 
+  # command allows to set all values in the SAM, even if the GUI is crippled.
+  #
+  # A Cygwin SAM comment entry looks like this:
+  #
+  # <cygwin key="value" key="value" [...] />
+  # The supported keys are:
+  #
+  # home="value" - Sets the Cygwin home dir to value.
+  # shell="value" - Sets the Cygwin login shell to value.
+  # gecos="value" - Adds the string value to the user's gecos field.
+  # The next two settings are only supported for SAM accounts.
+  #
+  # group="value" - Sets the Cygwin primary group of the account to value, provided that the user is already a member of that group. 
+  # This allows to override the default None primary group for local accounts. One nice idea here is, for instance, group="Users".
+  # unix="value" - Sets the NFS/Samba uid of the user to the decimal value.
+  # The <cygwin .../> string can start at any point in the comment, but you have to follow the rules:
+  #
+  # It starts with "<cygwin " and ends with "/>".
+  # The "cygwin" string and the key names have to be lowercase.
+  # No spaces between key and "value", just the equal sign.
+  # The value must be placed within double quotes and it must not contain a double quote itself. The double quotes are required for the decimal values as well!
+  # Note
+  #
+  # There's also a length restriction imposed by Windows. The description entry has a maximumn length of 1023 characters.
+  #
+  # CMD example:
+  #
+  # net user corinna /comment:"<cygwin home=\"/home/foo\"/>"
+  # Bash example (use single quotes):
+  #
+  # net user corinna /comment:'<cygwin home="/home/foo"/>'
+  # For changing group comments, use the `net localgroup' command. The supported key/value pair for SAM groups are:
+  #
+  # unix="value" - Sets the NFS/Samba gid of the group to the decimal value.
+
   # If the home directory doesn't exist, create it.
   if [ ! -d "${HOME}" ]; then
     if mkdir -p "${HOME}"; then
