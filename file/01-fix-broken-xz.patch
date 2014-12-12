@@ -1,0 +1,44 @@
+From abc95cd644418cc5205a8ad07d864f0851ac49df Mon Sep 17 00:00:00 2001
+From: Christos Zoulas <christos@zoulas.com>
+Date: Thu, 11 Dec 2014 11:47:08 +0000
+Subject: [PATCH] PR/405: file -bizL git-2.1.3.tar.xz broke because the xz
+ decompressor dies with SIGPIPE when we stop reading from it early. ignore
+ SIGPIPE>
+
+---
+ src/compress.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/compress.c b/src/compress.c
+index fa9e07a..bf93839 100644
+--- a/src/compress.c
++++ b/src/compress.c
+@@ -45,6 +45,7 @@ FILE_RCSID("@(#)$File: compress.c,v 1.74 2014/10/26 20:23:30 christos Exp $")
+ #endif
+ #include <string.h>
+ #include <errno.h>
++#include <signal.h>
+ #if !defined(__MINGW32__) && !defined(WIN32)
+ #include <sys/ioctl.h>
+ #endif
+@@ -103,10 +104,12 @@ file_zmagic(struct magic_set *ms, int fd, const char *name,
+ 	size_t i, nsz;
+ 	int rv = 0;
+ 	int mime = ms->flags & MAGIC_MIME;
++	sig_t osigpipe;
+ 
+ 	if ((ms->flags & MAGIC_COMPRESS) == 0)
+ 		return 0;
+ 
++	osigpipe = signal(SIGPIPE, SIG_IGN);
+ 	for (i = 0; i < ncompr; i++) {
+ 		if (nbytes < compr[i].maglen)
+ 			continue;
+@@ -133,6 +136,7 @@ file_zmagic(struct magic_set *ms, int fd, const char *name,
+ 		}
+ 	}
+ error:
++	(void)signal(SIGPIPE, osigpipe);
+ 	free(newbuf);
+ 	ms->flags |= MAGIC_COMPRESS;
+ 	return rv;
