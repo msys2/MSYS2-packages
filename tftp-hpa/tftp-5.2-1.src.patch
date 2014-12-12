@@ -1,0 +1,193 @@
+--- origsrc/tftp-hpa-5.2/MCONFIG.in	2011-12-11 23:13:52.000000000 +0100
++++ src/tftp-hpa-5.2/MCONFIG.in	2013-08-01 11:12:04.990443758 +0200
+@@ -21,6 +21,7 @@ OBJROOT     = @OBJROOT@
+ # Prefixes
+ prefix      = @prefix@
+ exec_prefix = @exec_prefix@
++datarootdir = @datarootdir@
+ 
+ # Directory for user binaries
+ BINDIR  = @bindir@
+@@ -51,7 +52,7 @@ INSTALL_DATA    = @INSTALL_DATA@
+ 
+ # Compiler and compiler flags
+ CC      = @CC@
+-CFLAGS  = @CFLAGS@ -I$(SRCROOT)
++CFLAGS  = @CFLAGS@ -I$(OBJROOT) -I$(SRCROOT)/headers -I$(SRCROOT)
+ 
+ # Link flags
+ LDFLAGS = @LDFLAGS@
+--- origsrc/tftp-hpa-5.2/configure.in	2011-12-11 23:13:52.000000000 +0100
++++ src/tftp-hpa-5.2/configure.in	2013-08-01 11:12:05.014443645 +0200
+@@ -5,6 +5,7 @@ dnl
+ AC_PREREQ(2.61)
+ AC_INIT(MCONFIG.in)
+ AC_PREFIX_DEFAULT(/usr)
++AC_CANONICAL_HOST
+ 
+ AC_USE_SYSTEM_EXTENSIONS
+ AC_ISC_POSIX
+@@ -159,6 +160,16 @@ OBJROOT=`pwd`
+ XTRA=false
+ PA_SEARCH_LIBS_AND_ADD(xmalloc, iberty)
+ PA_SEARCH_LIBS_AND_ADD(xstrdup, iberty)
++
++# Force using the "correct" getopt_long implementation on cygwin
++case $host in
++  *-*-cygwin*)
++    case "$LIBS" in
++      *-liberty* )
++        LIBS=`echo $LIBS | sed -e 's@-liberty@-lcygwin -liberty@g'` ;;
++    esac
++esac
++
+ PA_SEARCH_LIBS_AND_ADD(bsd_signal, bsd, bsdsignal)
+ PA_SEARCH_LIBS_AND_ADD(getopt_long, getopt, getopt_long)
+ PA_SEARCH_LIBS_AND_ADD(getaddrinfo, [nsl resolv])
+--- origsrc/tftp-hpa-5.2/tftp-xinetd	2013-08-01 11:12:00.849463159 +0200
++++ src/tftp-hpa-5.2/tftp-xinetd	2013-08-01 11:12:05.036443542 +0200
+@@ -8,9 +8,9 @@ service tftp
+ 	socket_type		= dgram
+ 	protocol		= udp
+ 	wait			= yes
+-	user			= root
++	user			= cyg_server
+ 	server			= /usr/sbin/tftpd
+-	server_args		= -s /tftpboot
++	server_args		= -c -p -u tftpd -U 022 -s /var/lib/tftpboot
+ 	disable			= yes
+ 	per_source		= 11
+ 	cps			= 100 2
+--- origsrc/tftp-hpa-5.2/tftpd/recvfrom.c	2013-08-01 11:12:01.522460006 +0200
++++ src/tftp-hpa-5.2/tftpd/recvfrom.c	2013-08-01 11:12:05.050443477 +0200
+@@ -222,7 +222,10 @@ myrecvfrom(int s, void *buf, int len, un
+ 
+ #ifdef HAVE_STRUCT_IN6_PKTINFO
+                 if (cmptr->cmsg_level == IPPROTO_IPV6 &&
+-                    (cmptr->cmsg_type == IPV6_RECVPKTINFO ||
++                    (
++#ifdef IPV6_RECVPKTINFO
++                     cmptr->cmsg_type == IPV6_RECVPKTINFO ||
++#endif
+                      cmptr->cmsg_type == IPV6_PKTINFO)) {
+                     memcpy(&pktinfo6, CMSG_DATA(cmptr),
+                            sizeof(struct in6_pktinfo));
+--- origsrc/tftp-hpa-5.2/tftpd/tftpd.c	2013-08-01 11:12:02.189456881 +0200
++++ src/tftp-hpa-5.2/tftpd/tftpd.c	2013-08-01 11:12:05.073443369 +0200
+@@ -48,6 +48,7 @@
+ #include <pwd.h>
+ #include <limits.h>
+ #include <syslog.h>
++#include <getopt.h>
+ 
+ #include "common/tftpsubs.h"
+ #include "recvfrom.h"
+@@ -60,8 +61,13 @@
+ #ifdef HAVE_TCPWRAPPERS
+ #include <tcpd.h>
+ 
++#if defined(__CYGWIN__)
++extern int deny_severity;  /* set value in main() */
++extern int allow_severity; /* set value in main() */
++#else
+ int deny_severity = LOG_WARNING;
+ int allow_severity = -1;        /* Don't log at all */
++#endif
+ 
+ static struct request_info wrap_request;
+ #endif
+@@ -76,6 +82,11 @@ static int ai_fam = AF_INET;
+ #define TRIES   6               /* Number of attempts to send each packet */
+ #define TIMEOUT_LIMIT ((1 << TRIES)-1)
+ 
++#if defined(__CYGWIN__)
++/* from libiberty */
++const char * lbasename (const char *);
++#endif
++
+ const char *__progname;
+ static int peer;
+ static unsigned long timeout  = TIMEOUT;        /* Current timeout value */
+@@ -376,7 +387,11 @@ int main(int argc, char **argv)
+     int c;
+     int setrv;
+     int waittime = 900;         /* Default time to wait for a connect */
++#ifdef __CYGWIN__
++    const char *user = "tftpd";         /* Default user */
++#else
+     const char *user = "nobody";        /* Default user */
++#endif /* __CYGWIN__ */
+     char *p, *ep;
+ #ifdef WITH_REGEX
+     char *rewrite_file = NULL;
+@@ -384,10 +399,20 @@ int main(int argc, char **argv)
+     const char *pidfile = NULL;
+     u_short tp_opcode;
+ 
++#if defined(HAVE_TCPWRAPPERS) && defined(__CYGWIN__)
++    allow_severity = -1; /* Don't log at all */
++    deny_severity = LOG_WARNING;
++#endif
+     /* basename() is way too much of a pain from a portability standpoint */
+ 
++#if !defined(__CYGWIN__)
+     p = strrchr(argv[0], '/');
+     __progname = (p && p[1]) ? p + 1 : argv[0];
++#else
++    /* maybe so, but (a) it's already in libiberty and (b) it knows how to */
++    /* handle win32 pathnames, which might be important on cygwin. */
++    __progname = lbasename (argv[0]);
++#endif
+ 
+     openlog(__progname, LOG_PID | LOG_NDELAY, LOG_DAEMON);
+ 
+@@ -534,11 +559,36 @@ int main(int argc, char **argv)
+         }
+     }
+ 
++#ifdef __CYGWIN__
++    /* On cygwin, inetd and xinetd convention is that when requesting
++     * a user named "root" (which doesn't exist on a typical Windows
++     * system), the daemon should simply run as "the current user".
++     */
++    if (strcmp (user, "root") == 0) {
++	pw = getpwuid (getuid ());
++	if (!pw) {
++            syslog(LOG_ERR, "error obtaining information for current user: %m");
++            exit(EX_NOUSER);
++	}
++	if (pw->pw_name && *(pw->pw_name)) {
++	    user = xstrdup (pw->pw_name);
++	}
++	else {
++            syslog(LOG_ERR, "error obtaining name of current user");
++            exit(EX_NOUSER);
++	}
++    }
++    else
++    {
++#endif /* __CYGWIN__ */
+     pw = getpwnam(user);
+     if (!pw) {
+         syslog(LOG_ERR, "no user %s: %m", user);
+         exit(EX_NOUSER);
+     }
++#ifdef __CYGWIN__
++    }
++#endif /* __CYGWIN__ */
+ 
+ #ifdef WITH_REGEX
+     if (rewrite_file)
+@@ -1016,7 +1066,12 @@ int main(int argc, char **argv)
+     tp = (struct tftphdr *)buf;
+     tp_opcode = ntohs(tp->th_opcode);
+     if (tp_opcode == RRQ || tp_opcode == WRQ)
++    {
++        syslog(LOG_INFO, "uid=%d: handling transfer: %s",
++	    getuid(),
++	    (tp_opcode == RRQ ? "server->client" : "client->server" ));
+         tftp(tp, n);
++    }
+     exit(0);
+ }
+ 
