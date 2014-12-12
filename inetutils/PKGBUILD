@@ -8,36 +8,96 @@ arch=('i686' 'x86_64')
 url="http://www.gnu.org/software/inetutils/"
 license=('GPL3')
 groups=('base')
-makedepends=('automake' 'autoconf' 'pkg-config' 'make')
+depends=('gcc-libs' 'libintl' 'libcrypt' 'libreadline' 'ncurses')
+makedepends=('automake' 'autoconf' 'pkg-config' 'make' 'gettext-devel' 'libcrypt-devel' 'libreadline-devel' 'ncurses-devel')
 options=('!emptydirs')
 install=inetutils.install
-source=(http://ftp.gnu.org/gnu/inetutils/${pkgname}-${pkgver}.tar.xz)
-sha1sums=('f9fc5c3ba7046d95fdfd0f1c6adf508220082893')
+source=(http://ftp.gnu.org/gnu/inetutils/${pkgname}-${pkgver}.tar.xz
+        01-buildsystem-updates.patch
+        07-other-buildsys-updates.patch
+        08-libinetutils.patch
+        09-inetd.patch
+        11-telnet.patch
+        13-ftp.patch
+        14-ftpd.patch
+        15-syslogd.patch
+        16-talk.patch
+        17-talkd.patch
+        inetutils-1.9.2-1.src.patch
+        osockaddr.h
+        talkd.h
+        tftp.h
+        99-msysize.patch)
+sha1sums=('f9fc5c3ba7046d95fdfd0f1c6adf508220082893'
+          'f21c5acb88bc639821e45d08ffd8b5342ea5c0aa'
+          'f51e1e91893938a75fe66cc6233b306de259dd16'
+          'af6d06e50853e1ba7dcde4bee177cbe2742c67ae'
+          '64036fe2a7e7a7d308c7c70ec4e611c7a681e0d6'
+          'a44a370740dc8ff75e54bc187589f19d3903743d'
+          '26ebe17ba0e3a58f07a043d14a7890f6d94ec35f'
+          'e91f9bdc5c267b6ced5177b972de3e1c9d20bfd9'
+          'b2dec127055c93f2bac284950725ecb4bba2df57'
+          'f8910a048ec8a70be59694e508ff9ce73c553d7e'
+          'd6fef2549638fef93453e37ce54c9a008c8fc1e6'
+          'd9e69d0bd383c98f94aa965b20ed8a62906d6f99'
+          'c36af37b6dd90981c38f781baf0deee1e7bfeafe'
+          '40bd20f45f8bb12350c9d159e633f3e16cf1fa75'
+          '1dfdf7bc6d9804d62615a094924f104735621928'
+          'f8d3bf25ee4be9535c04d9d5efe20728dd150707')
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
-  autoreconf -fi
+  mkdir -p headers/protocols
+  cp ${srcdir}/osockaddr.h headers/protocols/osockaddr.h
+  cp ${srcdir}/talkd.h     headers/protocols/talkd.h
+  # mkdir -p headers/arpa
+  # cp ${srcdir}/tftp.h     headers/arpa/tftp.h
+  
+  patch -p1 -i ${srcdir}/01-buildsystem-updates.patch
+  patch -p1 -i ${srcdir}/07-other-buildsys-updates.patch
+  patch -p1 -i ${srcdir}/08-libinetutils.patch
+  patch -p1 -i ${srcdir}/09-inetd.patch
+  patch -p1 -i ${srcdir}/11-telnet.patch
+  patch -p1 -i ${srcdir}/13-ftp.patch
+  patch -p1 -i ${srcdir}/14-ftpd.patch
+  patch -p1 -i ${srcdir}/15-syslogd.patch
+  patch -p1 -i ${srcdir}/16-talk.patch
+  patch -p1 -i ${srcdir}/17-talkd.patch
+  patch -p1 -i ${srcdir}/inetutils-1.9.2-1.src.patch
+  patch -p1 -i ${srcdir}/99-msysize.patch
+  
+  autoreconf -fiv
 }
 
 build() {
+  CPPFLAGS+=" -I${srcdir}/${pkgname}-${pkgver}/headers"
   cd ${srcdir}/${pkgname}-${pkgver}
-  ./configure --prefix=/usr --libexec=/usr/bin \
-    --localstatedir=/var --sysconfdir=/etc \
-    --without-wrap --without-pam \
-    --enable-ftp --enable-ftpd \
-    --enable-telnet --enable-telnetd \
-    --enable-talk --enable-talkd \
-    --enable-rlogin --enable-rlogind \
-    --enable-rsh --enable-rshd \
-    --enable-rcp --enable-hostname \
-    --enable-dnsdomainname \
+  ./configure --prefix=/usr \
+    --libexec=/usr/bin \
+    --localstatedir=/var \
+    --sysconfdir=/etc \
+    --infodir=/usr/share/info \
+    --mandir=/usr/share/man \
+    --datarootdir=/usr/share \
+    --docdir=/usr/share/doc/${pkgname} \
+    --with-wrap \
+    --without-pam \
+    --enable-ftp --disable-ftpd \
+    --enable-telnet --disable-telnetd \
+    --enable-talk --disable-talkd \
+    --enable-rlogin --disable-rlogind \
+    --enable-rsh --disable-rshd \
+    --enable-rcp --disable-hostname \
     --disable-rexec --disable-rexecd \
     --disable-tftp --disable-tftpd \
     --disable-ping --disable-ping6 \
     --disable-logger --disable-syslogd \
     --disable-inetd --disable-whois \
     --disable-uucpd --disable-ifconfig \
-    --disable-traceroute
+    --enable-dnsdomainname \
+    --disable-traceroute \
+    ac_cv_func_mmap_fixed_mapped=no
+
   make
 }
 

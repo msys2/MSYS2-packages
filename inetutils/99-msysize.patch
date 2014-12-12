@@ -1,0 +1,151 @@
+diff -Naur inetutils-1.9.2-orig/build-aux/config.guess inetutils-1.9.2/build-aux/config.guess
+--- inetutils-1.9.2-orig/build-aux/config.guess	2013-12-03 17:57:34.000000000 +0300
++++ inetutils-1.9.2/build-aux/config.guess	2014-12-12 11:56:58.123800000 +0300
+@@ -866,6 +866,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSTS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur inetutils-1.9.2-orig/configure.ac inetutils-1.9.2/configure.ac
+--- inetutils-1.9.2-orig/configure.ac	2014-12-12 11:55:14.538000000 +0300
++++ inetutils-1.9.2/configure.ac	2014-12-12 11:56:27.001800000 +0300
+@@ -1015,7 +1015,7 @@
+   AC_DEFINE([HAVE_STREAMSPTY], 1,
+     [Define to 1 for a system using streams for ptys])
+   ;;
+-*cygwin*)
++*cygwin* | *msys*)
+   LIBS="/usr/lib/textmode.o ${LIBS}"
+   AC_DEFINE(UTMPX, 1, [FIXME])
+   ;;
+diff -Naur inetutils-1.9.2-orig/lib/Makefile.am inetutils-1.9.2/lib/Makefile.am
+--- inetutils-1.9.2-orig/lib/Makefile.am	2013-12-23 15:13:58.000000000 +0300
++++ inetutils-1.9.2/lib/Makefile.am	2014-12-12 11:57:48.699000000 +0300
+@@ -947,7 +947,7 @@
+ 	  case '$(host_os)' in \
+ 	    darwin[56]*) \
+ 	      need_charset_alias=true ;; \
+-	    darwin* | cygwin* | mingw* | pw32* | cegcc*) \
++	    darwin* | cygwin* | msys* | mingw* | pw32* | cegcc*) \
+ 	      need_charset_alias=false ;; \
+ 	    *) \
+ 	      need_charset_alias=true ;; \
+diff -Naur inetutils-1.9.2-orig/m4/btowc.m4 inetutils-1.9.2/m4/btowc.m4
+--- inetutils-1.9.2-orig/m4/btowc.m4	2013-12-23 15:13:53.000000000 +0300
++++ inetutils-1.9.2/m4/btowc.m4	2014-12-12 11:58:26.919000000 +0300
+@@ -49,7 +49,7 @@
+ changequote(,)dnl
+            case "$host_os" in
+                       # Guess no on Cygwin.
+-             cygwin*) gl_cv_func_btowc_nul="guessing no" ;;
++             cygwin* | msys*) gl_cv_func_btowc_nul="guessing no" ;;
+                       # Guess yes otherwise.
+              *)       gl_cv_func_btowc_nul="guessing yes" ;;
+            esac
+diff -Naur inetutils-1.9.2-orig/m4/double-slash-root.m4 inetutils-1.9.2/m4/double-slash-root.m4
+--- inetutils-1.9.2-orig/m4/double-slash-root.m4	2013-12-23 15:13:53.000000000 +0300
++++ inetutils-1.9.2/m4/double-slash-root.m4	2014-12-12 11:58:40.007400000 +0300
+@@ -16,7 +16,7 @@
+         # special semantics and is distinct from /, please report it to
+         # <bug-gnulib@gnu.org>.
+         case $host in
+-          *-cygwin | i370-ibm-openedition)
++          *-cygwin | *-msys | i370-ibm-openedition)
+             gl_cv_double_slash_root=yes ;;
+           *)
+             # Be optimistic and assume that / and // are the same when we
+diff -Naur inetutils-1.9.2-orig/m4/dup2.m4 inetutils-1.9.2/m4/dup2.m4
+--- inetutils-1.9.2-orig/m4/dup2.m4	2013-12-23 15:13:53.000000000 +0300
++++ inetutils-1.9.2/m4/dup2.m4	2014-12-12 11:58:53.641800000 +0300
+@@ -51,7 +51,7 @@
+         [case "$host_os" in
+            mingw*) # on this platform, dup2 always returns 0 for success
+              gl_cv_func_dup2_works="guessing no" ;;
+-           cygwin*) # on cygwin 1.5.x, dup2(1,1) returns 0
++           cygwin* | msys*) # on cygwin 1.5.x, dup2(1,1) returns 0
+              gl_cv_func_dup2_works="guessing no" ;;
+            linux*) # On linux between 2008-07-27 and 2009-05-11, dup2 of a
+                    # closed fd may yield -EBADF instead of -1 / errno=EBADF.
+diff -Naur inetutils-1.9.2-orig/m4/getcwd.m4 inetutils-1.9.2/m4/getcwd.m4
+--- inetutils-1.9.2-orig/m4/getcwd.m4	2013-12-23 15:13:54.000000000 +0300
++++ inetutils-1.9.2/m4/getcwd.m4	2014-12-12 11:59:13.656600000 +0300
+@@ -49,7 +49,7 @@
+                      # Guess yes on glibc systems.
+             *-gnu*)  gl_cv_func_getcwd_null="guessing yes";;
+                      # Guess yes on Cygwin.
+-            cygwin*) gl_cv_func_getcwd_null="guessing yes";;
++            cygwin* | msys*) gl_cv_func_getcwd_null="guessing yes";;
+                      # If we don't know, assume the worst.
+             *)       gl_cv_func_getcwd_null="guessing no";;
+           esac
+diff -Naur inetutils-1.9.2-orig/m4/getdtablesize.m4 inetutils-1.9.2/m4/getdtablesize.m4
+--- inetutils-1.9.2-orig/m4/getdtablesize.m4	2013-12-23 15:13:54.000000000 +0300
++++ inetutils-1.9.2/m4/getdtablesize.m4	2014-12-12 11:59:25.294200000 +0300
+@@ -26,7 +26,7 @@
+         [gl_cv_func_getdtablesize_works=yes],
+         [gl_cv_func_getdtablesize_works=no],
+         [case "$host_os" in
+-          cygwin*) # on cygwin 1.5.25, getdtablesize() automatically grows
++          cygwin* | msys*) # on cygwin 1.5.25, getdtablesize() automatically grows
+             gl_cv_func_getdtablesize_works="guessing no" ;;
+           *) gl_cv_func_getdtablesize_works="guessing yes" ;;
+          esac])
+diff -Naur inetutils-1.9.2-orig/m4/malloc.m4 inetutils-1.9.2/m4/malloc.m4
+--- inetutils-1.9.2-orig/m4/malloc.m4	2013-12-23 15:13:54.000000000 +0300
++++ inetutils-1.9.2/m4/malloc.m4	2014-12-12 11:59:47.539800000 +0300
+@@ -30,7 +30,7 @@
+        [case "$host_os" in
+           # Guess yes on platforms where we know the result.
+           *-gnu* | freebsd* | netbsd* | openbsd* \
+-          | hpux* | solaris* | cygwin* | mingw*)
++          | hpux* | solaris* | cygwin* | msys* | mingw*)
+             ac_cv_func_malloc_0_nonnull=yes ;;
+           # If we don't know, assume the worst.
+           *) ac_cv_func_malloc_0_nonnull=no ;;
+diff -Naur inetutils-1.9.2-orig/m4/printf.m4 inetutils-1.9.2/m4/printf.m4
+--- inetutils-1.9.2-orig/m4/printf.m4	2013-12-23 15:13:54.000000000 +0300
++++ inetutils-1.9.2/m4/printf.m4	2014-12-12 12:00:37.943400000 +0300
+@@ -735,7 +735,7 @@
+            openbsd*)        gl_cv_func_printf_directive_ls="guessing no";;
+            irix*)           gl_cv_func_printf_directive_ls="guessing no";;
+            solaris*)        gl_cv_func_printf_directive_ls="guessing no";;
+-           cygwin*)         gl_cv_func_printf_directive_ls="guessing no";;
++           cygwin* | msys*) gl_cv_func_printf_directive_ls="guessing no";;
+            beos* | haiku*)  gl_cv_func_printf_directive_ls="guessing no";;
+            *)               gl_cv_func_printf_directive_ls="guessing yes";;
+          esac
+@@ -812,7 +812,7 @@
+         [
+ changequote(,)dnl
+          case "$host_os" in
+-           cygwin*)      gl_cv_func_printf_flag_grouping="guessing no";;
++           cygwin* | msys*) gl_cv_func_printf_flag_grouping="guessing no";;
+            netbsd*)      gl_cv_func_printf_flag_grouping="guessing no";;
+            mingw* | pw*) gl_cv_func_printf_flag_grouping="guessing no";;
+            *)            gl_cv_func_printf_flag_grouping="guessing yes";;
+@@ -1464,7 +1464,7 @@
+            darwin[1-6].*)        gl_cv_func_vsnprintf_zerosize_c99="guessing no";;
+            darwin*)              gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
+                                  # Guess yes on Cygwin.
+-           cygwin*)              gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
++           cygwin* | msys*)      gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
+                                  # Guess yes on Solaris >= 2.6.
+            solaris2.[0-5] | solaris2.[0-5].*)
+                                  gl_cv_func_vsnprintf_zerosize_c99="guessing no";;
+diff -Naur inetutils-1.9.2-orig/m4/realloc.m4 inetutils-1.9.2/m4/realloc.m4
+--- inetutils-1.9.2-orig/m4/realloc.m4	2013-12-23 15:13:54.000000000 +0300
++++ inetutils-1.9.2/m4/realloc.m4	2014-12-12 12:00:59.065800000 +0300
+@@ -30,7 +30,7 @@
+        [case "$host_os" in
+           # Guess yes on platforms where we know the result.
+           *-gnu* | freebsd* | netbsd* | openbsd* \
+-          | hpux* | solaris* | cygwin* | mingw*)
++          | hpux* | solaris* | cygwin* | msys* | mingw*)
+             ac_cv_func_realloc_0_nonnull=yes ;;
+           # If we don't know, assume the worst.
+           *) ac_cv_func_realloc_0_nonnull=no ;;
