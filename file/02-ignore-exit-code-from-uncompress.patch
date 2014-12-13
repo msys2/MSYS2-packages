@@ -1,0 +1,34 @@
+From 05463f7b3d4588a656089e20ab53a5b81b875341 Mon Sep 17 00:00:00 2001
+From: Christos Zoulas <christos@zoulas.com>
+Date: Fri, 12 Dec 2014 16:33:01 +0000
+Subject: [PATCH] PR/405: Ignore exit code from uncompress programs because
+ some (validly) exit with non-zero code when they get SIGPIPE.
+
+---
+ src/compress.c | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/src/compress.c b/src/compress.c
+index bf93839..30be569 100644
+--- a/src/compress.c
++++ b/src/compress.c
+@@ -512,11 +512,16 @@ uncompressbuf(struct magic_set *ms, int fd, size_t method,
+ 			    strerror(errno));
+ #endif
+ 			n = NODATA;
+-		} else if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
++		} else if (!WIFEXITED(status)) {
+ #ifdef DEBUG
+-			(void)fprintf(stderr, "Child status (0x%x)\n", status);
++			(void)fprintf(stderr, "Child not exited (0x%x)\n",
++			    status);
++#endif
++		} else if (WEXITSTATUS(status) != 0) {
++#ifdef DEBUG
++			(void)fprintf(stderr, "Child exited (0x%d)\n",
++			    WEXITSTATUS(status));
+ #endif
+-			n = NODATA;
+ 		}
+ 
+ 		(void) close(fdin[0]);
