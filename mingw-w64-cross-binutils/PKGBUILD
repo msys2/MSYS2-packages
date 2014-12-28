@@ -5,7 +5,7 @@ _mingw_suff=mingw-w64-cross
 pkgname=("${_mingw_suff}-${_realname}")
 #_basever=2.24.51
 #pkgver=${_basever}.20131119
-pkgver=2.24
+pkgver=2.25
 pkgrel=1
 pkgdesc="A set of programs to assemble and manipulate binary and object files"
 arch=('i686' 'x86_64')
@@ -19,16 +19,31 @@ options=('staticlibs' '!distcc' '!ccache' '!buildflags')
 #install=binutils.install
 source=(#"ftp://mirrors.kernel.org/sources.redhat.com/binutils/snapshots/binutils-${_basever}.tar.bz2"
         ftp://ftp.gnu.org/gnu/binutils/binutils-${pkgver}.tar.bz2{,.sig}
-    'binutils-trunk-msys2.patch')
-md5sums=('e0f71a7b2ddab0f8612336ac81d9636b'
-     'SKIP'
-         '6f7175b7ed29bc597f0d300500e2b651')
+        0001-enable-gold-on.mingw32.patch
+        0002-check-for-unusual-file-harder.patch
+        0008-fix-libiberty-makefile.mingw.patch
+        0009-fix-libiberty-configure.mingw.patch
+        0110-binutils-mingw-gnu-print.patch
+        0900-binutils-trunk-msys2.patch)
+md5sums=('d9f3303f802a5b6b0bb73a335ab89d66'
+         'SKIP'
+         'f3be04ed70b9d352a2c0e2a80b0706b2'
+         '2cc89a3c09cafa30c91ac890d3c68932'
+         'df13a2462c24d14376a09ec1d1609519'
+         '9cd71d49b765932a9701b66dfde00775'
+         '1c34f5ee0ee5d5008a617e1638362d43'
+         '81d65b787c8979e7a94d232222bb9bc1')
 _targets="i686-w64-mingw32 x86_64-w64-mingw32"
 
 prepare() {
   cd ${srcdir}/binutils-${pkgver}
 
-  patch -p1 -i ${srcdir}/binutils-trunk-msys2.patch
+  patch -p1 -i ${srcdir}/0001-enable-gold-on.mingw32.patch
+  patch -p1 -i ${srcdir}/0002-check-for-unusual-file-harder.patch
+  patch -p1 -i ${srcdir}/0008-fix-libiberty-makefile.mingw.patch
+  patch -p1 -i ${srcdir}/0009-fix-libiberty-configure.mingw.patch
+  patch -p1 -i ${srcdir}/0110-binutils-mingw-gnu-print.patch
+  patch -p1 -i ${srcdir}/0900-binutils-trunk-msys2.patch
   
   #do not install libiberty
   #sed -i 's/install_to_$(INSTALL_DEST) //' libiberty/Makefile.in
@@ -40,47 +55,47 @@ prepare() {
 
 build() {
   for _target in ${_targets}; do
-  mkdir -p ${srcdir}/binutils-build-${_target} && cd ${srcdir}/binutils-build-${_target}
+    mkdir -p ${srcdir}/binutils-build-${_target} && cd ${srcdir}/binutils-build-${_target}
 
-  if [ "${_target}" = "x86_64-w64-mingw32" ]; then
-    local _conf='--enable-64-bit-bfd'
-  else
-    local _conf=''
-  fi
-  ${srcdir}/binutils-${pkgver}/configure \
-  --build=${CHOST} \
-  --host=${CHOST} \
-  --target=${_target} \
-    --prefix=/opt \
-    --disable-werror \
-  --enable-lto \
-  --with-libiconv-prefix=/usr \
-  $_conf
+    if [ "${_target}" = "x86_64-w64-mingw32" ]; then
+      local _conf='--enable-64-bit-bfd'
+    else
+      local _conf=''
+    fi
+    ${srcdir}/binutils-${pkgver}/configure \
+      --build=${CHOST} \
+      --host=${CHOST} \
+      --target=${_target} \
+      --prefix=/opt \
+      --disable-werror \
+      --enable-lto \
+      --with-libiconv-prefix=/usr \
+      $_conf
 
-  make
+    make
   done
 }
 
 check() {
   for _target in ${_targets}; do
-  cd ${srcdir}/binutils-build-${_target}
-  
-  # unset LDFLAGS as testsuite makes assumptions about which ones are active
-  # do not abort on errors - manually check log files
-  make LDFLAGS="" -k check || true
+    cd ${srcdir}/binutils-build-${_target}
+    
+    # unset LDFLAGS as testsuite makes assumptions about which ones are active
+    # do not abort on errors - manually check log files
+    make LDFLAGS="" -k check || true
   done
 }
 
 package() {
   for _target in ${_targets}; do
-  cd ${srcdir}/binutils-build-${_target}
-  make DESTDIR=${pkgdir} install
-  
-  # Remove unwanted files
-  #rm ${destdir}/usr/share/info/{configure,standards}.info
-  
-  # Add some useful headers
-  #install -m644 ${srcdir}/binutils-${pkgver}/include/libiberty.h ${pkgdir}/opt/include
-  #install -m644 ${srcdir}/binutils-${pkgver}/include/demangle.h ${pkgdir}/opt/include
+    cd ${srcdir}/binutils-build-${_target}
+    make DESTDIR=${pkgdir} install
+    
+    # Remove unwanted files
+    #rm ${destdir}/usr/share/info/{configure,standards}.info
+    
+    # Add some useful headers
+    #install -m644 ${srcdir}/binutils-${pkgver}/include/libiberty.h ${pkgdir}/opt/include
+    #install -m644 ${srcdir}/binutils-${pkgver}/include/demangle.h ${pkgdir}/opt/include
   done
 }
