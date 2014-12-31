@@ -1,0 +1,61 @@
+diff -urN -x .build -x .inst -x .sinst zsh-5.0.6-orig/Doc/Makefile.in zsh-5.0.6/Doc/Makefile.in
+--- zsh-5.0.6-orig/Doc/Makefile.in	2014-08-12 14:31:21.000000000 -0500
++++ zsh-5.0.6/Doc/Makefile.in	2014-09-14 00:05:52.350386400 -0500
+@@ -376,8 +376,10 @@
+ # install HTML manual
+ install.html: html
+ 	${SHELL} $(sdir_top)/mkinstalldirs $(DESTDIR)$(htmldir)
+-	for file in *.html; do \
++	for file in ${sdir}/zsh*.html zsh*.html; do \
++	  if [ -f "$$file" ]; then \
+ 	    $(INSTALL_DATA) $$file $(DESTDIR)$(htmldir) || exit 1; \
++	  fi; \
+ 	done
+ .PHONY: install.html
+ 
+diff -urN -x .build -x .inst -x .sinst zsh-5.0.6-orig/Src/zsh_system.h zsh-5.0.6/Src/zsh_system.h
+--- zsh-5.0.6-orig/Src/zsh_system.h	2014-07-25 12:56:55.000000000 -0500
++++ zsh-5.0.6/Src/zsh_system.h	2014-09-14 00:05:52.370895000 -0500
+@@ -776,6 +776,10 @@
+ #ifdef __CYGWIN__
+ # include <sys/cygwin.h>
+ # define IS_DIRSEP(c) ((c) == '/' || (c) == '\\')
++/* Cygwin Hack!  newlib doesn't define STDC ISO 10646, so hack it here */
++# if defined(HAVE_WCHAR_H) && defined(HAVE_WCTOMB) && !defined(__STDC_ISO_10646__)
++#  define __STDC_ISO_10646__
++# endif
+ #else
+ # define IS_DIRSEP(c) ((c) == '/')
+ #endif
+diff -urN -x .build -x .inst -x .sinst zsh-5.0.6-orig/Test/C02cond.ztst zsh-5.0.6/Test/C02cond.ztst
+--- zsh-5.0.6-orig/Test/C02cond.ztst	2014-05-16 14:21:25.000000000 -0500
++++ zsh-5.0.6/Test/C02cond.ztst	2014-09-14 00:05:52.389450400 -0500
+@@ -187,7 +187,7 @@
+     print -u$ZTST_fd "Warning: not testing [[ -e /dev/fd/0 ]] (/dev/fd not supported)"
+     true
+   else
+-    [[ -e /dev/fd/0 ]]
++    [[ -e `grep '#define PATH_DEV_FD' $ZTST_testdir/../config.h | awk '{ print $3 }' | tr -d '"'`/0 ]]
+   fi
+ 0dD:/dev/fd support in conds handled by access
+ 
+@@ -195,7 +195,7 @@
+     print -u$ZTST_fd "Warning: not testing [[ -O /dev/fd/0 ]] (/dev/fd not supported)"
+     true
+   else
+-    [[ -O /dev/fd/0 ]]
++    [[ -O `grep '#define PATH_DEV_FD' $ZTST_testdir/../config.h | awk '{ print $3 }' | tr -d '"'`/0 ]]
+   fi
+ 0dD:/dev/fd support in conds handled by stat
+ 
+diff -urN -x .build -x .inst -x .sinst zsh-5.0.6-orig/configure zsh-5.0.6/configure
+--- zsh-5.0.6-orig/configure	2014-07-25 12:57:00.000000000 -0500
++++ zsh-5.0.6/configure	2014-09-14 00:05:52.410935600 -0500
+@@ -11152,6 +11152,7 @@
+ 	fd = open("/tmp/fifo$$", O_RDONLY);
+ 	exit(fd < 0 || read(fd, &c, 1) != 1 || c != 'x');
+     }
++    sleep(1);
+     fd = open("/tmp/fifo$$", O_WRONLY);
+     ret = (fd < 0 || write(fd, "x", 1) < 1);
+     unlink("/tmp/fifo$$");
