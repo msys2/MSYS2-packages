@@ -9,12 +9,14 @@
   .email: <mingw.android@gmail.com>.
  */
 
-#define WIN32_MEAN_AND_LEAN
+//#define WIN32_MEAN_AND_LEAN
 
 #include <windows.h>
 #include <psapi.h>
 #include <shellapi.h>
 #include <gdiplus.h>
+#include <process.h>
+#include <winuser.h>
 
 #include <stdio.h>
 #include <conio.h>
@@ -94,6 +96,7 @@ typedef struct {
 
 typedef struct {
   ULONG_PTR gdi_plus_token;
+  HWND h_splash_wnd;
   HRSRC splash_jpg_hrsrcs[IDC_SPLASH_COUNT];
   HGLOBAL splash_jpg_bufs[IDC_SPLASH_COUNT];
   GpBitmap* splash_jpg_bitmaps[IDC_SPLASH_COUNT];
@@ -105,9 +108,20 @@ typedef struct {
 typedef struct {
   float n_secs;
   BOOL displayed_splash;
+  BOOL use_gui;
+  BOOL use_tui;
+  HANDLE ui_thread;
+  unsigned int ui_thread_id;
+  HANDLE ui_thread_event;
+
   GraphicalInterfaceState gui;
   TextualInterfaceState tui;
 } InterfaceState;
+
+float kSplashTime = 1.0f / (float)IDC_SPLASH_COUNT;
+int kSplashRateMsec = 1000 / IDC_SPLASH_COUNT;
+
+#define TIMER_ID 1000
 
 /* Global variables plus things
    that are updated dynamically */
@@ -146,7 +160,8 @@ typedef struct {
 
 enum {
   kProcessIncrement = 512,
-  kModulesIncrement = 512,
+//  kModulesIncrement = 512,
+    kModulesIncrement = 4,
 } kTweaks;
 
 HWND FindConsoleHandle(void);
@@ -165,6 +180,18 @@ BOOL debug = FALSE;
       printf(__VA_ARGS__);            \
       fflush(stdout);                 \
     }                                 \
+  } while (0)
+
+#define dbg_printf_GLE(DWORD_ERR_PTR, ...)                         \
+  do {                                                             \
+    char gle_buf[256];                                             \
+    *DWORD_ERR_PTR = GetLastError();                               \
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM,                     \
+                   NULL, *DWORD_ERR_PTR,                           \
+                   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),      \
+                   gle_buf, sizeof(gle_buf), NULL);                \
+    dbg_printf(__VA_ARGS__);                                       \
+    dbg_printf("GetLastError()=%ld :: %s", *DWORD_ERR_PTR, gle_buf);\
   } while (0)
 
 #define fatal_err_printf(...)                  \
@@ -334,6 +361,11 @@ ssize_t EnumerateOpenProcessModules(Arguments* args, HANDLE proc_handle,
   do {
     DWORD bytes_needed;
     num_modules += kModulesIncrement;
+    if (num_modules > 2000) {
+      int a = 1;
+      a;
+    }
+
     bytes_used = num_modules * sizeof(DWORD);
     modules = (HMODULE*)alloca(bytes_used);
     if (modules == NULL) {
@@ -345,9 +377,16 @@ ssize_t EnumerateOpenProcessModules(Arguments* args, HANDLE proc_handle,
         EnumProcessModules(proc_handle, modules, bytes_used, &bytes_needed);
 
     if (result != FALSE) {
-      if (bytes_used == bytes_needed) {
-        /* In this case, can't assume that all the processes were enumerated. */
+      if (bytes_used < bytes_needed) {
+        /* Not all processes were enumerated. */
         result = FALSE;
+      }
+    }
+    if (result == FALSE) {
+      DWORD err;
+      dbg_printf_GLE(&err, "EnumProcessModules(proc_handle=%p) failed\n", proc_handle);
+      if (err == ERROR_PARTIAL_COPY) {
+        return 0;
       }
     }
     if (result != FALSE) {
@@ -379,8 +418,7 @@ ssize_t EnumerateOpenProcessModules(Arguments* args, HANDLE proc_handle,
 }
 
 /* Returns TRUE if conflicts with any (Arguments*)p_in_args->p_filenames, and
-  *sets
-   *(uint32_t*)p_outvalues to the bitmask of conflicting ids. */
+  *sets *(uint32_t*)p_outvalues to the bitmask of conflicting ids. */
 BOOL FilterConflictingModule(void* p_in_args, HANDLE proc_handle,
                              HANDLE module_handle, void* p_out_value) {
   Arguments* args = (Arguments*)p_in_args;
@@ -395,10 +433,11 @@ BOOL FilterConflictingModule(void* p_in_args, HANDLE proc_handle,
   char module_name[1024];
   if (GetModuleFileNameExA(proc_handle, module_handle, module_name,
                            sizeof(module_name) / sizeof(module_name[0]))) {
-    printf("\t%s\n", module_name);
+/*    printf("\t%s\n", module_name); */
     for (fid = 0; fid < args->num_filenames; ++fid) {
       if (!strcmp(module_name, args->p_filenames[fid])) {
         *p_mask_locked |= (1 << fid);
+        dbg_printf("locking %s", module_name);
       }
     }
   }
@@ -628,54 +667,54 @@ BOOL LaunchedFromConsole(void) {
   }
 }
 
-INT_PTR CALLBACK
-DialogProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-  GlobalState* state = (GlobalState*)lParam;
-  (void)state;
-  switch (uMsg) {
-    case WM_INITDIALOG: {
-      return TRUE;
-      break;
-    }
+//INT_PTR CALLBACK
+//DialogProc(HWND hwnd_dlg, UINT msg, WPARAM w_param, LPARAM l_param) {
+//  GlobalState* state = (GlobalState*)l_param;
+//  (void)state;
+//  switch (msg) {
+//    case WM_INITDIALOG: {
+//      return TRUE;
+//      break;
+//    }
 
-    case WM_COMMAND: {
-      switch (wParam) {
-        case IDOK: {
-          EndDialog(hwndDlg, 0);
-          return TRUE;
-          break;
-        }
-      }
-      break;
-    }
+//    case WM_COMMAND: {
+//      switch (w_param) {
+//        case IDOK: {
+//          EndDialog(hwnd_dlg, 0);
+//          return TRUE;
+//          break;
+//        }
+//      }
+//      break;
+//    }
 
-    case WM_SIZE: {
-      HWND hEdit;
-      RECT rcClient;
+//    case WM_SIZE: {
+//      HWND h_edit;
+//      RECT rc_client;
 
-      GetClientRect(hwndDlg, &rcClient);
+//      GetClientRect(hwnd_dlg, &rc_client);
 
-      hEdit = GetDlgItem(hwndDlg, IDC_UNLOCKERDIALOG);
-      SetWindowPos(hEdit, NULL, 0, 0, rcClient.right, rcClient.bottom,
-                   SWP_NOZORDER);
-      break;
-    }
+//      h_edit = GetDlgItem(hwnd_dlg, IDC_UNLOCKERDIALOG);
+//      SetWindowPos(h_edit, NULL, 0, 0, rc_client.right, rc_client.bottom,
+//                   SWP_NOZORDER);
+//      break;
+//    }
 
-    case WM_CLOSE: {
-      EndDialog(hwndDlg, kUserExited);
-      return TRUE;
-      break;
-    }
+//    case WM_CLOSE: {
+//      EndDialog(hwnd_dlg, kUserExited);
+//      return TRUE;
+//      break;
+//    }
 
-    default: { break; }
-  }
+//    default: { break; }
+//  }
 
-  return FALSE;
-}
+//  return FALSE;
+//}
 
+/* Runs on the main thread continually. */
 kExitCode UpdateState(Arguments* args, GlobalState* state) {
   kExitCode result;
-  size_t i;
   uint32_t existing_originals_mask;
   uint32_t existing_replacements_mask;
 
@@ -693,19 +732,19 @@ kExitCode UpdateState(Arguments* args, GlobalState* state) {
     return (result);
   }
 
-  for (i = 0; i < state->num_locking_processes; ++i) {
-    uint32_t conflicts = 0x1010101;
-    if (conflicts) {
-      if (args->interface_style & kInterfaceStyleGUI) {
-        INT_PTR result =
-            DialogBoxParamA(NULL, MAKEINTRESOURCEA(IDC_UNLOCKERDIALOG),
-                            state->appHWnd, DialogProc, (LPARAM)state);
-        if (result == kUserExited) {
-          return (kUserExited);
-        }
-      }
-    }
-  }
+//  for (i = 0; i < state->num_locking_processes; ++i) {
+//    uint32_t conflicts = 0x1010101;
+//    if (conflicts) {
+//      if (args->interface_style & kInterfaceStyleGUI) {
+//        INT_PTR result =
+//            DialogBoxParamA(NULL, MAKEINTRESOURCEA(IDC_UNLOCKERDIALOG),
+//                            state->appHWnd, DialogProc, (LPARAM)state);
+//        if (result == kUserExited) {
+//          return (kUserExited);
+//        }
+//      }
+//    }
+//  }
   return (kSuccess);
 }
 
@@ -799,6 +838,147 @@ kExitCode GraphicalInterfaceInit(Arguments* args, GraphicalInterfaceState* p_if_
   return (kSuccess);
 }
 
+LRESULT CALLBACK SplashWndProc(HWND hwnd_splash, UINT msg, WPARAM w_param, LPARAM l_param) {
+  InterfaceState* p_if_state = (InterfaceState*)GetWindowLongPtr(hwnd_splash, -21/*GWL_USERDATA*/); // (InterfaceState*)l_param;
+  
+  if (p_if_state == NULL) {
+    return DefWindowProc(hwnd_splash, msg, w_param, l_param);
+  }
+  // WM_NCCREATE, WM_NCCALCSIZE, WM_CREATE, WM_SIZE, WM_DESTROY
+  switch (msg) {
+    case WM_PAINT:
+      {
+        static int frame = 0;
+        GpBitmap* bitmap = p_if_state->gui.splash_jpg_bitmaps[frame];
+        if (frame < IDC_SPLASH_COUNT - 1) {
+          ++frame;
+        }
+        if (bitmap) {
+            GpGraphics* graphics;
+            GdipCreateFromHWND(hwnd_splash, &graphics);
+            REAL width, height;
+            GdipGetImageDimension(bitmap, &width, &height);
+            /* p_if_state->gui.gdi_plus_token */
+            GdipDrawImageRectI(graphics, bitmap, 0, 0, width, height);
+
+//            if ( pInstance->m_ProgressMsg.size() > 0 )
+//            {
+//                    Gdiplus::Font msgFont( L"Tahoma", 8, Gdiplus::UnitPixel );
+//                    Gdiplus::SolidBrush msgBrush( static_cast<DWORD>(Gdiplus::Color::Black) );
+//                    gdip.DrawString( pInstance->m_ProgressMsg.c_str(), -1, &msgFont, Gdiplus::PointF(2.0f, pInstance->m_pImage->GetHeight()-34.0f), &msgBrush );
+//            }
+            GdipDeleteGraphics(graphics);
+        }
+        ValidateRect(hwnd_splash, NULL);
+        static int done_donate = 0;
+        if (frame == IDC_SPLASH_COUNT - 1 && done_donate == 0) {
+            done_donate = 1;
+            ShellExecuteA(/*hwnd_splash*/NULL,
+                         "open",
+                         "https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=1390079",
+                         NULL,
+                         NULL,
+                         SW_SHOW/*SW_SHOWNORMAL*/);
+          }
+        
+        return 0;
+        }
+      break;
+      case WM_TIMER:
+      {
+        InvalidateRect(p_if_state->gui.h_splash_wnd, NULL, TRUE);
+        UpdateWindow(p_if_state->gui.h_splash_wnd);
+      }
+      break;
+    }
+  return DefWindowProc(hwnd_splash, msg, w_param, l_param);
+}
+
+kExitCode GraphicalSplashInitThread(InterfaceState* p_if_state) {
+
+  WNDCLASS wndcls = {0};
+
+  wndcls.style = CS_HREDRAW | CS_VREDRAW;
+  wndcls.lpfnWndProc = SplashWndProc; 
+  wndcls.hInstance = GetModuleHandle(NULL);
+  wndcls.hCursor = LoadCursor(NULL, IDC_APPSTARTING);
+  wndcls.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+  wndcls.lpszClassName = L"SplashWnd";
+  wndcls.hIcon = LoadIcon(wndcls.hInstance, MAKEINTRESOURCE(IDI_APPLICATION));
+
+  if (!RegisterClass(&wndcls)) {
+    if (GetLastError() != 0x00000582) // already registered)
+    {
+      OutputDebugString(L"Unable to register class SplashWnd\n");
+      return 0;
+    }
+  }
+  
+  char name[] = "";
+  // TODO :: Fix this.
+  HWND h_parent_wnd = NULL;
+
+  REAL width, height;
+  GdipGetImageDimension(p_if_state->gui.splash_jpg_bitmaps[0], &width, &height);
+  
+  // try to find monitor where mouse was last time
+  POINT point = { 0 };
+  MONITORINFO mi = { sizeof(MONITORINFO), {0}, {0}, 0 };
+  HMONITOR hMonitor = 0;
+  RECT rcArea = { 0 };
+  GetCursorPos( &point );
+
+  hMonitor = MonitorFromPoint( point, MONITOR_DEFAULTTONEAREST );
+  if ( GetMonitorInfo( hMonitor, &mi ) )
+  {
+    rcArea.left = ( mi.rcMonitor.right + mi.rcMonitor.left - (LONG)width ) / 2;
+    rcArea.top = ( mi.rcMonitor.top + mi.rcMonitor.bottom - (LONG)height) / 2;
+  }
+  else
+  {
+    SystemParametersInfo(SPI_GETWORKAREA, NULL, &rcArea, NULL);
+    rcArea.left = (rcArea.right + rcArea.left - (LONG)width)/2;
+    rcArea.top = (rcArea.top + rcArea.bottom - (LONG)height)/2;
+  }  
+
+  p_if_state->gui.h_splash_wnd = CreateWindowExA(strlen(name)?0:WS_EX_TOOLWINDOW, "SplashWnd", name, 
+       WS_CLIPCHILDREN|WS_POPUP, rcArea.left, rcArea.top, width, height, h_parent_wnd, NULL, wndcls.hInstance, NULL);
+
+  SetWindowLongPtr(p_if_state->gui.h_splash_wnd, /*GWL_USERDATA*/ -21, (LONG_PTR)p_if_state);
+  ShowWindow(p_if_state->gui.h_splash_wnd, SW_SHOWNOACTIVATE);
+
+  MSG msg;
+  PeekMessage(&msg, NULL, 0, 0, 0); // invoke creating message queue
+  return (kSuccess);
+}
+
+kExitCode TextualSplashInitThread(InterfaceState* p_if_state) {
+  return (kSuccess);
+}
+
+unsigned int __stdcall SplashThread(void* param) {
+  InterfaceState* p_if_state = (InterfaceState*)param;
+  (void)p_if_state;
+
+  if (p_if_state->use_gui) {
+    GraphicalSplashInitThread(p_if_state);
+  }
+  if (p_if_state->use_tui) {
+    TextualSplashInitThread(p_if_state);
+  }
+  SetEvent(p_if_state->ui_thread_event);
+  
+  MSG msg;
+  BOOL bRet;
+  SetTimer(p_if_state->gui.h_splash_wnd, TIMER_ID, kSplashRateMsec, 0);
+  while ((bRet = GetMessage(&msg, NULL, 0, 0)) != 0) {
+    TranslateMessage(&msg); 
+    DispatchMessage(&msg);
+  }
+
+  return (0);
+}
+
 kExitCode InterfaceStateInit(Arguments* args, InterfaceState* p_if_state) {
   p_if_state->n_secs = 0.0f;
 
@@ -806,13 +986,27 @@ kExitCode InterfaceStateInit(Arguments* args, InterfaceState* p_if_state) {
   kExitCode status_tui = kSuccess;
   kExitCode status_gui = kSuccess;
 
+  p_if_state->use_gui = FALSE;
+  p_if_state->use_tui = FALSE;
   if (args->interface_style & kInterfaceStyleTUI) {
       status_tui = TextualInterfaceInit(args, &p_if_state->tui);
+      if (status_tui == kSuccess) {
+        p_if_state->use_tui = TRUE;
+      }
   }
   if (args->interface_style & kInterfaceStyleGUI) {
       status_gui = GraphicalInterfaceInit(args, &p_if_state->gui);
+      if (status_gui == kSuccess) {
+        p_if_state->use_gui = TRUE;
+      }
   }
   if (status_tui != kSuccess && status_gui != kSuccess) status = status_tui;
+
+  p_if_state->ui_thread_event = CreateEvent(NULL, FALSE, FALSE, NULL);
+  p_if_state->ui_thread = (HANDLE)_beginthreadex(NULL, 0, SplashThread, (void*)p_if_state, 0, &p_if_state->ui_thread_id);
+  if (WaitForSingleObject(p_if_state->ui_thread_event, 5000) == INFINITE) {
+          dbg_printf("ui_thread_event : WAIT_TIMEOUT\n");
+  }
 
   return (status);
 }
@@ -855,6 +1049,14 @@ int main(int argc, char* argv[]) {
   state.p_locking_processes = NULL;
 
   state.appHWnd = FindConsoleHandle();
+  
+  // TODO :: This should check argv[0] and behave differently for each of msys2, mingw32 and mingw64.
+  // TODO :: It should also interpret the filenames as relative paths from argv[0].
+  char* default_args[] = {"msys2_updater.exe", "--gui", "C:\\msys64\\usr\\bin\\msys-2.0.dll", "C:\\msys64\\usr\\bin\\bash.exe"};
+  if (argc == 1) {
+      argc = sizeof(default_args)/sizeof(default_args[0]);
+      argv = default_args;
+  }
 
   kExitCode exit_code = ParseArguments(argc, argv, &args);
   if (exit_code == kUserNoFiles) {
@@ -867,8 +1069,8 @@ int main(int argc, char* argv[]) {
   } else if (exit_code != kSuccess) {
     return (exit_code);
   }
-
   exit_code = InterfaceStateInit(&args, &state.if_state);
+  
   if (exit_code != kSuccess) {
     CleanupAndExit(&args, &state, exit_code);
   }
