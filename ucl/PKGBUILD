@@ -5,44 +5,63 @@
 # Contributor (Arch Linux): arjan <arjan@archlinux.org>
 # Contributor (Arch Linux): Tom Newsom <Jeepster@gmx.co.uk>
 
-pkgname=ucl
+_realname=ucl
+pkgname=("ucl" "ucl-devel")
 pkgver=1.03
 pkgrel=1
 pkgdesc="Portable lossless data compression library written in ANSI C"
 arch=('i686' 'x86_64')
 license=('GPL')
 url="http://www.oberhumer.com/opensource/ucl/"
-source=("http://www.oberhumer.com/opensource/$pkgname/download/$pkgname-$pkgver.tar.gz"
+source=("http://www.oberhumer.com/opensource/${_realname}/download/${_realname}-$pkgver.tar.gz"
         "000-msys2.patch"
         "001-autoconf-compat.patch"
-        "002-missing-macros.patch")
+        "002-missing-macros.patch"
+        "003-no-undefined.patch")
 md5sums=('852bd691d8abc75b52053465846fba34'
-         '130fd74b245e68acd6f005115f1412b0'
-         '7b000001507b42dcc047c8786f180d9b'
-         '9b596d8cec6144b6cd746efa6693e46e')
+         '6643b0a658d818075533e09046ce9ac9'
+         'd370f7a7d07a76b0bfc76c50c73aaaad'
+         'c18f77b87934abda7948dbbada817b14'
+         '39ca38f60c03df634284552e69d5b775')
 
 prepare() {
-  cd "$pkgname-$pkgver"
+  cd "${_realname}-$pkgver"
   rm -f acinclude.m4
   patch -p1 -i "${srcdir}/000-msys2.patch"
   patch -p1 -i "${srcdir}/001-autoconf-compat.patch"
   patch -p1 -i "${srcdir}/002-missing-macros.patch"
+  patch -p1 -i "${srcdir}/003-no-undefined.patch"
 
-  # no luck with that
-  # WANT_AUTOMAKE=1.15 autoreconf -fi
+  touch ChangeLog
+  WANT_AUTOMAKE=latest autoreconf -fiv
 }
 
 build() {
-  cd "$pkgname-$pkgver"
+  cd "${_realname}-$pkgver"
   ./configure \
     --build=${CHOST} \
     --prefix=/usr \
     --enable-shared \
-    --disable-static
+    --enable-static
+
   make
+  make DESTDIR=${srcdir}/dest install
 }
 
-package() {
-  cd "$pkgname-$pkgver"
-  make DESTDIR="$pkgdir" install
+package_ucl() {
+  mkdir -p ${pkgdir}/usr
+  cp -rf $srcdir/dest/usr/bin ${pkgdir}/usr/
+  
+  install -Dm644 "${srcdir}/${pkgname}-${pkgver}/COPYING" "${pkgdir}/usr/share/licenses/${pkgname}/COPYING"
+}
+
+package_ucl-devel() {
+  groups=('development')
+  options=(staticlibs)
+  depends=("ucl=${pkgver}")
+  pkgdesc="ucl headers and libraries"
+
+  mkdir -p ${pkgdir}/usr
+  cp -rf $srcdir/dest/usr/include ${pkgdir}/usr/
+  cp -rf $srcdir/dest/usr/lib ${pkgdir}/usr/
 }

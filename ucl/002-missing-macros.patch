@@ -1,22 +1,23 @@
-https://dev.openwrt.org/browser/packages/libs/ucl/patches/002-missing-macros.patch?rev=24363
---- /dev/null
-+++ b/acinclude.m4
-@@ -0,0 +1,361 @@
+diff -Naur ucl-1.03-orig/local.m4 ucl-1.03/local.m4
+--- ucl-1.03-orig/m4/local.m4	1970-01-01 03:00:00.000000000 +0300
++++ ucl-1.03/m4/local.m4	2015-02-04 14:24:51.000000000 +0300
+@@ -0,0 +1,288 @@
++
 +# /***********************************************************************
 +# // standard ACC macros
 +# ************************************************************************/
 +
 +AC_DEFUN([mfx_ACC_CHECK_ENDIAN], [
-+AC_C_BIGENDIAN([AC_DEFINE(ACC_ABI_BIG_ENDIAN,1,[Define to 1 if your machine is big endian.])],[AC_DEFINE(ACC_ABI_LITTLE_ENDIAN,1,[Define to 1 if your machine is little endian.])])
++AC_C_BIGENDIAN([AC_DEFINE(ACC_ENDIAN_BIG_ENDIAN,1,[Define to 1 if your machine is big endian.])],[AC_DEFINE(ACC_ENDIAN_LITTLE_ENDIAN,1,[Define to 1 if your machine is little endian.])])
 +])#
 +
 +AC_DEFUN([mfx_ACC_CHECK_HEADERS], [
 +AC_HEADER_TIME
-+AC_CHECK_HEADERS([assert.h ctype.h dirent.h errno.h fcntl.h float.h limits.h malloc.h memory.h setjmp.h signal.h stdarg.h stddef.h stdint.h stdio.h stdlib.h string.h strings.h time.h unistd.h utime.h sys/mman.h sys/resource.h sys/stat.h sys/time.h sys/types.h sys/wait.h])
++AC_CHECK_HEADERS([assert.h ctype.h dirent.h errno.h fcntl.h limits.h malloc.h memory.h setjmp.h signal.h stdarg.h stddef.h stdint.h stdio.h stdlib.h string.h strings.h time.h unistd.h utime.h sys/stat.h sys/time.h sys/types.h])
 +])#
 +
 +AC_DEFUN([mfx_ACC_CHECK_FUNCS], [
-+AC_CHECK_FUNCS(access alloca atexit atoi atol chmod chown clock_getcpuclockid clock_getres clock_gettime ctime difftime fstat getenv getpagesize getrusage gettimeofday gmtime isatty localtime longjmp lstat memcmp memcpy memmove memset mkdir mktime mmap mprotect munmap qsort raise rmdir setjmp signal snprintf strcasecmp strchr strdup strerror strftime stricmp strncasecmp strnicmp strrchr strstr time umask utime vsnprintf)
++AC_CHECK_FUNCS(access alloca atexit atoi atol chmod chown ctime difftime fstat gettimeofday gmtime localtime longjmp lstat memcmp memcpy memmove memset mktime qsort raise setjmp signal snprintf strcasecmp strchr strdup strerror strftime stricmp strncasecmp strnicmp strrchr strstr time umask utime vsnprintf)
 +])#
 +
 +
@@ -25,15 +26,15 @@ https://dev.openwrt.org/browser/packages/libs/ucl/patches/002-missing-macros.pat
 +AC_CHECK_SIZEOF(int)
 +AC_CHECK_SIZEOF(long)
 +
-+AC_CHECK_SIZEOF(long long)
-+AC_CHECK_SIZEOF(__int16)
-+AC_CHECK_SIZEOF(__int32)
-+AC_CHECK_SIZEOF(__int64)
-+
++AC_CHECK_SIZEOF(ptrdiff_t)
++AC_CHECK_SIZEOF(size_t)
 +AC_CHECK_SIZEOF(void *)
 +AC_CHECK_SIZEOF(char *)
-+AC_CHECK_SIZEOF(size_t)
-+AC_CHECK_SIZEOF(ptrdiff_t)
++
++AC_CHECK_SIZEOF(long long)
++AC_CHECK_SIZEOF(unsigned long long)
++AC_CHECK_SIZEOF(__int64)
++AC_CHECK_SIZEOF(unsigned __int64)
 +])#
 +
 +
@@ -99,75 +100,8 @@ https://dev.openwrt.org/browser/packages/libs/ucl/patches/002-missing-macros.pat
 +])# mfx_ACC_ACCCHK
 +
 +
-+# /***********************************************************************
-+# // Check for ACC_conformance
-+# ************************************************************************/
 +
-+AC_DEFUN([mfx_MINIACC_ACCCHK], [
-+mfx_tmp=$1
-+mfx_save_CPPFLAGS=$CPPFLAGS
-+dnl in Makefile.in $(INCLUDES) will be before $(CPPFLAGS), so we mimic this here
-+test "X$mfx_tmp" = "X" || CPPFLAGS="$mfx_tmp $CPPFLAGS"
-+
-+AC_MSG_CHECKING([whether your compiler passes the ACC conformance test])
-+
-+AC_LANG_CONFTEST([AC_LANG_PROGRAM(
-+[[#define ACC_CONFIG_NO_HEADER 1
-+#define ACC_WANT_ACC_INCD_H 1
-+#include $2
-+
-+#define ACC_WANT_ACC_CHK_CH 1
-+#undef ACCCHK_ASSERT
-+#define ACCCHK_ASSERT(expr)     ACC_COMPILE_TIME_ASSERT_HEADER(expr)
-+#include $2
-+
-+#define ACC_WANT_ACC_CHK_CH 1
-+#undef ACCCHK_ASSERT
-+#define ACCCHK_ASSERT(expr)     ACC_COMPILE_TIME_ASSERT(expr)
-+static void test_acc_compile_time_assert(void) {
-+#include $2
-+}
-+
-+#undef NDEBUG
-+#include <assert.h>
-+#define ACC_WANT_ACC_CHK_CH 1
-+#undef ACCCHK_ASSERT
-+#define ACCCHK_ASSERT(expr)  assert(expr);
-+static int test_acc_run_time_assert(int r) {
-+#include $2
-+return r;
-+}
-+]], [[
-+test_acc_compile_time_assert();
-+if (test_acc_run_time_assert(1) != 1) return 1;
-+]]
-+)])
-+
-+mfx_tmp=FAILED
-+_AC_COMPILE_IFELSE([], [mfx_tmp=yes])
-+rm -f conftest.$ac_ext conftest.$ac_objext
-+
-+CPPFLAGS=$mfx_save_CPPFLAGS
-+
-+AC_MSG_RESULT([$mfx_tmp])
-+case x$mfx_tmp in
-+  xpassed | xyes) ;;
-+  *)
-+    AC_MSG_NOTICE([])
-+    AC_MSG_NOTICE([Your compiler failed the ACC conformance test - for details see ])
-+    AC_MSG_NOTICE([`config.log'. Please check that log file and consider sending])
-+    AC_MSG_NOTICE([a patch or bug-report to <${PACKAGE_BUGREPORT}>.])
-+    AC_MSG_NOTICE([Thanks for your support.])
-+    AC_MSG_NOTICE([])
-+    AC_MSG_ERROR([ACC conformance test failed. Stop.])
-+dnl    AS_EXIT
-+    ;;
-+esac
-+])# mfx_MINIACC_ACCCHK
-+
-+
-+
-+# serial 1
++# dnl serial 1
 +
 +AC_DEFUN([mfx_PROG_CPPFLAGS], [
 +AC_MSG_CHECKING([whether the C preprocessor needs special flags])
@@ -209,12 +143,14 @@ https://dev.openwrt.org/browser/packages/libs/ucl/patches/002-missing-macros.pat
 +esac
 +])# mfx_PROG_CPPFLAGS
 +
-+# serial 3
++
++
++# dnl serial 3
 +
 +AC_DEFUN([mfx_CHECK_HEADER_SANE_LIMITS_H], [
 +AC_CACHE_CHECK([whether limits.h is sane],
 +mfx_cv_header_sane_limits_h,
-+[AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <limits.h>
++[AC_TRY_COMPILE([#include <limits.h>
 +#if (32767 >= 4294967295ul) || (65535u >= 4294967295ul)
 +#  if defined(__APPLE__) && defined(__GNUC__)
 +#    error "your preprocessor is broken - use compiler option -no-cpp-precomp"
@@ -278,7 +214,7 @@ https://dev.openwrt.org/browser/packages/libs/ucl/patches/002-missing-macros.pat
 +#if (UINT_MAX > ULONG_MAX)
 +#  include "error UINT_MAX vs ULONG_MAX"
 +#endif
-+]], [[
++],[
 +#if (USHRT_MAX == MFX_0xffff)
 +{ typedef char a_short2a[1 - 2 * !(sizeof(short) == 2)]; }
 +#elif (USHRT_MAX >= MFX_0xffff)
@@ -294,13 +230,11 @@ https://dev.openwrt.org/browser/packages/libs/ucl/patches/002-missing-macros.pat
 +#elif (ULONG_MAX >= MFX_0xffff)
 +{ typedef char a_long2b[1 - 2 * !(sizeof(long) > 2)]; }
 +#endif
-+#if !defined(_CRAY1) /* CRAY PVP systems */
 +#if (USHRT_MAX == MFX_0xffffffffL)
 +{ typedef char a_short4a[1 - 2 * !(sizeof(short) == 4)]; }
 +#elif (USHRT_MAX >= MFX_0xffffffffL)
 +{ typedef char a_short4b[1 - 2 * !(sizeof(short) > 4)]; }
 +#endif
-+#endif /* _CRAY1 */
 +#if (UINT_MAX == MFX_0xffffffffL)
 +{ typedef char a_int4a[1 - 2 * !(sizeof(int) == 4)]; }
 +#elif (UINT_MAX >= MFX_0xffffffffL)
@@ -311,19 +245,10 @@ https://dev.openwrt.org/browser/packages/libs/ucl/patches/002-missing-macros.pat
 +#elif (ULONG_MAX >= MFX_0xffffffffL)
 +{ typedef char a_long4b[1 - 2 * !(sizeof(long) > 4)]; }
 +#endif
-+]])],
-+[mfx_cv_header_sane_limits_h=yes],
-+[mfx_cv_header_sane_limits_h=no])])
++],
++mfx_cv_header_sane_limits_h=yes,
++mfx_cv_header_sane_limits_h=no)])
 +])
-+
-+# /***********************************************************************
-+# // standard
-+# ************************************************************************/
-+
-+AC_DEFUN([mfx_LZO_CHECK_ENDIAN], [
-+AC_C_BIGENDIAN([AC_DEFINE(LZO_ABI_BIG_ENDIAN,1,[Define to 1 if your machine is big endian.])],[AC_DEFINE(LZO_ABI_LITTLE_ENDIAN,1,[Define to 1 if your machine is little endian.])])
-+])#
-+
 +
 +# /***********************************************************************
 +# //
@@ -333,6 +258,7 @@ https://dev.openwrt.org/browser/packages/libs/ucl/patches/002-missing-macros.pat
 +
 +AC_DEFUN([mfx_CHECK_SIZEOF], [
 +AC_CHECK_SIZEOF(__int32)
++AC_CHECK_SIZEOF(unsigned __int32)
 +AC_CHECK_SIZEOF(intmax_t)
 +AC_CHECK_SIZEOF(uintmax_t)
 +AC_CHECK_SIZEOF(intptr_t)
@@ -355,11 +281,12 @@ https://dev.openwrt.org/browser/packages/libs/ucl/patches/002-missing-macros.pat
 +AC_DEFUN([mfx_CHECK_LIB_WINMM], [
 +if test "X$GCC" = Xyes; then
 +case $host_os in
-+cygwin* | mingw* | pw32*)
-+     test "X$LIBS" != "X" && LIBS="$LIBS "
-+     LIBS="${LIBS}-lwinmm" ;;
++cygwin* | msys* | mingw* | pw32*)
++     LIBS="$LIBS -lwinmm" ;;
 +*)
 +     ;;
 +esac
 +fi
 +])#
++
++
