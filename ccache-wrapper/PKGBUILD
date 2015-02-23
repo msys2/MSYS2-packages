@@ -1,0 +1,69 @@
+# Maintainer: Andrew Whatson <whatson@gmail.com>
+
+pkgname=ccache-wrapper
+pkgver=1
+pkgrel=1
+pkgdesc='Wrapper scripts for ccache'
+arch=('any')
+license=('GPL')
+depends=('bash')
+optdepends=(
+  'mingw-w64-i686-ccache-git'
+  'mingw-w64-i686-gcc'
+  'mingw-w64-i686-clang'
+  'mingw-w64-x86_64-ccache-git'
+  'mingw-w64-x86_64-gcc'
+  'mingw-w64-x86_64-clang'
+)
+
+package() {
+  reallibdir=/usr/lib/${pkgname}
+  libdir=${pkgdir}/${reallibdir}
+  etcdir=${pkgdir}/etc/profile.d
+
+  compilers_any='
+    gcc.exe
+    g++.exe
+    c++.exe
+    clang.exe
+    clang++.exe
+  '
+
+  compilers_32='
+    i686-w64-mingw32-gcc.exe
+    i686-w64-mingw32-gcc-4.9.2.exe
+    i686-w64-mingw32-g++.exe
+    i686-w64-mingw32-c++.exe
+  '
+
+  compilers_64='
+    x86_64-w64-mingw32-gcc.exe
+    x86_64-w64-mingw32-gcc-4.9.2.exe
+    x86_64-w64-mingw32-g++.exe
+    x86_64-w64-mingw32-c++.exe
+  '
+
+  mkdir -p ${libdir}/{mingw32,mingw64}
+
+  # install wrapper script
+  ( echo '#!/bin/bash'
+    echo 'ccache $(basename $0) "$@"'
+  ) > ${libdir}/ccache-wrapper.sh
+  chmod +x ${libdir}/ccache-wrapper.sh
+
+  # install mingw32 wrappers
+  for compiler in $compilers_any $compilers_32; do
+    cp ${libdir}/ccache-wrapper.sh ${libdir}/mingw32/${compiler}
+  done
+
+  # install mingw64 wrappers
+  for compiler in $compilers_any $compilers_64; do
+    cp ${libdir}/ccache-wrapper.sh ${libdir}/mingw64/${compiler}
+  done
+ 
+  # install profile hook 
+  mkdir -p ${etcdir}
+  ( echo 'export CCACHE_PATH="$PATH"'
+    echo 'export PATH="'${reallibdir}'/${MSYSTEM,,}:$PATH"'
+  ) > ${etcdir}/ccache-wrapper.sh
+}
