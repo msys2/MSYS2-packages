@@ -1,8 +1,8 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=('gettext' 'gettext-devel' 'libgettextpo' 'libasprintf' 'libintl')
-pkgver=0.18.3.2
-pkgrel=4
+pkgver=0.19.4
+pkgrel=1
 pkgdesc="GNU internationalization library"
 arch=('i686' 'x86_64')
 url="http://www.gnu.org/software/gettext/"
@@ -11,22 +11,46 @@ groups=('base-devel')
 makedepends=('libiconv-devel')
 options=(!docs)
 source=(ftp://ftp.gnu.org/pub/gnu/gettext/${pkgname}-${pkgver}.tar.gz{,.sig}
-        gettext-0.18.3.1-msys2.patch)
-md5sums=('241aba309d07aa428252c74b40a818ef'
+        0.18.1.1-autopoint-V.patch
+        0.19.3-localename.patch
+        0.18.1.1-no-woe32dll.patch
+        0.19.3-tests-cygwin.patch
+        gettext-0.18.3.1-msys2.patch
+        gettext-0.19.4-archive.patch)
+md5sums=('d3511af1e604a3478900d2c2b4a4a48e'
          'SKIP'
-         'e9d13e0b1e9efdce11261add731bdb8c')
+         'c650eafcafbb6421d6280e397f081a81'
+         'bb446a13cfa7de098ad45e41c24f30a6'
+         '6d176c6fa8288d71d9c0bb068de4bcda'
+         '344be5f308e2090c8d93841bd4dc9962'
+         '486a854ea6d1f681e2e70d32155d1027'
+         'e19dcf44a49dea46601f00de3678da69')
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
-  mkdir -p ${srcdir}/mytemp
-  cp -rf ${srcdir}/${pkgname}-${pkgver}/build-aux/snippet ${srcdir}/mytemp/
-  patch -p1 -i $srcdir/gettext-0.18.3.1-msys2.patch
-  libtoolize --copy --force
-  ./autogen.sh --quick --skip-gnulib
+  # Cygwin patches
+  patch -p2 -i $srcdir/0.18.1.1-autopoint-V.patch
+  patch -p2 -i $srcdir/0.19.3-localename.patch
+  patch -p2 -i $srcdir/0.18.1.1-no-woe32dll.patch
+  patch -p2 -i $srcdir/0.19.3-tests-cygwin.patch
 
-  cp -rf ${srcdir}/mytemp/snippet ${srcdir}/${pkgname}-${pkgver}/build-aux/
-  rm -rf ${srcdir}/mytemp
+  # MSYS2 patch
+  patch -p1 -i $srcdir/gettext-0.18.3.1-msys2.patch
+
+  pushd gettext-tools/misc > /dev/null
+    mkdir archive
+    tar -xvf archive.dir.tar -C archive
+    rm -f archive.dir.tar
+    pushd archive > /dev/null
+      patch -p1 -i ${srcdir}/gettext-0.19.4-archive.patch
+      tar -cvf ../archive.dir.tar *
+    popd > /dev/null
+    rm -rf archive
+  popd > /dev/null
+
+  libtoolize --copy --force
+  ./autogen.sh --skip-gnulib
 }
 
 build() {

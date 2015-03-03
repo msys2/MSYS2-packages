@@ -113,81 +113,6 @@ diff -Naur gettext-0.18.3.1-orig/gettext-runtime/configure.ac gettext-0.18.3.1/g
      *) is_woe32dll=no ;;
    esac
  else
-diff -Naur gettext-0.18.3.1-orig/gettext-runtime/gnulib-lib/localename.c gettext-0.18.3.1/gettext-runtime/gnulib-lib/localename.c
---- gettext-0.18.3.1-orig/gettext-runtime/gnulib-lib/localename.c	2013-08-15 20:24:00.000000000 +0400
-+++ gettext-0.18.3.1/gettext-runtime/gnulib-lib/localename.c	2013-09-03 07:33:18.857421900 +0400
-@@ -57,7 +57,7 @@
- # define WINDOWS_NATIVE
- #endif
- 
--#if defined WINDOWS_NATIVE || defined __CYGWIN__ /* Native Windows or Cygwin */
-+#if defined WINDOWS_NATIVE /* Native Windows */
- # define WIN32_LEAN_AND_MEAN
- # include <windows.h>
- /* List of language codes, sorted by value:
-@@ -1405,7 +1405,7 @@
- #endif
- 
- 
--#if defined WINDOWS_NATIVE || defined __CYGWIN__ /* Native Windows or Cygwin */
-+#if defined WINDOWS_NATIVE /* Native Windows */
- 
- /* Canonicalize a Windows native locale name to a Unix locale name.
-    NAME is a sufficiently large buffer.
-@@ -2670,7 +2670,7 @@
-    However it does not specify the exact format.  Neither do SUSV2 and
-    ISO C 99.  So we can use this feature only on selected systems (e.g.
-    those using GNU C Library).  */
--#if defined _LIBC || ((defined __GLIBC__ && __GLIBC__ >= 2) && !defined __UCLIBC__)
-+#if defined _LIBC || ((defined __GLIBC__ && __GLIBC__ >= 2) && !defined __UCLIBC__) || defined __CYGWIN__
- # define HAVE_LOCALE_NULL
- #endif
- 
-@@ -2725,11 +2725,6 @@
-          Ignore invalid LANG value set by the Terminal application.  */
-       if (strcmp (retval, "UTF-8") != 0)
- #endif
--#if defined __CYGWIN__
--      /* Cygwin.
--         Ignore dummy LANG value set by ~/.profile.  */
--      if (strcmp (retval, "C.UTF-8") != 0)
--#endif
-         return retval;
-     }
- 
-@@ -2822,7 +2817,7 @@
- 
- # endif
- 
--# if defined WINDOWS_NATIVE || defined __CYGWIN__ /* Native Windows or Cygwin */
-+# if defined WINDOWS_NATIVE /* Native Windows */
-   {
-     LCID lcid;
- 
-@@ -2832,6 +2827,23 @@
-     return gl_locale_name_from_win32_LCID (lcid);
-   }
- # endif
-+# if defined __CYGWIN__
-+  {
-+    /* Rarely arrive here. This function is called only when an earlier
-+     * call to gl_locale_name_posix() or gl_locale_name_environ()
-+     * returned NULL.  That first function now simply delegates to
-+     * setlocale (LC_*, NULL), which never fails on cygwin.  But...for
-+     * completeness, or when called after gl_locale_name_environ() and
-+     * none are set, go ahead and specify the cygwin default. Cheat a bit
-+     * to distinguish old cygwin (1.5 and below) from new cygwin (1.7+).
-+     */
-+#  if PATH_MAX < 261   /* cygwin 1.5 or below */
-+    return "C";
-+#  else                /* PATH_MAX = 4096, cygwin 1.7 or above */
-+    return "C.UTF-8";
-+#  endif
-+  }
-+# endif
- #endif
- }
- 
 diff -Naur gettext-0.18.3.1-orig/gettext-runtime/gnulib-lib/Makefile.am gettext-0.18.3.1/gettext-runtime/gnulib-lib/Makefile.am
 --- gettext-0.18.3.1-orig/gettext-runtime/gnulib-lib/Makefile.am	2013-08-15 20:24:07.000000000 +0400
 +++ gettext-0.18.3.1/gettext-runtime/gnulib-lib/Makefile.am	2013-09-03 07:33:18.857421900 +0400
@@ -224,81 +149,6 @@ diff -Naur gettext-0.18.3.1-orig/gettext-runtime/gnulib-m4/setlocale.m4 gettext-
        case `uname -r` in
          1.5.*) REPLACE_SETLOCALE=1 ;;
        esac
-diff -Naur gettext-0.18.3.1-orig/gettext-runtime/intl/localename.c gettext-0.18.3.1/gettext-runtime/intl/localename.c
---- gettext-0.18.3.1-orig/gettext-runtime/intl/localename.c	2012-12-10 05:59:06.000000000 +0400
-+++ gettext-0.18.3.1/gettext-runtime/intl/localename.c	2013-09-03 07:33:18.857421900 +0400
-@@ -57,7 +57,7 @@
- # define WINDOWS_NATIVE
- #endif
- 
--#if defined WINDOWS_NATIVE || defined __CYGWIN__ /* Native Windows or Cygwin */
-+#if defined WINDOWS_NATIVE /* Native Windows */
- # define WIN32_LEAN_AND_MEAN
- # include <windows.h>
- /* List of language codes, sorted by value:
-@@ -1405,7 +1405,7 @@
- #endif
- 
- 
--#if defined WINDOWS_NATIVE || defined __CYGWIN__ /* Native Windows or Cygwin */
-+#if defined WINDOWS_NATIVE /* Native Windows */
- 
- /* Canonicalize a Windows native locale name to a Unix locale name.
-    NAME is a sufficiently large buffer.
-@@ -2670,7 +2670,7 @@
-    However it does not specify the exact format.  Neither do SUSV2 and
-    ISO C 99.  So we can use this feature only on selected systems (e.g.
-    those using GNU C Library).  */
--#if defined _LIBC || ((defined __GLIBC__ && __GLIBC__ >= 2) && !defined __UCLIBC__)
-+#if defined _LIBC || ((defined __GLIBC__ && __GLIBC__ >= 2) && !defined __UCLIBC__) || defined __CYGWIN__
- # define HAVE_LOCALE_NULL
- #endif
- 
-@@ -2725,11 +2725,6 @@
-          Ignore invalid LANG value set by the Terminal application.  */
-       if (strcmp (retval, "UTF-8") != 0)
- #endif
--#if defined __CYGWIN__
--      /* Cygwin.
--         Ignore dummy LANG value set by ~/.profile.  */
--      if (strcmp (retval, "C.UTF-8") != 0)
--#endif
-         return retval;
-     }
- 
-@@ -2822,7 +2817,7 @@
- 
- # endif
- 
--# if defined WINDOWS_NATIVE || defined __CYGWIN__ /* Native Windows or Cygwin */
-+# if defined WINDOWS_NATIVE /* Native Windows */
-   {
-     LCID lcid;
- 
-@@ -2832,6 +2827,23 @@
-     return gl_locale_name_from_win32_LCID (lcid);
-   }
- # endif
-+# if defined __CYGWIN__
-+  {
-+    /* Rarely arrive here. This function is called only when an earlier
-+     * call to gl_locale_name_posix() or gl_locale_name_environ()
-+     * returned NULL.  That first function now simply delegates to
-+     * setlocale (LC_*, NULL), which never fails on cygwin.  But...for
-+     * completeness, or when called after gl_locale_name_environ() and
-+     * none are set, go ahead and specify the cygwin default. Cheat a bit
-+     * to distinguish old cygwin (1.5 and below) from new cygwin (1.7+).
-+     */
-+#  if PATH_MAX < 261   /* cygwin 1.5 or below */
-+    return "C";
-+#  else                /* PATH_MAX = 4096, cygwin 1.7 or above */
-+    return "C.UTF-8";
-+#  endif
-+  }
-+# endif
- #endif
- }
- 
 diff -Naur gettext-0.18.3.1-orig/gettext-runtime/libasprintf/configure.ac gettext-0.18.3.1/gettext-runtime/libasprintf/configure.ac
 --- gettext-0.18.3.1-orig/gettext-runtime/libasprintf/configure.ac	2013-07-29 15:35:45.000000000 +0400
 +++ gettext-0.18.3.1/gettext-runtime/libasprintf/configure.ac	2013-09-03 07:33:18.888671900 +0400
@@ -347,15 +197,6 @@ diff -Naur gettext-0.18.3.1-orig/gettext-runtime/m4/threadlib.m4 gettext-0.18.3.
 diff -Naur gettext-0.18.3.1-orig/gettext-tools/configure.ac gettext-0.18.3.1/gettext-tools/configure.ac
 --- gettext-0.18.3.1-orig/gettext-tools/configure.ac	2013-08-15 20:15:56.000000000 +0400
 +++ gettext-0.18.3.1/gettext-tools/configure.ac	2013-09-03 07:33:18.919921900 +0400
-@@ -100,7 +100,7 @@
- dnl On mingw and Cygwin, we can activate special Makefile rules which add
- dnl version information to the shared libraries and executables.
- case "$host_os" in
--  mingw* | cygwin*) is_woe32=yes ;;
-+  mingw*) is_woe32=yes ;;
-   *) is_woe32=no ;;
- esac
- AM_CONDITIONAL([WOE32], [test $is_woe32 = yes])
 @@ -109,7 +109,7 @@
  dnl Cygwin DLL.  To avoid any conflict with gettext DLLs, always link
  dnl to gnulib's error.c.  See GETTEXTLIB_EXPORTS_FLAGS setting below.
@@ -365,15 +206,6 @@ diff -Naur gettext-0.18.3.1-orig/gettext-tools/configure.ac gettext-0.18.3.1/get
  esac
  
  dnl Checks for libraries.
-@@ -210,7 +210,7 @@
- dnl    exported variables _also_ in the static library.
- if test "$enable_shared" = yes; then
-   case "$host_os" in
--    mingw* | cygwin*) is_woe32dll=yes ;;
-+    mingw*) is_woe32dll=yes ;;
-     *) is_woe32dll=no ;;
-   esac
- else
 diff -Naur gettext-0.18.3.1-orig/gettext-tools/examples/hello-c++-kde/admin/config.guess gettext-0.18.3.1/gettext-tools/examples/hello-c++-kde/admin/config.guess
 --- gettext-0.18.3.1-orig/gettext-tools/examples/hello-c++-kde/admin/config.guess	2012-12-10 05:59:06.000000000 +0400
 +++ gettext-0.18.3.1/gettext-tools/examples/hello-c++-kde/admin/config.guess	2013-09-03 07:33:18.919921900 +0400
@@ -635,15 +467,3 @@ diff -Naur gettext-0.18.3.1-orig/gettext-tools/libgettextpo/Makefile.gnulib gett
  	      need_charset_alias=false ;; \
  	    *) \
  	      need_charset_alias=true ;; \
-diff -Naur gettext-0.18.3.1-orig/m4/woe32-dll.m4 gettext-0.18.3.1/m4/woe32-dll.m4
---- gettext-0.18.3.1-orig/m4/woe32-dll.m4	2012-12-10 05:59:06.000000000 +0400
-+++ gettext-0.18.3.1/m4/woe32-dll.m4	2013-09-03 07:33:18.998046900 +0400
-@@ -30,7 +30,7 @@
- [
-   AC_REQUIRE([AC_CANONICAL_HOST])
-   case "$host_os" in
--    mingw* | cygwin*)
-+    mingw*)
-       AC_MSG_CHECKING([for auto-import of symbols])
-       AC_CACHE_VAL([gl_cv_ld_autoimport], [
-         gl_save_LDFLAGS="$LDFLAGS"
