@@ -4,7 +4,7 @@ function Component() {
     if (systemDrive === "") {
         systemDrive = "C:";
     }
-    installer.setValue("TargetDir", systemDrive+"\\msys@BITNESS@");
+    installer.setValue("TargetDir", systemDrive+"\\git-sdk-@BITNESS@bit");
     installer.setDefaultPageVisible(QInstaller.Introduction, false);
     installer.setDefaultPageVisible(QInstaller.TargetDirectory, true);
     installer.setDefaultPageVisible(QInstaller.ComponentSelection, false);
