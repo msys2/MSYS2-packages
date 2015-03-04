@@ -33,7 +33,7 @@ function createShortcuts()
                             "@StartMenuDir@/Git for Windows SDK (MinGW 64-bit).lnk",
                             "/A /Q /K " + installer.value("TargetDir") + "\\mingw64_shell.bat");
 
-    if ("@BITNESS@bit" === "@BITNESS@bit") {
+    if ("@BITNESS@bit" === "32bit") {
         component.addOperation( "Execute",
                                ["@TargetDir@\\autorebase.bat"]);
     }
