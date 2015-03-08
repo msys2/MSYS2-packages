@@ -1,0 +1,146 @@
+From 9f631496c1ebb40ce4489131afb78490889ff09f Mon Sep 17 00:00:00 2001
+From: David Macek <david.macek.0@gmail.com>
+Date: Fri, 6 Mar 2015 19:46:20 +0100
+Subject: [PATCH] Relocate sbin to usr/bin
+
+---
+ bash-completion/mkfs        | 2 +-
+ configure.ac                | 6 +++---
+ include/pathnames.h         | 8 ++++----
+ libblkid/src/topology/dm.c  | 3 +--
+ libblkid/src/topology/lvm.c | 3 +--
+ libuuid/src/uuidd.h         | 2 +-
+ misc-utils/uuidd.rc.in      | 4 ++--
+ 7 files changed, 13 insertions(+), 15 deletions(-)
+
+diff --git a/bash-completion/mkfs b/bash-completion/mkfs
+index 4e6e175..4110f7c 100644
+--- a/bash-completion/mkfs
++++ b/bash-completion/mkfs
+@@ -6,7 +6,7 @@ _mkfs_module()
+ 	prev="${COMP_WORDS[COMP_CWORD-1]}"
+ 	case $prev in
+ 		'-t'|'--type')
+-			FSTYPES=$(for I in /sbin/mkfs.* /usr/sbin/mkfs.*; do if [ -e $I ]; then echo ${I##*mkfs.}; fi; done)
++			FSTYPES=$(for I in /usr/bin/mkfs.*; do if [ -e $I ]; then echo ${I##*mkfs.}; fi; done)
+ 			COMPREPLY=( $(compgen -W "$FSTYPES" -- $cur) )
+ 			return 0
+ 			;;
+diff --git a/configure.ac b/configure.ac
+index 1373584..43b8ef1 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -58,7 +58,7 @@ AS_CASE([$exec_prefix:$prefix],
+ [NONE:NONE | NONE:/usr | /usr:*],
+   [AC_MSG_NOTICE([Default --exec-prefix detected.])
+    AS_CASE([$bindir],  ['${exec_prefix}/bin'],  [bindir=/bin;   AC_MSG_NOTICE([  --bindir defaults to /bin])  ])
+-   AS_CASE([$sbindir], ['${exec_prefix}/sbin'], [sbindir=/sbin; AC_MSG_NOTICE([  --sbindir defaults to /sbin])])
++   AS_CASE([$sbindir], ['${exec_prefix}/bin'], [sbindir=/bin; AC_MSG_NOTICE([  --sbindir defaults to /bin])])
+    AS_CASE([$libdir],  ['${exec_prefix}/lib'],  [libdir=/lib;   AC_MSG_NOTICE([  --libdir defaults to /lib])  ])
+   ]
+ )
+@@ -76,7 +76,7 @@ AC_SUBST([localstatedir])
+ usrbin_execdir='${exec_prefix}/bin'
+ AC_SUBST([usrbin_execdir])
+ 
+-usrsbin_execdir='${exec_prefix}/sbin'
++usrsbin_execdir='${exec_prefix}/bin'
+ AC_SUBST([usrsbin_execdir])
+ 
+ AS_CASE([$libdir],
+@@ -1709,7 +1709,7 @@ AS_IF([test "x$enable_pg_bell" = xyes], [
+ ])
+ 
+ 
+-AC_DEFUN([FS_PATHS_DEFAULT], [/sbin:/sbin/fs.d:/sbin/fs])
++AC_DEFUN([FS_PATHS_DEFAULT], [/usr/bin:/usr/bin/fs.d:/usr/bin/fs])
+ AC_ARG_ENABLE([fs-paths-default],
+   AS_HELP_STRING([--enable-fs-paths-default=paths], [default search path for fs helpers @<:@FS_PATHS_DEFAULT@:>@]),
+   [AS_CASE([$enableval],
+diff --git a/include/pathnames.h b/include/pathnames.h
+index 1cc4e15..b501972 100644
+--- a/include/pathnames.h
++++ b/include/pathnames.h
+@@ -20,10 +20,10 @@
+ 
+ /* DEFPATHs from <paths.h> don't include /usr/local */
+ #undef _PATH_DEFPATH
+-#define	_PATH_DEFPATH	        "/usr/local/bin:/bin:/usr/bin"
++#define	_PATH_DEFPATH	        "/usr/local/bin:/usr/bin"
+ 
+ #undef _PATH_DEFPATH_ROOT
+-#define	_PATH_DEFPATH_ROOT	"/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin"
++#define	_PATH_DEFPATH_ROOT	"/usr/local/bin:/usr/bin"
+ 
+ #define _PATH_SECURETTY		"/etc/securetty"
+ #define _PATH_WTMPLOCK		"/etc/wtmplock"
+@@ -42,8 +42,8 @@
+ #define _PATH_LOGIN		"/bin/login"
+ #define _PATH_INITTAB		"/etc/inittab"
+ #define _PATH_RC		"/etc/rc"
+-#define _PATH_REBOOT		"/sbin/reboot"
+-#define _PATH_SHUTDOWN		"/sbin/shutdown"
++#define _PATH_REBOOT		"/usr/bin/reboot"
++#define _PATH_SHUTDOWN		"/usr/bin/shutdown"
+ #define _PATH_SINGLE		"/etc/singleboot"
+ #define _PATH_SHUTDOWN_CONF	"/etc/shutdown.conf"
+ 
+diff --git a/libblkid/src/topology/dm.c b/libblkid/src/topology/dm.c
+index e061632..5c6ef42 100644
+--- a/libblkid/src/topology/dm.c
++++ b/libblkid/src/topology/dm.c
+@@ -31,8 +31,7 @@ static int probe_dm_tp(blkid_probe pr,
+ {
+ 	const char *paths[] = {
+ 		"/usr/local/sbin/dmsetup",
+-		"/usr/sbin/dmsetup",
+-		"/sbin/dmsetup"
++		"/usr/bin/dmsetup",
+ 	};
+ 	int dmpipe[] = { -1, -1 }, stripes, stripesize;
+ 	char *cmd = NULL;
+diff --git a/libblkid/src/topology/lvm.c b/libblkid/src/topology/lvm.c
+index bd079d4..d8198d8 100644
+--- a/libblkid/src/topology/lvm.c
++++ b/libblkid/src/topology/lvm.c
+@@ -37,8 +37,7 @@ static int probe_lvm_tp(blkid_probe pr,
+ {
+ 	const char *paths[] = {
+ 		"/usr/local/sbin/lvdisplay",
+-		"/usr/sbin/lvdisplay",
+-		"/sbin/lvdisplay"
++		"/usr/bin/lvdisplay",
+ 	};
+ 	int lvpipe[] = { -1, -1 }, stripes = 0, stripesize = 0;
+ 	FILE *stream = NULL;
+diff --git a/libuuid/src/uuidd.h b/libuuid/src/uuidd.h
+index 2f70968..89dfc67 100644
+--- a/libuuid/src/uuidd.h
++++ b/libuuid/src/uuidd.h
+@@ -38,7 +38,7 @@
+ #define UUIDD_DIR		_PATH_LOCALSTATEDIR "/uuidd"
+ #define UUIDD_SOCKET_PATH	UUIDD_DIR "/request"
+ #define UUIDD_PIDFILE_PATH	UUIDD_DIR "/uuidd.pid"
+-#define UUIDD_PATH		"/usr/sbin/uuidd"
++#define UUIDD_PATH		"/usr/bin/uuidd"
+ 
+ #define UUIDD_OP_GETPID			0
+ #define UUIDD_OP_GET_MAXOP		1
+diff --git a/misc-utils/uuidd.rc.in b/misc-utils/uuidd.rc.in
+index cebe228..b0b6fe9 100644
+--- a/misc-utils/uuidd.rc.in
++++ b/misc-utils/uuidd.rc.in
+@@ -13,8 +13,8 @@
+ #
+ set -e
+ 
+-PATH=/bin:/usr/bin:/sbin:/usr/sbin
+-DAEMON=/usr/sbin/uuidd
++PATH=/usr/bin
++DAEMON=/usr/bin/uuidd
+ UUIDD_USER=uuidd
+ UUIDD_GROUP=uuidd
+ UUIDD_DIR=@localstatedir@/uuidd
+-- 
+1.9.4.msysgit.2
+
