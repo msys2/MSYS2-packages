@@ -1,0 +1,58 @@
+# Maintainer: nalla <nalla@hamal.uberspace.de>
+
+pkgname=('git-extra')
+_ver_base=1.0
+pkgver=1.0.29.d079bbd
+pkgrel=1
+pkgdesc="Git for Windows extra files"
+arch=('i686' 'x86_64')
+url=""
+license=('GPL')
+groups=('base')
+depends=('vim')
+source=('git-extra'::'git+https://github.com/git-for-windows/build-extra')
+md5sums=('SKIP')
+install='git-extra.install'
+pkgver() {
+  cd "$srcdir/$pkgname"
+  printf "%s.%s.%s" "${_ver_base}" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  case "$CFLAGS" in
+    *x86-64*)
+      mingwdir="mingw64"
+    ;;
+    *)
+      mingwdir="mingw32"
+    ;;
+  esac
+
+  printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+    "export LC_ALL=C" \
+    "post_install () {" \
+    "test -f /$mingwdir/etc/gitconfig || cat > /$mingwdir/etc/gitconfig <<\\GITCONFIG" \
+    "$(cat $srcdir/$pkgname/gitconfig)" \
+    "GITCONFIG" \
+    "}" \
+    "post_upgrade () {" \
+    "    post_install" \
+    "}" > $srcdir/../$pkgname.install
+}
+
+package() {
+  pkgdesc="Git for Windows extra files"
+  groups=('base')
+  options=('!strip')
+  
+  install -d -m755 $pkgdir/etc/profile.d
+  install -d -m755 $pkgdir/usr/bin
+  install -m755 $srcdir/$pkgname/vimrc $pkgdir/etc
+  install -m755 $srcdir/$pkgname/vi $pkgdir/usr/bin
+  
+  for file in $srcdir/$pkgname/profile.d/*
+  do
+    filename=$(basename $file)
+    install -m755 $file $pkgdir/etc/profile.d/$filename
+  done
+}
