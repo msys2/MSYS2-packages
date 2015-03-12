@@ -44,8 +44,8 @@ pushd %1
   echo bin\bash -l -c "pacman -Syu --root %NEWMSYS%"
   bin\bash -l -c "pacman -Syu --root %NEWMSYS%"
   exit /b 999
-  %1\bin\bash -l -c "pacman -S pacman --rootrebase %NEWMSYS%"
-  %1\bin\bash -l -c "pacman -S base --force --rootrebase %NEWMSYS%" | more /E /P
+  %1\bin\bash -l -c "pacman -S pacman --root %NEWMSYS%"
+  %1\bin\bash -l -c "pacman -S base --force --root %NEWMSYS%" | more /E /P
   timeout 1 > NUL
 popd
 
