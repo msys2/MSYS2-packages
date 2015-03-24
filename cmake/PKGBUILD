@@ -1,0 +1,76 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=cmake
+pkgver=2.8.12.2
+pkgrel=2
+pkgdesc="A cross-platform open-source make system (mingw-w64)."
+arch=('i686' 'x86_64')
+url="http://www.cmake.org/"
+license=("MIT")
+makedepends=("gcc" "pkg-config"
+    libcurl-devel
+    libexpat-devel
+    libarchive-devel
+    ncurses-devel
+    zlib-devel)
+depends=("gcc-libs"
+    "libcurl"
+    "libexpat"
+    "libarchive"
+    "ncurses"
+    "pkg-config"
+    "zlib")
+options=('staticlibs' 'strip')
+source=("http://www.cmake.org/files/v2.8/${pkgname}-${pkgver}.tar.gz"
+    cmake-2.8.11.2-msys.patch
+    "findfreetype.patch"
+    "disable-response-files-for-msys.patch"
+    2.8.11-cygwin.patch
+    2.8.9-perl-libs.patch
+    2.8.9-ruby19.patch)
+md5sums=('17c6513483d23590cbce6957ec6d1e66'
+         '69b1bea788ef477b45137364793b87fb'
+         '90321de1d9d46cd8d6609d0509dbd7b0'
+         '9cb83b715a68f03f9db8c2eebc127f80'
+         '3a056694fe79d8e10f6560e86bab1558'
+         '3adff0ff67d05bb4576a195d017fde39'
+         '05a6d4218974bb28343c186996d1ad68')
+
+prepare() {
+  cd ${pkgname}-${pkgver}
+  patch -p1 -i ${srcdir}/cmake-2.8.11.2-msys.patch
+  patch -p1 -i ${srcdir}/findfreetype.patch
+  patch -p1 -i ${srcdir}/disable-response-files-for-msys.patch
+  patch -p2 -i ${srcdir}/2.8.11-cygwin.patch
+  patch -p2 -i ${srcdir}/2.8.9-perl-libs.patch
+  patch -p2 -i ${srcdir}/2.8.9-ruby19.patch
+}
+
+build() {
+  mkdir -p "${srcdir}/build-${CARCH}"
+  cd "${srcdir}/build-${CARCH}"
+
+  MSYSTEM=MSYS "${srcdir}"/${pkgname}-${pkgver}/configure \
+    --prefix=/usr \
+    --system-libs \
+    --no-system-expat \
+    --no-qt-gui \
+    --parallel=3 \
+    --mandir=share \
+    --docdir=share/doc/cmake
+
+  plain "Start building..."
+  make
+}
+
+package() {
+  cd "${srcdir}/build-${CARCH}"
+  make DESTDIR=$pkgdir install
+  
+  vimpath="${pkgdir}/usr/share/vim/vimfiles"
+  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/Docs/cmake-indent.vim "${vimpath}"/indent/cmake-indent.vim
+  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/Docs/cmake-syntax.vim "${vimpath}"/syntax/cmake-syntax.vim
+
+  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/Copyright.txt \
+    "${pkgdir}"/usr/share/licenses/${pkgname}/LICENSE
+}
