@@ -1,3 +1,4 @@
+:
 @echo off
 
 rem ember value of GOTO: is used to know recursion has happened.
