@@ -1,0 +1,93 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('gnutls' 'libgnutls' 'libgnutls-devel')
+pkgver=3.4.0
+pkgrel=1
+pkgdesc="A library which provides a secure layer over a reliable transport layer"
+arch=('x86_64' 'i686')
+license=('GPL3' 'LGPL2.1')
+url="http://www.gnutls.org/"
+makedepends=('gettext-devel'
+             'libidn-devel'
+             'libiconv-devel'
+             'gmp-devel'
+             'libnettle-devel'
+             'libp11-kit-devel'
+             'libtasn1-devel'
+             'zlib-devel')
+#optdepends=('guile: for use with Guile bindings')
+source=(ftp://ftp.gnutls.org/gcrypt/gnutls/v${pkgver%.*}/${pkgname}-${pkgver}.tar.xz{,.sig}
+        buildfix.diff
+        gnutls-3.4.0-msysize.patch)
+md5sums=('aa015c2666b031044edfb01b01980d84'
+         'SKIP'
+         'ffce1bd795445aaecf54100f44299fa7'
+         '5a7e8599b152ecef6b1103cbf0652167')
+validpgpkeys=('0424D4EE81A0E3D119C6F835EDA21E94B565716F'
+              '1F42418905D8206AA754CCDC29EE58B996865171')
+               # "Simon Josefsson <simon@josefsson.org>"
+               # "Nikos Mavrogiannopoulos <nmav@gnutls.org>
+
+prepare() {
+  cd "${srcdir}"/${pkgname}-${pkgver}
+  patch -p1 -i ${srcdir}/buildfix.diff
+  patch -p1 -i ${srcdir}/gnutls-3.4.0-msysize.patch
+  
+  autoreconf -vfi
+}
+
+build() {
+  cd "${srcdir}"/${pkgname}-${pkgver}
+  ./configure \
+    --build=${CHOST} \
+    --prefix=/usr \
+    --enable-shared \
+    --enable-static \
+    --disable-guile \
+    --enable-cxx \
+    --disable-hardware-acceleration \
+    --enable-heartbeat-support \
+    --with-zlib \
+    --with-default-trust-store-file=/usr/ssl/certs/ca-bundle.crt
+
+  make
+  make DESTDIR="$srcdir/dest" install
+  rm $srcdir/dest/usr/share/info/dir
+}
+
+check() {
+  cd "${srcdir}"/${pkgname}-${pkgver}
+  make check
+}
+
+package_gnutls() {
+  depends=("libgnutls=${pkgver}")
+
+  mkdir -p $pkgdir/usr/{bin,share}
+  cp -f $srcdir/dest/usr/bin/*.exe $pkgdir/usr/bin/
+  #cp -rf $srcdir/dest/usr/share/doc $pkgdir/usr/share/
+  cp -rf $srcdir/dest/usr/share/man $pkgdir/usr/share/
+}
+
+package_libgnutls() {
+  depends=('gcc-libs' 'libidn' 'libiconv' 'libintl' 'gmp' 'libnettle' 'libp11-kit' 'libtasn1' 'zlib')
+  groups=('libraries')
+  install=libgnutls.install
+
+  mkdir -p $pkgdir/usr/bin
+  cp -f $srcdir/dest/usr/bin/*.dll $pkgdir/usr/bin/
+  mkdir -p $pkgdir/usr/share
+  cp -rf $srcdir/dest/usr/share/locale $pkgdir/usr/share/
+  cp -rf $srcdir/dest/usr/share/info $pkgdir/usr/share/
+}
+
+package_libgnutls-devel() {
+  pkgdesc="Libgnutls headers and libraries"
+  groups=('development')
+  depends=("libgnutls=${pkgver}")
+
+  mkdir -p $pkgdir/usr/lib
+  cp -rf $srcdir/dest/usr/include $pkgdir/usr/
+  cp -rf $srcdir/dest/usr/lib/pkgconfig $pkgdir/usr/lib/
+  cp -f $srcdir/dest/usr/lib/*.a $pkgdir/usr/lib/
+}
