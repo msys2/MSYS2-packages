@@ -9,12 +9,17 @@ _dateqif=$(date +'%Y-%m-%d')
 _version=${_date}
 _filename=msys2-${_arch}-${_date}.exe
 _filename2=msys2-base-${_arch}-${_date}.tar.xz
-_log=/tmp/installer.log
+_log=/tmp/installer-${_arch}-${_date}.log
 if [ "${_arch}" = "x86_64" ]; then
   _bitness=64
 else
   _bitness=32
 fi
+_archivegen=/mingw${_bitness}/bin/archivegen.exe
+_binarycreator=/mingw${_bitness}/bin/binarycreator.exe
+_installerbase=/mingw${_bitness}/bin/installerbase.exe
+_newmsysbase=/tmp/newmsys
+_newmsys=${_newmsysbase}/msys"${_bitness}"
 
 declare -a undo_commands
 
@@ -22,7 +27,7 @@ _exitcode=5
 
 exit_with_undo() {
   for _cmd in ${undo_commands[@]}; do
-    eval "$_cmd"
+    eval "${_cmd}" | tee -a ${_log}
   done
   exit ${_exitcode}
 }
@@ -30,7 +35,7 @@ exit_with_undo() {
 exit_cleanly() {
   _exitcode=$1; shift;
   local _message=$1; shift;
-  echo "${_message}"
+  echo "${_message}" | tee -a ${_log}
   exit_with_undo
 }
 
@@ -52,87 +57,90 @@ create_archives() {
   local _data="${_ifwroot}"/packages/com.msys2.root.base/data
   [ -d "${_data}" ] && rm -rf "${_data}"
   mkdir -p "${_data}"
-  _dirs=
+  local _dirs=
   for curr_dir in /etc /var /tmp /usr /mingw32_shell.bat /mingw64_shell.bat /msys2_shell.bat /msys2.ico /autorebase.bat autorebasebase1st.bat; do
-    if [[ -d ${_newmsys}$curr_dir || -f ${_newmsys}$curr_dir ]]; then
+    if [[ -d ${_newmsys}${curr_dir} || -f ${_newmsys}${curr_dir} ]]; then
       _dirs="${_dirs} ${_newmsys}$curr_dir"
     fi
   done
-  if [ -n "$_dirs" ]; then
-    _compress_cmd="${_archivegen} ${_data}/msys${_bitness}.7z ${_dirs}"
+
+  if [ -n "${_dirs}" ]; then
+    local _compress_cmd="${_archivegen} ${_data}/msys${_bitness}.7z ${_dirs}"
     pushd / > /dev/null
-    eval ${_compress_cmd} | tee $_log 2>&1
-    _result=$?
-    if [ "$_result" -eq "0" ]; then
-          echo " archivegen succeeded. Created ${_data}/msys${_bitness}.7z"
-    else
-          exit_cleanly "3" "archivegen failed. See $_log"
-    fi
+      echo "Run: ${_compress_cmd} ..." | tee -a ${_log}
+      eval "${_compress_cmd}" 2>&1 | tee -a ${_log}
+      _result=$?
+      if [ "${_result}" -eq "0" ]; then
+            echo " archivegen succeeded. Created ${_data}/msys${_bitness}.7z" | tee -a ${_log}
+      else
+            exit_cleanly "3" "archivegen failed. See ${_log}"
+      fi
     popd > /dev/null
 
-    pushd ${_newmsysbase}
-     _compress_cmd2="/usr/bin/tar --transform='s/:/_/g' --dereference --hard-dereference -cJf ${_thisdir}/${_filename2} msys${_bitness}"
-    eval ${_compress_cmd2} | tee $_log 2>&1
-    _result=$?
-    if [ "$_result" -eq "0" ]; then
-          echo " tar succeeded. Created "
-    else
-          die "MSYS2 compressing fail. See $_log"
-    fi
+    pushd ${_newmsysbase} > /dev/null
+      local _compress_cmd2="/usr/bin/tar --transform='s/:/_/g' --dereference --hard-dereference -cJf ${_thisdir}/${_filename2} msys${_bitness}"
+      echo "Run: ${_compress_cmd2} ..." | tee -a ${_log}
+      eval "${_compress_cmd2}" 2>&1 | tee -a ${_log}
+      _result=$?
+      if [ "${_result}" -eq "0" ]; then
+            echo " tar succeeded. Created " | tee -a ${_log}
+      else
+            die "MSYS2 compressing fail. See ${_log}"
+      fi
     popd > /dev/null
   fi
 }
 
 # Add -v to get more information.
 make_installer() {
-  "${_binarycreator}" \
-    -t "${_installerbase}" \
-    -p "${_ifwroot}/packages" \
-    -c "${_ifwroot}/config/config.xml" \
+  eval "\"${_binarycreator}\" \
+    -t \"${_installerbase}\" \
+    -p \"${_ifwroot}/packages\" \
+    -c \"${_ifwroot}/config/config.xml\" \
     --offline-only \
-    "${_filename}" \
-    -v
+    \"${_filename}\" \
+    -v"  | tee -a ${_log}
 }
 
 trap exit_with_undo 1 2 15
-
-_archivegen=/mingw${_bitness}/bin/archivegen.exe
-_binarycreator=/mingw${_bitness}/bin/binarycreator.exe
-_installerbase=/mingw${_bitness}/bin/installerbase.exe
-_newmsysbase=/tmp/newmsys
-_newmsys=${_newmsysbase}/msys"${_bitness}"
 
 create_chroot_system() {
   [ -d ${_newmsysbase} ] && rm -rf ${_newmsysbase}
   mkdir -p "${_newmsys}"
   pushd "${_newmsys}" > /dev/null
 
-  mkdir -p var/lib/pacman
-  mkdir -p var/log
-  mkdir -p tmp
+    mkdir -p var/lib/pacman
+    mkdir -p var/log
+    mkdir -p tmp
 
-  pacman -Syu --root "${_newmsys}"
-  pacman -S base --noconfirm --root "${_newmsys}"
-  _result=$?
-  if [ "$_result" -ne "0" ]; then
-    exit_cleanly "1" "failed to create newmsys2 via command 'pacman -S base --noconfirm --root ${_newmsys}'"
-  fi
+    eval "pacman -Syu --root \"${_newmsys}\"" | tee -a ${_log}
+    eval "pacman -S base --noconfirm --root \"${_newmsys}\"" | tee -a ${_log}
+    _result=$?
+    if [ "${_result}" -ne "0" ]; then
+      exit_cleanly "1" "failed to create newmsys2 via command 'pacman -S base --noconfirm --root ${_newmsys}'"
+    fi
   popd > /dev/null
 }
 
 if [ ! -f "${_archivegen}" ]; then
-  eval "pacman -S --noconfirm mingw${_bitness}/mingw-w64-${_arch}-qt-installer-framework-git" | tee $_log 2>&1
+  eval "pacman -S --noconfirm mingw${_bitness}/mingw-w64-${_arch}-qt-installer-framework-git" | tee -a ${_log}
 fi
 
 if [ ! -f "${_archivegen}" ]; then
-  exit_cleanly "2" "installation of qt installer framework failed. See $_log"
+  exit_cleanly "2" "installation of qt installer framework failed. See ${_log}"
 fi
 
-echo "Creating MSYS2 chroot system ${_newmsys}"
+if [ -f "${_log}" ]; then
+  rm "${_log}"
+fi
+
+echo "Creating MSYS2 chroot system ${_newmsys}" | tee -a ${_log}
 create_chroot_system
 
-echo "Creating MSYS2 installer /tmp/$_filename"
-[ -f /tmp/$_filename ] && rm -f /tmp/$_filename
+echo "Creating MSYS2 installer /tmp/${_filename}" | tee -a ${_log}
+if [ -f /tmp/${_filename} ]; then
+  rm -f /tmp/${_filename}
+fi
 
 do_seds
 create_archives
