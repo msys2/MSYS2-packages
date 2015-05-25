@@ -1,0 +1,64 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgbase=npth
+pkgname=('libnpth' 'libnpth-devel')
+pkgver=1.2
+pkgrel=1
+pkgdesc="New portable threads library"
+arch=('i686' 'x86_64')
+url="http://www.gnupg.org/"
+license=('LGPL')
+depends=('gcc-libs')
+options=('!libtool' '!emptydirs')
+validpgpkeys=('D8692123C4065DEA5E0F3AB5249B39D24F25E3B6')
+source=(ftp://ftp.gnupg.org/gcrypt/${pkgbase}/${pkgbase}-${pkgver}.tar.bz2{,.sig}
+        npth-1.2-msysize.patch)
+sha1sums=('3bfa2a2d7521d6481850e8a611efe5bf5ed75200'
+          'SKIP'
+          'c799f8f9a124774e83014a9e38db8f3323c23efc')
+
+prepare() {
+  cd ${srcdir}/${pkgbase}-${pkgver}
+  patch -p1 -i ${srcdir}/npth-1.2-msysize.patch
+  
+  autoreconf -fiv
+}
+
+build() {
+  cd ${srcdir}/${pkgbase}-${pkgver}
+  ./configure \
+    --prefix=/usr \
+    --build=${CHOST} \
+    --host=${CHOST} \
+    --target=${CHOST} \
+    --enable-shared \
+    --enable-static
+
+  make no_undefined=-no-undefined
+  make DESTDIR=${srcdir}/dest install
+}
+
+check() {
+  cd ${srcdir}/${pkgbase}-${pkgver}
+  #make check
+}
+
+package_libnpth() {
+  groups=('libraries')
+
+  mkdir -p $pkgdir/usr/{bin,share}
+  cp -f ${srcdir}/dest/usr/bin/*.dll $pkgdir/usr/bin/
+}
+
+package_libnpth-devel() {
+  pkgdesc="Libnpth headers and libraries"
+  groups=('development')
+  depends=("libnpth=${pkgver}")
+  options=('staticlibs')
+
+  mkdir -p $pkgdir/usr/{bin,share}
+  cp -f ${srcdir}/dest/usr/bin/*-config $pkgdir/usr/bin/
+  cp -rf ${srcdir}/dest/usr/include $pkgdir/usr/
+  cp -rf ${srcdir}/dest/usr/lib $pkgdir/usr/
+  cp -rf ${srcdir}/dest/usr/share/aclocal $pkgdir/usr/share/
+}

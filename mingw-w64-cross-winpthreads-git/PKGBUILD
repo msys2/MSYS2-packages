@@ -6,8 +6,7 @@ pkgname="${_mingw_suff}-${_realname}-git"
 replaces="${_mingw_suff}-${_realname}"
 provides=("${_mingw_suff}-${_realname}")
 conflicts=("${_mingw_suff}-${_realname}")
-_ver_base=4.0.0
-pkgver=4.0.0.4305.9bd8fe9
+pkgver=5.0.0.4501.4421b4a
 pkgrel=1
 pkgdesc="MinGW-w64 winpthreads library for cross-compiler"
 arch=('i686' 'x86_64')
@@ -19,20 +18,32 @@ depends=("${_mingw_suff}-crt")
 optdepends=()
 backup=()
 options=('!strip' '!buildflags' 'staticlibs' '!emptydirs' '!buildflags')
-source=("${_realname}"::"git://git.code.sf.net/p/mingw-w64/mingw-w64")
-md5sums=(SKIP)
+source=("mingw-w64"::"git://git.code.sf.net/p/mingw-w64/mingw-w64"
+        0001-Define-__-de-register_frame_info-in-fake-libgcc_s.patch)
+md5sums=('SKIP'
+         '74a4dab06a8fa113407a6e11fdb3c962')
 
 _targets="i686-w64-mingw32 x86_64-w64-mingw32"
 
 pkgver() {
-  cd "$srcdir/$_realname"
-  printf "%s.%s.%s" "$_ver_base" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  cd "$srcdir/mingw-w64"
+  local _major=$(head -n 16 mingw-w64-headers/crt/_mingw_mac.h | grep '__MINGW64_VERSION_MAJOR' | sed -e 's/.* //' | tr '\n' '.' | sed 's/.$/\n/')
+  local _minor=$(head -n 16 mingw-w64-headers/crt/_mingw_mac.h | grep '__MINGW64_VERSION_MINOR' | sed -e 's/.* //' | tr '\n' '.' | sed 's/.$/\n/')
+  local _rev=0
+  printf "%s.%s.%s.%s.%s" ${_major} ${_minor} ${_rev} "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd "$srcdir/mingw-w64"
+  git am "${srcdir}"/0001-Define-__-de-register_frame_info-in-fake-libgcc_s.patch
+  cd "${srcdir}"/mingw-w64/mingw-w64-libraries/winpthreads
+  autoreconf -vfi
 }
 
 build() {
   for _target in ${_targets}; do
     mkdir -p ${srcdir}/winpthreads-build-${_target} && cd ${srcdir}/winpthreads-build-${_target}
-    ${srcdir}/${_realname}/mingw-w64-libraries/winpthreads/configure \
+    ${srcdir}/mingw-w64/mingw-w64-libraries/winpthreads/configure \
       --prefix=/opt/${_target} \
       --build=${CHOST} \
       --host=${_target} \
@@ -44,7 +55,7 @@ build() {
 
 package() {
   for _target in ${_targets}; do
-      cd ${srcdir}/winpthreads-build-${_target}
-      make DESTDIR=${pkgdir} install
+    cd ${srcdir}/winpthreads-build-${_target}
+    make DESTDIR=${pkgdir} install
   done
 }

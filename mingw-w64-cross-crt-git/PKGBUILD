@@ -6,8 +6,7 @@ pkgname="${_mingw_suff}-${_realname}-git"
 replaces="${_mingw_suff}-${_realname}"
 provides=("${_mingw_suff}-${_realname}")
 conflicts=("${_mingw_suff}-${_realname}")
-_ver_base=4.0.0
-pkgver=4.0.0.4384.404d457
+pkgver=5.0.0.4501.4421b4a
 pkgrel=1
 pkgdesc='MinGW-w64 CRT for cross-compiler'
 arch=('i686' 'x86_64')
@@ -17,14 +16,17 @@ groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
 depends=("${_mingw_suff}-headers")
 makedepends=("git" "${_mingw_suff}-gcc" "${_mingw_suff}-binutils")
 options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
-source=("${_realname}"::"git://git.code.sf.net/p/mingw-w64/mingw-w64")
-md5sums=(SKIP)
+source=("mingw-w64"::"git://git.code.sf.net/p/mingw-w64/mingw-w64")
+md5sums=('SKIP')
 
 _targets="i686-w64-mingw32 x86_64-w64-mingw32"
 
 pkgver() {
-  cd "$srcdir/$_realname"
-  printf "%s.%s.%s" "$_ver_base" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  cd "$srcdir/mingw-w64"
+  local _major=$(head -n 16 mingw-w64-headers/crt/_mingw_mac.h | grep '__MINGW64_VERSION_MAJOR' | sed -e 's/.* //' | tr '\n' '.' | sed 's/.$/\n/')
+  local _minor=$(head -n 16 mingw-w64-headers/crt/_mingw_mac.h | grep '__MINGW64_VERSION_MINOR' | sed -e 's/.* //' | tr '\n' '.' | sed 's/.$/\n/')
+  local _rev=0
+  printf "%s.%s.%s.%s.%s" ${_major} ${_minor} ${_rev} "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 build() {
@@ -39,7 +41,7 @@ build() {
     ;;
   esac
     mkdir -p ${srcdir}/crt-${_target} && cd ${srcdir}/crt-${_target}
-    ${srcdir}/${_realname}/mingw-w64-crt/configure \
+    ${srcdir}/mingw-w64/mingw-w64-crt/configure \
     --build=${CHOST} \
     --prefix=/opt/${_target} \
     --host=${_target} \
@@ -51,9 +53,8 @@ build() {
 
 package() {
   for _target in ${_targets}; do
-      msg "Installing ${_target} crt"
-      cd ${srcdir}/crt-${_target}
-      make DESTDIR=${pkgdir} install
+    msg "Installing ${_target} crt"
+    cd ${srcdir}/crt-${_target}
+    make DESTDIR=${pkgdir} install
   done
 }
-

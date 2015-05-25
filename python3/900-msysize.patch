@@ -1,0 +1,493 @@
+diff -Naur Python-3.4.3-orig/config.guess Python-3.4.3/config.guess
+--- Python-3.4.3-orig/config.guess	2015-02-25 14:27:46.000000000 +0300
++++ Python-3.4.3/config.guess	2015-05-07 09:58:31.810000000 +0300
+@@ -866,6 +866,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur Python-3.4.3-orig/configure.ac Python-3.4.3/configure.ac
+--- Python-3.4.3-orig/configure.ac	2015-05-07 09:55:44.998000000 +0300
++++ Python-3.4.3/configure.ac	2015-05-07 09:58:31.825600000 +0300
+@@ -373,6 +373,9 @@
+ 	*-*-cygwin*)
+ 		ac_sys_system=Cygwin
+ 		;;
++	*-*-msys*)
++		ac_sys_system=Msys
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -397,6 +400,7 @@
+     case $MACHDEP in
+ 	linux*) MACHDEP="linux";;
+ 	cygwin*) MACHDEP="cygwin";;
++	msys*)   MACHDEP="msys";;
+ 	darwin*) MACHDEP="darwin";;
+ 	irix646) MACHDEP="irix6";;
+ 	'')	MACHDEP="unknown";;
+@@ -418,6 +422,9 @@
+ 	*-*-cygwin*)
+ 		_host_cpu=
+ 		;;
++	*-*-msys*)
++		_host_cpu=
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -892,7 +899,7 @@
+ if test -z "$enable_shared"
+ then 
+   case $ac_sys_system in
+-  CYGWIN*)
++  CYGWIN*|MSYS*)
+     enable_shared="yes";;
+   *)
+     enable_shared="no";;
+@@ -947,6 +954,11 @@
+           BLDLIBRARY='-L. -lpython$(LDVERSION)'
+           DLLLIBRARY='libpython$(LDVERSION).dll'
+           ;;
++    MSYS*)
++          LDLIBRARY='libpython$(LDVERSION).dll.a'
++          BLDLIBRARY='-L. -lpython$(LDVERSION)'
++          DLLLIBRARY='msys-python$(LDVERSION).dll'
++          ;;
+     SunOS*)
+ 	  LDLIBRARY='libpython$(LDVERSION).so'
+ 	  BLDLIBRARY='-Wl,-R,$(LIBDIR) -L. -lpython$(LDVERSION)'
+@@ -998,7 +1010,7 @@
+ else # shared is disabled
+   PY_ENABLE_SHARED=0
+   case $ac_sys_system in
+-    CYGWIN*)
++    CYGWIN*|MSYS*)
+           BLDLIBRARY='$(LIBRARY)'
+           LDLIBRARY='libpython$(LDVERSION).dll.a'
+           ;;
+@@ -1056,7 +1068,7 @@
+ AC_SUBST(LN)
+ if test -z "$LN" ; then
+ 	case $ac_sys_system in
+-		CYGWIN*) LN="ln -s";;
++		CYGWIN*|MSYS*) LN="ln -s";;
+ 		*) LN=ln;;
+ 	esac
+ fi
+@@ -1962,7 +1974,7 @@
+ 	  		*)    SHLIB_SUFFIX=.sl;;
+ 		esac
+ 		;;
+-	CYGWIN*)   SHLIB_SUFFIX=.dll;;
++	CYGWIN*|MSYS*)   SHLIB_SUFFIX=.dll;;
+ 	*)	   SHLIB_SUFFIX=.so;;
+ 	esac
+ fi
+@@ -2100,7 +2112,7 @@
+ 	SCO_SV*)
+ 		LDSHARED='$(CC) -Wl,-G,-Bexport'
+ 		LDCXXSHARED='$(CXX) -Wl,-G,-Bexport';;
+-	CYGWIN*)
++	CYGWIN*|MSYS*)
+ 		LDSHARED="gcc -shared -Wl,--enable-auto-image-base"
+ 		LDCXXSHARED="g++ -shared -Wl,--enable-auto-image-base";;
+ 	*)	LDSHARED="ld";;
+@@ -2186,7 +2198,7 @@
+ 			LINKFORSHARED="-Xlinker --export-dynamic"
+ 		    fi;;
+ 		  esac;;
+-	CYGWIN*)
++	CYGWIN*|MSYS*)
+ 		if test $enable_shared = "no"
+ 		then
+ 			LINKFORSHARED='-Wl,--out-implib=$(LDLIBRARY)'
+@@ -2208,7 +2220,7 @@
+ if test ! "$LIBRARY" = "$LDLIBRARY"
+ then
+ 	case $ac_sys_system in
+-	CYGWIN*)
++	CYGWIN*|MSYS*)
+ 		# Cygwin needs CCSHARED when building extension DLLs
+ 		# but not when building the interpreter DLL.
+ 		CFLAGSFORSHARED='';;
+@@ -2637,7 +2649,7 @@
+       fi
+       AC_CHECK_FUNCS(pthread_sigmask,
+         [case $ac_sys_system in
+-        CYGWIN*)
++        CYGWIN*|MSYS*)
+           AC_DEFINE(HAVE_BROKEN_PTHREAD_SIGMASK, 1,
+             [Define if pthread_sigmask() does not work on your system.])
+             ;;
+@@ -4097,7 +4109,7 @@
+ 
+ AC_SUBST(EXT_SUFFIX)
+ case $ac_sys_system in
+-    Linux*|GNU*|CYGWIN*)
++    Linux*|GNU*|CYGWIN*|MSYS*)
+ 	EXT_SUFFIX=.${SOABI}${SHLIB_SUFFIX};;
+     *)
+ 	EXT_SUFFIX=${SHLIB_SUFFIX};;
+diff -Naur Python-3.4.3-orig/Lib/asyncio/base_events.py Python-3.4.3/Lib/asyncio/base_events.py
+--- Python-3.4.3-orig/Lib/asyncio/base_events.py	2015-02-25 14:27:44.000000000 +0300
++++ Python-3.4.3/Lib/asyncio/base_events.py	2015-05-07 09:58:31.825600000 +0300
+@@ -784,7 +784,7 @@
+ 
+             AF_INET6 = getattr(socket, 'AF_INET6', 0)
+             if reuse_address is None:
+-                reuse_address = os.name == 'posix' and sys.platform != 'cygwin'
++                reuse_address = os.name == 'posix' and sys.platform != 'cygwin' and sys.platform != 'msys'
+             sockets = []
+             if host == '':
+                 host = None
+diff -Naur Python-3.4.3-orig/Lib/ctypes/__init__.py Python-3.4.3/Lib/ctypes/__init__.py
+--- Python-3.4.3-orig/Lib/ctypes/__init__.py	2015-05-07 09:55:34.078000000 +0300
++++ Python-3.4.3/Lib/ctypes/__init__.py	2015-05-07 09:58:31.825600000 +0300
+@@ -1,6 +1,6 @@
+ """create and manipulate C data types in Python"""
+ 
+-import os as _os, sys as _sys
++import os as _os, sys as _sys, sysconfig as _sysconfig
+ 
+ __version__ = "1.1.0"
+ 
+@@ -433,9 +433,8 @@
+ 
+ if _os.name in ("nt", "ce"):
+     pythonapi = PyDLL("python dll", None, _sys.dllhandle)
+-elif _sys.platform == "cygwin":
+-    pythonapi = PyDLL("libpython%d.%d%s.dll" % \
+-                      (_sys.version_info[:2] + tuple(_sys.abiflags)))
++elif _sys.platform in ['cygwin', 'msys']:
++    pythonapi = PyDLL(_sysconfig.get_config_var('DLLLIBRARY'))
+ else:
+     pythonapi = PyDLL(None)
+ 
+diff -Naur Python-3.4.3-orig/Lib/ctypes/test/test_loading.py Python-3.4.3/Lib/ctypes/test/test_loading.py
+--- Python-3.4.3-orig/Lib/ctypes/test/test_loading.py	2015-02-25 14:27:44.000000000 +0300
++++ Python-3.4.3/Lib/ctypes/test/test_loading.py	2015-05-07 09:58:31.841200000 +0300
+@@ -15,6 +15,8 @@
+         libc_name = "coredll"
+     elif sys.platform == "cygwin":
+         libc_name = "cygwin1.dll"
++    elif sys.platform == "msys":
++        libc_name = "msys-2.0.dll"
+     else:
+         libc_name = find_library("c")
+ 
+diff -Naur Python-3.4.3-orig/Lib/ctypes/util.py Python-3.4.3/Lib/ctypes/util.py
+--- Python-3.4.3-orig/Lib/ctypes/util.py	2015-05-07 09:55:34.078000000 +0300
++++ Python-3.4.3/Lib/ctypes/util.py	2015-05-07 10:01:40.261800000 +0300
+@@ -83,7 +83,7 @@
+                 continue
+         return None
+ 
+-elif sys.platform == "cygwin":
++elif sys.platform in ["cygwin", "msys"]:
+     def find_library(name):
+         for libdir in ['/usr/lib', '/usr/local/lib']:
+             for libext in ['lib%s.dll.a' % name, 'lib%s.a' % name]:
+@@ -281,6 +281,10 @@
+             print(cdll.LoadLibrary("cygbz2-1.dll"))
+             print(cdll.LoadLibrary("cygcrypt-0.dll"))
+             print(find_library("crypt"))
++        elif sys.platform == "msys":
++            print(cdll.LoadLibrary("msys-bz2-1.dll"))
++            print(cdll.LoadLibrary("msys-crypt-0.dll"))
++            print(find_library("crypt"))
+         else:
+             print(cdll.LoadLibrary("libm.so"))
+             print(cdll.LoadLibrary("libcrypt.so"))
+diff -Naur Python-3.4.3-orig/Lib/distutils/ccompiler.py Python-3.4.3/Lib/distutils/ccompiler.py
+--- Python-3.4.3-orig/Lib/distutils/ccompiler.py	2015-02-25 14:27:44.000000000 +0300
++++ Python-3.4.3/Lib/distutils/ccompiler.py	2015-05-07 09:58:31.841200000 +0300
+@@ -926,6 +926,7 @@
+     # on a cygwin built python we can use gcc like an ordinary UNIXish
+     # compiler
+     ('cygwin.*', 'unix'),
++    ('msys.*', 'unix'),
+ 
+     # OS name mappings
+     ('posix', 'unix'),
+@@ -963,6 +964,8 @@
+                                "Microsoft Visual C++"),
+                    'cygwin':  ('cygwinccompiler', 'CygwinCCompiler',
+                                "Cygwin port of GNU C Compiler for Win32"),
++                   'msys':    ('cygwinccompiler', 'CygwinCCompiler',
++                               "Cygwin port of GNU C Compiler for Win32"),
+                    'mingw32': ('cygwinccompiler', 'Mingw32CCompiler',
+                                "Mingw32 port of GNU C Compiler for Win32"),
+                    'bcpp':    ('bcppcompiler', 'BCPPCompiler',
+diff -Naur Python-3.4.3-orig/Lib/distutils/command/build_ext.py Python-3.4.3/Lib/distutils/command/build_ext.py
+--- Python-3.4.3-orig/Lib/distutils/command/build_ext.py	2015-05-07 09:55:34.811200000 +0300
++++ Python-3.4.3/Lib/distutils/command/build_ext.py	2015-05-07 09:58:31.856800000 +0300
+@@ -223,7 +223,7 @@
+ 
+         # for extensions under Cygwin and AtheOS Python's library directory must be
+         # appended to library_dirs
+-        if sys.platform[:6] == 'cygwin' or sys.platform[:6] == 'atheos':
++        if sys.platform[:6] == 'cygwin' or sys.platform[:4] == 'msys' or sys.platform[:6] == 'atheos':
+             if sys.executable.startswith(os.path.join(sys.exec_prefix, "bin")):
+                 # building third party extensions
+                 self.library_dirs.append(os.path.join(sys.prefix, "lib",
+@@ -695,7 +695,7 @@
+                 return ext.libraries + [pythonlib]
+             else:
+                 return ext.libraries
+-        elif sys.platform[:6] == "cygwin":
++        elif sys.platform[:6] == "cygwin" or sys.platform[:4] == "msys":
+             template = "python%d.%d%s"
+             pythonlib = (template %
+                    (sys.hexversion >> 24, (sys.hexversion >> 16) & 0xff, sys.abiflags))
+diff -Naur Python-3.4.3-orig/Lib/distutils/cygwinccompiler.py Python-3.4.3/Lib/distutils/cygwinccompiler.py
+--- Python-3.4.3-orig/Lib/distutils/cygwinccompiler.py	2015-05-07 09:55:43.001200000 +0300
++++ Python-3.4.3/Lib/distutils/cygwinccompiler.py	2015-05-07 09:58:31.856800000 +0300
+@@ -400,4 +400,4 @@
+ def is_cygwingcc():
+     '''Try to determine if the gcc that would be used is from cygwin.'''
+     out_string = check_output(['gcc', '-dumpmachine'])
+-    return out_string.strip().endswith(b'cygwin')
++    return (out_string.strip().endswith(b'cygwin') or out_string.strip().endswith(b'msys'))
+diff -Naur Python-3.4.3-orig/Lib/distutils/sysconfig.py Python-3.4.3/Lib/distutils/sysconfig.py
+--- Python-3.4.3-orig/Lib/distutils/sysconfig.py	2015-05-07 09:55:46.604800000 +0300
++++ Python-3.4.3/Lib/distutils/sysconfig.py	2015-05-07 10:07:03.222600000 +0300
+@@ -166,7 +166,7 @@
+     varies across Unices and is stored in Python's Makefile.
+     """
+     global _config_vars
+-    if compiler.compiler_type in ["cygwin", "mingw32"]:
++    if compiler.compiler_type in ["cygwin", "msys", "mingw32"]:
+         # Note that cygwin use posix build and 'unix' compiler.
+         # If build is not based on posix then we must predefine
+         # some environment variables corresponding to posix
+@@ -181,7 +181,7 @@
+             _config_vars['AR'] = "ar"
+             _config_vars['ARFLAGS'] = "rc"
+ 
+-    if compiler.compiler_type in ["unix", "cygwin", "mingw32"]:
++    if compiler.compiler_type in ["unix", "cygwin", "msys", "mingw32"]:
+         if sys.platform == "darwin":
+             # Perform first-time customization of compiler-related
+             # config vars on OS X now that we know we need a compiler.
+diff -Naur Python-3.4.3-orig/Lib/distutils/tests/support.py Python-3.4.3/Lib/distutils/tests/support.py
+--- Python-3.4.3-orig/Lib/distutils/tests/support.py	2015-02-25 14:27:44.000000000 +0300
++++ Python-3.4.3/Lib/distutils/tests/support.py	2015-05-07 09:58:31.856800000 +0300
+@@ -65,7 +65,7 @@
+         super().tearDown()
+         while self.tempdirs:
+             d = self.tempdirs.pop()
+-            shutil.rmtree(d, os.name in ('nt', 'cygwin'))
++            shutil.rmtree(d, os.name in ('nt', 'cygwin', 'msys'))
+ 
+     def mkdtemp(self):
+         """Create a temporary directory that will be cleaned up.
+diff -Naur Python-3.4.3-orig/Lib/distutils/unixccompiler.py Python-3.4.3/Lib/distutils/unixccompiler.py
+--- Python-3.4.3-orig/Lib/distutils/unixccompiler.py	2015-05-07 09:55:44.108800000 +0300
++++ Python-3.4.3/Lib/distutils/unixccompiler.py	2015-05-07 09:58:31.856800000 +0300
+@@ -77,7 +77,7 @@
+     shared_lib_extension = ".so"
+     dylib_lib_extension = ".dylib"
+     static_lib_format = shared_lib_format = dylib_lib_format = "lib%s%s"
+-    if sys.platform == "cygwin":
++    if sys.platform in ["cygwin", "msys"]:
+         exe_extension = ".exe"
+         dylib_lib_extension = ".dll.a"
+ 
+@@ -223,7 +223,7 @@
+         # the configuration data stored in the Python installation, so
+         # we use this hack.
+         compiler = os.path.basename(sysconfig.get_config_var("CC"))
+-        if sys.platform[:6] == "darwin" or sys.platform[:6] == "cygwin":
++        if sys.platform[:6] == "darwin" or sys.platform[:6] == "cygwin" or sys.platform[:4] == "msys":
+             # MacOSX's linker doesn't understand the -R flag at all
+             return "-L" + dir
+         elif sys.platform[:5] == "hp-ux":
+diff -Naur Python-3.4.3-orig/Lib/distutils/util.py Python-3.4.3/Lib/distutils/util.py
+--- Python-3.4.3-orig/Lib/distutils/util.py	2015-02-25 14:27:44.000000000 +0300
++++ Python-3.4.3/Lib/distutils/util.py	2015-05-07 09:58:31.872400000 +0300
+@@ -97,6 +97,12 @@
+         m = rel_re.match(release)
+         if m:
+             release = m.group()
++    elif osname[:4] == "msys":
++        osname = "msys"
++        rel_re = re.compile (r'[\d.]+', re.ASCII)
++        m = rel_re.match(release)
++        if m:
++            release = m.group()
+     elif osname[:6] == "darwin":
+         import _osx_support, distutils.sysconfig
+         osname, release, machine = _osx_support.get_platform_osx(
+diff -Naur Python-3.4.3-orig/Lib/importlib/_bootstrap.py Python-3.4.3/Lib/importlib/_bootstrap.py
+--- Python-3.4.3-orig/Lib/importlib/_bootstrap.py	2015-02-25 14:27:44.000000000 +0300
++++ Python-3.4.3/Lib/importlib/_bootstrap.py	2015-05-07 09:58:31.872400000 +0300
+@@ -22,7 +22,7 @@
+ 
+ # Bootstrap-related code ######################################################
+ 
+-_CASE_INSENSITIVE_PLATFORMS = 'win', 'cygwin', 'darwin'
++_CASE_INSENSITIVE_PLATFORMS = 'win', 'cygwin', 'msys', 'darwin'
+ 
+ 
+ def _make_relax_case():
+diff -Naur Python-3.4.3-orig/Lib/sysconfig.py Python-3.4.3/Lib/sysconfig.py
+--- Python-3.4.3-orig/Lib/sysconfig.py	2015-02-25 14:27:44.000000000 +0300
++++ Python-3.4.3/Lib/sysconfig.py	2015-05-07 09:58:34.087600000 +0300
+@@ -671,6 +671,13 @@
+         m = rel_re.match(release)
+         if m:
+             release = m.group()
++    elif osname[:4] == "msys":
++        osname = "msys"
++        import re
++        rel_re = re.compile (r'[\d.]+')
++        m = rel_re.match(release)
++        if m:
++            release = m.group()
+     elif osname[:6] == "darwin":
+         import _osx_support
+         osname, release, machine = _osx_support.get_platform_osx(
+diff -Naur Python-3.4.3-orig/Lib/tempfile.py Python-3.4.3/Lib/tempfile.py
+--- Python-3.4.3-orig/Lib/tempfile.py	2015-02-25 14:27:44.000000000 +0300
++++ Python-3.4.3/Lib/tempfile.py	2015-05-07 09:58:35.086000000 +0300
+@@ -467,7 +467,7 @@
+         _os.close(fd)
+         raise
+ 
+-if _os.name != 'posix' or _os.sys.platform == 'cygwin':
++if _os.name != 'posix' or _os.sys.platform == 'cygwin' or _os.sys.platform == 'msys':
+     # On non-POSIX and Cygwin systems, assume that we cannot unlink a file
+     # while it is open.
+     TemporaryFile = NamedTemporaryFile
+diff -Naur Python-3.4.3-orig/Lib/test/test_curses.py Python-3.4.3/Lib/test/test_curses.py
+--- Python-3.4.3-orig/Lib/test/test_curses.py	2015-02-25 14:27:45.000000000 +0300
++++ Python-3.4.3/Lib/test/test_curses.py	2015-05-07 09:58:35.086000000 +0300
+@@ -33,6 +33,8 @@
+                  "$TERM=%r, calling initscr() may cause exit" % term)
+ @unittest.skipIf(sys.platform == "cygwin",
+                  "cygwin's curses mostly just hangs")
++@unittest.skipIf(sys.platform == "msys",
++                 "msys's curses mostly just hangs")
+ class TestCurses(unittest.TestCase):
+     @classmethod
+     def setUpClass(cls):
+diff -Naur Python-3.4.3-orig/Lib/test/test_importlib/util.py Python-3.4.3/Lib/test/test_importlib/util.py
+--- Python-3.4.3-orig/Lib/test/test_importlib/util.py	2015-02-25 14:27:45.000000000 +0300
++++ Python-3.4.3/Lib/test/test_importlib/util.py	2015-05-07 09:58:35.086000000 +0300
+@@ -31,7 +31,7 @@
+ CASE_INSENSITIVE_FS = True
+ # Windows is the only OS that is *always* case-insensitive
+ # (OS X *can* be case-sensitive).
+-if sys.platform not in ('win32', 'cygwin'):
++if sys.platform not in ('win32', 'cygwin', 'msys'):
+     changed_name = __file__.upper()
+     if changed_name == __file__:
+         changed_name = __file__.lower()
+diff -Naur Python-3.4.3-orig/Lib/test/test_mailbox.py Python-3.4.3/Lib/test/test_mailbox.py
+--- Python-3.4.3-orig/Lib/test/test_mailbox.py	2015-02-25 14:27:45.000000000 +0300
++++ Python-3.4.3/Lib/test/test_mailbox.py	2015-05-07 09:58:35.086000000 +0300
+@@ -596,7 +596,7 @@
+ 
+     def setUp(self):
+         TestMailbox.setUp(self)
+-        if (os.name == 'nt') or (sys.platform == 'cygwin'):
++        if (os.name == 'nt') or (sys.platform == 'cygwin') or (sys.platform == 'msys'):
+             self._box.colon = '!'
+ 
+     def assertMailboxEmpty(self):
+diff -Naur Python-3.4.3-orig/Lib/test/test_netrc.py Python-3.4.3/Lib/test/test_netrc.py
+--- Python-3.4.3-orig/Lib/test/test_netrc.py	2015-02-25 14:27:45.000000000 +0300
++++ Python-3.4.3/Lib/test/test_netrc.py	2015-05-07 09:58:35.117200000 +0300
+@@ -8,7 +8,7 @@
+     def make_nrc(self, test_data):
+         test_data = textwrap.dedent(test_data)
+         mode = 'w'
+-        if sys.platform != 'cygwin':
++        if sys.platform not in ['cygwin', 'msys']:
+             mode += 't'
+         with open(temp_filename, mode) as fp:
+             fp.write(test_data)
+diff -Naur Python-3.4.3-orig/Lib/test/test_shutil.py Python-3.4.3/Lib/test/test_shutil.py
+--- Python-3.4.3-orig/Lib/test/test_shutil.py	2015-02-25 14:27:45.000000000 +0300
++++ Python-3.4.3/Lib/test/test_shutil.py	2015-05-07 09:58:35.117200000 +0300
+@@ -99,7 +99,7 @@
+         super(TestShutil, self).tearDown()
+         while self.tempdirs:
+             d = self.tempdirs.pop()
+-            shutil.rmtree(d, os.name in ('nt', 'cygwin'))
++            shutil.rmtree(d, os.name in ('nt', 'cygwin', 'msys'))
+ 
+ 
+     def mkdtemp(self):
+@@ -200,7 +200,7 @@
+ 
+ 
+     @unittest.skipUnless(hasattr(os, 'chmod'), 'requires os.chmod()')
+-    @unittest.skipIf(sys.platform[:6] == 'cygwin',
++    @unittest.skipIf(sys.platform[:6] == 'cygwin' or sys.platform[:4] == 'msys',
+                      "This test can't be run on Cygwin (issue #1071513).")
+     @unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0,
+                      "This test can't be run reliably as root (issue #1076467).")
+diff -Naur Python-3.4.3-orig/Lib/tkinter/test/test_tkinter/test_loadtk.py Python-3.4.3/Lib/tkinter/test/test_tkinter/test_loadtk.py
+--- Python-3.4.3-orig/Lib/tkinter/test/test_tkinter/test_loadtk.py	2015-02-25 14:27:45.000000000 +0300
++++ Python-3.4.3/Lib/tkinter/test/test_tkinter/test_loadtk.py	2015-05-07 09:58:35.117200000 +0300
+@@ -18,7 +18,7 @@
+ 
+     def testLoadTkFailure(self):
+         old_display = None
+-        if sys.platform.startswith(('win', 'darwin', 'cygwin')):
++        if sys.platform.startswith(('win', 'darwin', 'cygwin', 'msys')):
+             # no failure possible on windows?
+ 
+             # XXX Maybe on tk older than 8.4.13 it would be possible,
+diff -Naur Python-3.4.3-orig/Modules/makesetup Python-3.4.3/Modules/makesetup
+--- Python-3.4.3-orig/Modules/makesetup	2015-05-07 09:55:42.954400000 +0300
++++ Python-3.4.3/Modules/makesetup	2015-05-07 09:58:35.132800000 +0300
+@@ -85,7 +85,7 @@
+ # Setup to link with extra libraries when makeing shared extensions.
+ # Currently, only Cygwin needs this baggage.
+ case `uname -s` in
+-CYGWIN*) if test $libdir = .
++CYGWIN*|MSYS*) if test $libdir = .
+ 	 then
+ 	 	ExtraLibDir=.
+ 	 else
+diff -Naur Python-3.4.3-orig/setup.py Python-3.4.3/setup.py
+--- Python-3.4.3-orig/setup.py	2015-05-07 09:55:33.329200000 +0300
++++ Python-3.4.3/setup.py	2015-05-07 09:58:35.132800000 +0300
+@@ -317,7 +317,7 @@
+ 
+         # Workaround for Cygwin: Cygwin currently has fork issues when many
+         # modules have been imported
+-        if host_platform == 'cygwin':
++        if host_platform in ['cygwin', 'msys']:
+             self.announce('WARNING: skipping import check for Cygwin-based "%s"'
+                 % ext.name)
+             return
+@@ -1263,7 +1263,7 @@
+             exts.append( Extension('resource', ['resource.c']) )
+ 
+             # Sun yellow pages. Some systems have the functions in libc.
+-            if (host_platform not in ['cygwin', 'qnx6'] and
++            if (host_platform not in ['cygwin', 'msys', 'qnx6'] and
+                 find_file('rpcsvc/yp_prot.h', inc_dirs, []) is not None):
+                 if (self.compiler.find_library_file(lib_dirs, 'nsl')):
+                     libs = ['nsl']
+@@ -1500,6 +1500,10 @@
+             macros = dict()
+             libraries = []
+ 
++        elif host_platform == 'msys':     # MSYS
++            macros = dict()
++            libraries = []
++
+         elif host_platform in ('freebsd4', 'freebsd5', 'freebsd6', 'freebsd7', 'freebsd8'):
+             # FreeBSD's P1003.1b semaphore support is very experimental
+             # and has many known problems. (as of June 2008)
