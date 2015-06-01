@@ -1,7 +1,7 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=git
-pkgver=2.4.1
+pkgver=2.4.2
 pkgrel=1
 pkgdesc="The fast distributed version control system"
 arch=('i686' 'x86_64')
@@ -10,35 +10,43 @@ license=('GPL2')
 groups=('VCS')
 depends=('curl'
          'expat>=2.0'
-         'perl-Error'
-         'perl>=5.14.0'
-         'openssl'
+         #'info'
          'libpcre'
          'vim'
          'openssh'
+         'openssl'
+         'perl-Error'
+         'perl>=5.14.0'
          'perl-Authen-SASL'
          'perl-libwww'
          'perl-MIME-tools'
          'perl-Net-SMTP-SSL'
          'perl-TermReadKey')
-makedepends=('libcurl-devel' 'python2' 'less' 'openssh' 'rsync')
+makedepends=('asciidoc'
+             'docbook-xml'
+             'docbook-xsl'
+             #'docbook2x'
+             'less'
+             'libcurl-devel'
+             'pcre-devel'
+             #'python2'
+             'rsync'
+             #'texinfo'
+             'xmlto')
 optdepends=(#'tk: gitk and git gui'
             'python2: various helper scripts'
             'subversion: git svn'
             #'cvsps: git cvsimport'
             )
+#install=git.install
 replaces=('git-core')
 provides=('git-core')
-source=(#"http://git-core.googlecode.com/files/git-$pkgver.tar.gz"
-        #"http://git-core.googlecode.com/files/git-manpages-$pkgver.tar.gz"
-        http://fossies.org/linux/misc/git-$pkgver.tar.gz
-        http://fossies.org/linux/misc/git-manpages-$pkgver.tar.gz
+source=("${pkgname}-${pkgver}.tar.gz"::https://github.com/git/git/archive/v${pkgver}.tar.gz
         1.7.9-cygwin.patch
         git-1.9.0-manifest-msys2.patch
         git-1.8.4-msys2.patch
         git-2.3.5-mingw-pwd.patch)
-md5sums=('c72b2dcff11ebd25cb4fa488d6279717'
-         '0efa87125e6a436987a43ea75598f45f'
+md5sums=('739f221e050638548dc0fec3b39723d0'
          'c33c9dfa2944a0de9151a7af7a63a27b'
          'f5975b367aa0979006bb07b297ef081b'
          '9f9170a30dfb7643df4948cdae5bb864'
@@ -78,6 +86,8 @@ build() {
     --mandir=/usr/share/man
 
   make INSTALLDIRS=vendor all
+  make -j1 man
+  #make -j1 info
   make -C contrib/subtree prefix=/usr all
 }
 
@@ -102,6 +112,8 @@ package() {
   export PYTHON_PATH='/usr/bin/python2'
   cd "$srcdir/$pkgname-$pkgver"
   make INSTALLDIRS=vendor DESTDIR="$pkgdir" install
+  make INSTALLDIRS=vendor DESTDIR="$pkgdir" install-man
+  #make INSTALLDIRS=vendor DESTDIR="$pkgdir" install-info
 
   # bash completion
   mkdir -p "$pkgdir"/usr/share/bash-completion/completions/
@@ -125,14 +137,6 @@ package() {
     "$pkgdir"/usr/share/git/remote-helpers/git-remote-hg
   sed -i 's|#![ ]*/usr/bin/python$|#!/usr/bin/python2|' \
     "$pkgdir"/usr/share/git/svn-fe/svnrdump_sim.py
-
-
-  # how about some manpages?
-  for mansect in man1 man5 man7; do
-    for manpage in "$srcdir"/$mansect/*; do
-      install -D -m644 $manpage "$pkgdir"/usr/share/man/$mansect/$(basename $manpage)
-    done
-  done
 
   # remove perllocal.pod, .packlist, and empty directories.
   find $pkgdir/usr/lib/perl5 -name *.pod -delete
