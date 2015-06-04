@@ -1,0 +1,71 @@
+diff -Naur subversion-1.8.13-orig/subversion/bindings/swig/core.i subversion-1.8.13/subversion/bindings/swig/core.i
+--- subversion-1.8.13-orig/subversion/bindings/swig/core.i	2014-01-06 08:04:07.000000000 +0400
++++ subversion-1.8.13/subversion/bindings/swig/core.i	2015-04-09 09:52:00.443000000 +0300
+@@ -788,11 +788,13 @@
+ %ignore svn_opt_parse_all_args;
+ #endif
+ 
++/*
++ * The auth baton depends on the providers, so we preserve a
++ * reference to them inside the wrapper. This way, if all external
++ * references to the providers are gone, they will still be alive,
++ * keeping the baton valid.
++ */
+ #ifdef SWIGPYTHON
+-# The auth baton depends on the providers, so we preserve a
+-# reference to them inside the wrapper. This way, if all external
+-# references to the providers are gone, they will still be alive,
+-# keeping the baton valid.
+ %feature("pythonappend") svn_auth_open %{
+   val.__dict__["_deps"] = list(args[0])
+ %}
+diff -Naur subversion-1.8.13-orig/subversion/bindings/swig/include/proxy.swg subversion-1.8.13/subversion/bindings/swig/include/proxy.swg
+--- subversion-1.8.13-orig/subversion/bindings/swig/include/proxy.swg	2010-02-10 02:12:51.000000000 +0300
++++ subversion-1.8.13/subversion/bindings/swig/include/proxy.swg	2015-04-09 09:54:13.273600000 +0300
+@@ -83,13 +83,14 @@
+ 
+     value = _swig_getattr(self, self.__class__, name)
+ 
+-    # If we got back a different object than we have, we need to copy all our
+-    # metadata into it, so that it looks identical
++    /* If we got back a different object than we have, we need to copy all our
++     * metadata into it, so that it looks identical
++     */
+     members = self.__dict__.get("_members")
+     if members is not None:
+       _copy_metadata_deep(value, members.get(name))
+         
+-    # Verify that the new object is good
++    /* Verify that the new object is good */
+     _assert_valid_deep(value)
+ 
+     return value
+@@ -98,9 +99,10 @@
+     """Set an attribute on this object"""
+     self.assert_valid()
+ 
+-    # Save a copy of the object, so that the garbage
+-    # collector won't kill the object while it's in
+-    # SWIG-land
++    /* Save a copy of the object, so that the garbage
++     * collector won't kill the object while it's in
++     * SWIG-land
++     */
+     self.__dict__.setdefault("_members",{})[name] = value
+ 
+     return _swig_setattr(self, self.__class__, name, value)
+diff -Naur subversion-1.8.13-orig/subversion/bindings/swig/svn_delta.i subversion-1.8.13/subversion/bindings/swig/svn_delta.i
+--- subversion-1.8.13-orig/subversion/bindings/swig/svn_delta.i	2012-09-23 18:12:33.000000000 +0400
++++ subversion-1.8.13/subversion/bindings/swig/svn_delta.i	2015-04-09 09:55:21.553200000 +0300
+@@ -209,8 +209,9 @@
+ 
+ #ifdef SWIGPYTHON
+ %pythoncode {
+-# This function is for backwards compatibility only.
+-# Use svn_txdelta_window_t.ops instead.
++/* This function is for backwards compatibility only.
++ * Use svn_txdelta_window_t.ops instead.
++ */
+ svn_txdelta_window_t_ops_get = svn_txdelta_window_t._ops_get
+ }
+ #endif
