@@ -64,41 +64,6 @@ diff -Naur cmake-2.8.11.2/CMakeCPack.cmake cmake-2.8.11.2-msys/CMakeCPack.cmake
      # setup the cygwin package name
      set(CPACK_PACKAGE_NAME cmake)
      # setup the name of the package for cygwin cmake-2.4.3
-diff -Naur cmake-2.8.11.2/CMakeLists.txt cmake-2.8.11.2-msys/CMakeLists.txt
---- cmake-2.8.11.2/CMakeLists.txt	2013-07-02 17:41:39.000000000 +0400
-+++ cmake-2.8.11.2-msys/CMakeLists.txt	2014-04-06 22:16:10.885400000 +0400
-@@ -467,13 +467,17 @@
- set(CMAKE_MAN_DIR "man" CACHE STRING
-   "Install location for man pages (relative to prefix).")
- mark_as_advanced(CMAKE_DATA_DIR CMAKE_DOC_DIR CMAKE_MAN_DIR)
--if(CYGWIN AND EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
-+if((CYGWIN OR MSYS) AND EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
-   # Force doc, data and man dirs to conform to cygwin layout.
-   set(CMAKE_DOC_DIR  "share/doc/cmake-${CMake_VERSION}")
-   set(CMAKE_DATA_DIR "share/cmake-${CMake_VERSION}")
-   set(CMAKE_MAN_DIR  "share/man")
-   # let the user know we just forced these values
--  message(STATUS "Setup for Cygwin packaging")
-+  if(CYGWIN)
-+    message(STATUS "Setup for Cygwin packaging")
-+  else()
-+    message(STATUS "Setup for MSYS packaging")
-+  endif()
-   message(STATUS "Override cache CMAKE_DOC_DIR = ${CMAKE_DOC_DIR}")
-   message(STATUS "Override cache CMAKE_DATA_DIR = ${CMAKE_DATA_DIR}")
-   message(STATUS "Override cache CMAKE_MAN_DIR = ${CMAKE_MAN_DIR}")
-diff -Naur cmake-2.8.11.2/Docs/cmake-syntax.vim cmake-2.8.11.2-msys/Docs/cmake-syntax.vim
---- cmake-2.8.11.2/Docs/cmake-syntax.vim	2013-07-02 17:41:39.000000000 +0400
-+++ cmake-2.8.11.2-msys/Docs/cmake-syntax.vim	2014-04-06 22:16:50.727800000 +0400
-@@ -41,7 +41,7 @@
- syn region cmakeArguments start=/(/ end=/)/
-             \ contains=ALLBUT,cmakeArguments,cmakeTodo
- syn keyword cmakeSystemVariables
--            \ WIN32 UNIX APPLE CYGWIN BORLAND MINGW MSVC MSVC_IDE MSVC60 MSVC70 MSVC71 MSVC80 MSVC90
-+            \ WIN32 UNIX APPLE CYGWIN MSYS BORLAND MINGW MSVC MSVC_IDE MSVC60 MSVC70 MSVC71 MSVC80 MSVC90
- syn keyword cmakeOperators
-             \ ABSOLUTE AND BOOL CACHE COMMAND DEFINED DOC EQUAL EXISTS EXT FALSE GREATER INTERNAL LESS MATCHES NAME NAMES NAME_WE NOT OFF ON OR PATH PATHS PROGRAM STREQUAL STRGREATER STRING STRLESS TRUE
-             \ contained
 diff -Naur cmake-2.8.11.2/Modules/CMakeCCompiler.cmake.in cmake-2.8.11.2-msys/Modules/CMakeCCompiler.cmake.in
 --- cmake-2.8.11.2/Modules/CMakeCCompiler.cmake.in	2013-07-02 17:41:39.000000000 +0400
 +++ cmake-2.8.11.2-msys/Modules/CMakeCCompiler.cmake.in	2014-04-06 22:17:52.051400000 +0400
@@ -198,8 +163,8 @@ diff -Naur cmake-2.8.11.2/Modules/CMakeDetermineSystem.cmake cmake-2.8.11.2-msys
    if(CMAKE_UNAME)
      exec_program(uname ARGS -s OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_NAME)
      exec_program(uname ARGS -r OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_VERSION)
--    if(CMAKE_HOST_SYSTEM_NAME MATCHES "Linux|CYGWIN.*")
-+    if(CMAKE_HOST_SYSTEM_NAME MATCHES "Linux|CYGWIN.*|MSYS.*")
+-    if(CMAKE_HOST_SYSTEM_NAME MATCHES "Linux|CYGWIN.*|Darwin|^GNU$")
++    if(CMAKE_HOST_SYSTEM_NAME MATCHES "Linux|CYGWIN.*|MSYS.*|Darwin|^GNU$")
        exec_program(uname ARGS -m OUTPUT_VARIABLE CMAKE_HOST_SYSTEM_PROCESSOR
          RETURN_VALUE val)
      elseif(CMAKE_HOST_SYSTEM_NAME MATCHES "OpenBSD")
@@ -326,20 +291,22 @@ diff -Naur cmake-2.8.11.2/Modules/CPack.cmake cmake-2.8.11.2-msys/Modules/CPack.
      else()
        option(CPACK_SOURCE_TBZ2 "Enable to build TBZ2 source packages" ON)
        option(CPACK_SOURCE_TGZ  "Enable to build TGZ source packages"  ON)
-@@ -482,11 +487,11 @@
- endif()
- 
- # mark the above options as advanced
--mark_as_advanced(CPACK_BINARY_CYGWIN CPACK_BINARY_PACKAGEMAKER CPACK_BINARY_OSXX11
-+mark_as_advanced(CPACK_BINARY_CYGWIN CPACK_BINARY_MSYS CPACK_BINARY_PACKAGEMAKER CPACK_BINARY_OSXX11
-                  CPACK_BINARY_STGZ   CPACK_BINARY_TGZ          CPACK_BINARY_TBZ2
-                  CPACK_BINARY_DEB    CPACK_BINARY_RPM          CPACK_BINARY_TZ
-                  CPACK_BINARY_NSIS CPACK_BINARY_WIX CPACK_BINARY_ZIP CPACK_BINARY_BUNDLE
--                 CPACK_SOURCE_CYGWIN CPACK_SOURCE_TBZ2 CPACK_SOURCE_TGZ
-+                 CPACK_SOURCE_CYGWIN CPACK_SOURCE_MSYS CPACK_SOURCE_TBZ2 CPACK_SOURCE_TGZ
-                  CPACK_SOURCE_TZ CPACK_SOURCE_ZIP CPACK_BINARY_DRAGNDROP)
- 
- # Set some other variables
+@@ -495,6 +500,7 @@
+   CPACK_BINARY_7Z
+   CPACK_BINARY_BUNDLE
+   CPACK_BINARY_CYGWIN
++  CPACK_BINARY_MSYS
+   CPACK_BINARY_DEB
+   CPACK_BINARY_DRAGNDROP
+   CPACK_BINARY_IFW
+@@ -511,6 +517,7 @@
+   CPACK_BINARY_ZIP
+   CPACK_SOURCE_7Z
+   CPACK_SOURCE_CYGWIN
++  CPACK_SOURCE_MSYS
+   CPACK_SOURCE_TBZ2
+   CPACK_SOURCE_TGZ
+   CPACK_SOURCE_TXZ
 diff -Naur cmake-2.8.11.2/Modules/CPackMsys.cmake cmake-2.8.11.2-msys/Modules/CPackMsys.cmake
 --- cmake-2.8.11.2/Modules/CPackMsys.cmake	1970-01-01 03:00:00.000000000 +0300
 +++ cmake-2.8.11.2-msys/Modules/CPackMsys.cmake	2014-04-06 22:36:05.586600000 +0400
@@ -617,8 +584,8 @@ diff -Naur cmake-2.8.11.2/Modules/FindThreads.cmake cmake-2.8.11.2-msys/Modules/
      set(CMAKE_THREAD_LIBS_INIT )
    endif()
  
--  if(CMAKE_SYSTEM MATCHES "CYGWIN_NT*")
-+  if(CMAKE_SYSTEM MATCHES "CYGWIN_NT*" OR CMAKE_SYSTEM MATCHES "MSYS_NT*")
+-  if(CMAKE_SYSTEM MATCHES "CYGWIN_NT")
++  if(CMAKE_SYSTEM MATCHES "CYGWIN_NT" OR CMAKE_SYSTEM MATCHES "MSYS_NT")
      set(CMAKE_USE_PTHREADS_INIT 1)
      set(Threads_FOUND TRUE)
      set(CMAKE_THREAD_LIBS_INIT )
@@ -697,14 +664,14 @@ diff -Naur cmake-2.8.11.2/Modules/FindWget.cmake cmake-2.8.11.2-msys/Modules/Fin
 diff -Naur cmake-2.8.11.2/Modules/GenerateExportHeader.cmake cmake-2.8.11.2-msys/Modules/GenerateExportHeader.cmake
 --- cmake-2.8.11.2/Modules/GenerateExportHeader.cmake	2013-07-02 17:41:39.000000000 +0400
 +++ cmake-2.8.11.2-msys/Modules/GenerateExportHeader.cmake	2014-04-06 22:53:11.754600000 +0400
-@@ -169,6 +169,7 @@
+@@ -217,6 +217,7 @@
        AND NOT _INTEL_TOO_OLD
        AND NOT WIN32
        AND NOT CYGWIN
 +      AND NOT MSYS
-       AND NOT "${CMAKE_CXX_COMPILER_ID}" MATCHES XL
-       AND NOT "${CMAKE_CXX_COMPILER_ID}" MATCHES PGI
-       AND NOT "${CMAKE_CXX_COMPILER_ID}" MATCHES Watcom)
+       AND NOT CMAKE_CXX_COMPILER_ID MATCHES XL
+       AND NOT CMAKE_CXX_COMPILER_ID MATCHES PGI
+       AND NOT CMAKE_CXX_COMPILER_ID MATCHES Watcom)
 diff -Naur cmake-2.8.11.2/Modules/KDE3Macros.cmake cmake-2.8.11.2-msys/Modules/KDE3Macros.cmake
 --- cmake-2.8.11.2/Modules/KDE3Macros.cmake	2013-07-02 17:41:39.000000000 +0400
 +++ cmake-2.8.11.2-msys/Modules/KDE3Macros.cmake	2014-04-06 22:54:20.940600000 +0400
@@ -886,8 +853,8 @@ diff -Naur cmake-2.8.11.2/Modules/UseJava.cmake cmake-2.8.11.2-msys/Modules/UseJ
          ${CMAKE_JAVA_LIBRARY_OUTPUT_PATH}
      )
  
--    if (WIN32 AND NOT CYGWIN AND CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
-+    if (WIN32 AND NOT CYGWIN AND NOT MSYS AND CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
+-    if (CMAKE_HOST_WIN32 AND NOT CYGWIN AND CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
++    if (CMAKE_HOST_WIN32 AND NOT CYGWIN AND NOT MSYS AND CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
          set(CMAKE_JAVA_INCLUDE_FLAG_SEP ";")
      else ()
          set(CMAKE_JAVA_INCLUDE_FLAG_SEP ":")
@@ -910,8 +877,8 @@ diff -Naur cmake-2.8.11.2/Source/CMakeLists.txt cmake-2.8.11.2-msys/Source/CMake
    cmNinjaUtilityTargetGenerator.cxx
    cmNinjaUtilityTargetGenerator.h
    )
--if(WIN32 AND NOT CYGWIN AND NOT BORLAND)
-+if(WIN32 AND NOT CYGWIN AND NOT MSYS AND NOT BORLAND)
+-if(WIN32 AND NOT CYGWIN)
++if(WIN32 AND NOT CYGWIN AND NOT MSYS)
    set_source_files_properties(cmcldeps.cxx PROPERTIES COMPILE_DEFINITIONS _WIN32_WINNT=0x0501)
    add_executable(cmcldeps cmcldeps.cxx)
    target_link_libraries(cmcldeps CMakeLib)
@@ -924,22 +891,6 @@ diff -Naur cmake-2.8.11.2/Source/CMakeLists.txt cmake-2.8.11.2-msys/Source/CMake
    set(CPACK_SRCS ${CPACK_SRCS}
      CPack/cmCPackCygwinBinaryGenerator.cxx
      CPack/cmCPackCygwinSourceGenerator.cxx
-diff -Naur cmake-2.8.11.2/Source/cmDocumentVariables.cxx cmake-2.8.11.2-msys/Source/cmDocumentVariables.cxx
---- cmake-2.8.11.2/Source/cmDocumentVariables.cxx	2013-07-02 17:41:40.000000000 +0400
-+++ cmake-2.8.11.2-msys/Source/cmDocumentVariables.cxx	2014-04-06 23:05:31.013200000 +0400
-@@ -1010,6 +1010,12 @@
-      "Variables That Describe the System");
- 
-   cm->DefineProperty
-+    ("MSYS", cmProperty::VARIABLE,
-+     "True for MSYS.",
-+     "Set to true when using MSYS.",false,
-+     "Variables That Describe the System");
-+
-+  cm->DefineProperty
-     ("CYGWIN", cmProperty::VARIABLE,
-      "True for cygwin.",
-      "Set to true when using CYGWIN.",false,
 diff -Naur cmake-2.8.11.2/Source/cmExportBuildFileGenerator.cxx cmake-2.8.11.2-msys/Source/cmExportBuildFileGenerator.cxx
 --- cmake-2.8.11.2/Source/cmExportBuildFileGenerator.cxx	2013-07-02 17:41:40.000000000 +0400
 +++ cmake-2.8.11.2-msys/Source/cmExportBuildFileGenerator.cxx	2014-04-06 23:05:56.550400000 +0400
@@ -1017,7 +968,7 @@ diff -Naur cmake-2.8.11.2/Source/kwsys/CMakeLists.txt cmake-2.8.11.2-msys/Source
 -    IF(NOT CYGWIN)
 +    IF(NOT CYGWIN AND NOT MSYS)
        SET(KWSYS_TEST_PROCESS_7 7)
--    ENDIF(NOT CYGWIN)
+-    ENDIF()
 +    ENDIF(NOT CYGWIN AND NOT MSYS)
      FOREACH(n 1 2 3 4 5 6 ${KWSYS_TEST_PROCESS_7})
        ADD_TEST(kwsys.testProcess-${n} ${EXEC_DIR}/${KWSYS_NAMESPACE}TestProcess ${n})
@@ -1046,7 +997,7 @@ diff -Naur cmake-2.8.11.2/Tests/CMakeLists.txt cmake-2.8.11.2-msys/Tests/CMakeLi
 @@ -1243,7 +1243,7 @@
  
    # Test static linking on toolchains known to support it.
-   if("${CMAKE_C_COMPILER_ID}" MATCHES "^(GNU)$"
+   if(CMAKE_C_COMPILER_ID STREQUAL "GNU"
 -      AND NOT APPLE AND NOT WIN32 AND NOT CYGWIN
 +      AND NOT APPLE AND NOT WIN32 AND NOT CYGWIN AND NOT MSYS
        AND EXISTS "/usr/lib/libm.a")
@@ -1173,18 +1124,6 @@ diff -Naur cmake-2.8.11.2/Tests/ComplexOneConfig/Library/CMakeLists.txt cmake-2.
      if(NOT BORLAND)
        if(NOT MINGW)
          target_link_libraries(CMakeTestLibrary
-diff -Naur cmake-2.8.11.2/Tests/CTestTestTimeout/CMakeLists.txt cmake-2.8.11.2-msys/Tests/CTestTestTimeout/CMakeLists.txt
---- cmake-2.8.11.2/Tests/CTestTestTimeout/CMakeLists.txt	2013-07-02 17:41:40.000000000 +0400
-+++ cmake-2.8.11.2-msys/Tests/CTestTestTimeout/CMakeLists.txt	2014-04-06 23:32:31.213600000 +0400
-@@ -3,7 +3,7 @@
- include(CTest)
- 
- if(NOT TIMEOUT)
--  if(CYGWIN)
-+  if(CYGWIN OR MSYS)
-     set(TIMEOUT 4) # Cygwin CMake sometimes takes > 1 second to load!
-   else()
-     set(TIMEOUT 1)
 diff -Naur cmake-2.8.11.2/Tests/ExternalProject/CMakeLists.txt cmake-2.8.11.2-msys/Tests/ExternalProject/CMakeLists.txt
 --- cmake-2.8.11.2/Tests/ExternalProject/CMakeLists.txt	2013-07-02 17:41:40.000000000 +0400
 +++ cmake-2.8.11.2-msys/Tests/ExternalProject/CMakeLists.txt	2014-04-06 23:34:01.256800000 +0400
@@ -1218,7 +1157,7 @@ diff -Naur cmake-2.8.11.2/Tests/Fortran/CMakeLists.txt cmake-2.8.11.2-msys/Tests
  set(world_def "")
 -if(WIN32 AND NOT CYGWIN)
 +if(WIN32 AND NOT CYGWIN AND NOT MSYS)
-   if("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
+   if(CMAKE_Fortran_COMPILER_ID MATCHES "GNU")
      set(world_def world_gnu.def)
    elseif("${CMAKE_Fortran_COMPILER_ID}" MATCHES "Intel" OR
 diff -Naur cmake-2.8.11.2/Tests/Jump/Library/Shared/CMakeLists.txt cmake-2.8.11.2-msys/Tests/Jump/Library/Shared/CMakeLists.txt
