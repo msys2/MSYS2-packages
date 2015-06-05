@@ -1,51 +1,57 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=tmux-git
-_ver_base=1.9
-pkgver=1.9.4851.f8481f9
+pkgver=2.0.156.g83a7017
 pkgrel=1
 pkgdesc='A terminal multiplexer'
-url='http://tmux.sourceforge.net/'
+url='http://tmux.github.io/'
 arch=('i686' 'x86_64')
 license=('BSD')
 provides=('tmux')
 conflicts=('tmux')
 depends=('ncurses' 'libevent')
 makedepends=('git' 'ncurses-devel' 'libevent-devel')
-source=("$pkgname"::'git+http://git.code.sf.net/p/tmux/tmux-code'
-        LICENSE
+source=("$pkgname"::'git+https://github.com/tmux/tmux.git'
         'msys-platform.patch')
 md5sums=('SKIP'
-         '71601bc37fa44e4395580b321963018e'
          'b175ece57d04168245f63dbf51f87cd0')
 
 pkgver() {
-  cd ${srcdir}/${pkgname}
-  printf "%s.%s.%s" "$_ver_base" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  cd "${srcdir}"/$pkgname
+  git describe --tags | sed -e 's|-|.|g' -e 's|v||g'
 }
 
 prepare() {
-  cd ${srcdir}/${pkgname}
-  patch -p1 -i ${srcdir}/msys-platform.patch
+  cd "${srcdir}"/$pkgname
+  patch -p1 -i "${srcdir}"/msys-platform.patch
   cp osdep-cygwin.c osdep-msys.c
+
+  msg2 "Running autogen.sh"
   ./autogen.sh
 }
 
 build() {
-  cd ${srcdir}/${pkgname}
-  ./configure --prefix=/usr CPPFLAGS="${CPPFLAGS} -I/usr/include/ncurses"
+  cd "${srcdir}"/$pkgname
+  ./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
+    CPPFLAGS="${CPPFLAGS} -I/usr/include/ncursesw"
   make
 }
 
 package() {
-  cd ${srcdir}/${pkgname}
-  make DESTDIR=${pkgdir} install
-  install -Dm644 ../LICENSE ${pkgdir}/usr/share/licenses/tmux/LICENSE
+  cd "${srcdir}"/$pkgname
+  make DESTDIR="${pkgdir}" install
 
-  install -dm755 ${pkgdir}/usr/share/tmux/
-  install -m644 examples/* ${pkgdir}/usr/share/tmux/
-  install -Dm644 examples/tmux.vim ${pkgdir}/usr/share/vim/vimfiles/syntax/tmux.vim
+  install -d "${pkgdir}"/usr/share/licenses/tmux
+  install -m 644 COPYING "${pkgdir}"/usr/share/licenses/tmux
 
-  install -d ${pkgdir}/usr/share/bash-completion/completions/
-  mv ${pkgdir}/usr/share/tmux/bash_completion_tmux.sh ${pkgdir}/usr/share/bash-completion/completions/tmux
+  install -d "${pkgdir}"/usr/share/tmux
+  install -m 644 examples/* "${pkgdir}"/usr/share/tmux
+  install -d "${pkgdir}"/usr/share/vim/vimfiles/syntax
+  install -m 644 examples/tmux.vim "${pkgdir}"/usr/share/vim/vimfiles/syntax
+
+  install -d "${pkgdir}"/usr/share/bash-completion/completions/tmux
+  mv "${pkgdir}"/usr/share/tmux/bash_completion_tmux.sh "${pkgdir}"/usr/share/bash-completion/completions/tmux
 }
