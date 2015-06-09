@@ -6,19 +6,20 @@ pkgname="${_realname}-git"
 replaces="${_realname}"
 provides=("${_realname}")
 conflicts=("${_realname}")
-pkgver=r2334.47a6ca6
+pkgver=r3223.c4c495c
 pkgrel=1
 pkgdesc="Customizable Windows console emulator with tabs"
 arch=('i686' 'x86_64')
-url="http://code.google.com/p/conemu-maximus5/"
+url="http://conemu.github.io/"
 license=('custom')
-
 makedepends=("git" "${_mingw_suff}-gcc" "${_mingw_suff}-binutils" "${_mingw_suff}-crt")
+# CAUTION:
+# Don't remove `!strip' option!  Otherwise, 64-bit version of ConEmu will signal
+# errors at startup.
 options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
-
-source=(#"${_realname}"::"git+http://github.com/martell/ConEmu.git#branch=mingw64"
-        "${_realname}"::"git+https://github.com/Maximus5/ConEmu.git"
-        "0001-added-support-for-a-PREFIX-in-makefile.patch"
+source=("${_realname}"::"git+https://github.com/Maximus5/ConEmu.git"
+        "ConEmu.xml"
+        "0001-added-support-for-a-CROSS_HOST-in-makefile.patch"
         "0002-Dialog-Flags-added-to-Mingw-w64.patch"
         "0003-SecureZeroMemory-support-already-exists-in-Mingw-w64.patch"
         "0004-ShObjIdl-support-already-exists-in-mingw-w64.patch"
@@ -38,32 +39,42 @@ source=(#"${_realname}"::"git+http://github.com/martell/ConEmu.git#branch=mingw6
         "0018-Fix-various-cross-initialization-errors-under-gcc.patch"
         "0019-update-minimal-windows-version-to-0x0600.patch"
         "0020-removed-random-call-to-pszText.patch"
-        "0021-on-msys2-ignore-recommended-files-warning.patch"
-        "ConEmu.xml")
+        "0021-mingw-have-dbghelp-header.patch")
 
-md5sums=("SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP"
-         "SKIP")
+md5sums=('SKIP'
+         'ef65ed189bc75e38aa3f68e8b2b52359'
+         'a0bf03647a4529512c163e2295ca48d8'
+         '267cdd9d66989daddf6ad0b9179c4d2a'
+         '2eae0105893b7cf8e4f32d754fb98bae'
+         'bc9a51b919d1bf78d204f5ebaf29264d'
+         '4b32b3c1e08bf71a6d74e1a17ee37758'
+         'dd043f5d620022d5f18b9e973b32ff06'
+         'cad011f6cbb0933b2e0768d48bb895b6'
+         'bcdd054f3b756cb2132b342c1d2ca515'
+         'a43a8f369d21a9268cf645da01076cb0'
+         '70993b68766d519b8d1a6f30cac58137'
+         '75164769b2d455e93e0dd3298c4d4896'
+         '4e9598aa4f976587d2506ea5608e5e06'
+         'a207c596bdf987d6825b20371a832abb'
+         'bd437ae49aa6a00656135f84239c3d35'
+         'cb29fd389e8d5231ca42b3749aa1cd76'
+         '7b350222baa3c3b5a65cd12249698c1d'
+         'a19456ecec3c73bd40b26aa8456b6c3a'
+         'e77940321c2908796d6fc6d215b0bc04'
+         '30917167afd7f0e71c4b7ced0c3c7e4c'
+         '0295f00208cc85f5577548d379c9902a'
+         'ccb18acd4676d69c581bc5a59d6a5c79')
+
+case "${CARCH}" in
+  i686*)
+    _primary_host=i686-w64-mingw32
+    _secondary_host=x86_64-w64-mingw32
+  ;;
+  x86_64*)
+    _primary_host=x86_64-w64-mingw32
+    _secondary_host=i686-w64-mingw32
+  ;;
+esac
 
 pkgver() {
   cd "$srcdir/$_realname"
@@ -72,7 +83,7 @@ pkgver() {
 
 prepare() {
   cd "$srcdir/$_realname"
-  git am "$srcdir/0001-added-support-for-a-PREFIX-in-makefile.patch"
+  git am "$srcdir/0001-added-support-for-a-CROSS_HOST-in-makefile.patch"
   git am "$srcdir/0002-Dialog-Flags-added-to-Mingw-w64.patch"
   git am "$srcdir/0003-SecureZeroMemory-support-already-exists-in-Mingw-w64.patch"
   git am "$srcdir/0004-ShObjIdl-support-already-exists-in-mingw-w64.patch"
@@ -92,7 +103,7 @@ prepare() {
   git am "$srcdir/0018-Fix-various-cross-initialization-errors-under-gcc.patch"
   git am "$srcdir/0019-update-minimal-windows-version-to-0x0600.patch"
   git am "$srcdir/0020-removed-random-call-to-pszText.patch"
-  git am "$srcdir/0021-on-msys2-ignore-recommended-files-warning.patch"
+  git am "$srcdir/0021-mingw-have-dbghelp-header.patch"
 
 }
 
@@ -111,36 +122,43 @@ build() {
 
   # NOTE:
   # The ugliest build system I've ever seen, yuck!
-  # NOTE:
-  # Don't remove `-static*' switches from `USERLIBSFIRST'! Otherwise when
+  # CAUTION:
+  # Don't remove `-static*' switches from `USERLIBSFIRST'!  Otherwise, when
   # running `cmd.exe' (Command Prompt) in ConEmu, it cannot find
   # `libstdc++-6.dll' if it is not in the current `PATH' environment variable.
 
-  PREFIX="${_CC}-" make -f makefile_all_gcc WIDE="1" \
-  USERCPP="-pipe -O3 -fomit-frame-pointer -fpermissive -std=c++11" \
-  USERLIBSFIRST="-static -static-libgcc -static-libstdc++"
-
+  for _target in ${_primary_host} ${_secondary_host}; do
+    msg "Building ${_realname} for ${_target%%-*}"
+    [[ -d ${srcdir}/build-${_target} ]] && rm -rf ${srcdir}/build-${_target}
+    cp -rf ${srcdir}/${_realname} ${srcdir}/build-${_target}
+    cd ${srcdir}/build-${_target}/src
+    CROSS_HOST="${_target}-" make -j1 \
+      -f makefile_all_gcc WIDE="1" \
+      USERCPP="-pipe -O3 -fomit-frame-pointer -fpermissive -std=c++11" \
+      USERLIBSFIRST="-static -static-libgcc -static-libstdc++"
+  done
 }
 
 package() {
-  cd "$srcdir/$_realname"
-
   mkdir -p "${pkgdir}/opt/bin"
 
-  local suffix=''
+  local _suffix=''
 
-  if test "${CARCH}" == 'x86_64'; then
-    suffix='64'
-  fi
+  for _target in ${_primary_host} ${_secondary_host}; do
+    msg "Installing ${_realname} for ${_target%%-*}"
+    cd "${srcdir}/build-${_target}/Release"
+    if [ "${CARCH}" == "${_target%%-*}" ]; then
+      cp -r "ConEmu.exe" "${pkgdir}/opt/bin/ConEmu.exe"
+    fi
+    if test "${_target%%-*}" == "x86_64"; then
+      _suffix="64"
+    else
+      _suffix=""
+    fi
+    cp -r "ConEmu/ConEmuC.exe"  "${pkgdir}/opt/bin/ConEmuC${_suffix}.exe"
+    cp -r "ConEmu/ConEmuCD.dll" "${pkgdir}/opt/bin/ConEmuCD${_suffix}.dll"
+    cp -r "ConEmu/ConEmuHk.dll" "${pkgdir}/opt/bin/ConEmuHk${_suffix}.dll"
+  done
 
-  cp -r "$srcdir/ConEmu.xml" "${pkgdir}/opt/bin"
-
-  cd "$srcdir/$_realname/Release"
-  cp -r "ConEmu.exe" "${pkgdir}/opt/bin/ConEmu.exe"
-
-  cd "ConEmu"
-  cp -r "ConEmuC.exe"  "${pkgdir}/opt/bin/ConEmuC${suffix}.exe"
-  cp -r "ConEmuCD.dll" "${pkgdir}/opt/bin/ConEmuCD${suffix}.dll"
-  cp -r "ConEmuHk.dll" "${pkgdir}/opt/bin/ConEmuHk${suffix}.dll"
+  install -Dm644 ${srcdir}/ConEmu.xml "${pkgdir}"/opt/share/conemu/ConEmu.xml
 }
-
