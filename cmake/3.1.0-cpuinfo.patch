@@ -1,0 +1,90 @@
+diff --git a/Source/kwsys/SystemInformation.cxx b/Source/kwsys/SystemInformation.cxx
+index 3e1a1ab..690a40f 100644
+--- a/Source/kwsys/SystemInformation.cxx
++++ b/Source/kwsys/SystemInformation.cxx
+@@ -910,7 +910,7 @@ void SystemInformation::RunMemoryCheck()
+ // Hide implementation details in an anonymous namespace.
+ namespace {
+ // *****************************************************************************
+-#if defined(__linux) || defined(__APPLE__)
++#if defined(__linux) || defined(__APPLE__) || defined(__CYGWIN__)
+ int LoadLines(
+       FILE *file,
+       kwsys_stl::vector<kwsys_stl::string> &lines)
+@@ -946,7 +946,7 @@ int LoadLines(
+   return nRead;
+ }
+ 
+-# if defined(__linux)
++# if defined(__linux) || defined(__CYGWIN__)
+ // *****************************************************************************
+ int LoadLines(
+       const char *fileName,
+@@ -985,7 +985,7 @@ int NameValue(
+ }
+ #endif
+ 
+-#if defined(__linux)
++#if defined(__linux) || defined(__CYGWIN__)
+ // ****************************************************************************
+ template<typename T>
+ int GetFieldsFromFile(
+@@ -3131,7 +3131,6 @@ bool SystemInformationImplementation::RetreiveInformationFromCpuInfoFile()
+     pos = buffer.find("processor\t",pos+1);
+     }
+ 
+-#ifdef __linux
+   // Find the largest physical id.
+   int maxId = -1;
+   kwsys_stl::string idc =
+@@ -3164,14 +3163,6 @@ bool SystemInformationImplementation::RetreiveInformationFromCpuInfoFile()
+             atoi(this->ExtractValueFromCpuInfoFile(buffer,"ncpus active").c_str());
+     }
+ 
+-#else // __CYGWIN__
+-  // does not have "physical id" entries, neither "cpu cores"
+-  // this has to be fixed for hyper-threading.
+-  kwsys_stl::string cpucount =
+-    this->ExtractValueFromCpuInfoFile(buffer,"cpu count");
+-  this->NumberOfPhysicalCPU=
+-    this->NumberOfLogicalCPU = atoi(cpucount.c_str());
+-#endif
+   // gotta have one, and if this is 0 then we get a / by 0n
+   // better to have a bad answer than a crash
+   if(this->NumberOfPhysicalCPU <= 0)
+@@ -3369,7 +3360,7 @@ SystemInformationImplementation::GetHostMemoryTotal()
+   GlobalMemoryStatusEx(&statex);
+   return statex.ullTotalPhys/1024;
+ # endif
+-#elif defined(__linux)
++#elif defined(__linux) || defined(__CYGWIN__)
+   SystemInformation::LongLong memTotal=0;
+   int ierr=GetFieldFromFile("/proc/meminfo","MemTotal:",memTotal);
+   if (ierr)
+@@ -3500,7 +3491,7 @@ SystemInformationImplementation::GetHostMemoryUsed()
+   GlobalMemoryStatusEx(&statex);
+   return (statex.ullTotalPhys - statex.ullAvailPhys)/1024;
+ # endif
+-#elif defined(__linux)
++#elif defined(__linux) || defined(__CYGWIN__)
+   const char *names[3]={"MemTotal:","MemFree:",NULL};
+   SystemInformation::LongLong values[2]={SystemInformation::LongLong(0)};
+   int ierr=GetFieldsFromFile("/proc/meminfo",names,values);
+@@ -3559,7 +3550,7 @@ SystemInformationImplementation::GetProcMemoryUsed()
+     return -2;
+     }
+   return pmc.WorkingSetSize/1024;
+-#elif defined(__linux)
++#elif defined(__linux) || defined(__CYGWIN__)
+   SystemInformation::LongLong memUsed=0;
+   int ierr=GetFieldFromFile("/proc/self/status","VmRSS:",memUsed);
+   if (ierr)
+@@ -3611,7 +3602,7 @@ SystemInformationImplementation::GetProcessId()
+ {
+ #if defined(_WIN32)
+   return GetCurrentProcessId();
+-#elif defined(__linux) || defined(__APPLE__)
++#elif defined(__linux) || defined(__APPLE__) || defined(__CYGWIN__)
+   return getpid();
+ #else
+   return -1;
