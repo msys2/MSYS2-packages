@@ -1,0 +1,47 @@
+# $Id$
+# Maintainer (MSYS2): Ray Donnelly <mingw.android@gmail.com>
+# Maintainer (ArchLinux): Allan McRae <allan@archlinux.org>
+
+pkgname=expect
+pkgver=5.45
+pkgrel=1
+pkgdesc="A tool for automating interactive applications"
+arch=('i686' 'x86_64')
+url="http://www.nist.gov/el/msid/expect.cfm"
+license=('custom')
+depends=('tcl')
+source=(http://downloads.sourceforge.net/project/expect/Expect/${pkgver}/expect${pkgver}.tar.gz
+        config.guess
+        config.sub
+        5.45-openpty.patch
+        5.45-msysize.patch)
+md5sums=('44e1a4f4c877e9ddc5a542dfa7ecc92b'
+         '0dfad88aaf61412fc63ab7116273a7c3'
+         'afd58ca15188d3f2eac373c347d3d6ef'
+         '5073ef04cbba621c1bc00be6080af8d1'
+         '1304deae119ff028af889f8cc88528de')
+
+prepare() {
+  cd ${srcdir}/expect${pkgver}
+  patch -p2 -i ${srcdir}/5.45-openpty.patch
+  patch -p1 -i ${srcdir}/5.45-msysize.patch
+  cp ${srcdir}/config.guess tclconfig/config.guess
+  cp ${srcdir}/config.sub   tclconfig/config.sub
+  autoreconf -vfi
+}
+
+build() {
+  cd ${srcdir}/expect${pkgver}
+  ./configure --prefix=/usr --mandir=/usr/share/man 
+  make SHLIB_LD='$(CC) -shared -Wl,--out-implib,$@.a'
+}
+
+package() {
+  cd ${srcdir}/expect${pkgver}
+  make DESTDIR=${pkgdir} install
+
+  mv ${pkgdir}/usr/lib/expect${pkgver}/libexpect${pkgver}.dll ${pkgdir}/usr/bin/libexpect${pkgver}.dll
+  rm ${pkgdir}/usr/bin/mkpasswd
+
+  install -D -m644 README ${pkgdir}/usr/share/licenses/${pkgname}/README
+}
