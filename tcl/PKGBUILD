@@ -1,0 +1,62 @@
+# $Id$
+# Maintainer (MSYS2): Ray Donnelly <mingw.android@gmail.com>
+# Maintainer (ArchLinux): Eric Bélanger <eric@archlinux.org>
+
+pkgname=tcl
+#pkgver=8.6.4
+pkgver=8.5.18
+pkgrel=1
+pkgdesc="The Tcl scripting language"
+arch=('i686' 'x86_64')
+url="http://tcl.sourceforge.net/"
+license=('custom')
+depends=('zlib')
+options=('staticlibs')
+source=(http://downloads.sourceforge.net/sourceforge/tcl/tcl${pkgver}-src.tar.gz
+        8.5.18-cygwin-unix.patch)
+sha1sums=('7d4f35bc080d27b2e148689037d312ea41e4d16b'
+          '119bfdb73c0c881ef5f18dc6711e1d567c942e05')
+
+prepare() {
+  cd tcl${pkgver}
+  # we build the tcl sqlite interface in sqlite-tcl package
+  rm -rf pkgs/sqlite3*
+  patch -p2 -i ${srcdir}/8.5.18-cygwin-unix.patch
+}
+
+build() {
+  cd tcl${pkgver}/unix
+  [[ $CARCH == "x86_64" ]] && BIT="--enable-64bit"
+  ./configure --prefix=/usr --mandir=/usr/share/man --enable-threads $BIT
+  make
+}
+
+# check() {
+#   cd tcl${pkgver}/unix
+#   make test
+# }
+
+package() {
+  cd tcl${pkgver}/unix
+  make INSTALL_ROOT="${pkgdir}" install install-private-headers
+  # ln -sf tclsh${pkgver%.*} "${pkgdir}/usr/bin/tclsh"
+  # ln -sf libtcl${pkgver%.*}.so "${pkgdir}/usr/lib/libtcl.so"
+  install -Dm644 ../license.terms "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+  # remove buildroot traces
+  sed -e "s#${srcdir}/tcl${pkgver}/unix#/usr/lib#" \
+      -e "s#${srcdir}/tcl${pkgver}#/usr/include#" \
+      -i "${pkgdir}/usr/lib/tclConfig.sh"
+
+  # tdbcver=tdbc1.0.3
+  # sed -e "s#${srcdir}/tcl${pkgver}/unix/pkgs/$tdbcver#/usr/lib/$tdbcver#" \
+  #     -e "s#${srcdir}/tcl${pkgver}/pkgs/$tdbcver/generic#/usr/include#" \
+  #     -e "s#${srcdir}/tcl${pkgver}/pkgs/$tdbcver/library#/usr/lib/tcl${pkgver%.*}#" \
+  #     -e "s#${srcdir}/tcl${pkgver}/pkgs/$tdbcver#/usr/include#" \
+  #     -i "${pkgdir}/usr/lib/$tdbcver/tdbcConfig.sh"
+  # itclver=itcl4.0.3
+  # sed -e "s#${srcdir}/tcl${pkgver}/unix/pkgs/$itclver#/usr/lib/$itclver#" \
+  #     -e "s#${srcdir}/tcl${pkgver}/pkgs/$itclver/generic#/usr/include#" \
+  #     -e "s#${srcdir}/tcl${pkgver}/pkgs/$itclver#/usr/include#" \
+  #     -i "${pkgdir}/usr/lib/$itclver/itclConfig.sh"
+}
