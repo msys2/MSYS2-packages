@@ -2,59 +2,42 @@
 # Contributor: Ray Donnelly <mingw.android@gmail.com>
 
 pkgname=doxygen
-pkgver=1.8.9.1
+pkgver=1.8.10
 pkgrel=1
 pkgdesc="A documentation system for C++, C, Java, IDL and PHP"
 arch=('i686' 'x86_64')
 url="http://www.doxygen.org/"
-options=('strip' 'staticlibs' '!makeflags') # 'debug')
+options=('strip' 'staticlibs')
 license=('GPL')
 depends=("gcc-libs" "libsqlite" "libiconv")
-makedepends=("gcc" "flex" "python2" "libsqlite-devel" "libiconv-devel")
-source=("http://ftp.stack.nl/pub/users/dimitri/${pkgname}-${pkgver}.src.tar.gz"
-        '1.7.4-iconv.patch'
-        'remove-extra-slashes.patch'
-        'msys2-change-debug-flags.patch')
-md5sums=('3d1a5c26bef358c10a3894f356a69fbc'
-         '838712aecc168be786d95dc7497d5901'
-         '5eea3d1fddf646d0944e5b1dd95628d6'
-         '7abf53469d1c9123955c81c8284a4a8c')
-noextract=(${pkgname}-${pkgver}.src.tar.gz)
+makedepends=("cmake" "gcc" "flex" "python2" "libsqlite-devel" "libiconv-devel")
+source=("http://ftp.stack.nl/pub/users/dimitri/${pkgname}-${pkgver}.src.tar.gz")
+md5sums=('79767ccd986f12a0f949015efb5f058f')
 
 prepare() {
   cd ${srcdir}
-  [[ -d $srcdir/${pkgname}-${pkgver} ]] || tar -xzvf ${startdir}/${pkgname}-${pkgver}.src.tar.gz -C $srcdir
-  cd "${srcdir}/${pkgname}-${pkgver}"
-
-  patch -p2 -i "${srcdir}"/1.7.4-iconv.patch
-  patch -p1 -i "${srcdir}"/remove-extra-slashes.patch
-  patch -p1 -i "${srcdir}"/msys2-change-debug-flags.patch
 }
 
 build() {
-  local -a extra_config
+  local extra_config=Release
   if check_option "debug" "y"; then
-    extra_config+=("--debug")
-    CFLAGS="-Og"
-  else
-    extra_config+=("--release")
+    extra_config=Debug
   fi
 
-  cd ${srcdir}/${pkgname}-${pkgver}
-  ./configure \
-    --prefix /usr \
-    --with-sqlite3 \
-    --sqlite3-path /usr \
-    --shared \
-    --docdir /usr/share/doc/${pkgname} \
-    --platform linux-g++ \
-    "${extra_config[@]}"
+  mkdir build-${CHOST} && cd build-${CHOST}
+  cmake \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=${extra_config} \
+    -Dbuild_wizard=OFF \
+    -Dbuild_search=OFF \
+    -Duse_sqlite3=ON \
+    -Duse_libclang=OFF \
+    ../${pkgname}-${pkgver}
   make
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/build-${CHOST}
 
-  #make DESTDIR="${pkgdir}" install
-  make INSTALL="${pkgdir}"/usr MAN1DIR=share/man/man1 install
+  make DESTDIR="${pkgdir}" install
 }
