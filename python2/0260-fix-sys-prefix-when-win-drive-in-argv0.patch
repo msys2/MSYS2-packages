@@ -1,0 +1,36 @@
+diff -urN Python-2.7.10.orig/Modules/getpath.c Python-2.7.10/Modules/getpath.c
+--- Python-2.7.10.orig/Modules/getpath.c	2015-07-06 13:16:43.261177500 +0100
++++ Python-2.7.10/Modules/getpath.c	2015-07-06 13:17:53.505177500 +0100
+@@ -229,8 +229,20 @@
+ static void
+ copy_absolute(char *path, char *p)
+ {
++#if defined(__MSYS__)
++    if (p[0] == SEP || (p[0] != '\0' && p[1] == ':'))
++#else
+     if (p[0] == SEP)
++#endif
+         strcpy(path, p);
++#if defined(__MSYS__)
++        /* Turn C:* into /c* since sys.path can't have drive seps (:) in
++           since those delimit path list entries. */
++        if (path[0] != '\0' && path[1] == ':') {
++            path[1]=tolower(path[0]);
++            path[0]='/';
++        }
++#endif
+     else {
+         if (!getcwd(path, MAXPATHLEN)) {
+             /* unable to get the current directory */
+@@ -482,7 +494,11 @@
+         }
+         else
+                 progpath[0] = '\0';
++#if defined(__MSYS__)
++        if (progpath[0] != SEP && progpath[0] != '\0' && progpath[1] != ':')
++#else
+         if (progpath[0] != SEP && progpath[0] != '\0')
++#endif
+                 absolutize(progpath);
+         strncpy(argv0_path, progpath, MAXPATHLEN);
+         argv0_path[MAXPATHLEN] = '\0';
