@@ -1,0 +1,61 @@
+# Maintainer: James Ross-Gowan <rossymiles@gmail.com>
+
+pkgname=('protobuf' 'protobuf-devel')
+pkgver=2.6.1
+pkgrel=1
+pkgdesc="Protocol Buffers - Google's data interchange format"
+arch=('i686' 'x86_64')
+url='https://developers.google.com/protocol-buffers/'
+groups=('libraries')
+license=('BSD')
+depends=('gcc-libs' 'zlib')
+makedepends=('zlib-devel')
+source=("https://github.com/google/protobuf/releases/download/v$pkgver/protobuf-$pkgver.tar.bz2"
+        config.guess
+        config.sub
+        01-msysize.patch)
+md5sums=('11aaac2d704eef8efd1867a807865d85'
+         'f27066cdcc9625c6f40715836b2da913'
+         '20a4dbe61670b9be940059d30480a537'
+         '2a10b4f534a2e1769d1503609600fdf3')
+
+prepare() {
+  cd "${srcdir}/protobuf-${pkgver}"
+
+  cp "$srcdir/config.sub" .
+  cp "$srcdir/config.guess" .
+  patch -p1 -i "$srcdir/01-msysize.patch"
+  ./autogen.sh
+}
+
+build() {
+  cd "${srcdir}/protobuf-${pkgver}"
+
+  ./configure \
+    --host=${CHOST} \
+    --prefix=/usr
+  make
+  make DESTDIR="$srcdir/dest" install
+}
+
+check() {
+  cd "${srcdir}/protobuf-${pkgver}"
+  make check
+}
+
+package_protobuf() {
+  mkdir -p "$pkgdir/usr/bin"
+  cp -f "$srcdir/dest/usr/bin/"*.dll "$pkgdir/usr/bin/"
+  install -Dm644 "$srcdir/protobuf-${pkgver}/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
+
+package_protobuf-devel() {
+  pkgdesc="Protobuf headers and libraries"
+  groups=('development')
+  depends=("protobuf=${pkgver}")
+
+  mkdir -p "$pkgdir/usr/bin"
+  cp -f "$srcdir/dest/usr/bin/"*.exe "$pkgdir/usr/bin/"
+  cp -rf "$srcdir/dest/usr/include" "$pkgdir/usr/"
+  cp -rf "$srcdir/dest/usr/lib" "$pkgdir/usr/"
+}
