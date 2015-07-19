@@ -1,0 +1,150 @@
+From 59029861be425251e006863e8a58315398ed26b4 Mon Sep 17 00:00:00 2001
+From: Martell Malone <martellmalone@gmail.com>
+Date: Sat, 18 Jul 2015 16:05:06 +0100
+Subject: [PATCH] cmake hack for msys2
+
+1.
+For some reason CYGWIN is false under a MSYS Environment when using a msys compiler
+A MSYS2 compiler is essentially cygwin compiler so this should be set to true.
+
+Before anyone point out cmake's MSYS variable to me.
+The MSYS variable refers to the host system and not the compiler.
+So CYGWIN should still be TRUE.
+
+This should be fixed in msys-cmake so that we can remove this patch :)
+
+2.
+For the NOT check related to the -z option
+CYGWIN should be added because cmake no longer defines WIN32 
+as of version 2.8.4 for CYGWIN targets
+
+
+diff --git a/cmake/modules/AddLLVM.cmake b/cmake/modules/AddLLVM.cmake
+index 45f6746..a3f1e9c 100644
+--- a/cmake/modules/AddLLVM.cmake
++++ b/cmake/modules/AddLLVM.cmake
+@@ -201,7 +201,7 @@ function(set_output_directory target bindir libdir)
+ 
+   # moddir -- corresponding to LIBRARY_OUTPUT_DIRECTORY.
+   # It affects output of add_library(MODULE).
+-  if(WIN32 OR CYGWIN)
++  if(WIN32 OR CYGWIN OR MSYS)
+     # DLL platform
+     set(moddir ${bindir})
+   else()
+@@ -505,7 +505,7 @@ macro(add_llvm_library name)
+   elseif(NOT _is_gtest)
+     if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY OR ${name} STREQUAL "LTO")
+       if(ARG_SHARED OR BUILD_SHARED_LIBS)
+-        if(WIN32 OR CYGWIN)
++        if(WIN32 OR CYGWIN OR MSYS)
+           set(install_type RUNTIME)
+         else()
+           set(install_type LIBRARY)
+@@ -542,7 +542,7 @@ macro(add_llvm_loadable_module name)
+       set_target_properties( ${name} PROPERTIES EXCLUDE_FROM_ALL ON)
+     else()
+       if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
+-        if(WIN32 OR CYGWIN)
++        if(WIN32 OR CYGWIN OR MSYS)
+           # DLL platform
+           set(dlldir "bin")
+         else()
+diff --git a/cmake/modules/HandleLLVMOptions.cmake b/cmake/modules/HandleLLVMOptions.cmake
+index 9f5a3a0..00f7c3f 100644
+--- a/cmake/modules/HandleLLVMOptions.cmake
++++ b/cmake/modules/HandleLLVMOptions.cmake
+@@ -97,13 +97,13 @@ endif()
+ 
+ if(WIN32)
+   set(LLVM_HAVE_LINK_VERSION_SCRIPT 0)
+-  if(CYGWIN)
++  if(CYGWIN OR MSYS)
+     set(LLVM_ON_WIN32 0)
+     set(LLVM_ON_UNIX 1)
+-  else(CYGWIN)
++  else(CYGWIN OR MSYS)
+     set(LLVM_ON_WIN32 1)
+     set(LLVM_ON_UNIX 0)
+-  endif(CYGWIN)
++  endif(CYGWIN OR MSYS)
+ else(WIN32)
+   if(UNIX)
+     set(LLVM_ON_WIN32 0)
+@@ -131,7 +131,8 @@ endif()
+ 
+ # Pass -Wl,-z,defs. This makes sure all symbols are defined. Otherwise a DSO
+ # build might work on ELF but fail on MachO/COFF.
+-if(NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR WIN32 OR
++if(NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR
++        WIN32 OR CYGWIN OR MSYS OR
+         ${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD") AND
+    NOT LLVM_USE_SANITIZER)
+   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,defs")
+@@ -176,12 +177,12 @@ if( LLVM_ENABLE_PIC )
+     # Xcode has -mdynamic-no-pic on by default, which overrides -fPIC. I don't
+     # know how to disable this, so just force ENABLE_PIC off for now.
+     message(WARNING "-fPIC not supported with Xcode.")
+-  elseif( WIN32 OR CYGWIN)
++  elseif( WIN32 OR CYGWIN OR MSYS)
+     # On Windows all code is PIC. MinGW warns if -fPIC is used.
+   else()
+     add_flag_or_print_warning("-fPIC" FPIC)
+ 
+-    if( WIN32 OR CYGWIN)
++    if( WIN32 OR CYGWIN OR MSYS)
+       # MinGW warns if -fvisibility-inlines-hidden is used.
+     else()
+       check_cxx_compiler_flag("-fvisibility-inlines-hidden" SUPPORTS_FVISIBILITY_INLINES_HIDDEN_FLAG)
+@@ -407,7 +408,7 @@ elseif( LLVM_COMPILER_IS_GCC_COMPATIBLE )
+   else()
+     check_cxx_compiler_flag("-std=c++11" CXX_SUPPORTS_CXX11)
+     if (CXX_SUPPORTS_CXX11)
+-      if (CYGWIN OR MINGW)
++      if (CYGWIN OR MSYS OR MINGW)
+         # MinGW and Cygwin are a bit stricter and lack things like
+         # 'strdup', 'stricmp', etc in c++11 mode.
+         append("-std=gnu++11" CMAKE_CXX_FLAGS)
+@@ -508,7 +509,7 @@ endif()
+ # FIXME: With MSVS, consider compiling with /Gy and linking with /OPT:REF?
+ # But MinSizeRel seems to add that automatically, so maybe disable these
+ # flags instead if LLVM_NO_DEAD_STRIP is set.
+-if(NOT CYGWIN AND NOT WIN32)
++if(NOT CYGWIN AND NOT MSYS AND NOT WIN32)
+   if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND
+      NOT uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+     check_c_compiler_flag("-Werror -fno-function-sections" C_SUPPORTS_FNO_FUNCTION_SECTIONS)
+@@ -521,7 +522,7 @@ if(NOT CYGWIN AND NOT WIN32)
+   endif()
+ endif()
+ 
+-if(CYGWIN OR MINGW)
++if(CYGWIN OR MSYS OR MINGW)
+   # Prune --out-implib from executables. It doesn't make sense even
+   # with --export-all-symbols.
+   string(REGEX REPLACE "-Wl,--out-implib,[^ ]+ " " "
+@@ -548,7 +549,7 @@ endif()
+ 
+ # Plugin support
+ # FIXME: Make this configurable.
+-if(WIN32 OR CYGWIN)
++if(WIN32 OR CYGWIN OR MSYS)
+   if(BUILD_SHARED_LIBS)
+     set(LLVM_ENABLE_PLUGINS ON)
+   else()
+diff --git a/lib/Transforms/Hello/CMakeLists.txt b/lib/Transforms/Hello/CMakeLists.txt
+index e0b8190..f595e61 100644
+--- a/lib/Transforms/Hello/CMakeLists.txt
++++ b/lib/Transforms/Hello/CMakeLists.txt
+@@ -6,7 +6,7 @@ if( NOT LLVM_REQUIRES_RTTI )
+   endif()
+ endif()
+ 
+-if(WIN32 OR CYGWIN)
++if(WIN32 OR CYGWIN OR MSYS)
+   set(LLVM_LINK_COMPONENTS Core Support)
+ endif()
+ 
+-- 
+2.4.5
+
