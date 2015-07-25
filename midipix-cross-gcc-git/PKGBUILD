@@ -1,0 +1,131 @@
+# Maintainer: Martell Malone <martellmalone@gmail.com>
+
+_realname=gcc
+_mingw_suff=midipix-cross
+_base_ver=4.6.4
+pkgname=("${_mingw_suff}-${_realname}-git")
+provides=("${_mingw_suff}-${_realname}")
+conflicts=("${_mingw_suff}-${_realname}")
+pkgver=4.6.4.50.7a5252e
+pkgrel=1
+pkgdesc="The GNU Compiler Collection"
+arch=('i686' 'x86_64')
+url="http://gcc.gnu.org"
+license=('GPL' 'LGPL' 'FDL' 'custom')
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+depends=("zlib" "${_mingw_suff}-binutils")
+makedepends=('gcc' 'git' 'lndir' 'gmp-devel' 'mpfr-devel' 'mpc-devel')
+options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
+source=("${_realname}"::"git+git://midipix.org/cbb/cbb-gcc-4.6.4"
+        'gcc-4.6.4-msys2.host.patch')
+
+md5sums=('SKIP'
+         '1dc320869d676c331b8c362d4495c894')
+
+#not supported yet
+#i686-nt32-midipix
+_targets="x86_64-nt64-midipix"
+
+pkgver() {
+  cd "$srcdir/$_realname"
+  printf "%s.%s.%s" "${_base_ver}" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd ${srcdir}/${_realname}
+
+  #do not install libiberty
+  sed -i 's/install_to_$(INSTALL_DEST) //' libiberty/Makefile.in
+  # hack! - some configure tests for header files using "$CPP $CPPFLAGS"
+  #sed -i "/ac_cpp=/s/\$CPPFLAGS/\$CPPFLAGS -O2/" {libiberty,gcc}/configure
+
+  #msys2 patches
+  patch -p1 -i ${srcdir}/gcc-4.6.4-msys2.host.patch
+
+}
+
+build() {
+  for _target in ${_targets}; do
+  mkdir -p ${srcdir}/gcc-build-${_target} && cd ${srcdir}/gcc-build-${_target}
+
+  GCCFLAGS="--include $(pwd)/../${_realname}/libc/cbb-musl-pe.h"
+  GCCTARGET_FLAGS="$FLAGS -DIN_TARGET_LIBRARY_BUILD --sysroot=/opt/${_target}"
+
+  export CFLAGS="$GCCFLAGS"
+  export CXXFLAGS="$GCCFLAGS"
+
+  export CFLAGS_FOR_BUILD="$GCCFLAGS"
+  export CPPFLAGS_FOR_BUILD="$GCCFLAGS"
+  export CXXFLAGS_FOR_BUILD="$GCCFLAGS"
+
+  export CFLAGS_FOR_TARGET="$GCCTARGET_FLAGS"
+  export XGCC_FLAGS_FOR_TARGET="$GCCTARGET_FLAGS"
+  export CPPFLAGS_FOR_TARGET="$GCCTARGET_FLAGS"
+  export CXXFLAGS_FOR_TARGET="$GCCTARGET_FLAGS"
+  export LIBCFLAGS_FOR_TARGET="$GCCTARGET_FLAGS"
+
+  export cbb_neutral_libiberty=no
+  
+  cbb_target=${_target} \
+  cbb_xgcc_for_specs="$(pwd)/gcc/xgcc" \
+  cbb_ldflags_for_target="--sysroot=$PREFIX/$TARGET" \
+  cbb_sysroot_for_libgcc=/opt/${_target} \
+  cbb_cflags_for_stage1="$CFLAGS_FOR_BUILD" \
+  cbb_cflags_for_stage2="$CFLAGS_FOR_BUILD" \
+  cbb_cflags_for_stage3="$CFLAGS_FOR_BUILD" \
+  cbb_cflags_for_stage4="$CFLAGS_FOR_BUILD" \
+  ../${_realname}/configure \
+    --prefix=/opt \
+    --with-sysroot=/opt/${_target} \
+    --build=${CHOST} \
+    --host=${CHOST} \
+    --target=${_target} \
+    --libexecdir=/opt/lib \
+    --disable-bootstrap \
+    --with-arch=${_arch} \
+    --with-tune=generic \
+    --disable-nls \
+    --disable-multilib \
+    --disable-libmudflap \
+    --disable-obsolete \
+    --disable-symvers \
+    --disable-sjlj-exceptions \
+    --with-fpmath=sse \
+    --enable-multiarch \
+    --enable-shared \
+    --enable-initfini-array \
+    --enable-threads=posix \
+    --enable-lto \
+    --enable-__cxa_atexit \
+    --enable-gnu-indirect-function \
+    --enable-gnu-unique-object \
+    --enable-libstdcxx-debug \
+    --enable-canonical-system-headers \
+    --enable-languages=c,c++,lto \
+    --enable-secureplt \
+    --with-sysroot="$PREFIX/$TARGET" \
+    --enable-debug \
+    --disable-bootstrap \
+    --with-system-zlib \
+    CFLAGS="-O2 -pipe" \
+    CXXFALGS="-O2 -pipe"
+
+  make all-gcc
+  done
+}
+
+package() {
+  for _target in ${_targets}; do
+    cd ${srcdir}/gcc-build-${_target}
+    make -j1 DESTDIR=${pkgdir} install-gcc
+    #mv ${pkgdir}/opt/lib/gcc/${_target}/lib/libgcc_s.a ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/
+    #mv ${pkgdir}/opt/lib/gcc/${_target}/libgcc*.dll ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/
+    for _f in ${pkgdir}/opt/bin/*.exe; do
+      strip -s ${_f}
+    done
+    for _f in ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/*.exe; do
+      strip -s ${_f}
+    done
+    rm -rf ${pkgdir}/opt/share
+  done
+}
