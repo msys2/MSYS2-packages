@@ -1,0 +1,77 @@
+# Maintainer: Martell Malone <martellmalone@gmail.com>
+
+_realname=binutils
+_mingw_suff=midipix-cross
+pkgname=("${_mingw_suff}-${_realname}")
+pkgver=2.24.51
+pkgrel=1
+pkgdesc="A set of programs to assemble and manipulate binary and object files"
+arch=('i686' 'x86_64')
+url="http://www.gnu.org/software/binutils/"
+license=('GPL')
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+depends=("libiconv" "zlib")
+checkdepends=('dejagnu' 'bc')
+makedepends=("libiconv" "zlib")
+options=('staticlibs' '!distcc' '!ccache' '!buildflags')
+#install=binutils.install
+source=("ftp://mirrors.kernel.org/sources.redhat.com/binutils/snapshots/binutils-${pkgver}.tar.bz2"
+        'binutils-2.24.51.msys2.patch'
+        'binutils-2.24.51.midipix.patch'
+        'binutils-2.24.51.msys2-post.midipix.patch')
+md5sums=('f5e3cc4f3ae0c3146cff5d629fe1dd5e'
+         'd28f835ce2a9ce41fb216c14e281f8d0'
+         '712603f6f45728fd1facf01159550907'
+         '28b99da0f3e0ee9e4c9f1571ddc2b09a')
+
+#not supported yet
+#i686-nt32-midipix
+_targets="x86_64-nt64-midipix"
+
+prepare() {
+  cd ${srcdir}/binutils-${pkgver}
+  patch -p1 -i ${srcdir}/binutils-2.24.51.midipix.patch
+  #patch -p1 -i ${srcdir}/binutils-2.24.51.msys2.patch
+  patch -p1 -i ${srcdir}/binutils-2.24.51.msys2-post.midipix.patch
+  #do not install libiberty
+  sed -i 's/install_to_$(INSTALL_DEST) //' libiberty/Makefile.in
+  # hack! - libiberty configure tests for header files using "$CPP $CPPFLAGS"
+  sed -i "/ac_cpp=/s/\$CPPFLAGS/\$CPPFLAGS -O2/" libiberty/configure
+
+  mkdir ${srcdir}/binutils-build
+}
+
+build() {
+  for _target in ${_targets}; do
+  mkdir -p ${srcdir}/binutils-build-${_target} && cd ${srcdir}/binutils-build-${_target}
+
+  if [ "${_target}" = "x86_64-w64-mingw32" ]; then
+    local _conf='--enable-64-bit-bfd'
+  else
+    local _conf=''
+  fi
+  ${srcdir}/binutils-${pkgver}/configure \
+	--build=${CHOST} \
+	--host=${CHOST} \
+	--target=${_target} \
+    --prefix=/opt \
+    --disable-werror \
+	--with-libiconv-prefix=/usr \
+	$_conf
+
+  #not supported yet
+  #--enable-lto \
+
+  make
+  done
+}
+
+package() {
+  for _target in ${_targets}; do
+  cd ${srcdir}/binutils-build-${_target}
+  make DESTDIR=${pkgdir} install  
+
+  # install clashes with mingw-cross without this
+  rm -rf ${pkgdir}/opt/share
+  done
+}
