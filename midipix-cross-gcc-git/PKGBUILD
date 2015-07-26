@@ -6,7 +6,7 @@ _base_ver=4.6.4
 pkgname=("${_mingw_suff}-${_realname}-git")
 provides=("${_mingw_suff}-${_realname}")
 conflicts=("${_mingw_suff}-${_realname}")
-pkgver=4.6.4.50.7a5252e
+pkgver=4.6.4.51.e093428
 pkgrel=1
 pkgdesc="The GNU Compiler Collection"
 arch=('i686' 'x86_64')
@@ -14,7 +14,7 @@ url="http://gcc.gnu.org"
 license=('GPL' 'LGPL' 'FDL' 'custom')
 groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
 depends=("zlib" "${_mingw_suff}-binutils")
-makedepends=('gcc' 'git' 'lndir' 'gmp-devel' 'mpfr-devel' 'mpc-devel')
+makedepends=('gcc' 'git' 'lndir' 'gmp-devel' 'mpfr-devel' 'mpc-devel' 'zlib-devel')
 options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
 source=("${_realname}"::"git+git://midipix.org/cbb/cbb-gcc-4.6.4"
         'gcc-4.6.4-msys2.host.patch')
@@ -42,6 +42,10 @@ prepare() {
   #msys2 patches
   patch -p1 -i ${srcdir}/gcc-4.6.4-msys2.host.patch
 
+  #make sysroot dirs
+  for _target in ${_targets}; do
+    mkdir -p /opt/${_target}/usr/include
+  done
 }
 
 build() {
@@ -68,7 +72,7 @@ build() {
   
   cbb_target=${_target} \
   cbb_xgcc_for_specs="$(pwd)/gcc/xgcc" \
-  cbb_ldflags_for_target="--sysroot=$PREFIX/$TARGET" \
+  cbb_ldflags_for_target="--sysroot=/opt/${_target}" \
   cbb_sysroot_for_libgcc=/opt/${_target} \
   cbb_cflags_for_stage1="$CFLAGS_FOR_BUILD" \
   cbb_cflags_for_stage2="$CFLAGS_FOR_BUILD" \
@@ -103,7 +107,6 @@ build() {
     --enable-canonical-system-headers \
     --enable-languages=c,c++,lto \
     --enable-secureplt \
-    --with-sysroot="$PREFIX/$TARGET" \
     --enable-debug \
     --disable-bootstrap \
     --with-system-zlib \
@@ -118,12 +121,12 @@ package() {
   for _target in ${_targets}; do
     cd ${srcdir}/gcc-build-${_target}
     make -j1 DESTDIR=${pkgdir} install-gcc
-    #mv ${pkgdir}/opt/lib/gcc/${_target}/lib/libgcc_s.a ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/
-    #mv ${pkgdir}/opt/lib/gcc/${_target}/libgcc*.dll ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/
+    #mv ${pkgdir}/opt/lib/gcc/${_target}/lib/libgcc_s.a ${pkgdir}/opt/lib/gcc/${_target}/${_base_ver}/
+    #mv ${pkgdir}/opt/lib/gcc/${_target}/libgcc*.dll ${pkgdir}/opt/lib/gcc/${_target}/${_base_ver}/
     for _f in ${pkgdir}/opt/bin/*.exe; do
       strip -s ${_f}
     done
-    for _f in ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/*.exe; do
+    for _f in ${pkgdir}/opt/lib/gcc/${_target}/${_base_ver}/*.exe; do
       strip -s ${_f}
     done
     rm -rf ${pkgdir}/opt/share
