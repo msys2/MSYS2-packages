@@ -10,7 +10,7 @@ pkgname=("clang-svn"
          #"lld-svn"
          "llvm-svn"
         )
-pkgver=58077.e218034
+pkgver=58325.6bcb160
 pkgrel=1
 pkgdesc="C language family frontend for LLVM (mingw-w64)"
 arch=('any')
@@ -27,7 +27,8 @@ source=("llvm"::"git+http://llvm.org/git/llvm.git"
         #"testsuite"::"git+http://llvm.org/git/test-suite.git"
         #"libcxxabi"::"git+http://llvm.org/git/libcxxabi.git"
         #"libcxx"::"git+http://llvm.org/git/libcxx.git"
-        "0001-cmake-hack-for-msys2.patch")
+        "0001-cmake-hack-for-msys2.patch"
+        "0011-Driver-add-support-to-mingw64-for-msys2-host.patch")
 
 md5sums=('SKIP'
          #'SKIP'
@@ -37,7 +38,8 @@ md5sums=('SKIP'
          #'SKIP'
          #'SKIP'
          #'SKIP'
-         'f9b9341528eb163960e58b98fe2b0343')
+         'f9b9341528eb163960e58b98fe2b0343'
+         '60dd4de9163ea24d2498bde51087b5a6')
 
 pkgver_internal() {
   if [ ! -d "$1" ]; then
@@ -64,6 +66,9 @@ prepare() {
   # Fix definition of LLVM_CMAKE_DIR in LLVMConfig.cmake
   sed -i '/@LLVM_CONFIG_CMAKE_DIR@/s:$(PROJ_cmake):$(PROJ_prefix)/share/llvm/cmake:' \
     cmake/modules/Makefile
+
+  cd "${srcdir}"/clang
+  git am "${srcdir}"/0011-Driver-add-support-to-mingw64-for-msys2-host.patch
 
   cd "${srcdir}"
 # mv lld               llvm/tools/lld
@@ -129,6 +134,20 @@ package_clang-svn(){
 
   cd build-${CARCH}/tools/clang
   make -j1 DESTDIR="$pkgdir" rebuild_cache install
+
+  mkdir -p "${pkgdir}/opt/bin"
+  echo "#!/usr/bin/env bash" > ${pkgdir}/opt/bin/i686-w64-mingw32-clang
+  echo '/usr/bin/clang -target i686-windows-gnu "$@"' >> ${pkgdir}/opt/bin/i686-w64-mingw32-clang
+  echo "#!/usr/bin/env bash" > ${pkgdir}/opt/bin/i686-w64-mingw32-clang++
+  echo '/usr/bin/clang++ -target i686-windows-gnu "$@"' >> ${pkgdir}/opt/bin/i686-w64-mingw32-clang++
+  echo "#!/usr/bin/env bash" > ${pkgdir}/opt/bin/x86_64-w64-mingw32-clang
+  echo '/usr/bin/clang -target x86_64-windows-gnu "$@"' >> ${pkgdir}/opt/bin/x86_64-w64-mingw32-clang
+  echo "#!/usr/bin/env bash" > ${pkgdir}/opt/bin/x86_64-w64-mingw32-clang++
+  echo '/usr/bin/clang++ -target x86_64-windows-gnu "$@"' >> ${pkgdir}/opt/bin/x86_64-w64-mingw32-clang++
+  echo "#!/usr/bin/env bash" > ${pkgdir}/opt/bin/armv7-w64-mingw32-clang
+  echo '/usr/bin/clang -target armv7-windows-gnu "$@"' >> ${pkgdir}/opt/bin/armv7-w64-mingw32-clang
+  echo "#!/usr/bin/env bash" > ${pkgdir}/opt/bin/armv7-w64-mingw32-clang++
+  echo '/usr/bin/clang++ -target armv7-windows-gnu "$@"' >> ${pkgdir}/opt/bin/armv7-w64-mingw32-clang++
 
   # .. Unmove
 # cd "${srcdir}"
