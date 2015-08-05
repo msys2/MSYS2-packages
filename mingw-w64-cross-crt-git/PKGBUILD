@@ -1,4 +1,9 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
+# Contributor: Martell Malone <martellmalone@gmail.com>
+
+# controls the compiler that builds the crt with _variant
+_variant=clang
+#_variant=gcc
 
 _realname=crt
 _mingw_suff=mingw-w64-cross
@@ -14,12 +19,20 @@ url='http://mingw-w64.sourceforge.net'
 license=('custom')
 groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
 depends=("${_mingw_suff}-headers")
-makedepends=("git" "${_mingw_suff}-gcc" "${_mingw_suff}-binutils")
-options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
-source=("mingw-w64"::"git://git.code.sf.net/p/mingw-w64/mingw-w64")
-md5sums=('SKIP')
 
-_targets="i686-w64-mingw32 x86_64-w64-mingw32"
+if [ "${_variant}" = "clang" ]; then
+  makedepends=("git" "clang" "${_mingw_suff}-binutils")
+else
+  makedepends=("git" "${_mingw_suff}-gcc" "${_mingw_suff}-binutils")
+fi
+
+options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
+source=("mingw-w64"::"git://git.code.sf.net/p/mingw-w64/mingw-w64"
+        "0001-crt-crtexe-avoid-seh-because-of-.rva-when-using-clan.patch")
+md5sums=('SKIP'
+         '7e6502509e61c77f36ee237443aa947e')
+
+_targets="i686-w64-mingw32 x86_64-w64-mingw32 armv7-w64-mingw32"
 
 pkgver() {
   cd "$srcdir/mingw-w64"
@@ -27,6 +40,11 @@ pkgver() {
   local _minor=$(head -n 16 mingw-w64-headers/crt/_mingw_mac.h | grep '__MINGW64_VERSION_MINOR' | sed -e 's/.* //' | tr '\n' '.' | sed 's/.$/\n/')
   local _rev=0
   printf "%s.%s.%s.%s.%s" ${_major} ${_minor} ${_rev} "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd ${srcdir}/mingw-w64
+  git am "${srcdir}"/0001-crt-crtexe-avoid-seh-because-of-.rva-when-using-clan.patch
 }
 
 build() {
@@ -39,8 +57,20 @@ build() {
     x86_64*)
       _crt_configure_args="--disable-lib32 --enable-lib64"
     ;;
+    armv7*)
+      _crt_configure_args="--disable-lib32 --disable-lib64 --enable-libarm32"
+    ;;
   esac
     mkdir -p ${srcdir}/crt-${_target} && cd ${srcdir}/crt-${_target}
+
+    #--with-host-libstdcxx="-lstdc++ -lsupc++"
+    # we must stitch to this once i get it built / working :)
+    # AS = as
+
+  if [ "${_variant}" = "clang" ]; then
+    export CC="${_target}-clang" CXX="${_target}-clang++" AR="llvm-ar" RANLIB="llvm-ranlib" DLLTOOL="${_target}-dlltool"
+  fi
+
     ${srcdir}/mingw-w64/mingw-w64-crt/configure \
     --build=${CHOST} \
     --prefix=/opt/${_target} \
