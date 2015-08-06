@@ -1,0 +1,72 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=('xz' 'liblzma' 'liblzma-devel')
+pkgver=5.2.1
+pkgrel=1
+pkgdesc='Library and command line tools for XZ and LZMA compressed files'
+arch=('i686' 'x86_64')
+url='http://tukaani.org/xz/'
+license=('GPL' 'LGPL' 'custom')
+depends=('sh' 'libiconv' 'gettext')
+makedepends=('libiconv-devel' 'gettext-devel')
+options=('staticlibs')
+source=("http://tukaani.org/${pkgname}/${pkgname}-${pkgver}.tar.gz"{,.sig}
+        xz-5.0.5-msys2.patch)
+sha256sums=('b918b6648076e74f8d7ae19db5ee663df800049e187259faf5eb997a7b974681'
+            'SKIP'
+            '3d800a027f7f43b5553f3ad937f4fb31872c6cf0995b419922b5ea63316c1602')
+
+prepare() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+
+  patch -p1 -i ${srcdir}/xz-5.0.5-msys2.patch
+  autoreconf -ivf
+}
+
+build() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+
+  ./configure \
+    --build=${CHOST} \
+    --prefix=/usr \
+    --enable-shared \
+    --enable-static
+  make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+check() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make check
+}
+
+package_xz() {
+  groups=('compression')
+  depends=('libiconv' 'libintl')
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  rm -f ${pkgdir}/usr/bin/*.dll
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+
+  #install -d -m755 ${pkgdir}/usr/share/licenses/xz/
+  #ln -sf /usr/share/doc/xz/COPYING ${pkgdir}/usr/share/licenses/xz/
+  #ln -sf /usr/share/licenses/common/GPL2/license.txt ${pkgdir}/usr/share/doc/xz/COPYING.GPLv2
+}
+
+package_liblzma() {
+  pkgdesc="Library for XZ and LZMA compressed files"
+  groups=('libraries')
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+}
+
+package_liblzma-devel() {
+  pkgdesc="Liblzma headers and libraries"
+  groups=('development')
+  depends=("liblzma=${pkgver}" 'libiconv-devel' 'gettext-devel')
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
