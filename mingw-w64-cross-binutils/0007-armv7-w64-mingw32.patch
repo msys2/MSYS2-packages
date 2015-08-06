@@ -592,11 +592,11 @@ diff -Naur binutils-2.25-orig/bfd/pe-arm-winnt.c binutils-2.25/bfd/pe-arm-winnt.
 +#define TARGET_BIG_NAME      "pe-arm-winnt-big"
 +
 +#define bfd_arm_allocate_interworking_sections \
-+  bfd_arm_winnt_pe_allocate_interworking_sections
++  bfd_thumb2pe_allocate_interworking_sections
 +#define bfd_arm_get_bfd_for_interworking \
-+  bfd_arm_winnt_pe_get_bfd_for_interworking
++  bfd_thumb2pe_get_bfd_for_interworking
 +#define bfd_arm_process_before_allocation \
-+  bfd_arm_winnt_pe_process_before_allocation
++  bfd_thumb2pe_process_before_allocation
 +
 +#define LOCAL_LABEL_PREFIX "."
 +
@@ -1084,9 +1084,9 @@ diff -Naur binutils-2.25-orig/ld/configure.tgt binutils-2.25/ld/configure.tgt
  arm-wince-pe | arm-*-wince | arm*-*-mingw32ce*)
  			targ_emul=arm_wince_pe ; targ_extra_ofiles="deffilep.o pe-dll.o" ;;
 +arm*-*-mingw*)
-+			targ_emul=arm_winnt_pe ; targ_extra_ofiles="deffilep.o pe-dll.o" ;;
++			targ_emul=thumb2pe ; targ_extra_ofiles="deffilep.o pe-dll.o" ;;
 +arm*-*-cygwin*)
-+			targ_emul=arm_winnt_pe ; targ_extra_ofiles="deffilep.o pe-dll.o" ;
++			targ_emul=thumb2pe ; targ_extra_ofiles="deffilep.o pe-dll.o" ;
 +			test "$targ" != "$host" && LIB_PATH='${tooldir}/lib/w32api' ;;
  arm-*-pe)		targ_emul=armpe ; targ_extra_ofiles="deffilep.o pe-dll.o" ;;
  arm-*-aout | armel-*-aout) targ_emul=armaoutl ;;
@@ -1100,9 +1100,9 @@ diff -Naur binutils-2.25-orig/ld/configure.tgt binutils-2.25/ld/configure.tgt
    NATIVE_LIB_DIRS='/usr/lib /usr/lib/w32api'
    ;;
  
-diff -Naur binutils-2.25-orig/ld/emulparams/arm_winnt_pe.sh binutils-2.25/ld/emulparams/arm_winnt_pe.sh
---- binutils-2.25-orig/ld/emulparams/arm_winnt_pe.sh	1970-01-01 01:00:00.000000000 +0100
-+++ binutils-2.25/ld/emulparams/arm_winnt_pe.sh	2015-06-30 04:26:43.395723600 +0100
+diff -Naur binutils-2.25-orig/ld/emulparams/thumb2pe.sh binutils-2.25/ld/emulparams/thumb2pe.sh
+--- binutils-2.25-orig/ld/emulparams/thumb2pe.sh	1970-01-01 01:00:00.000000000 +0100
++++ binutils-2.25/ld/emulparams/thumb2pe.sh	2015-06-30 04:26:43.395723600 +0100
 @@ -0,0 +1,11 @@
 +ARCH=arm
 +SCRIPT_NAME=pe
@@ -1122,7 +1122,7 @@ diff -Naur binutils-2.25-orig/ld/emultempl/pe.em binutils-2.25/ld/emultempl/pe.e
  
  #if defined(TARGET_IS_armpe) \
      || defined(TARGET_IS_arm_epoc_pe) \
-+    || defined(TARGET_IS_arm_winnt_pe) \
++    || defined(TARGET_IS_thumb2pe) \
      || defined(TARGET_IS_arm_wince_pe)
  #define bfd_arm_allocate_interworking_sections \
  	bfd_${EMULATION_NAME}_allocate_interworking_sections
@@ -1130,7 +1130,7 @@ diff -Naur binutils-2.25-orig/ld/emultempl/pe.em binutils-2.25/ld/emultempl/pe.e
      || defined(TARGET_IS_shpe) \
      || defined(TARGET_IS_armpe) \
      || defined(TARGET_IS_arm_epoc_pe) \
-+    || defined(TARGET_IS_arm_winnt_pe) \
++    || defined(TARGET_IS_thumb2pe) \
      || defined(TARGET_IS_arm_wince_pe)
  #define DLL_SUPPORT
  #endif
@@ -1140,7 +1140,7 @@ diff -Naur binutils-2.25-orig/ld/emultempl/pe.em binutils-2.25/ld/emultempl/pe.e
  
 -#if defined(TARGET_IS_i386pe) || ! defined(DLL_SUPPORT)
 +#if defined(TARGET_IS_i386pe) \
-+    || defined(TARGET_IS_arm_winnt_pe) \
++    || defined(TARGET_IS_thumb2pe) \
 +    || ! defined(DLL_SUPPORT)
  #define	PE_DEF_SUBSYSTEM		3
  #else
@@ -1149,7 +1149,7 @@ diff -Naur binutils-2.25-orig/ld/emultempl/pe.em binutils-2.25/ld/emultempl/pe.e
  #if defined (TARGET_IS_i386pe) \
      || defined (TARGET_IS_armpe) \
      || defined (TARGET_IS_arm_epoc_pe) \
-+    || defined (TARGET_IS_arm_winnt_pe) \
++    || defined (TARGET_IS_thumb2pe) \
      || defined (TARGET_IS_arm_wince_pe)
    if (!link_info.relocatable)
      pe_dll_build_sections (link_info.output_bfd, &link_info);
@@ -1159,7 +1159,7 @@ diff -Naur binutils-2.25-orig/ld/emultempl/pe.em binutils-2.25/ld/emultempl/pe.e
  
 -#if defined(TARGET_IS_armpe) || defined(TARGET_IS_arm_epoc_pe) || defined(TARGET_IS_arm_wince_pe)
 +#if defined(TARGET_IS_armpe) || defined(TARGET_IS_arm_epoc_pe) \
-+    || defined (TARGET_IS_arm_winnt_pe) || defined(TARGET_IS_arm_wince_pe)
++    || defined (TARGET_IS_thumb2pe) || defined(TARGET_IS_arm_wince_pe)
    if (strstr (bfd_get_target (link_info.output_bfd), "arm") == NULL)
      {
        /* The arm backend needs special fields in the output hash structure.
@@ -1169,7 +1169,7 @@ diff -Naur binutils-2.25-orig/ld/emultempl/pe.em binutils-2.25/ld/emultempl/pe.e
  
 -#if defined(TARGET_IS_armpe) || defined(TARGET_IS_arm_epoc_pe) || defined(TARGET_IS_arm_wince_pe)
 +#if defined(TARGET_IS_armpe) || defined(TARGET_IS_arm_epoc_pe) \
-+    || defined (TARGET_IS_arm_winnt_pe) || defined(TARGET_IS_arm_wince_pe)
++    || defined (TARGET_IS_thumb2pe) || defined(TARGET_IS_arm_wince_pe)
    /* FIXME: we should be able to set the size of the interworking stub
       section.
  
@@ -1186,7 +1186,7 @@ diff -Naur binutils-2.25-orig/ld/emultempl/pe.em binutils-2.25/ld/emultempl/pe.e
  #ifdef TARGET_IS_arm_epoc_pe
    pe_dll_id_target ("epoc-pei-arm-little");
  #endif
-+#ifdef TARGET_IS_arm_winnt_pe
++#ifdef TARGET_IS_thumb2pe
 +  pe_dll_id_target ("pei-arm-winnt-little");
 +#endif
  #ifdef TARGET_IS_arm_wince_pe
@@ -1198,7 +1198,7 @@ diff -Naur binutils-2.25-orig/ld/emultempl/pe.em binutils-2.25/ld/emultempl/pe.e
  {
 -#if defined(TARGET_IS_armpe) || defined(TARGET_IS_arm_epoc_pe) || defined(TARGET_IS_arm_wince_pe)
 +#if defined(TARGET_IS_armpe) || defined(TARGET_IS_arm_epoc_pe) \
-+    || defined(TARGET_IS_arm_winnt_pe) || defined(TARGET_IS_arm_wince_pe)
++    || defined(TARGET_IS_thumb2pe) || defined(TARGET_IS_arm_wince_pe)
    struct bfd_link_hash_entry * h;
  
    if (thumb_entry_symbol != NULL)
@@ -1218,7 +1218,7 @@ diff -Naur binutils-2.25-orig/ld/Makefile.am binutils-2.25/ld/Makefile.am
  	earcelf.c \
  	earm_epoc_pe.c \
  	earm_wince_pe.c \
-+	earm_winnt_pe.c \
++	ethumb2pe.c \
  	earmaoutb.c \
  	earmaoutl.c \
  	earmcoff.c \
@@ -1226,7 +1226,7 @@ diff -Naur binutils-2.25-orig/ld/Makefile.am binutils-2.25/ld/Makefile.am
  earm_wince_pe.c: $(srcdir)/emulparams/arm_wince_pe.sh \
    $(srcdir)/emultempl/pe.em $(srcdir)/scripttempl/pe.sc ${GEN_DEPENDS}
  
-+earm_winnt_pe.c: $(srcdir)/emulparams/arm_winnt_pe.sh \
++ethumb2pe.c: $(srcdir)/emulparams/thumb2pe.sh \
 +  $(srcdir)/emultempl/pe.em $(srcdir)/scripttempl/pe.sc ${GEN_DEPENDS}
 +
  earmaoutb.c:	$(srcdir)/emulparams/armaoutb.sh \
@@ -1239,7 +1239,7 @@ diff -Naur binutils-2.25-orig/ld/Makefile.in binutils-2.25/ld/Makefile.in
  	earcelf.c \
  	earm_epoc_pe.c \
  	earm_wince_pe.c \
-+	earm_winnt_pe.c \
++	ethumb2pe.c \
  	earmaoutb.c \
  	earmaoutl.c \
  	earmcoff.c \
@@ -1247,7 +1247,7 @@ diff -Naur binutils-2.25-orig/ld/Makefile.in binutils-2.25/ld/Makefile.in
  @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/earcelf.Po@am__quote@
  @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/earm_epoc_pe.Po@am__quote@
  @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/earm_wince_pe.Po@am__quote@
-+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/earm_winnt_pe.Po@am__quote@
++@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ethumb2pe.Po@am__quote@
  @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/earmaoutb.Po@am__quote@
  @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/earmaoutl.Po@am__quote@
  @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/earmcoff.Po@am__quote@
@@ -1255,7 +1255,7 @@ diff -Naur binutils-2.25-orig/ld/Makefile.in binutils-2.25/ld/Makefile.in
  earm_wince_pe.c: $(srcdir)/emulparams/arm_wince_pe.sh \
    $(srcdir)/emultempl/pe.em $(srcdir)/scripttempl/pe.sc ${GEN_DEPENDS}
  
-+earm_winnt_pe.c: $(srcdir)/emulparams/arm_winnt_pe.sh \
++ethumb2pe.c: $(srcdir)/emulparams/thumb2pe.sh \
 +  $(srcdir)/emultempl/pe.em $(srcdir)/scripttempl/pe.sc ${GEN_DEPENDS}
 +
  earmaoutb.c:	$(srcdir)/emulparams/armaoutb.sh \
