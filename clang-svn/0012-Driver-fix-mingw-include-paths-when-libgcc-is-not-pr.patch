@@ -1,0 +1,41 @@
+From 2469ce96dc559db8d780b4c59b8d7844d7028eab Mon Sep 17 00:00:00 2001
+From: Martell Malone <martellmalone@gmail.com>
+Date: Thu, 13 Aug 2015 01:13:04 +0100
+Subject: [PATCH] Driver: fix mingw include paths when libgcc is not present
+
+
+diff --git a/lib/Driver/MinGWToolChain.cpp b/lib/Driver/MinGWToolChain.cpp
+index 6de2c50..938440b 100644
+--- a/lib/Driver/MinGWToolChain.cpp
++++ b/lib/Driver/MinGWToolChain.cpp
+@@ -47,7 +47,7 @@ void MinGW::findGccLibDir() {
+   Archs.emplace_back(getTriple().getArchName());
+   Archs[0] += "-w64-mingw32";
+   Archs.emplace_back("mingw32");
+-  Arch = "unknown";
++  Arch = Archs[0].str();
+   // lib: Arch Linux, Ubuntu, Windows
+   // lib64: openSUSE Linux
+   for (StringRef CandidateLib : {"lib", "lib64"}) {
+diff --git a/test/Driver/Inputs/mingw_clang_tree/mingw32/i686-w64-mingw32/include/.keep b/test/Driver/Inputs/mingw_clang_tree/mingw32/i686-w64-mingw32/include/.keep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/test/Driver/Inputs/mingw_clang_tree/mingw32/include/.keep b/test/Driver/Inputs/mingw_clang_tree/mingw32/include/.keep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/test/Driver/mingw.cpp b/test/Driver/mingw.cpp
+index 5625c88..b638a64 100644
+--- a/test/Driver/mingw.cpp
++++ b/test/Driver/mingw.cpp
+@@ -1,3 +1,8 @@
++// RUN: %clang -target i686-windows-gnu -c -### --sysroot=%S/Inputs/mingw_clang_tree/mingw32 %s 2>&1 | FileCheck -check-prefix=CHECK_MINGW_CLANG_TREE %s
++// CHECK_MINGW_CLANG_TREE: "{{.*}}/Inputs/mingw_clang_tree/mingw32{{/|\\\\}}i686-w64-mingw32{{/|\\\\}}include"
++// CHECK_MINGW_CLANG_TREE: "{{.*}}/Inputs/mingw_clang_tree/mingw32{{/|\\\\}}include"
++
++
+ // RUN: %clang -target i686-pc-windows-gnu -stdlib=libstdc++ -c -### --sysroot=%S/Inputs/mingw_mingw_org_tree/mingw %s 2>&1 | FileCheck -check-prefix=CHECK_MINGW_ORG_TREE %s
+ // CHECK_MINGW_ORG_TREE: "{{.*}}/Inputs/mingw_mingw_org_tree/mingw{{/|\\\\}}lib{{/|\\\\}}gcc{{/|\\\\}}mingw32{{/|\\\\}}4.8.1{{/|\\\\}}include{{/|\\\\}}c++"
+ // CHECK_MINGW_ORG_TREE: "{{.*}}/Inputs/mingw_mingw_org_tree/mingw{{/|\\\\}}lib{{/|\\\\}}gcc{{/|\\\\}}mingw32{{/|\\\\}}4.8.1{{/|\\\\}}include{{/|\\\\}}c++{{/|\\\\}}mingw32"
+-- 
+2.4.5
+
