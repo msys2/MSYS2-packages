@@ -1,0 +1,88 @@
+# $Id$
+# Maintainer (MSYS2): Ray Donnelly <mingw.android@gmail.com>
+# Maintainer (ArchLinux): Eric Bélanger <eric@archlinux.org>
+
+pkgname=tcl
+#pkgver=8.6.4
+pkgver=8.5.18
+pkgrel=1
+pkgdesc="The Tcl scripting language"
+arch=('i686' 'x86_64')
+url="http://tcl.sourceforge.net/"
+license=('custom')
+depends=('zlib')
+options=('staticlibs')
+source=(http://downloads.sourceforge.net/sourceforge/tcl/tcl${pkgver}-src.tar.gz
+        8.5.18-cygwin-unix.patch
+        tcl-8.5.18-msysize.patch)
+sha1sums=('7d4f35bc080d27b2e148689037d312ea41e4d16b'
+          '119bfdb73c0c881ef5f18dc6711e1d567c942e05'
+          '36a25b03a438a479b7e47ffde93a67d1d59875dd')
+
+prepare() {
+  cd tcl${pkgver}
+  # we build the tcl sqlite interface in sqlite-tcl package
+  rm -rf pkgs/sqlite3*
+  patch -p2 -i ${srcdir}/8.5.18-cygwin-unix.patch
+  patch -p1 -i ${srcdir}/tcl-8.5.18-msysize.patch
+  
+  cd unix
+  autoreconf -fiv
+}
+
+build() {
+  cd tcl${pkgver}/unix
+  local BIT=
+  [[ $CARCH == "x86_64" ]] && BIT="--enable-64bit"
+  ./configure \
+    --prefix=/usr \
+    --mandir=/usr/share/man \
+    --enable-threads \
+    tcl_cv_strtod_buggy=no \
+    tcl_cv_sys_version=MSYS_NT \
+    $BIT
+  make
+}
+
+# check() {
+#   cd tcl${pkgver}/unix
+#   make test
+# }
+
+package() {
+  cd tcl${pkgver}/unix
+  make INSTALL_ROOT="${pkgdir}" install
+
+  install -Dm644 libtcl${pkgver%.*}.dll.a "${pkgdir}"/usr/lib/libtcl${pkgver%.*}.dll.a
+  #mv ${pkgdir}/usr/lib/libtcl${pkgver%.*}.dll ${pkgdir}/usr/bin/
+
+  install -Dm644 ../license.terms "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+  # install build system macros
+  install -Dm644 tcl.m4 "${pkgdir}"/usr/share/aclocal/tcl-sc.m4
+  install -Dm644 tcl.m4 "${pkgdir}"/usr/share/aclocal/tcl-tea.m4
+
+  sed -i \
+    -e "s|^\(TCL_BUILD_LIB_SPEC\)='.*|\1='-Wl,/usr/lib/libtcl${pkgver%.*}.dll.a'|" \
+    -e "s|^\(TCL_SRC_DIR\)='.*'|\1='/usr/include/tcl${pkgver%.*}'|" \
+    -e "s|^\(TCL_BUILD_STUB_LIB_SPEC\)='.*|\1='-Wl,/usr/lib/libtclstub${pkgver%.*}.a'|" \
+    -e "s|^\(TCL_BUILD_STUB_LIB_PATH\)='.*/unix|\1='/usr/lib|" \
+    -e "s|^\(TCL_STUB_LIB_SPEC\)='.*|\1='-Wl,-ltclstub${pkgver%.*}'|" \
+    ${pkgdir}/usr/lib/tclConfig.sh
+
+  # Install private headers
+  mkdir -p "${pkgdir}/usr/include/tcl${pkgver%.*}/"{generic,unix}
+  cd ${srcdir}/tcl${pkgver}
+  find generic unix -name "*.h" -exec cp -p '{}' "${pkgdir}"/usr/include/tcl${pkgver%.*}/'{}' ';'
+  ( cd "${pkgdir}/usr/include"
+    for header in *.h ; do
+      cp -f ${header} ${pkgdir}/usr/include/tcl${pkgver%.*}/generic/
+    done
+  )
+  
+  # make the default tcl version
+  ln -s "${pkgdir}/usr/bin/tclsh${pkgver%.*}.exe" "${pkgdir}/usr/bin/tclsh.exe"
+  ln -s "${pkgdir}/usr/lib/libtcl${pkgver%.*}.dll.a" "${pkgdir}/usr/lib/libtcl.dll.a"
+  ln -s "${pkgdir}/usr/lib/libtclstub${pkgver%.*}.a" "${pkgdir}/usr/lib/libtclstub.a"
+  ln -s "${pkgdir}/usr/lib/tclConfig.sh" "${pkgdir}/usr/lib/tcl${pkgver%.*}/tclConfig.sh"
+}

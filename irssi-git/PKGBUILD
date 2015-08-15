@@ -1,0 +1,57 @@
+# Maintainer: Richard F. Ashwell III <rashwell AT gmail DOT com>
+
+_pkgname=irssi
+pkgname=${_pkgname}-git
+pkgver=r4529.ac5aebb
+pkgrel=1
+pkgdesc="Modular text mode IRC client with Perl Scripting"
+arch=('i686' 'x86_64')
+depends=('openssl' 'gettext' 'perl' 'ncurses')
+makedepends=('git' 'glib2-devel' 'libcrypt-devel' 'pcre-devel' 'gettext-devel' 'ncurses-devel' 'elinks')
+optdepends=('perl-libwww: for scriptassist script')
+url="https://github.com/irssi/irssi"
+license=('GPL')
+source=('irssi::git+https://github.com/irssi/irssi.git#branch=master'
+        '0000-msys2ize.patch')
+md5sums=('SKIP'
+         '9302950a0c70869270ae262474bb66e9')
+
+pkgver() {
+  cd "${srcdir}/${_pkgname}"
+  echo "r$(git rev-list --count HEAD).$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+    cd "${srcdir}/${_pkgname}"
+    # echo 'Snap shotting /usr structure in case anything squeaks through fakeroot'
+    # Used only when debugging installs
+    # find /usr -xdev -printf '%p\t%c\n' | sort > before
+    echo 'Autogen preventing configure until later'
+    NOCONFIGURE=1 ./autogen.sh
+    echo 'Applying patches simply adding #msys2 to default config'
+    patch -p1 -i ${srcdir}/0000-msys2ize.patch
+}
+
+build() {
+    cd "${srcdir}/${_pkgname}"
+    ./configure --prefix=/usr \
+       --disable-glibtest \
+       --enable-ipv6 \
+       --sysconfdir=/etc \
+       --with-perl-lib=vendor \
+       --with-perl-staticlib  
+    make
+ }
+
+package() {
+  cd "${srcdir}/${_pkgname}"
+  echo 'Applying patches to Perl MakeMaker library misname'
+  find . -name "Makefile" -type f | while read line; do sed -i 's/\([i|c|I]\)\.dll$/\1.a/' $line; done
+  make DESTDIR="${pkgdir}" install
+  # echo 'Snap shotting /usr structure post make to watch for leaks from fakeroot'
+  # Used only whne debugging installs
+  # find /usr -xdev -printf '%p\t%c\n' | sort > after
+  # diff -u before after > usrchanges.diff
+  # if [ -s userchanges.diff ]; then echo 'Review userchanges.diff something might have escaped fakeroot'; fi   
+}
+

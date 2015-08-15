@@ -10,6 +10,7 @@ groups=('libraries')
 license=('MIT')
 depends=()
 checkdepends=('dejagnu')
+#options=('!strip' 'debug')
 install=libffi.install
 source=(ftp://sourceware.org/pub/libffi/libffi-${pkgver}.tar.gz
         libffi-3.2.1-msysize.patch)
@@ -17,42 +18,58 @@ sha1sums=('280c265b789e041c02e5c97815793dfc283fb1e6'
           'e43e2ee32b6c357f7e267f19f8e529378bca85ac')
 
 prepare() {
-  cd $pkgname-$pkgver
-  patch -p1 -i $srcdir/libffi-3.2.1-msysize.patch
+  cd ${pkgname}-${pkgver}
+  patch -p1 -i ${srcdir}/libffi-3.2.1-msysize.patch
 
   autoreconf -fi
 }
 
 build() {
-  cd $pkgname-$pkgver
-  ./configure \
+  cd ${pkgname}-${pkgver}
+  # Perform the build outside of srcdir so that
+  # srcdir is not simplified to '.' as relative
+  # paths in debug information are not ideal.
+  [ -d build ] && rm -rf build
+  mkdir build
+  cd build
+  local -a extra_config
+  if check_option "debug" "y"; then
+    extra_config+=("--enable-debug")
+  fi
+  ${srcdir}/${pkgname}-${pkgver}/configure \
     --prefix=/usr \
+    --srcdir=${srcdir}/${pkgname}-${pkgver} \
     --build=${CHOST} \
     --enable-static \
-    --enable-shared
+    --enable-shared \
+    "${extra_config[@]}"
   make
-  make DESTDIR="$srcdir/dest" install
+  make DESTDIR="${srcdir}/dest" install
 }
 
 check() {
-  cd $pkgname-$pkgver
+  cd ${pkgname}-${pkgver}/build
   make check
 }
 
 package_libffi() {
   mkdir -p $pkgdir/usr/bin
-  cp -f $srcdir/dest/usr/bin/*.dll $pkgdir/usr/bin/
-  cp -rf $srcdir/dest/usr/share $pkgdir/usr/
-  install -Dm644 $srcdir/$pkgname-$pkgver/LICENSE "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/LICENSE "${pkgdir}"/usr/share/licenses/${pkgname}/LICENSE
 }
 
 package_libffi-devel() {
   pkgdesc="Libffi headers and libraries"
   groups=('development')
-  options=('staticlibs')
+  if check_option "debug" "y"; then
+    options=('staticlibs' '!strip' 'debug')
+  else
+    options=('staticlibs' '!strip' 'debug')
+  fi
   depends=("libffi=${pkgver}")
 
-  mkdir -p $pkgdir/usr
-  #cp -rf $srcdir/dest/usr/include $pkgdir/usr/
-  cp -rf $srcdir/dest/usr/lib $pkgdir/usr/
+  mkdir -p ${pkgdir}/usr
+  #cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
 }

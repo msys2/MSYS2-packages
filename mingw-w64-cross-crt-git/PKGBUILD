@@ -1,4 +1,14 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
+# Contributor: Martell Malone <martellmalone@gmail.com>
+
+# controls the compiler that builds the crt with _variant
+_variant=clang
+#_variant=gcc
+
+# controls the import library tool to be used when building the crt
+_imptool=dlltool
+# This is only temp until genlib becomes the default in mingw-w64
+#_imptool=genlib
 
 _realname=crt
 _mingw_suff=mingw-w64-cross
@@ -6,7 +16,7 @@ pkgname="${_mingw_suff}-${_realname}-git"
 replaces="${_mingw_suff}-${_realname}"
 provides=("${_mingw_suff}-${_realname}")
 conflicts=("${_mingw_suff}-${_realname}")
-pkgver=5.0.0.4507.5495a11
+pkgver=5.0.0.4548.44bd1f9
 pkgrel=1
 pkgdesc='MinGW-w64 CRT for cross-compiler'
 arch=('i686' 'x86_64')
@@ -14,12 +24,22 @@ url='http://mingw-w64.sourceforge.net'
 license=('custom')
 groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
 depends=("${_mingw_suff}-headers")
-makedepends=("git" "${_mingw_suff}-gcc" "${_mingw_suff}-binutils")
-options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
-source=("mingw-w64"::"git://git.code.sf.net/p/mingw-w64/mingw-w64")
-md5sums=('SKIP')
 
-_targets="i686-w64-mingw32 x86_64-w64-mingw32"
+if [ "${_variant}" = "clang" ]; then
+  makedepends=("git" "clang" "${_mingw_suff}-binutils")
+else
+  makedepends=("git" "${_mingw_suff}-gcc" "${_mingw_suff}-binutils")
+fi
+
+options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
+source=("mingw-w64"::"git://git.code.sf.net/p/mingw-w64/mingw-w64"
+        "0001-crt-crtexe-avoid-seh-because-of-.rva-when-using-clan.patch"
+        "0002-diable-some-useless-arm-libs.patch")
+md5sums=('SKIP'
+         '7e6502509e61c77f36ee237443aa947e'
+         'fcb2e20ebacbcb8b507f872cc6f09c14')
+
+_targets="i686-w64-mingw32 x86_64-w64-mingw32 armv7-w64-mingw32"
 
 pkgver() {
   cd "$srcdir/mingw-w64"
@@ -27,6 +47,12 @@ pkgver() {
   local _minor=$(head -n 16 mingw-w64-headers/crt/_mingw_mac.h | grep '__MINGW64_VERSION_MINOR' | sed -e 's/.* //' | tr '\n' '.' | sed 's/.$/\n/')
   local _rev=0
   printf "%s.%s.%s.%s.%s" ${_major} ${_minor} ${_rev} "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd ${srcdir}/mingw-w64
+  git am "${srcdir}"/0001-crt-crtexe-avoid-seh-because-of-.rva-when-using-clan.patch
+  git am "${srcdir}/"0002-diable-some-useless-arm-libs.patch
 }
 
 build() {
@@ -39,14 +65,46 @@ build() {
     x86_64*)
       _crt_configure_args="--disable-lib32 --enable-lib64"
     ;;
+    armv7*)
+      _crt_configure_args="--disable-lib32 --disable-lib64 --enable-libarm32"
+    ;;
   esac
     mkdir -p ${srcdir}/crt-${_target} && cd ${srcdir}/crt-${_target}
+
+    #--with-host-libstdcxx="-lstdc++ -lsupc++"
+    # we must stitch to this once i get it built / working :)
+    # AS = as
+
+    if [ "${_variant}" = "clang" ]; then
+      export CC="${_target}-clang" CXX="${_target}-clang++" AR="llvm-ar" RANLIB="llvm-ranlib" DLLTOOL="${_target}-dlltool"
+    fi
+
     ${srcdir}/mingw-w64/mingw-w64-crt/configure \
     --build=${CHOST} \
     --prefix=/opt/${_target} \
     --host=${_target} \
     --enable-wildcard \
-        ${_crt_configure_args}
+    ${_crt_configure_args}
+
+    if [ "${_imptool}" = "genlib" ]; then
+      #DLLTOOL = ${arch}-w64-mingw32-dlltool
+      #AM_DLLTOOLFLAGS = -k --as=$(AS) --output-lib $@ $(am__append_1)
+      #DLLTOOLFLAGSARM32 =
+      #DLLTOOLFLAGS32 = --as-flags=--32 -m i386
+      #DLLTOOLFLAGS64 = --as-flags=--64 -m i386:x86-64
+      #DTDEFARM32 = $(DLLTOOL) $(DLLTOOLFLAGSARM32) $(AM_DLLTOOLFLAGS) --input-def
+      #DTDEF32 = $(DLLTOOL) $(DLLTOOLFLAGS32) $(AM_DLLTOOLFLAGS) --input-def
+      #DTDEF64 = $(DLLTOOL) $(DLLTOOLFLAGS64) $(AM_DLLTOOLFLAGS) --input-def
+      sed -i "s|DLLTOOL =.*|DLLTOOL = genlib|g" ${srcdir}/crt-${_target}/Makefile
+      sed -i 's|AM_DLLTOOLFLAGS =.*|AM_DLLTOOLFLAGS = -o $@ $(am__append_1)|g' ${srcdir}/crt-${_target}/Makefile
+      sed -i "s|DLLTOOLFLAGSARM32 =.*|DLLTOOLFLAGSARM32 = -a arm|g" ${srcdir}/crt-${_target}/Makefile
+      sed -i "s|DLLTOOLFLAGS32 =.*|DLLTOOLFLAGS32 = -a x86|g" ${srcdir}/crt-${_target}/Makefile
+      sed -i "s|DLLTOOLFLAGS64 =.*|DLLTOOLFLAGS64 = -a x86_64|g" ${srcdir}/crt-${_target}/Makefile
+      sed -i 's|DTDEFARM32 =.*|DTDEFARM32 = $(DLLTOOL) $(DLLTOOLFLAGSARM32) $(AM_DLLTOOLFLAGS)|g' ${srcdir}/crt-${_target}/Makefile
+      sed -i 's|DTDEF32 =.*|DTDEF32 = $(DLLTOOL) $(DLLTOOLFLAGS32) $(AM_DLLTOOLFLAGS)|g' ${srcdir}/crt-${_target}/Makefile
+      sed -i 's|DTDEF64 =.*|DTDEF64 = $(DLLTOOL) $(DLLTOOLFLAGS64) $(AM_DLLTOOLFLAGS)|g' ${srcdir}/crt-${_target}/Makefile
+    fi
+
     make
   done
 }
