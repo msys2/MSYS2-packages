@@ -25,8 +25,18 @@ makedepends=('cocom'
              'libiconv-devel'
              'diffutils')
 # options=('debug' '!strip')
-source=('msys2-runtime'::'git+https://github.com/git-for-windows/msys2-runtime.git#branch=develop')
-md5sums=('SKIP')
+source=('msys2-runtime'::'git+https://github.com/git-for-windows/msys2-runtime.git#branch=develop'
+        '0001-dcrt0.cc-Untangle-allow_glob-from-winshell.patch'
+        '0002-dcrt0.cc-globify-Don-t-quote-literal-strings-differe.patch'
+        '0003-strace.cc-Don-t-set-MSYS-noglob.patch'
+        '0004-Add-debugging-for-build_argv.patch'
+        '0005-Add-debugging-for-strace-make_command_line.patch')
+md5sums=('SKIP'
+         'c3c22297f0402edf02843e09d3ee9733'
+         '1d6f11e1106395671e861f372fe1e5de'
+         '4653f7d0dc64e872400346b02164d1e6'
+         'cc78a30ea8b6ba377bc1cd6ee23ea146'
+         'a3b123ebbf961a79815ecad574591a19')
 
 pkgver() {
   cd "${srcdir}/msys2-runtime"
@@ -37,17 +47,24 @@ pkgver() {
 }
 
 prepare() {
-  cd "$srcdir/msys2-runtime"
+  cd "${srcdir}"/msys2-runtime
+  git am "${srcdir}"/0001-dcrt0.cc-Untangle-allow_glob-from-winshell.patch
+  git am "${srcdir}"/0002-dcrt0.cc-globify-Don-t-quote-literal-strings-differe.patch
+  git am "${srcdir}"/0003-strace.cc-Don-t-set-MSYS-noglob.patch
+  git am "${srcdir}"/0004-Add-debugging-for-build_argv.patch
+# git am "${srcdir}"/0005-Add-debugging-for-strace-make_command_line.patch
 }
 
 build() {
-  [[ -d $srcdir/build-${CHOST} ]] && rm -rf $srcdir/build-${CHOST}
-  mkdir -p $srcdir/build-${CHOST} && cd $srcdir/build-${CHOST}
+  [[ -d "${srcdir}"/build-${CHOST} ]] && rm -rf "${srcdir}"/build-${CHOST}
+  mkdir -p "${srcdir}"/build-${CHOST} && cd "${srcdir}"/build-${CHOST}
 
   # Gives more verbose compile output when debugging.
+  local -a extra_config
   if check_option "debug" "y"; then
     export CCWRAP_VERBOSE=1
     OPTIM="-O0"
+    extra_config+=(--enable-debugging)
   else
     OPTIM="-O2"
   fi
@@ -55,19 +72,20 @@ build() {
   CFLAGS="$OPTIM -pipe -ggdb"
   CXXFLAGS="$OPTIM -pipe -ggdb"
 
-  ${srcdir}/msys2-runtime/configure \
+  "${srcdir}"/msys2-runtime/configure \
     --prefix=/usr \
     --build=${CHOST} \
     --sysconfdir=/etc
+    "${extra_config[@]}"
   LC_ALL=C make "${PARALLEL_BUILD:--j1}" &&
   LC_ALL=C make "${PARALLEL_BUILD:--j1}" DESTDIR=${srcdir}/dest install &&
 
   #pushd ${CHOST}/winsup/cygwin > /dev/null
   #LANG=C make libmsys2_s.a
-  #cp libmsys2_s.a ${srcdir}/dest/usr/${CHOST}/lib/
+  #cp libmsys2_s.a "${srcdir}"/dest/usr/${CHOST}/lib/
   #popd > /dev/null
 
-  rm -rf ${srcdir}/dest/etc
+  rm -rf "${srcdir}"/dest/etc
 }
 
 package_msys2-runtime() {
@@ -76,14 +94,14 @@ package_msys2-runtime() {
   options=('!strip')
   #install=msys2-runtime.install
 
-  mkdir -p $pkgdir/usr
-  cp -rf ${srcdir}/dest/usr/bin $pkgdir/usr/
-  rm -f $pkgdir/usr/bin/msys-2.0.dbg
-  rm -f $pkgdir/usr/bin/cyglsa-config
-  rm -f $pkgdir/usr/bin/cyglsa.dll
-  rm -f $pkgdir/usr/bin/cyglsa64.dll
-  rm -f $pkgdir/usr/bin/cygserver-config
-  cp -rf ${srcdir}/dest/usr/share $pkgdir/usr/
+  mkdir -p "${pkgdir}"/usr
+  cp -rf "${srcdir}"/dest/usr/bin "${pkgdir}"/usr/
+  rm -f "${pkgdir}"/usr/bin/msys-2.0.dbg
+  rm -f "${pkgdir}"/usr/bin/cyglsa-config
+  rm -f "${pkgdir}"/usr/bin/cyglsa.dll
+  rm -f "${pkgdir}"/usr/bin/cyglsa64.dll
+  rm -f "${pkgdir}"/usr/bin/cygserver-config
+  cp -rf "${srcdir}"/dest/usr/share "${pkgdir}"/usr/
 }
 
 package_msys2-runtime-devel() {
@@ -92,15 +110,15 @@ package_msys2-runtime-devel() {
   depends=("msys2-runtime=${pkgver}")
   options=('staticlibs' '!strip')
 
-  mkdir -p $pkgdir/usr/bin
-  cp -f ${srcdir}/dest/usr/bin/msys-2.0.dbg $pkgdir/usr/bin/
-  cp -rLf ${srcdir}/dest/usr/${CHOST}/include $pkgdir/usr/
-  rm -f $pkgdir/usr/include/iconv.h
-  rm -f $pkgdir/usr/include/unctrl.h
+  mkdir -p "${pkgdir}"/usr/bin
+  cp -f "${srcdir}"/dest/usr/bin/msys-2.0.dbg "${pkgdir}"/usr/bin/
+  cp -rLf "${srcdir}"/dest/usr/${CHOST}/include "${pkgdir}"/usr/
+  rm -f "${pkgdir}"/usr/include/iconv.h
+  rm -f "${pkgdir}"/usr/include/unctrl.h
   # provided by libtirpc
-  rm -fr $pkgdir/usr/include/rpc/
+  rm -fr "${pkgdir}"/usr/include/rpc/
 
-  cp -rLf ${srcdir}/dest/usr/${CHOST}/lib $pkgdir/usr/
+  cp -rLf "${srcdir}"/dest/usr/${CHOST}/lib "${pkgdir}"/usr/
 }
 
 # return 0
