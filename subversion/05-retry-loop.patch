@@ -1,6 +1,6 @@
 Use WIN32 retry loop on Cygwin, too.
 
-From: David Rothenberger <d.rothenberger@entomo.com>
+From: David Rothenberger <daveroth@acm.org>
 
 
 ---
@@ -8,7 +8,7 @@ From: David Rothenberger <d.rothenberger@entomo.com>
  1 file changed, 21 insertions(+), 4 deletions(-)
 
 diff --git a/subversion/libsvn_subr/io.c b/subversion/libsvn_subr/io.c
-index f0956e2..e9e3d37 100644
+index db2e341..d49463d 100644
 --- a/subversion/libsvn_subr/io.c
 +++ b/subversion/libsvn_subr/io.c
 @@ -29,6 +29,10 @@
@@ -22,7 +22,7 @@ index f0956e2..e9e3d37 100644
  #ifndef APR_STATUS_IS_EPERM
  #include <errno.h>
  #ifdef EPERM
-@@ -134,6 +138,12 @@
+@@ -136,6 +140,12 @@
                           || os_err == ERROR_SHARING_VIOLATION              \
                           || os_err == ERROR_DIR_NOT_EMPTY),                \
               1)
@@ -35,32 +35,31 @@ index f0956e2..e9e3d37 100644
  #else
  #define WIN32_RETRY_LOOP(err, expr) ((void)0)
  #endif
-@@ -2263,6 +2273,7 @@ svn_io_remove_file2(const char *path,
-               || SVN__APR_STATUS_IS_ENOTDIR(apr_err))))
-     return SVN_NO_ERROR;
+@@ -2477,6 +2487,7 @@ svn_io_remove_file2(const char *path,
+ 
+   apr_err = apr_file_remove(path_apr, scratch_pool);
  
 +#if defined(WIN32) || defined(__CYGWIN__)
  #ifdef WIN32
    /* If the target is read only NTFS reports EACCESS and FAT/FAT32
       reports EEXIST */
-@@ -2276,11 +2287,15 @@ svn_io_remove_file2(const char *path,
+@@ -2490,10 +2501,14 @@ svn_io_remove_file2(const char *path,
        if (!apr_err)
          return SVN_NO_ERROR;
      }
 -
 +#endif
-     {
-       apr_status_t os_err = APR_TO_OS_ERROR(apr_err);
-       /* Check to make sure we aren't trying to delete a directory */
+   /* Check to make sure we aren't trying to delete a directory */
 +#ifdef WIN32
-       if (os_err == ERROR_ACCESS_DENIED || os_err == ERROR_SHARING_VIOLATION)
+   if (apr_err == APR_FROM_OS_ERROR(ERROR_ACCESS_DENIED)
+       || apr_err == APR_FROM_OS_ERROR(ERROR_SHARING_VIOLATION))
 +#else
-+      if (os_err == EACCES)
++  if (apr_err == APR_FROM_OS_ERROR(EACCES))
 +#endif
-         {
-           apr_finfo_t finfo;
+     {
+       apr_finfo_t finfo;
  
-@@ -3620,20 +3635,22 @@ svn_io_file_rename(const char *from_path, const char *to_path,
+@@ -4018,20 +4033,22 @@ svn_io_file_rename(const char *from_path, const char *to_path,
  
    status = apr_file_rename(from_path_apr, to_path_apr, pool);
  
@@ -85,7 +84,7 @@ index f0956e2..e9e3d37 100644
  
    if (status)
      return svn_error_wrap_apr(status, _("Can't move '%s' to '%s'"),
-@@ -3748,7 +3765,7 @@ dir_make(const char *path, apr_fileperms_t perm,
+@@ -4156,7 +4173,7 @@ dir_make(const char *path, apr_fileperms_t perm,
  /* Windows does not implement sgid. Skip here because retrieving
     the file permissions via APR_FINFO_PROT | APR_FINFO_OWNER is documented
     to be 'incredibly expensive'. */
