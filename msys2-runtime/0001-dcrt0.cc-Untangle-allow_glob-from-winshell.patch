@@ -1,4 +1,4 @@
-From 0681f64468e3966e179abf5fbe9e6d702a7ae777 Mon Sep 17 00:00:00 2001
+From 1964c47b6ebe0b554c3f027c1734c79b92328a34 Mon Sep 17 00:00:00 2001
 From: Ray Donnelly <mingw.android@gmail.com>
 Date: Fri, 21 Aug 2015 12:52:09 +0100
 Subject: [PATCH 1/5] dcrt0.cc: Untangle allow_glob from winshell
@@ -7,13 +7,39 @@ Otherwise if globbing is allowed and we get called from a
 Windows program, build_argv thinks we've been called from
 a Cygwin program.
 ---
- winsup/cygwin/dcrt0.cc | 5 +++--
- 1 file changed, 3 insertions(+), 2 deletions(-)
+ winsup/cygwin/dcrt0.cc | 15 ++++++++-------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
 
 diff --git a/winsup/cygwin/dcrt0.cc b/winsup/cygwin/dcrt0.cc
-index 5bd1f1d..b7600b6 100644
+index 5bd1f1d..2dbc562 100644
 --- a/winsup/cygwin/dcrt0.cc
 +++ b/winsup/cygwin/dcrt0.cc
+@@ -157,12 +157,12 @@ isquote (char c)
+ 
+ /* Step over a run of characters delimited by quotes */
+ static /*__inline*/ char *
+-quoted (char *cmd, int winshell)
++quoted (char *cmd, int winshell, int glob)
+ {
+   char *p;
+   char quote = *cmd;
+ 
+-  if (!winshell)
++  if (!winshell || !glob)
+     {
+       char *p;
+       strcpy (cmd, cmd + 1);
+@@ -172,8 +172,8 @@ quoted (char *cmd, int winshell)
+     }
+ 
+   const char *s = quote == '\'' ? "'" : "\\\"";
+-  /* This must have been run from a Windows shell, so preserve
+-     quotes for globify to play with later. */
++  /* This must have been run from a Windows shell and globbing is enabled,
++     so preserve quotes for globify to play with later. */
+   while (*cmd && *++cmd)
+     if ((p = strpbrk (cmd, s)) == NULL)
+       {
 @@ -294,7 +294,7 @@ globify (char *word, char **&argv, int &argc, int &argvlen)
  /* Build argv, argc from string passed from Windows.  */
  
@@ -23,6 +49,15 @@ index 5bd1f1d..b7600b6 100644
  {
    int argvlen = 0;
    int nesting = 0;		// monitor "nesting" from insert_file
+@@ -328,7 +328,7 @@ build_argv (char *cmd, char **&argv, int &argc, int winshell)
+ 		 a Cygwin process, or if the word starts with a '@'.
+ 		 In this case, the insert_file function needs an unquoted
+ 		 DOS filename and globbing isn't performed anyway. */
+-	      cmd = quoted (cmd, winshell && argc > 0 && *word != '@');
++	      cmd = quoted (cmd, winshell && argc > 0 && *word != '@', glob);
+ 	    }
+ 	  if (issep (*cmd))	// End of argument if space
+ 	    break;
 @@ -354,7 +354,7 @@ build_argv (char *cmd, char **&argv, int &argc, int winshell)
  	}
  
@@ -41,5 +76,5 @@ index 5bd1f1d..b7600b6 100644
  
        /* Convert argv[0] to posix rules if it's currently blatantly
 -- 
-2.5.0
+2.5.1
 

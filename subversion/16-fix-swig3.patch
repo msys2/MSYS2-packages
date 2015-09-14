@@ -1,0 +1,69 @@
+Support swig3
+
+From: David Rothenberger <daveroth@acm.org>
+
+Fugly hack to fix build with SWIG 3.0.x.  The pre-processor seems to
+expand the %define correctly with only the change to %{..%}, but
+%extend still breaks somehow.
+
+https://github.com/swig/swig/issues/379
+---
+ subversion/bindings/swig/include/proxy.swg |   10 ++--------
+ subversion/bindings/swig/svn_delta.i       |    2 --
+ 2 files changed, 2 insertions(+), 10 deletions(-)
+
+diff --git a/subversion/bindings/swig/include/proxy.swg b/subversion/bindings/swig/include/proxy.swg
+index d16afc2..4dda9a2 100644
+--- a/subversion/bindings/swig/include/proxy.swg
++++ b/subversion/bindings/swig/include/proxy.swg
+@@ -62,7 +62,7 @@
+ 
+ /* Default code for all wrapped proxy classes in Python */
+ %define %proxy_pythoncode(TYPE)
+-%pythoncode {
++%pythoncode %{
+   def set_parent_pool(self, parent_pool=None):
+     """Create a new proxy object for TYPE"""
+     import libsvn.core, weakref
+@@ -83,13 +83,10 @@
+ 
+     value = _swig_getattr(self, self.__class__, name)
+ 
+-    # If we got back a different object than we have, we need to copy all our
+-    # metadata into it, so that it looks identical
+     members = self.__dict__.get("_members")
+     if members is not None:
+       _copy_metadata_deep(value, members.get(name))
+         
+-    # Verify that the new object is good
+     _assert_valid_deep(value)
+ 
+     return value
+@@ -98,13 +95,10 @@
+     """Set an attribute on this object"""
+     self.assert_valid()
+ 
+-    # Save a copy of the object, so that the garbage
+-    # collector won't kill the object while it's in
+-    # SWIG-land
+     self.__dict__.setdefault("_members",{})[name] = value
+ 
+     return _swig_setattr(self, self.__class__, name, value)
+-}
++%}
+ %enddef
+ 
+ /* Define a proxy for wrapping an existing struct */
+diff --git a/subversion/bindings/swig/svn_delta.i b/subversion/bindings/swig/svn_delta.i
+index f69b76e..4ad2718 100644
+--- a/subversion/bindings/swig/svn_delta.i
++++ b/subversion/bindings/swig/svn_delta.i
+@@ -206,8 +206,6 @@ void _ops_get(int *num_ops, const svn_txdelta_op_t **ops)
+ 
+ #ifdef SWIGPYTHON
+ %pythoncode %{
+-# This function is for backwards compatibility only.
+-# Use svn_txdelta_window_t.ops instead.
+ svn_txdelta_window_t_ops_get = svn_txdelta_window_t._ops_get
+ %}
+ #endif
