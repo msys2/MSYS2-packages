@@ -1,0 +1,109 @@
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 15 Sep 2015 12:57:37 +0200
+Subject: [PATCH] Always accept CR/LF in MSys2
+
+Since we are running on Windows, we have to expect that at least some
+files or input use DOS line endings, still.
+
+It is okay, of course, to behave like Unix vim otherwise, e.g. to create
+LF-only files by default.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ src/eval.c     |  2 +-
+ src/ex_cmds2.c | 10 +++++-----
+ src/fileio.c   |  2 +-
+ src/quickfix.c |  2 +-
+ 4 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/src/eval.c b/src/eval.c
+index 9a590c7..ee40e1e 100644
+--- a/src/eval.c
++++ b/src/eval.c
+@@ -19105,7 +19105,7 @@ get_cmd_output_as_rettv(argvars, rettv, retlist)
+ 	    }
+ 	}
+ #else
+-# ifdef USE_CRNL
++# if defined(__MSYS__) || defined(USE_CRNL)
+ 	/* translate <CR><NL> into <NL> */
+ 	if (res != NULL)
+ 	{
+diff --git a/src/ex_cmds2.c b/src/ex_cmds2.c
+index 30f9e9d..c2d6e0f 100644
+--- a/src/ex_cmds2.c
++++ b/src/ex_cmds2.c
+@@ -3017,7 +3017,7 @@ struct source_cookie
+     FILE	*fp;		/* opened file for sourcing */
+     char_u      *nextline;      /* if not NULL: line that was read ahead */
+     int		finished;	/* ":finish" used */
+-#if defined(USE_CRNL) || defined(USE_CR)
++#if defined(__MSYS__) || defined(USE_CRNL) || defined(USE_CR)
+     int		fileformat;	/* EOL_UNKNOWN, EOL_UNIX or EOL_DOS */
+     int		error;		/* TRUE if LF found after CR-LF */
+ #endif
+@@ -3234,7 +3234,7 @@ do_source(fname, check_other, is_vimrc)
+     else if (is_vimrc == DOSO_GVIMRC)
+ 	vimrc_found(fname_exp, (char_u *)"MYGVIMRC");
+ 
+-#ifdef USE_CRNL
++#if defined(__MSYS__) || defined(USE_CRNL)
+     /* If no automatic file format: Set default to CR-NL. */
+     if (*p_ffs == NUL)
+ 	cookie.fileformat = EOL_DOS;
+@@ -3719,7 +3719,7 @@ get_one_sourceline(sp)
+     int			len;
+     int			c;
+     char_u		*buf;
+-#ifdef USE_CRNL
++#if defined(__MSYS__) || defined(USE_CRNL)
+     int			has_cr;		/* CR-LF found */
+ #endif
+ #ifdef USE_CR
+@@ -3754,7 +3754,7 @@ get_one_sourceline(sp)
+ 							      sp->fp) == NULL)
+ 		break;
+ 	len = ga.ga_len + (int)STRLEN(buf + ga.ga_len);
+-#ifdef USE_CRNL
++#if defined(__MSYS__) || defined(USE_CRNL)
+ 	/* Ignore a trailing CTRL-Z, when in Dos mode.	Only recognize the
+ 	 * CTRL-Z by its own, or after a NL. */
+ 	if (	   (len == 1 || (len >= 2 && buf[len - 2] == '\n'))
+@@ -3803,7 +3803,7 @@ get_one_sourceline(sp)
+ 
+ 	if (len >= 1 && buf[len - 1] == '\n')	/* remove trailing NL */
+ 	{
+-#ifdef USE_CRNL
++#if defined(__MSYS__) || defined(USE_CRNL)
+ 	    has_cr = (len >= 2 && buf[len - 2] == '\r');
+ 	    if (sp->fileformat == EOL_UNKNOWN)
+ 	    {
+diff --git a/src/fileio.c b/src/fileio.c
+index 0f3f148..016f15d 100644
+--- a/src/fileio.c
++++ b/src/fileio.c
+@@ -5208,7 +5208,7 @@ msg_add_fileformat(eol_type)
+ 	return TRUE;
+     }
+ #endif
+-#if defined(USE_CRNL) || defined(USE_CR)
++#if defined(__MSYS__) || defined(USE_CRNL) || defined(USE_CR)
+     if (eol_type == EOL_UNIX)
+     {
+ 	STRCAT(IObuff, shortmess(SHM_TEXT) ? _("[unix]") : _("[unix format]"));
+diff --git a/src/quickfix.c b/src/quickfix.c
+index 7243a0c..3278bd7 100644
+--- a/src/quickfix.c
++++ b/src/quickfix.c
+@@ -570,7 +570,7 @@ qf_init_ext(qi, efile, buf, tv, errorformat, newlist, lnumfirst, lnumlast,
+ 
+ 	if ((efmp = vim_strrchr(IObuff, '\n')) != NULL)
+ 	    *efmp = NUL;
+-#ifdef USE_CRNL
++#if defined(__MSYS__) || defined(USE_CRNL)
+ 	if ((efmp = vim_strrchr(IObuff, '\r')) != NULL)
+ 	    *efmp = NUL;
+ #endif
+-- 
+2.5.2
+
