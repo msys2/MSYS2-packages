@@ -1,0 +1,56 @@
+# Maintainer: Ray Donnelly <mingw.android@gmail.com>
+
+basename=remake
+pkgname=${basename}-git
+_ver_base=4.1
+pkgver=4.1.2943.f059924
+pkgrel=1
+pkgdesc="Enhanced GNU Make - tracing, error reporting, debugging, profiling and more"
+arch=('i686' 'x86_64')
+url="https://github.com/rocky/remake"
+license=('GPL3')
+provides=("remake")
+conflicts=("remake")
+depends=('guile'
+         'libreadline')
+#options=('debug' '!strip')
+makedepends=('gettext'
+             'gettext-devel'
+             'git'
+             'wget'
+             'libreadline-devel')
+source=("$basename"::"git+https://github.com/rocky/$basename#branch=master")
+md5sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/$basename"
+  printf "%s.%s.%s" "$_ver_base" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd ${srcdir}/${basename}
+  autoreconf -fi
+}
+
+build() {
+  cd ${srcdir}/${basename}
+  ./configure \
+    --prefix=/usr \
+    --build=${CHOST} \
+    --without-libintl-prefix \
+    --without-libiconv-prefix \
+    ac_cv_dos_paths=yes
+
+  make -j1 scm-update do-po-update all
+}
+
+check() {
+  cd ${srcdir}/${basename}
+  make check
+}
+
+package() {
+  cd ${srcdir}/${basename}
+  make DESTDIR=${pkgdir} install
+  rm ${pkgdir}/usr/include/gnumake.h
+}
