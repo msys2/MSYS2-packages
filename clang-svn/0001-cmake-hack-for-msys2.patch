@@ -14,10 +14,10 @@ So CYGWIN should still be TRUE.
 This should be fixed in msys-cmake so that we can remove this patch :)
 
 diff --git a/cmake/modules/AddLLVM.cmake b/cmake/modules/AddLLVM.cmake
-index c3e1679..8493b63 100644
+index b5517d0..5bbf3b3 100644
 --- a/cmake/modules/AddLLVM.cmake
 +++ b/cmake/modules/AddLLVM.cmake
-@@ -195,7 +195,7 @@ function(set_output_directory target)
+@@ -197,7 +197,7 @@ function(set_output_directory target)
  
    # module_dir -- corresponding to LIBRARY_OUTPUT_DIRECTORY.
    # It affects output of add_library(MODULE).
@@ -26,7 +26,7 @@ index c3e1679..8493b63 100644
      # DLL platform
      set(module_dir ${ARG_BINARY_DIR})
    else()
-@@ -521,7 +521,7 @@ macro(add_llvm_library name)
+@@ -538,7 +538,7 @@ macro(add_llvm_library name)
    elseif(NOT _is_gtest)
      if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY OR ${name} STREQUAL "LTO")
        if(ARG_SHARED OR BUILD_SHARED_LIBS)
@@ -35,7 +35,7 @@ index c3e1679..8493b63 100644
            set(install_type RUNTIME)
          else()
            set(install_type LIBRARY)
-@@ -558,7 +558,7 @@ macro(add_llvm_loadable_module name)
+@@ -575,7 +575,7 @@ macro(add_llvm_loadable_module name)
        set_target_properties( ${name} PROPERTIES EXCLUDE_FROM_ALL ON)
      else()
        if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
@@ -45,7 +45,7 @@ index c3e1679..8493b63 100644
            set(dlldir "bin")
          else()
 diff --git a/cmake/modules/HandleLLVMOptions.cmake b/cmake/modules/HandleLLVMOptions.cmake
-index db0abb6..70eda77 100644
+index 9e4c4c5..6fd7bf6 100644
 --- a/cmake/modules/HandleLLVMOptions.cmake
 +++ b/cmake/modules/HandleLLVMOptions.cmake
 @@ -97,13 +97,13 @@ endif()
@@ -71,24 +71,26 @@ index db0abb6..70eda77 100644
  # build might work on ELF but fail on MachO/COFF.
 -if(NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR WIN32 OR CYGWIN OR
 +if(NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR WIN32 OR CYGWIN OR MSYS OR
-         ${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD") AND
+         ${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD" OR
+         ${CMAKE_SYSTEM_NAME} MATCHES "OpenBSD") AND
     NOT LLVM_USE_SANITIZER)
-   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,defs")
-@@ -177,12 +177,12 @@ if( LLVM_ENABLE_PIC )
+@@ -178,14 +178,14 @@ if( LLVM_ENABLE_PIC )
      # Xcode has -mdynamic-no-pic on by default, which overrides -fPIC. I don't
      # know how to disable this, so just force ENABLE_PIC off for now.
      message(WARNING "-fPIC not supported with Xcode.")
 -  elseif( WIN32 OR CYGWIN)
-+  elseif( WIN32 OR CYGWIN OR MSYS)
++  elseif(WIN32 OR CYGWIN OR MSYS)
      # On Windows all code is PIC. MinGW warns if -fPIC is used.
    else()
      add_flag_or_print_warning("-fPIC" FPIC)
+   endif()
+ endif()
  
--    if( WIN32 OR CYGWIN)
-+    if( WIN32 OR CYGWIN OR MSYS)
-       # MinGW warns if -fvisibility-inlines-hidden is used.
-     else()
-       check_cxx_compiler_flag("-fvisibility-inlines-hidden" SUPPORTS_FVISIBILITY_INLINES_HIDDEN_FLAG)
+-if(NOT WIN32 AND NOT CYGWIN)
++if(NOT WIN32 AND NOT CYGWIN AND NOT MSYS)
+   # MinGW warns if -fvisibility-inlines-hidden is used.
+   check_cxx_compiler_flag("-fvisibility-inlines-hidden" SUPPORTS_FVISIBILITY_INLINES_HIDDEN_FLAG)
+   append_if(SUPPORTS_FVISIBILITY_INLINES_HIDDEN_FLAG "-fvisibility-inlines-hidden" CMAKE_CXX_FLAGS)
 @@ -420,7 +420,7 @@ elseif( LLVM_COMPILER_IS_GCC_COMPATIBLE )
    else()
      check_cxx_compiler_flag("-std=c++11" CXX_SUPPORTS_CXX11)
