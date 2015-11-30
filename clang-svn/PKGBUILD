@@ -1,4 +1,5 @@
 # Maintainer: Martell Malone <MartellMalone@gmail.com>
+# Contributor: Ray Donnelly <mingw.android@gmail.com>
 
 _realname=clang
 pkgname=("clang-svn"
@@ -10,15 +11,23 @@ pkgname=("clang-svn"
          "lld-svn"
          "llvm-svn"
         )
-pkgver=60076.8286566
+pkgver=60098.e631762
 pkgrel=1
 pkgdesc="C language family frontend for LLVM (mingw-w64)"
 arch=('any')
 url="http://llvm.org"
 license=("custom:University of Illinois/NCSA Open Source License")
-makedepends=("gcc" "libffi-devel" "libxml2-devel" "pkg-config" "python2" "tar" "subversion" "git")
+makedepends=("gcc"
+             "libffi-devel"
+             "libxml2-devel"
+             "pkg-config"
+             "python2"
+             "tar"
+             "subversion"
+             "git"
+             "cmake")
 depends=("gcc" "libffi" "libxml2")
-options=('staticlibs' 'strip')
+options=('staticlibs') # 'debug' '!strip')
 source=("llvm"::"git+http://llvm.org/git/llvm.git"
         "lld"::"git+http://llvm.org/git/lld.git"
         "clang"::"git+http://llvm.org/git/clang.git"
@@ -85,6 +94,14 @@ prepare() {
 }
 
 build() {
+  local -a extra_config
+
+  if check_option "debug" "y"; then
+    extra_config+=(-DCMAKE_BUILD_TYPE=Debug)
+  else
+    extra_config+=(-DCMAKE_BUILD_TYPE=Release)
+  fi
+
   mkdir -p ${srcdir}/build-${CARCH} && cd ${srcdir}/build-${CARCH}
 
   # Include location of libffi headers in CPPFLAGS
@@ -100,13 +117,13 @@ build() {
     -DCMAKE_C_FLAGS="${CFLAGS}" \
     -DCMAKE_CXX_FLAGS="${CXXFLAGS} ${CPPFLAGS}" \
     -DCMAKE_INSTALL_PREFIX="/usr" \
-    -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_TARGETS_TO_BUILD="ARM;CppBackend;X86;PowerPC" \
     -DLLVM_ENABLE_ASSERTIONS=OFF \
     -DLLVM_ENABLE_THREADS=0 \
     -DPYTHON_EXECUTABLE=/usr/bin/python2 \
     -DLLVM_ENABLE_FFI=ON \
     -DLLVM_ENABLE_SPHINX=OFF \
+    "${extra_config[@]}" \
     ../llvm
 
 #    -DLLVM_ENABLE_SPHINX=ON \
