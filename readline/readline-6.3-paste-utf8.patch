@@ -1,0 +1,54 @@
+diff -Naur readline-6.3-orig/kill.c readline-6.3/kill.c
+--- readline-6.3-orig/kill.c	2010-12-07 01:44:58.000000000 +0100
++++ readline-6.3/kill.c	2015-12-17 20:08:50.652036500 +0100
+@@ -660,17 +660,41 @@
+ #if defined (__CYGWIN__)
+ #include <windows.h>
+ 
++static char*
++utf16_to_utf8 (wdata)
++     wchar_t *wdata;
++{
++  int size;
++  char *data;
++
++  size = WideCharToMultiByte (CP_UTF8, 0, wdata, -1, NULL, 0, NULL, NULL);
++  if (size == 0)
++    return NULL;
++
++  data = xmalloc (size);
++  if (WideCharToMultiByte (CP_UTF8, 0, wdata, -1, data, size, NULL, NULL) != size)
++  {
++    xfree (data);
++    return NULL;
++  }
++
++  return data;
++}
++
+ int
+ rl_paste_from_clipboard (count, key)
+      int count, key;
+ {
++  wchar_t *wdata;
+   char *data, *ptr;
+   int len;
+ 
+   if (OpenClipboard (NULL) == 0)
+     return (0);
+ 
+-  data = (char *)GetClipboardData (CF_TEXT);
++  wdata = (wchar_t *)GetClipboardData(CF_UNICODETEXT);
++  CloseClipboard ();
++  data = utf16_to_utf8 (wdata);
+   if (data)
+     {
+       ptr = strchr (data, '\r');
+@@ -687,7 +711,6 @@
+       rl_insert_text (ptr);
+       if (ptr != data)
+ 	xfree (ptr);
+-      CloseClipboard ();
+     }
+   return (0);
+ }
