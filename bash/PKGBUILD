@@ -1,11 +1,12 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
+# Contributor: Ray Donnelly <mingw.android@gmail.com>
 
 pkgbase=bash
 pkgname=('bash' 'bash-devel')
 _basever=4.3
 _patchlevel=042 #prepare for some patches
-pkgver=$_basever.$_patchlevel
-pkgrel=1
+pkgver=${_basever}.${_patchlevel}
+pkgrel=4
 pkgdesc="The GNU Bourne Again shell"
 arch=('i686' 'x86_64')
 license=('GPL')
@@ -32,6 +33,9 @@ validpgpkeys=('7C0135FB088AAF6C66C650B9BB5869F064EA74AB') # Chet Ramey
 
 prepare() {
   cd ${srcdir}/${pkgname}-$_basever
+
+  # Remove patch-created file.
+  [[ -f cross-build/msys32.cache ]] && rm -rf cross-build/msys32.cache
 
   for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
     msg "applying patch bash${_basever//./}-$(printf "%03d" $p)"
@@ -72,8 +76,11 @@ build() {
   # Prepopulate the release level.
   expr ${pkgrel} > .build || :
 
-  #CFLAGS+=" -D_STATIC_BUILD"
-  make HISTORY_LDFLAGS= READLINE_LDFLAGS= LOCAL_LDFLAGS='-Wl,--export-all,--out-implib,lib$(@:.exe=.dll.a)'
+  # CFLAGS+=" -D_STATIC_BUILD"
+  make CPPFLAGS=-DWORDEXP_OPTION \
+       HISTORY_LDFLAGS= \
+       READLINE_LDFLAGS= \
+       LOCAL_LDFLAGS='-Wl,--export-all,--out-implib,lib$(@:.exe=.dll.a)'
 }
 
 check() {

@@ -3,7 +3,7 @@
 # Contributor: Ray Donnelly <mingw.android@gmail.com>
 
 pkgname=pacman
-pkgver=4.2.1.6198.439d376
+pkgver=4.2.1.6317.6ac7836
 pkgrel=1
 pkgdesc="A library-based package manager with dependency support (MSYS2 port)"
 arch=('i686' 'x86_64')
@@ -61,8 +61,8 @@ source=("$pkgname"::'git+https://github.com/Alexpux/MSYS2-pacman.git'
 md5sums=('SKIP'
          'a74be5548ab4743ef05712ebff0b8472'
          'fc9e737a24f08f842f1f4c54bdcaa653'
-         '5651b76cb4f2bea3eda199092db01972'
-         '414a44b936256a75e979ca38389b5efc'
+         '71a1ed1ce89fe81e1ca88dfc959bab49'
+         'ea9c9637a8a6d5b706579d237ed56d7a'
          'f284fbfe409cac2cb56972aa6956cacc'
          '3478ac5ab27b8cdb289d1ac3792b16ec'
          'feb2bcc62db05f7bc6ac97d43dd0643a'
@@ -70,20 +70,26 @@ md5sums=('SKIP'
          '0f67ea93a9b0f1a39b609f3c3a506bfb')
 
 pkgver() {
-  cd "$srcdir/$pkgname"
+  cd "${srcdir}/${pkgname}"
   #printf "%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
   printf "%s.%s.%s" "$(git describe --tags --abbrev=0 | sed 's/^v//')" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 prepare() {
-  cd $srcdir/$pkgname
-  git am "$srcdir"/0001-more-debugging-info.patch
-  #git am "$srcdir"/0002-Add-util-msys2.-c-h-and-rebase-db-msys2.-c.patch
-  #git am "$srcdir"/0003-use-busybox-for-msys2-post-installs.patch
-  git am "$srcdir"/0004-Link-pacman-with-static-libraries.patch
+  cd ${srcdir}/$pkgname
+  git am "${srcdir}"/0001-more-debugging-info.patch
+  #git am "${srcdir}"/0002-Add-util-msys2.-c-h-and-rebase-db-msys2.-c.patch
+  #git am "${srcdir}"/0003-use-busybox-for-msys2-post-installs.patch
+  git am "${srcdir}"/0004-Link-pacman-with-static-libraries.patch
   
   # Workaround for symlinks
   rm src/util/util-common.{h,c}
+  cp src/{common,pacman}/ini.h
+  cp src/{common,pacman}/ini.c
+  
+  cp {src/common,lib/libalpm}/ini.h
+  cp {src/common,lib/libalpm}/ini.c
+  
   cp src/{common,util}/util-common.h
   cp src/{common,util}/util-common.c
 
@@ -94,7 +100,7 @@ prepare() {
 }
 
 build() {
-  cd $srcdir/$pkgname
+  cd ${srcdir}/${pkgname}
   ./autogen.sh
 
   export PKG_CONFIG="/usr/bin/pkg-config --static"
@@ -114,17 +120,17 @@ build() {
 }
 
 check() {
-  make -C "$pkgname" check
+  make -C "${pkgname}" check
 }
 
 package() {
-  cd $srcdir/$pkgname
-  make -j1 DESTDIR=$pkgdir install
-  make -j1 DESTDIR=$pkgdir -C contrib install
+  cd ${srcdir}/${pkgname}
+  make -j1 DESTDIR=${pkgdir} install
+  make -j1 DESTDIR=${pkgdir} -C contrib install
 
   # install Arch specific stuff
-  install -dm755 $pkgdir/etc
-  install -m644 $srcdir/pacman.conf $pkgdir/etc/pacman.conf
+  install -dm755 ${pkgdir}/etc
+  install -m644 ${srcdir}/pacman.conf ${pkgdir}/etc/pacman.conf
 
   case "$CARCH" in
   i686)
@@ -139,13 +145,13 @@ package() {
   ;;
   esac
 
-  install -m644 $srcdir/makepkg.conf $pkgdir/etc/
-  install -m644 $srcdir/makepkg_mingw32.conf $pkgdir/etc/
-  install -m644 $srcdir/makepkg_mingw64.conf $pkgdir/etc/
-  install -m755 $srcdir/makepkg-mingw $pkgdir/usr/bin/
+  install -m644 ${srcdir}/makepkg.conf ${pkgdir}/etc/
+  install -m644 ${srcdir}/makepkg_mingw32.conf ${pkgdir}/etc/
+  install -m644 ${srcdir}/makepkg_mingw64.conf ${pkgdir}/etc/
+  install -m755 ${srcdir}/makepkg-mingw ${pkgdir}/usr/bin/
 
   # set things correctly in the default conf file
-  sed -i $pkgdir/etc/makepkg.conf \
+  sed -i ${pkgdir}/etc/makepkg.conf \
     -e "s|@CARCH[@]|$mycarch|g" \
     -e "s|@CHOST[@]|$mychost|g" \
     -e "s|@CARCHFLAGS[@]|$myflags|g"
@@ -157,6 +163,6 @@ package() {
   rmdir ${pkgdir}/etc/bash_completion.d
 
   for f in makepkg pacman-key; do
-    ln -s pacman "$pkgdir/usr/share/bash-completion/completions/$f"
+    ln -s pacman "${pkgdir}/usr/share/bash-completion/completions/$f"
   done
 }

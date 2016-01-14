@@ -1,0 +1,216 @@
+From 23f450298ad84bd1f50030e2258cc19dca69e0bb Mon Sep 17 00:00:00 2001
+From: Ray Donnelly <mingw.android@gmail.com>
+Date: Thu, 7 Jan 2016 09:40:43 +0000
+Subject: [PATCH] msys-ize
+
+---
+ gyptest.py                                | 1 +
+ pylib/gyp/MSVSVersion.py                  | 4 ++--
+ pylib/gyp/__init__.py                     | 4 ++--
+ pylib/gyp/common.py                       | 1 +
+ pylib/gyp/generator/make.py               | 5 ++++-
+ pylib/gyp/generator/ninja.py              | 2 +-
+ test/actions-multiple/gyptest-all.py      | 2 +-
+ test/lib/TestCommon.py                    | 2 +-
+ test/lib/TestGyp.py                       | 6 +++---
+ test/library_dirs/gyptest-library-dirs.py | 2 +-
+ test/rules/src/external/external.gyp      | 2 +-
+ test/target/gyptest-target.py             | 2 +-
+ 12 files changed, 19 insertions(+), 14 deletions(-)
+
+diff --git a/gyptest.py b/gyptest.py
+index 8e4fc47..5b4dacc 100755
+--- a/gyptest.py
++++ b/gyptest.py
+@@ -221,6 +221,7 @@ def main(argv=None):
+       'freebsd8': ['make'],
+       'openbsd5': ['make'],
+       'cygwin':   ['msvs'],
++       'msys':     ['msvs'],
+       'win32':    ['msvs', 'ninja'],
+       'linux2':   ['make', 'ninja'],
+       'linux3':   ['make', 'ninja'],
+diff --git a/pylib/gyp/MSVSVersion.py b/pylib/gyp/MSVSVersion.py
+index d9bfa68..1eaaa21 100644
+--- a/pylib/gyp/MSVSVersion.py
++++ b/pylib/gyp/MSVSVersion.py
+@@ -121,7 +121,7 @@ def _RegistryQueryBase(sysdir, key, value):
+     stdout from reg.exe, or None for failure.
+   """
+   # Skip if not on Windows or Python Win32 setup issue
+-  if sys.platform not in ('win32', 'cygwin'):
++  if sys.platform not in ('win32', 'cygwin', 'msys'):
+     return None
+   # Setup params to pass to and attempt to launch reg.exe
+   cmd = [os.path.join(os.environ.get('WINDIR', ''), sysdir, 'reg.exe'),
+@@ -325,7 +325,7 @@ def _CreateVersion(name, path, sdk_based=False):
+ 
+ def _ConvertToCygpath(path):
+   """Convert to cygwin path if we are using cygwin."""
+-  if sys.platform == 'cygwin':
++  if sys.platform in ('cygwin', 'msys'):
+     p = subprocess.Popen(['cygpath', path], stdout=subprocess.PIPE)
+     path = p.communicate()[0].strip()
+   return path
+diff --git a/pylib/gyp/__init__.py b/pylib/gyp/__init__.py
+index 668f38b..1c14c59 100755
+--- a/pylib/gyp/__init__.py
++++ b/pylib/gyp/__init__.py
+@@ -360,7 +360,7 @@ def gyp_main(args):
+ 
+     if not home_dot_gyp:
+       home_vars = ['HOME']
+-      if sys.platform in ('cygwin', 'win32'):
++      if sys.platform in ('cygwin', 'msys', 'win32'):
+         home_vars.append('USERPROFILE')
+       for home_var in home_vars:
+         home = os.getenv(home_var)
+@@ -389,7 +389,7 @@ def gyp_main(args):
+       # Nothing in the variable, default based on platform.
+       if sys.platform == 'darwin':
+         options.formats = ['xcode']
+-      elif sys.platform in ('win32', 'cygwin'):
++      elif sys.platform in ('win32', 'cygwin', 'msys'):
+         options.formats = ['msvs']
+       else:
+         options.formats = ['make']
+diff --git a/pylib/gyp/common.py b/pylib/gyp/common.py
+index 256e3f3..29c5ae3 100644
+--- a/pylib/gyp/common.py
++++ b/pylib/gyp/common.py
+@@ -411,6 +411,7 @@ def GetFlavor(params):
+   """Returns |params.flavor| if it's set, the system's default flavor else."""
+   flavors = {
+     'cygwin': 'win',
++    'msys': 'win',
+     'win32': 'win',
+     'darwin': 'mac',
+   }
+diff --git a/pylib/gyp/generator/make.py b/pylib/gyp/generator/make.py
+index b7da768..de1efbd 100644
+--- a/pylib/gyp/generator/make.py
++++ b/pylib/gyp/generator/make.py
+@@ -1347,7 +1347,10 @@ $(obj).$(TOOLSET)/$(TARGET)/%%.o: $(obj)/%%%s FORCE_DO_CMD
+       if target[:3] == 'lib':
+         target = target[3:]
+       target_prefix = 'lib'
+-      target_ext = '.so'
++      if self.flavor == 'win':
++        target_ext = '.dll'
++      else:
++        target_ext = '.so'
+     elif self.type == 'none':
+       target = '%s.stamp' % target
+     elif self.type != 'executable':
+diff --git a/pylib/gyp/generator/ninja.py b/pylib/gyp/generator/ninja.py
+index d8a45c7..efdb54e 100644
+--- a/pylib/gyp/generator/ninja.py
++++ b/pylib/gyp/generator/ninja.py
+@@ -1698,7 +1698,7 @@ def GetDefaultConcurrentLinks():
+   if pool_size:
+     return pool_size
+ 
+-  if sys.platform in ('win32', 'cygwin'):
++  if sys.platform in ('win32', 'cygwin', 'msys'):
+     import ctypes
+ 
+     class MEMORYSTATUSEX(ctypes.Structure):
+diff --git a/test/actions-multiple/gyptest-all.py b/test/actions-multiple/gyptest-all.py
+index 2a083de..30b7339 100755
+--- a/test/actions-multiple/gyptest-all.py
++++ b/test/actions-multiple/gyptest-all.py
+@@ -35,7 +35,7 @@ if test.format in ['make', 'ninja']:
+   if test.format == 'make':
+     target = 'multi2.txt'
+   elif test.format == 'ninja':
+-    if sys.platform in ['win32', 'cygwin']:
++    if sys.platform in ('win32', 'cygwin', 'msys'):
+       target = '..\\..\\multi2.txt'
+     else:
+       target = '../../multi2.txt'
+diff --git a/test/lib/TestCommon.py b/test/lib/TestCommon.py
+index 2f526a6..5dc7b3a 100644
+--- a/test/lib/TestCommon.py
++++ b/test/lib/TestCommon.py
+@@ -127,7 +127,7 @@ if sys.platform == 'win32':
+     dll_suffix    = '.dll'
+     module_prefix = ''
+     module_suffix = '.dll'
+-elif sys.platform == 'cygwin':
++elif sys.platform in ('cygwin', 'msys'):
+     exe_suffix    = '.exe'
+     obj_suffix    = '.o'
+     shobj_suffix  = '.os'
+diff --git a/test/lib/TestGyp.py b/test/lib/TestGyp.py
+index c59b811..6af5267 100644
+--- a/test/lib/TestGyp.py
++++ b/test/lib/TestGyp.py
+@@ -603,7 +603,7 @@ class TestGypMake(TestGypBase):
+ 
+ def ConvertToCygpath(path):
+   """Convert to cygwin path if we are using cygwin."""
+-  if sys.platform == 'cygwin':
++  if sys.platform in ('cygwin', 'msys'):
+     p = subprocess.Popen(['cygpath', path], stdout=subprocess.PIPE)
+     path = p.communicate()[0].strip()
+   return path
+@@ -719,7 +719,7 @@ class TestGypOnMSToolchain(TestGypBase):
+ 
+   def initialize_build_tool(self):
+     super(TestGypOnMSToolchain, self).initialize_build_tool()
+-    if sys.platform in ('win32', 'cygwin'):
++    if sys.platform in ('win32', 'cygwin', 'msys'):
+       build_tools = FindVisualStudioInstallation()
+       self.devenv_path, self.uses_msbuild, self.msbuild_path = build_tools
+       self.vsvars_path = TestGypOnMSToolchain._ComputeVsvarsPath(
+@@ -728,7 +728,7 @@ class TestGypOnMSToolchain(TestGypBase):
+   def run_dumpbin(self, *dumpbin_args):
+     """Run the dumpbin tool with the specified arguments, and capturing and
+     returning stdout."""
+-    assert sys.platform in ('win32', 'cygwin')
++    assert sys.platform in ('win32', 'cygwin', 'msys')
+     cmd = os.environ.get('COMSPEC', 'cmd.exe')
+     arguments = [cmd, '/c', self.vsvars_path, '&&', 'dumpbin']
+     arguments.extend(dumpbin_args)
+diff --git a/test/library_dirs/gyptest-library-dirs.py b/test/library_dirs/gyptest-library-dirs.py
+index e725dd1..d0f1a20 100644
+--- a/test/library_dirs/gyptest-library-dirs.py
++++ b/test/library_dirs/gyptest-library-dirs.py
+@@ -31,7 +31,7 @@ expect = """Hello world
+ test.run_built_executable(
+     'libraries-search-path-test', chdir='subdir', stdout=expect)
+ 
+-if sys.platform in ('win32', 'cygwin'):
++if sys.platform in ('win32', 'cygwin', 'msys'):
+   test.run_gyp('test-win.gyp',
+                '-D',
+                'abs_path_to_secret_library_location={0}'.format(lib_dir),
+diff --git a/test/rules/src/external/external.gyp b/test/rules/src/external/external.gyp
+index b28174f..335af69 100644
+--- a/test/rules/src/external/external.gyp
++++ b/test/rules/src/external/external.gyp
+@@ -19,7 +19,7 @@
+       'conditions': [
+         ['OS=="win"', {
+           'dependencies': [
+-            'cygwin',
++            'msys',
+           ],
+         }],
+       ],
+diff --git a/test/target/gyptest-target.py b/test/target/gyptest-target.py
+index 4338db7..fb400ed 100644
+--- a/test/target/gyptest-target.py
++++ b/test/target/gyptest-target.py
+@@ -13,7 +13,7 @@ target_extension is used to avoid MSB8012 for msvs.
+ import sys
+ import TestGyp
+ 
+-if sys.platform in ('win32', 'cygwin'):
++if sys.platform in ('win32', 'cygwin', 'msys'):
+   test = TestGyp.TestGyp()
+ 
+   test.run_gyp('target.gyp')
+-- 
+2.6.3
+
