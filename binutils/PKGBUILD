@@ -1,10 +1,10 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=binutils
-_basever=2.25
+_basever=2.25.1
 pkgver=${_basever}
 #pkgver=2.24.51
-pkgrel=2
+pkgrel=1
 pkgdesc="A set of programs to assemble and manipulate binary and object files"
 arch=('i686' 'x86_64')
 url="http://www.gnu.org/software/binutils/"
@@ -18,34 +18,35 @@ install=binutils.install
 source=(#http://sourceware.mirrors.tds.net/pub/sourceware.org/binutils/snapshots/binutils-${_basever}.tar.bz2
         ftp://ftp.gnu.org/gnu/binutils/binutils-${pkgver}.tar.bz2{,.sig}
         #http://cygwin.parentingamerica.com/x86_64/release/binutils/binutils-2.24.51-5-src.tar.xz
-        binutils-trunk-msys2.patch)
-md5sums=('d9f3303f802a5b6b0bb73a335ab89d66'
+        binutils-trunk-msys2.patch
+        0005-bfd-Increase-_bfd_coff_max_nscns-to-65279.patch)
+md5sums=('ac493a78de4fee895961d025b7905be4'
          'SKIP'
-         '81d65b787c8979e7a94d232222bb9bc1')
+         '81d65b787c8979e7a94d232222bb9bc1'
+         '1b907766aebe66585cd14ae4f8ce0e97')
 
 prepare() {
-  cd ${srcdir}/binutils-$_basever
-  patch -p1 -i $srcdir/binutils-trunk-msys2.patch
+  cd "${srcdir}"/binutils-$_basever
+  patch -p1 -i "${srcdir}"/binutils-trunk-msys2.patch
+  patch -p1 -i "${srcdir}"/0005-bfd-Increase-_bfd_coff_max_nscns-to-65279.patch
 
   # hack! - libiberty configure tests for header files using "$CPP $CPPFLAGS"
   sed -i "/ac_cpp=/s/\$CPPFLAGS/\$CPPFLAGS -O2/" libiberty/configure
 
-  mkdir ${srcdir}/binutils-build
+  mkdir "${srcdir}"/binutils-${CARCH}
 }
 
 build() {
-  cd ${srcdir}/binutils-build
+  cd "${srcdir}"/binutils-${CARCH}
 
   if [ "${CARCH}" = "x86_64" ]; then
     local _conf='--enable-64-bit-bfd'
   else
     local _conf=''
   fi
-  ${srcdir}/binutils-${_basever}/configure \
+  "${srcdir}"/binutils-${_basever}/configure \
     --prefix=/usr \
-    --build=${CHOST} \
-    --host=${CHOST} \
-    --target=${CHOST} \
+    --{build,host,target}=${CHOST} \
     --disable-werror \
     --disable-sim \
     $_conf \
@@ -56,7 +57,7 @@ build() {
 }
 
 check() {
-  cd ${srcdir}/binutils-build
+  cd "${srcdir}"/binutils-${CARCH}
 
   # unset LDFLAGS as testsuite makes assumptions about which ones are active
   # do not abort on errors - manually check log files
@@ -64,7 +65,7 @@ check() {
 }
 
 package() {
-  cd ${srcdir}/binutils-build
+  cd "${srcdir}"/binutils-${CARCH}
   make DESTDIR=${pkgdir} install
   cp libiberty/libiberty.a ${pkgdir}/usr/lib
 
@@ -72,6 +73,6 @@ package() {
   #rm ${pkgdir}/usr/share/info/{configure,standards}.info
 
   # Add some useful headers
-  #install -m644 ${srcdir}/binutils-${_basever}/include/libiberty.h ${pkgdir}/usr/include
-  #install -m644 ${srcdir}/binutils-${_basever}/include/demangle.h ${pkgdir}/usr/include
+  #install -m644 "${srcdir}"/binutils-${_basever}/include/libiberty.h ${pkgdir}/usr/include
+  #install -m644 "${srcdir}"/binutils-${_basever}/include/demangle.h ${pkgdir}/usr/include
 }
