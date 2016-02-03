@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # fetch first changed file, assume at most one package touched per commit
 TOUCHED=`git show --pretty="format:" --name-only | grep . | head -1`
 PKGDIR=`dirname $TOUCHED`
