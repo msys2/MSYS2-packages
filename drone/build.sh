@@ -13,6 +13,11 @@ then
     echo Nothing to test
 else
     pushd $PKGDIR > /dev/null
-    makepkg -f -s --noconfirm --skippgpcheck --noprogressbar
+    if [ "$RUNTEST" = "true" ]
+    then
+        makepkg -f -s --noconfirm --skippgpcheck --noprogressbar || true
+    else
+        makepkg -f -s --noconfirm --skippgpcheck --noprogressbar --nocheck
+    fi
     popd > /dev/null
 fi
