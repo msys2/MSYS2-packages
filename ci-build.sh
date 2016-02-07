@@ -29,3 +29,6 @@ for recipe in "${recipes[@]}"; do
     makepkg --syncdeps --noconfirm --skippgpcheck --nocheck --noprogressbar || failure "could not build ${recipe}"
     cd - > /dev/null
 done
+
+# Install
+pacman -U --noconfirm */*.pkg.tar.xz
