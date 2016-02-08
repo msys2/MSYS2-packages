@@ -25,7 +25,13 @@ test -z "${recipes}" && success 'no changes in package recipes'
 # Build
 for recipe in "${recipes[@]}"; do
     cd "$(dirname ${recipe})"
+    echo
     echo "Build start: $(dirname ${recipe})"
     makepkg --syncdeps --noconfirm --skippgpcheck --nocheck --noprogressbar || failure "could not build ${recipe}"
     cd - > /dev/null
 done
+
+# Install
+echo
+echo "Install packages:" */*.pkg.tar.xz
+pacman -U --noconfirm */*.pkg.tar.xz
