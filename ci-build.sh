@@ -12,9 +12,6 @@ failure() { echo "Build failure: ${@}"; exit 1; }
 git config --global user.email 'ci@msys2.org'
 git config --global user.name 'MSYS2 Continuous Integration'
 
-# AppVeyor is currently missing binutils
-pacman --sync --needed --noconfirm --noprogressbar binutils || failure 'Could not install binutils.'
-
 # Detect
 cd "$(dirname "$0")"
 files=($(git show --pretty=format: --name-only $(git log -1 --pretty=format:%P | cut -d' ' -f1)..HEAD | sort -u))
@@ -24,8 +21,7 @@ done
 test -n "${files}"   || failure 'Could not detect changed files.'
 test -z "${recipes}" && success 'No changes in package recipes.'
 echo
-echo "Going to build changed recipes:"
-IFS="\n" echo "${recipes[@]}"
+echo "Going to build changed recipes: ${recipes[@]}"
 echo
 
 # Refresh
