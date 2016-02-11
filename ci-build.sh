@@ -15,7 +15,7 @@ pacman --sync --needed --noconfirm --noprogressbar binutils || failure 'could no
 
 # Recipes
 cd "$(dirname "$0")"
-files=($(git show --pretty=format: --name-only $(git log -1 --pretty=format:%P | cut -d' ' -f1)..HEAD))
+files=($(git show --pretty=format: --name-only $(git log -1 --pretty=format:%P | cut -d' ' -f1)..HEAD | sort -u))
 for file in "${files[@]}"; do
     [[ "${file}" = */PKGBUILD ]] && recipes+=("${file}")
 done
