@@ -38,9 +38,9 @@ for recipe in "${recipes[@]}"; do
     echo
     echo "Build recipe: ${recipe}"
     echo
-    makepkg --syncdeps --noconfirm --noprogressbar --noextract --noprepare --nobuild || failure "Could not install deps for ${recipe}."
+    makepkg --syncdeps --noconfirm --noprogressbar --skippgpcheck --noprepare --nobuild || failure "Could not install deps for ${recipe}."
     echo
-    makepkg --skippgpcheck --nocheck || failure "Could not build ${recipe}."
+    makepkg --noextract --skippgpcheck --nocheck || failure "Could not build ${recipe}."
     cd - > /dev/null
 done
 
