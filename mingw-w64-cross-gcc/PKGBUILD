@@ -4,7 +4,7 @@ _realname=gcc
 _mingw_suff=mingw-w64-cross
 pkgname=("${_mingw_suff}-${_realname}")
 pkgver=4.9.2
-pkgrel=3
+pkgrel=4
 pkgdesc="Cross GCC for the MinGW-w64"
 arch=('i686' 'x86_64')
 url="https://gcc.gnu.org"
@@ -81,7 +81,7 @@ sha256sums=('2020c98295856aa13fda0f2f3a4794490757fc24bcca918d52cc8b4917b972dd'
             'ccee1d773230c8e6bd286ba3f9c9a04c7d655f84fd2a2385d2a0c3cbc60f881f')
 
 _threads="win32"
-_targets="i686-w64-mingw32 x86_64-w64-mingw32"
+_targets="armv7-w64-mingw32 i686-w64-mingw32 x86_64-w64-mingw32"
 
 prepare() {
   cd ${srcdir}/${_realname}-${pkgver}
@@ -112,8 +112,7 @@ prepare() {
   #patch -p1 -i ${srcdir}/048-4.8-medium-model-dllimport.patch
   patch -p1 -i ${srcdir}/050-4.5-skiptest.patch
 
-  if [ "$CARCH" = "i686" ]
-  then
+  if [ "$CARCH" = "i686" ]; then
     patch -p1 -i ${srcdir}/055-4.8-gcc-ada-DTR.patch
   fi
 
@@ -140,15 +139,18 @@ build() {
   for _target in ${_targets}; do
   mkdir -p ${srcdir}/gcc-build-${_target} && cd ${srcdir}/gcc-build-${_target}
 
+  local _langs="c,lto,c++"
   case "${_target}" in
     i686*)
       local _conf="--disable-sjlj-exceptions --with-dwarf2"
       local _arch=i686
+      _langs="${_langs} fortran"
     ;;
 
     x86_64*)
       local _arch=x86-64
       local _conf=""
+      _langs="${_langs} fortran"
     ;;
   esac
 
@@ -161,7 +163,7 @@ build() {
     --disable-bootstrap \
     --with-arch=${_arch} \
     --with-tune=generic \
-    --enable-languages=c,lto,c++,fortran \
+    --enable-languages=${_langs} \
     --enable-shared --enable-static \
     --enable-threads=${_threads} \
     --enable-graphite \
