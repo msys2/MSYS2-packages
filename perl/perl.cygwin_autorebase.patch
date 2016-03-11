@@ -1,0 +1,63 @@
+--- perl-5.22.0/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Cygwin.pm.orig
++++ perl-5.22.0/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Cygwin.pm
+@@ -9,7 +9,7 @@ require ExtUtils::MM_Unix;
+ require ExtUtils::MM_Win32;
+ our @ISA = qw( ExtUtils::MM_Unix );
+ 
+-our $VERSION = '7.04_01';
++our $VERSION = '7.04_02';
+ 
+ 
+ =head1 NAME
+@@ -129,15 +129,30 @@ But for new archdir dll's use the same r
+ sub dynamic_lib {
+     my($self, %attribs) = @_;
+     my $s = ExtUtils::MM_Unix::dynamic_lib($self, %attribs);
+-    my $ori = "$self->{INSTALLARCHLIB}/auto/$self->{FULLEXT}/$self->{BASEEXT}.$self->{DLEXT}";
+-    if (-e $ori) {
+-        my $imagebase = `/bin/objdump -p $ori | /bin/grep ImageBase | /bin/cut -c12-`;
+-        chomp $imagebase;
+-        if ($imagebase gt "40000000") {
+-            my $LDDLFLAGS = $self->{LDDLFLAGS};
+-            $LDDLFLAGS =~ s/-Wl,--enable-auto-image-base/-Wl,--image-base=0x$imagebase/;
+-            $s =~ s/ \$\(LDDLFLAGS\) / $LDDLFLAGS /m;
+-        }
+-    }
++    return '' unless $s;
++    return $s unless %{$self->{XS}};
++
++    # do an ephemeral rebase so the new DLL fits to the current rebase map
++    $s .= "\t/bin/find \$\(INST_ARCHLIB\)/auto -xdev -name \\*.$self->{DLEXT} | /bin/rebase -sOT -" if (( $Config{myarchname} eq 'i686-cygwin' or $Config{myarchname} eq 'i686-msys') and not ( exists $ENV{CYGPORT_PACKAGE_VERSION} ));
++    $s;
++}
++
++=item install
++
++Rebase dll's with the global rebase database after installation.
++
++=cut
++
++sub install {
++    my($self, %attribs) = @_;
++    my $s = ExtUtils::MM_Unix::install($self, %attribs);
++    return '' unless $s;
++    return $s unless %{$self->{XS}};
++
++    my $INSTALLDIRS = $self->{INSTALLDIRS};
++    my $INSTALLLIB = $self->{"INSTALL". ($INSTALLDIRS eq 'perl' ? 'ARCHLIB' : uc($INSTALLDIRS)."ARCH")};
++    my $dop = "\$\(DESTDIR\)$INSTALLLIB/auto/";
++    my $dll = "$dop/$self->{FULLEXT}/$self->{BASEEXT}.$self->{DLEXT}";
++    $s =~ s|^(pure_install :: pure_\$\(INSTALLDIRS\)_install\n\t)\$\(NOECHO\) \$\(NOOP\)\n|$1\$(CHMOD) \$(PERM_RWX) $dll\n\t/bin/find $dop -xdev -name \\*.$self->{DLEXT} \| /bin/rebase -sOT -\n|m if (( $Config{myarchname} eq 'i686-cygwin' or $Config{myarchname} eq 'i686-msys') and not ( exists $ENV{CYGPORT_PACKAGE_VERSION} ));
+     $s;
+ }
+--- perl-5.22.0/t/porting/customized.dat
++++ perl-5.22.0/t/porting/customized.dat
+@@ -15,7 +15,7 @@
+ ExtUtils::MakeMaker cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_AIX.pm c1b1babda8f43ae7a2caba1cb4f70f92af5a0e34
+ ExtUtils::MakeMaker cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Any.pm 6f90d94ad3e7aa0045a3b1a10a1bb18391f89f57
+ ExtUtils::MakeMaker cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_BeOS.pm cab2b3ce08b71a4ce89aa630f236eb08b852439d
+-ExtUtils::MakeMaker cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Cygwin.pm 61fced0faf518bf87c265fcb51ed330ba354623f
++ExtUtils::MakeMaker cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Cygwin.pm 6ddb43d9424dff8b019b8c5133a4830b4433f2f6
+ ExtUtils::MakeMaker cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_Darwin.pm ae0ef51a7b6dd0b05aa61c779df7167dda5f5119
+ ExtUtils::MakeMaker cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_DOS.pm 9bff0fc8801d93578a5ac35d39f06cdc0e2af1ef
+ ExtUtils::MakeMaker cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM_MacOS.pm 0544301f7121ff02fd3a11b73ca2fab22e1176d4
