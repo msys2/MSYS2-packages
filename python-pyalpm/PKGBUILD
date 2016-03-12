@@ -1,10 +1,10 @@
 # Maintainer: Ray Donnelly <mingw.android@gmail.com>
 
 pkgbase=pyalpm
-pkgname=("python3-${pkgbase}" "python2-${pkgbase}")
+pkgname=("python2-${pkgbase}" "python3-${pkgbase}")
 pkgver=0.8
-pkgrel=2
-pkgdesc="Libalpm bindings for Python 3"
+pkgrel=3
+pkgdesc="Libalpm bindings for Python"
 arch=('i686' 'x86_64')
 license=('GPL')
 url="http://projects.archlinux.org/users/remy/pyalpm.git/"
@@ -27,8 +27,8 @@ sha256sums=('b83b50a8a03b38954c84a280ea627e7c5a750cd6451530e0418c097ab0476e22'
             '489a3556bea9e22e809d7be31beb2dcaa74a3f776acd304d4a31cc1cfc2c547a'
             '37f510ad8b66317b68125e7b2c4d7fee8396a0e795c145c443bfb3770187bed4'
             '4b64a72f86cb6df75f37acf96de50148314ae1f44ae5ebd011b4631a7b5abcb8'
-            'cd8aea9eeb69d740d8b32514560371f163be02717ce0de9c1dc0509e69bd680b'
-            '1b2b981545127331de1e357a7681e8ed80630c9dc4204f1aff917fed8ecd62d5')
+            '0faf882eda91d360a346f24591cf51d94f5f8b9ed0f8c4291e8610bb5932db98'
+            '7588f18f1c8546957dc1acba1a08d1a0bf14f7a5c3a6efcb8cc8a4278928ce06')
 
 prepare() {
   cd "${srcdir}"/${pkgbase}-${pkgver}
@@ -37,6 +37,17 @@ prepare() {
   patch -p0 -i "${srcdir}"/0003-Python2-compat-pycman-from-__future__-import-print_f.patch
   patch -p0 -i "${srcdir}"/0004-Python2-compat-python3-python-coding-utf-8.patch
   patch -p0 -i "${srcdir}"/0005-Use-pkg-config-add-LIBALPM_STATIC-env.-var.patch
+  
+  # The git repo uses symlinks in the scripts folder to
+  # the actual source files in the pycman folder. Patch
+  # files created by git will therefore not contain any
+  # changes to the files in scripts so copy the patched
+  # ones across now.
+  pushd "${srcdir}"/${pkgbase}-${pkgver}
+    for _file in deptest query remove sync upgrade version; do
+      cp -f pycman/action_${_file}.py scripts/pycman-${_file}
+    done
+  popd
 }
 
 build() {
@@ -44,25 +55,31 @@ build() {
   rm -rf python{2,3}-build
   for builddir in python{2,3}-build; do
     cp -r ${pkgbase}-${pkgver} ${builddir}
-    pushd ${builddir}
+    pushd ${builddir} > /dev/null 2>&1
     LIBALPM_STATIC=1 \
       /usr/bin/${builddir%-build} setup.py build
-    popd
+    popd > /dev/null 2>&1
   done
 }
 
 package_python3-pyalpm() {
   depends=("python3")
-  conflicts=("python2-pyalpm")
 
   cd "$srcdir/python3-build"
-  /usr/bin/python3 setup.py install --prefix=/usr --root="$pkgdir" -O1
+  /usr/bin/python3 setup.py install --prefix=/usr --root="${pkgdir}" -O1
 }
 
 package_python2-pyalpm() {
   depends=("python2")
-  conflicts=("python3-pyalpm")
 
   cd "$srcdir/python2-build"
-  /usr/bin/python2 setup.py install --prefix=/usr --root="$pkgdir" -O1
+  /usr/bin/python2 setup.py install --prefix=/usr --root="${pkgdir}" -O1
+
+  # Avoid conflicts.
+  mv "${pkgdir}"/usr/bin/lsoptdepends "${pkgdir}"/usr/bin/lsoptdepends2
+  pushd "${pkgdir}"/usr/bin > /dev/null 2>&1
+    for _file in database deptest query remove sync upgrade version; do
+      mv pycman-${_file} pycman2-${_file}
+    done
+  popd > /dev/null 2>&1
 }
