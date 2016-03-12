@@ -1,0 +1,66 @@
+# Maintainer: Ray Donnelly <mingw.android@gmail.com>
+
+pkgbase=pyalpm
+pkgname=("python3-${pkgbase}" "python2-${pkgbase}")
+pkgver=0.8
+pkgrel=1
+pkgdesc="Pycman arch linux package manager python bindings"
+arch=('i686' 'x86_64')
+license=('GPL')
+url="https://nose.readthedocs.org/"
+depends=("libarchive-devel")
+makedepends=("python2-setuptools"
+             "python3-setuptools"
+             'gettext-devel'
+             'heimdal-devel'
+             'libarchive-devel'
+             'libcurl-devel'
+             'libgpgme-devel'
+             'pacman')
+source=("https://sources.archlinux.org/other/${pkgbase}/${pkgbase}-${pkgver}.tar.gz"
+        "0001-Python2-compat-Module-initialization.patch"
+        "0002-Python2-compat-Use-Py_BuildValue-s-file-name.patch"
+        "0003-Python2-compat-pycman-from-__future__-import-print_f.patch"
+        "0004-Python2-compat-python3-python-coding-utf-8.patch"
+        "0005-Use-pkg-config-add-LIBALPM_STATIC-env.-var.patch")
+sha256sums=('b83b50a8a03b38954c84a280ea627e7c5a750cd6451530e0418c097ab0476e22'
+            '489a3556bea9e22e809d7be31beb2dcaa74a3f776acd304d4a31cc1cfc2c547a'
+            '37f510ad8b66317b68125e7b2c4d7fee8396a0e795c145c443bfb3770187bed4'
+            '4b64a72f86cb6df75f37acf96de50148314ae1f44ae5ebd011b4631a7b5abcb8'
+            'cd8aea9eeb69d740d8b32514560371f163be02717ce0de9c1dc0509e69bd680b'
+            'ba2a5fa68bd90621efc8c69897abb623a8ec8347ddf00f75f92124876817f76b')
+
+prepare() {
+  cd "${srcdir}"/${pkgbase}-${pkgver}
+  patch -p0 -i "${srcdir}"/0001-Python2-compat-Module-initialization.patch
+  patch -p0 -i "${srcdir}"/0002-Python2-compat-Use-Py_BuildValue-s-file-name.patch
+  patch -p0 -i "${srcdir}"/0003-Python2-compat-pycman-from-__future__-import-print_f.patch
+  patch -p0 -i "${srcdir}"/0004-Python2-compat-python3-python-coding-utf-8.patch
+  patch -p0 -i "${srcdir}"/0005-Use-pkg-config-add-LIBALPM_STATIC-env.-var.patch
+}
+
+build() {
+  cd "$srcdir"
+  rm -rf python{2,3}-build
+  for builddir in python{2,3}-build; do
+    cp -r ${pkgbase}-${pkgver} ${builddir}
+    pushd ${builddir}
+    LIBALPM_STATIC=1 \
+      /usr/bin/${builddir%-build} setup.py build
+    popd
+  done
+}
+
+package_python3-pyalpm() {
+  depends=("python3-setuptools")
+
+  cd "$srcdir/python3-build"
+  /usr/bin/python3 setup.py install --prefix=/usr --root="$pkgdir" -O1
+}
+
+package_python2-pyalpm() {
+  depends=("python2-setuptools")
+
+  cd "$srcdir/python2-build"
+  /usr/bin/python2 setup.py install --prefix=/usr --root="$pkgdir" -O1
+}
