@@ -1,0 +1,117 @@
+From e1a6bd5a0f166c0677e0272bec0e7e3f26003fbd Mon Sep 17 00:00:00 2001
+From: Jonathan Yong <10walls@gmail.com>
+Date: Sat, 28 Jun 2014 09:31:06 +0800
+Subject: [PATCH 09/21] Cygwin uses sysv ABI on x86_64
+
+Conflicts:
+	libitm/configure.tgt
+---
+ gcc/builtin-attrs.def | 3 +++
+ gcc/gtm-builtins.def  | 2 +-
+ libitm/configure.tgt  | 2 +-
+ libitm/libitm.h       | 3 ++-
+ libitm/libitm_i.h     | 6 ++++--
+ 5 files changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/gcc/builtin-attrs.def b/gcc/builtin-attrs.def
+index 1338644..59bdc72 100644
+--- a/gcc/builtin-attrs.def
++++ b/gcc/builtin-attrs.def
+@@ -108,6 +108,7 @@ DEF_ATTR_IDENT (ATTR_TYPEGENERIC, "type generic")
+ DEF_ATTR_IDENT (ATTR_TM_REGPARM, "*tm regparm")
+ DEF_ATTR_IDENT (ATTR_TM_TMPURE, "transaction_pure")
+ DEF_ATTR_IDENT (ATTR_RETURNS_TWICE, "returns_twice")
++DEF_ATTR_IDENT (ATTR_SYSV_ABI, "sysv_abi")
+ 
+ DEF_ATTR_TREE_LIST (ATTR_NOVOPS_LIST, ATTR_NOVOPS, ATTR_NULL, ATTR_NULL)
+ 
+@@ -264,6 +265,8 @@ DEF_ATTR_TREE_LIST (ATTR_TM_CONST_NOTHROW_LIST,
+ 		    ATTR_TM_REGPARM, ATTR_NULL, ATTR_CONST_NOTHROW_LIST)
+ DEF_ATTR_TREE_LIST (ATTR_TM_NOTHROW_RT_LIST,
+ 		    ATTR_RETURNS_TWICE, ATTR_NULL, ATTR_TM_NOTHROW_LIST)
++DEF_ATTR_TREE_LIST (ATTR_TM_NOTHROW_RT_SYSV_LIST,
++		    ATTR_SYSV_ABI, ATTR_NULL, ATTR_TM_NOTHROW_RT_LIST)
+ 
+ /* Same attributes used for BUILT_IN_MALLOC except with TM_PURE thrown in.  */
+ DEF_ATTR_TREE_LIST (ATTR_TMPURE_MALLOC_NOTHROW_LIST,
+diff --git a/gcc/gtm-builtins.def b/gcc/gtm-builtins.def
+index e2bc081..08cf597 100644
+--- a/gcc/gtm-builtins.def
++++ b/gcc/gtm-builtins.def
+@@ -1,5 +1,5 @@
+ DEF_TM_BUILTIN (BUILT_IN_TM_START, "_ITM_beginTransaction",
+-		BT_FN_UINT32_UINT32_VAR, ATTR_TM_NOTHROW_RT_LIST)
++		BT_FN_UINT32_UINT32_VAR, ATTR_TM_NOTHROW_RT_SYSV_LIST)
+ 
+ DEF_TM_BUILTIN (BUILT_IN_TM_COMMIT, "_ITM_commitTransaction",
+ 		BT_FN_VOID, ATTR_TM_NOTHROW_LIST)
+diff --git a/libitm/configure.tgt b/libitm/configure.tgt
+index 99da73a..c879632 100644
+--- a/libitm/configure.tgt
++++ b/libitm/configure.tgt
+@@ -141,7 +141,7 @@ case "${target}" in
+   *-*-gnu* | *-*-k*bsd*-gnu \
+   | *-*-netbsd* | *-*-freebsd* | *-*-openbsd* \
+   | *-*-solaris2* | *-*-sysv4* | *-*-hpux11* \
+-  | *-*-darwin* | *-*-aix* | *-*-dragonfly*)
++  | *-*-darwin* | *-*-aix* | *-*-dragonfly* | *-*-cygwin*)
+ 	# POSIX system.  The OS is supported.
+ 	;;
+ 
+diff --git a/libitm/libitm.h b/libitm/libitm.h
+index 651896b..6f7a84b 100644
+--- a/libitm/libitm.h
++++ b/libitm/libitm.h
+@@ -45,6 +45,7 @@ extern "C" {
+ 
+ #define ITM_NORETURN	__attribute__((noreturn))
+ #define ITM_PURE __attribute__((transaction_pure))
++#define ITM_SYSV __attribute__((sysv_abi))
+ 
+ /* The following are externally visible definitions and functions, though
+    only very few of these should be called by user code.  */
+@@ -145,7 +146,7 @@ typedef uint64_t _ITM_transactionId_t;	/* Transaction identifier */
+ 
+ extern _ITM_transactionId_t _ITM_getTransactionId(void) ITM_REGPARM;
+ 
+-extern uint32_t _ITM_beginTransaction(uint32_t, ...) ITM_REGPARM;
++extern uint32_t _ITM_beginTransaction(uint32_t, ...) ITM_REGPARM ITM_SYSV;
+ 
+ extern void _ITM_abortTransaction(_ITM_abortReason) ITM_REGPARM ITM_NORETURN;
+ 
+diff --git a/libitm/libitm_i.h b/libitm/libitm_i.h
+index 0eda01b..87f793d 100644
+--- a/libitm/libitm_i.h
++++ b/libitm/libitm_i.h
+@@ -39,8 +39,10 @@
+ #include "local_type_traits"
+ #include "local_atomic"
+ 
++#ifndef __CYGWIN__
+ /* Don't require libgcc_s.so for exceptions.  */
+ extern void _Unwind_DeleteException (_Unwind_Exception*) __attribute__((weak));
++#endif
+ 
+ 
+ #include "common.h"
+@@ -289,7 +291,7 @@ struct gtm_thread
+   // Invoked from assembly language, thus the "asm" specifier on
+   // the name, avoiding complex name mangling.
+   static uint32_t begin_transaction(uint32_t, const gtm_jmpbuf *)
+-	__asm__(UPFX "GTM_begin_transaction") ITM_REGPARM;
++	__asm__(UPFX "GTM_begin_transaction") ITM_REGPARM ITM_SYSV;
+   // In eh_cpp.cc
+   void revert_cpp_exceptions (gtm_transaction_cp *cp = 0);
+ 
+@@ -322,7 +324,7 @@ namespace GTM HIDDEN {
+ extern uint64_t gtm_spin_count_var;
+ 
+ extern "C" uint32_t GTM_longjmp (uint32_t, const gtm_jmpbuf *, uint32_t)
+-	ITM_NORETURN ITM_REGPARM;
++	ITM_NORETURN ITM_REGPARM ITM_SYSV;
+ 
+ extern "C" void GTM_LB (const void *, size_t) ITM_REGPARM;
+ 
+-- 
+2.4.5
+
