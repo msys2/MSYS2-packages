@@ -1,0 +1,141 @@
+--- a/libitm/Makefile.am	2016-02-01 23:54:24.805099900 -0600
++++ b/libitm/Makefile.am	2016-02-02 00:06:11.466834500 -0600
+@@ -53,7 +53,6 @@
+ # Force link with C, not C++.  For now, while we're using C++ we don't
+ # want or need libstdc++.
+ libitm_la_DEPENDENCIES = $(libitm_version_dep)
+-libitm_la_LINK = $(LINK) $(libitm_la_LDFLAGS)
+ libitm_la_LDFLAGS = $(libitm_version_info) $(libitm_version_script)
+ 
+ libitm_la_SOURCES = \
+--- a/libitm/Makefile.in	2016-02-01 23:54:24.813600900 -0600
++++ b/libitm/Makefile.in	2016-02-02 00:07:01.109638300 -0600
+@@ -328,7 +328,6 @@
+ # Force link with C, not C++.  For now, while we're using C++ we don't
+ # want or need libstdc++.
+ libitm_la_DEPENDENCIES = $(libitm_version_dep)
+-libitm_la_LINK = $(LINK) $(libitm_la_LDFLAGS)
+ libitm_la_LDFLAGS = $(libitm_version_info) $(libitm_version_script)
+ libitm_la_SOURCES = aatree.cc alloc.cc alloc_c.cc alloc_cpp.cc \
+ 	barrier.cc beginend.cc clone.cc eh_cpp.cc local.cc query.cc \
+@@ -446,7 +445,7 @@
+ 	  rm -f "$${dir}/so_locations"; \
+ 	done
+ libitm.la: $(libitm_la_OBJECTS) $(libitm_la_DEPENDENCIES) 
+-	$(libitm_la_LINK) -rpath $(toolexeclibdir) $(libitm_la_OBJECTS) $(libitm_la_LIBADD) $(LIBS)
++	$(CXXLINK) $(libitm_la_LDFLAGS) -rpath $(toolexeclibdir) $(libitm_la_OBJECTS) $(libitm_la_LIBADD) $(LIBS)
+ 
+ mostlyclean-compile:
+ 	-rm -f *.$(OBJEXT)
+--- a/libitm/alloc_cpp.cc	2015-01-05 06:33:28.000000000 -0600
++++ b/libitm/alloc_cpp.cc	2016-02-01 23:52:40.097803700 -0600
+@@ -46,21 +46,27 @@
+ /* Everything from libstdc++ is weak, to avoid requiring that library
+    to be linked into plain C applications using libitm.so.  */
+ 
++#if defined(__CYGWIN__) && defined(PIC)
++#define WEAK
++#else
++#define WEAK  __attribute__((weak))
++#endif
++
+ extern "C" {
+ 
+-extern void *_ZnwX (size_t) __attribute__((weak));
+-extern void _ZdlPv (void *) __attribute__((weak));
+-extern void *_ZnaX (size_t) __attribute__((weak));
+-extern void _ZdaPv (void *) __attribute__((weak));
++extern void *_ZnwX (size_t) WEAK;
++extern void _ZdlPv (void *) WEAK;
++extern void *_ZnaX (size_t) WEAK;
++extern void _ZdaPv (void *) WEAK;
+ 
+ typedef const struct nothrow_t { } *c_nothrow_p;
+ 
+-extern void *_ZnwXRKSt9nothrow_t (size_t, c_nothrow_p) __attribute__((weak));
+-extern void _ZdlPvRKSt9nothrow_t (void *, c_nothrow_p) __attribute__((weak));
+-extern void *_ZnaXRKSt9nothrow_t (size_t, c_nothrow_p) __attribute__((weak));
+-extern void _ZdaPvRKSt9nothrow_t (void *, c_nothrow_p) __attribute__((weak));
++extern void *_ZnwXRKSt9nothrow_t (size_t, c_nothrow_p) WEAK;
++extern void _ZdlPvRKSt9nothrow_t (void *, c_nothrow_p) WEAK;
++extern void *_ZnaXRKSt9nothrow_t (size_t, c_nothrow_p) WEAK;
++extern void _ZdaPvRKSt9nothrow_t (void *, c_nothrow_p) WEAK;
+ 
+-#if !defined (HAVE_ELF_STYLE_WEAKREF) 
++#if !defined (HAVE_ELF_STYLE_WEAKREF) && !defined(PIC)
+ void *_ZnwX (size_t) { return NULL; }
+ void _ZdlPv (void *) { return; }
+ void *_ZnaX (size_t) { return NULL; }
+--- a/libitm/beginend.cc	2015-01-05 06:33:28.000000000 -0600
++++ b/libitm/beginend.cc	2016-02-01 23:52:40.106804900 -0600
+@@ -25,6 +25,24 @@
+ #include "libitm_i.h"
+ #include <pthread.h>
+ 
++#if defined(__CYGWIN__) && defined(PIC)
++#define WEAK
++#else
++#define WEAK  __attribute__((weak))
++#endif
++
++/* Everything from libgcc_s is weak, to avoid requiring that library
++   to be linked into plain C applications using libitm.so.  */
++
++extern "C" {
++
++extern void _Unwind_DeleteException (_Unwind_Exception*) WEAK;
++
++#if !defined (HAVE_ELF_STYLE_WEAKREF) && !defined(PIC)
++void _Unwind_DeleteException (_Unwind_Exception *) { return; }
++#endif /* HAVE_ELF_STYLE_WEAKREF */
++
++}
+ 
+ using namespace GTM;
+ 
+--- a/libitm/eh_cpp.cc	2015-01-05 06:33:28.000000000 -0600
++++ b/libitm/eh_cpp.cc	2016-02-01 23:52:40.110305300 -0600
+@@ -29,7 +29,11 @@
+ /* Everything from libstdc++ is weak, to avoid requiring that library
+    to be linked into plain C applications using libitm.so.  */
+ 
++#if defined(__CYGWIN__) && defined(PIC)
++#define WEAK
++#else
+ #define WEAK  __attribute__((weak))
++#endif
+ 
+ extern "C" {
+ 
+@@ -39,13 +43,12 @@
+ extern void __cxa_end_catch (void) WEAK;
+ extern void __cxa_tm_cleanup (void *, void *, unsigned int) WEAK;
+ 
+-#if !defined (HAVE_ELF_STYLE_WEAKREF) 
++#if !defined (HAVE_ELF_STYLE_WEAKREF) && !defined(PIC)
+ void *__cxa_allocate_exception (size_t) { return NULL; }
+ void __cxa_throw (void *, void *, void *) { return; }
+ void *__cxa_begin_catch (void *) { return NULL; }
+ void __cxa_end_catch (void) { return; }
+ void __cxa_tm_cleanup (void *, void *, unsigned int) { return; }
+-void _Unwind_DeleteException (_Unwind_Exception *) { return; }
+ #endif /* HAVE_ELF_STYLE_WEAKREF */
+ 
+ }
+--- a/libitm/method-serial.cc	2015-01-05 06:33:28.000000000 -0600
++++ b/libitm/method-serial.cc	2016-02-01 23:52:40.120306600 -0600
+@@ -24,12 +24,14 @@
+ 
+ #include "libitm_i.h"
+ 
++#if 0 // !defined(__CYGWIN__) || !defined(PIC)
+ // Avoid a dependency on libstdc++ for the pure virtuals in abi_dispatch.
+ extern "C" void HIDDEN
+ __cxa_pure_virtual ()
+ {
+   abort ();
+ }
++#endif
+ 
+ using namespace GTM;
+ 
