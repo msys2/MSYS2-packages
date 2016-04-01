@@ -1,5 +1,5 @@
---- src/glib-2.38.1/gmodule/gmodule-win32.c.orig	2013-08-08 14:00:40.000000000 +0400
-+++ src/glib-2.38.1/gmodule/gmodule-win32.c	2013-11-05 23:23:51.213200000 +0400
+--- origsrc/glib-2.38.2/gmodule/gmodule-win32.c	2014-03-11 21:19:04.000809400 -0500
++++ src/glib-2.38.2/gmodule/gmodule-win32.c	2014-03-11 21:18:51.717249600 -0500
 @@ -38,8 +38,23 @@
  #include <tlhelp32.h>
  
@@ -26,7 +26,7 @@
  
  static void
  set_error (const gchar *format,
-@@ -64,20 +79,28 @@
+@@ -64,20 +79,24 @@ set_error (const gchar *format,
    g_free (error);
  }
  
@@ -38,35 +38,34 @@
  		gboolean     bind_lazy,
  		gboolean     bind_local)
  {
-+#ifdef G_WITH_CYGWIN
+-  HINSTANCE handle;
+-  wchar_t *wfilename;
+ #ifdef G_WITH_CYGWIN
+-  gchar tmp[MAX_PATH];
 +  gpointer handle;
-+
+ 
+-  cygwin_conv_to_win32_path(file_name, tmp);
+-  file_name = tmp;
+-#endif
 +  handle = dlopen (file_name,
 +          (bind_local ? 0 : RTLD_GLOBAL) | (bind_lazy ? RTLD_LAZY : RTLD_NOW));
 +  if (!handle)
 +    g_module_set_error (fetch_dlerror (TRUE));
 +#else
-   HINSTANCE handle;
-   wchar_t *wfilename;
--#ifdef G_WITH_CYGWIN
-   gchar tmp[MAX_PATH];
- 
-   cygwin_conv_to_win32_path(file_name, tmp);
-   file_name = tmp;
--#endif
++  HINSTANCE handle;
++  wchar_t *wfilename;
    wfilename = g_utf8_to_utf16 (file_name, -1, NULL, NULL, NULL);
  
    handle = LoadLibraryW (wfilename);
-@@ -85,7 +108,7 @@
+@@ -85,6 +104,7 @@ _g_module_open (const gchar *file_name,
        
    if (!handle)
      set_error ("'%s': ", file_name);
--
 +#endif
+ 
    return handle;
  }
- 
-@@ -95,16 +118,41 @@
+@@ -95,16 +115,41 @@ static gpointer null_module_handle = &du
  static gpointer
  _g_module_self (void)
  {
@@ -108,7 +107,7 @@
  }
  
  static gpointer
-@@ -150,6 +198,13 @@
+@@ -150,6 +195,13 @@ _g_module_symbol (gpointer     handle,
  {
    gpointer p;
    
@@ -122,7 +121,7 @@
    if (handle == null_module_handle)
      {
        if ((p = GetProcAddress (GetModuleHandle (NULL), symbol_name)) == NULL)
-@@ -160,6 +215,7 @@
+@@ -160,6 +212,7 @@ _g_module_symbol (gpointer     handle,
  
    if (!p)
      set_error ("");
