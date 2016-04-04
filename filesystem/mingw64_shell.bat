@@ -16,15 +16,15 @@ rem set MSYS=error_start:%WD%../../mingw64/bin/qtcreator.exe^|-debug^|^<process-
 rem To export full current PATH from environment into MSYS2 uncomment next line
 rem set SET_FULL_PATH=1
 
-set MSYSCON=mintty.exe
 if "x%~1" == "x-consolez" shift& set MSYSCON=console.exe
 if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe
 
 if "x%MSYSCON%" == "xmintty.exe" goto startmintty
 if "x%MSYSCON%" == "xconsole.exe" goto startconsolez
 
-:startmintty
 if NOT EXIST %WD%mintty.exe goto startsh
+set MSYSCON=mintty.exe
+:startmintty
 start %WD%mintty -i /msys2.ico /usr/bin/bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
