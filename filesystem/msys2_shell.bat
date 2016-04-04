@@ -18,9 +18,14 @@ rem set SET_FULL_PATH=1
 
 if "x%~1" == "x-consolez" shift& set MSYSCON=console.exe
 if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe
+if "x%~1" == "x-conemu" shift& set MSYSCON=conemu.exe
+if "x%~1" == "x-conemu64" shift& set MSYSCON=conemu64.exe
 
+if not defined MSYSCON call :conemudetect
 if "x%MSYSCON%" == "xmintty.exe" goto startmintty
 if "x%MSYSCON%" == "xconsole.exe" goto startconsolez
+if "x%MSYSCON%" == "xconemu.exe" goto startconemu
+if "x%MSYSCON%" == "xconemu64.exe" goto startconemu
 
 if NOT EXIST %WD%mintty.exe goto startsh
 set MSYSCON=mintty.exe
@@ -33,8 +38,38 @@ cd %WD%..\lib\ConsoleZ
 start console -t "MSys2" -r %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
+:startconemu
+if not defined ComEmuCommand set "ComEmuCommand=%MSYSCON%"
+start "%MSYSTEM%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd %WD%bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+exit /b %ERRORLEVEL%
+
 :startsh
 start %WD%sh --login -i %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :EOF
+exit /b 0
+
+:conemudetect
+set ComEmuCommand=
+if defined ConEmuDir (
+  if exist "%ConEmuDir%\ConEmu64.exe" (
+    set "ComEmuCommand=%ConEmuDir%\ConEmu64.exe"
+    set MSYSCON=conemu64.exe
+  ) else if exist "%ConEmuDir%\ConEmu.exe" (
+    set "ComEmuCommand=%ConEmuDir%\ConEmu.exe"
+    set MSYSCON=conemu.exe
+  )
+)
+if not defined ComEmuCommand (
+  ConEmu64.exe /Exit 2>nul && (
+    set ComEmuCommand=ConEmu64.exe
+    set MSYSCON=conemu64.exe
+  ) || (
+    ConEmu.exe /Exit 2>nul && (
+      set ComEmuCommand=ConEmu64.exe
+      set MSYSCON=conemu64.exe
+    )
+  )
+)
+exit /b 0
