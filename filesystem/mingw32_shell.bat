@@ -17,24 +17,24 @@ rem To export full current PATH from environment into MSYS2 uncomment next line
 rem set SET_FULL_PATH=1
 
 set MSYSCON=mintty.exe
-if "x%1" == "x-consolez" set MSYSCON=console.exe
-if "x%1" == "x-mintty" set MSYSCON=mintty.exe
+if "x%~1" == "x-consolez" shift& set MSYSCON=console.exe
+if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe
 
 if "x%MSYSCON%" == "xmintty.exe" goto startmintty
 if "x%MSYSCON%" == "xconsole.exe" goto startconsolez
 
 :startmintty
 if NOT EXIST %WD%mintty.exe goto startsh
-start %WD%mintty -i /msys2.ico /usr/bin/bash --login %*
+start %WD%mintty -i /msys2.ico /usr/bin/bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :startconsolez
 cd %WD%..\lib\ConsoleZ
-start console -t "MinGW" -r "%*"
+start console -t "MinGW" -r %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :startsh
-start %WD%sh --login -i %*
+start %WD%sh --login -i %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :EOF
