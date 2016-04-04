@@ -1,9 +1,9 @@
 :
 @echo off
 
-if NOT "x%WD%" == "x" set WD=
+set "WD=%__CD__%
 
-if NOT EXIST %WD%msys-2.0.dll set WD=%~dp0usr\bin\
+if NOT EXIST "%WD%msys-2.0.dll" set "WD=%~dp0usr\bin\"
 
 set MSYSTEM=MINGW64
 
