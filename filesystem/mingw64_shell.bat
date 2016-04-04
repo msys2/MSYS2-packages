@@ -1,9 +1,9 @@
 :
 @echo off
 
-if NOT "x%WD%" == "x" set WD=
+set "WD=%__CD__%"
 
-if NOT EXIST %WD%msys-2.0.dll set WD=%~dp0usr\bin\
+if NOT EXIST "%WD%msys-2.0.dll" set "WD=%~dp0usr\bin\"
 
 set MSYSTEM=MINGW64
 
@@ -22,10 +22,10 @@ if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe
 if "x%MSYSCON%" == "xmintty.exe" goto startmintty
 if "x%MSYSCON%" == "xconsole.exe" goto startconsolez
 
-if NOT EXIST %WD%mintty.exe goto startsh
+if NOT EXIST "%WD%mintty.exe" goto startsh
 set MSYSCON=mintty.exe
 :startmintty
-start %WD%mintty -i /msys2.ico /usr/bin/bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+start "%MSYSTEM%" "%WD%mintty" -i /msys2.ico /usr/bin/bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :startconsolez
@@ -34,7 +34,7 @@ start console -t "MinGW" -r %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :startsh
-start %WD%sh --login -i %1 %2 %3 %4 %5 %6 %7 %8 %9
+start "%MSYSTEM%" "%WD%sh" --login -i %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :EOF
