@@ -26,15 +26,15 @@ if "x%MSYSCON%" == "xconsole.exe" goto startconsolez
 :startmintty
 if NOT EXIST %WD%mintty.exe goto startsh
 start %WD%mintty -i /msys2.ico /usr/bin/bash --login %*
-exit
+exit /b %ERRORLEVEL%
 
 :startconsolez
 cd %WD%..\lib\ConsoleZ
 start console -t "MSys2" -r "%*"
-exit
+exit /b %ERRORLEVEL%
 
 :startsh
 start %WD%sh --login -i %*
-exit
+exit /b %ERRORLEVEL%
 
 :EOF
