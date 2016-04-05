@@ -1,9 +1,9 @@
 :
 @echo off
 
-if NOT "x%WD%" == "x" set WD=
+set "WD=%__CD__%
 
-if NOT EXIST %WD%msys-2.0.dll set WD=%~dp0usr\bin\
+if NOT EXIST "%WD%msys-2.0.dll" set "WD=%~dp0usr\bin\"
 
 set MSYSTEM=MINGW64
 
@@ -16,15 +16,20 @@ rem set MSYS=error_start:%WD%../../mingw64/bin/qtcreator.exe^|-debug^|^<process-
 rem To export full current PATH from environment into MSYS2 uncomment next line
 rem set SET_FULL_PATH=1
 
-set MSYSCON=mintty.exe
 if "x%~1" == "x-consolez" shift& set MSYSCON=console.exe
 if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe
+if "x%~1" == "x-conemu" shift& set MSYSCON=conemu.exe
+if "x%~1" == "x-conemu64" shift& set MSYSCON=conemu64.exe
 
+if not defined MSYSCON call :conemudetect
 if "x%MSYSCON%" == "xmintty.exe" goto startmintty
 if "x%MSYSCON%" == "xconsole.exe" goto startconsolez
+if "x%MSYSCON%" == "xconemu.exe" goto startconemu
+if "x%MSYSCON%" == "xconemu64.exe" goto startconemu
 
-:startmintty
 if NOT EXIST %WD%mintty.exe goto startsh
+set MSYSCON=mintty.exe
+:startmintty
 start %WD%mintty -i /msys2.ico /usr/bin/bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
@@ -33,8 +38,38 @@ cd %WD%..\lib\ConsoleZ
 start console -t "MinGW" -r %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
+:startconemu
+if not defined ComEmuCommand set "ComEmuCommand=%MSYSCON%"
+start "%MSYSTEM%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd %WD%bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+exit /b %ERRORLEVEL%
+
 :startsh
 start %WD%sh --login -i %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :EOF
+exit /b 0
+
+:conemudetect
+set ComEmuCommand=
+if defined ConEmuDir (
+  if exist "%ConEmuDir%\ConEmu64.exe" (
+    set "ComEmuCommand=%ConEmuDir%\ConEmu64.exe"
+    set MSYSCON=conemu64.exe
+  ) else if exist "%ConEmuDir%\ConEmu.exe" (
+    set "ComEmuCommand=%ConEmuDir%\ConEmu.exe"
+    set MSYSCON=conemu.exe
+  )
+)
+if not defined ComEmuCommand (
+  ConEmu64.exe /Exit 2>nul && (
+    set ComEmuCommand=ConEmu64.exe
+    set MSYSCON=conemu64.exe
+  ) || (
+    ConEmu.exe /Exit 2>nul && (
+      set ComEmuCommand=ConEmu64.exe
+      set MSYSCON=conemu64.exe
+    )
+  )
+)
+exit /b 0
