@@ -9,7 +9,8 @@ rem set MSYS=winsymlinks:nativestrict
 rem Set debugging program for errors
 rem set MSYS=error_start:%WD%../../mingw64/bin/qtcreator.exe^|-debug^|^<process-id^>
 
-rem To export full current PATH from environment into MSYS2 uncomment next line
+rem To export full current PATH from environment into MSYS2 use '-use-full-path' parameter
+rem or uncomment next line
 rem set SET_FULL_PATH=1
 
 :checkparams
@@ -25,6 +26,8 @@ rem Console types
 if "x%~1" == "x-consolez" shift& set MSYSCON=console.exe& goto :checkparams
 if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe& goto :checkparams
 if "x%~1" == "x-defterm" shift& set MSYSCON=defterm& goto :checkparams
+rem Other parameters
+if "x%~1" == "x-use-full-path" shift& set SET_FULL_PATH=1& goto :checkparams
 
 
 rem Autodetect shell type if not specified
