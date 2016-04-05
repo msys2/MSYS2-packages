@@ -1,0 +1,39 @@
+--- origsrc/serf-1.3.2//SConstruct
++++ src/serf-1.3.2//SConstruct
+@@ -367,8 +367,11 @@ if gssapi and CALLOUT_OKAY:
+         return env.MergeFlags(cmd, unique)
+     env.ParseConfig('$GSSAPI --libs gssapi', parse_libs)
+     env.Append(CPPDEFINES='SERF_HAVE_GSSAPI')
+-if sys.platform == 'win32':
++if sys.platform == 'win32' or sys.platform == 'msys':
+   env.Append(CPPDEFINES=['SERF_HAVE_SSPI'])
++  if sys.platform == 'msys':
++    env['SECUR32_LIBS'] = '-lsecur32'
++    env.Append(LIBS='secur32')
+
+ # On some systems, the -R values that APR describes never make it into actual
+ # RPATH flags. We'll manually map all directories in LIBPATH into new
+@@ -385,8 +388,9 @@ pkgconfig = env.Textfile('serf-%d.pc' % (MAJOR,),
+                            '@LIBDIR@': '$LIBDIR',
+                            '@INCLUDE_SUBDIR@': 'serf-%d' % (MAJOR,),
+                            '@VERSION@': '%d.%d.%d' % (MAJOR, MINOR, PATCH),
+-                           '@LIBS@': '%s %s %s -lz' % (apu_libs, apr_libs,
+-                                                       env.get('GSSAPI_LIBS', '')),
++                           '@LIBS@': '%s %s %s %s -lz' % (apu_libs, apr_libs,
++                                                       env.get('GSSAPI_LIBS', ''),
++                              env.get('SECUR32_LIBS', '')),
+                            })
+
+ env.Default(lib_static, lib_shared, pkgconfig)
+
+--- origsrc/serf-1.3.2/auth/auth_spnego_sspi.c
++++ src/serf-1.3.2/auth/auth_spnego_sspi.c
+@@ -22,6 +22,8 @@
+ #include <apr_strings.h>
+
+ #define SECURITY_WIN32
++#include <windows.h>
++#include <netdb.h>
+ #include <sspi.h>
+
+ /* SEC_E_MUTUAL_AUTH_FAILED is not defined in Windows Platform SDK 5.0. */

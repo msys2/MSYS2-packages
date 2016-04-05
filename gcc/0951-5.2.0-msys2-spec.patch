@@ -1,0 +1,445 @@
+diff -Naur gcc-5.3.0-orig/gcc/config/i386/msys.h gcc-5.3.0/gcc/config/i386/msys.h
+--- gcc-5.3.0-orig/gcc/config/i386/msys.h	1970-01-01 03:00:00.000000000 +0300
++++ gcc-5.3.0/gcc/config/i386/msys.h	2016-03-28 10:26:33.050945600 +0300
+@@ -0,0 +1,175 @@
++/* Operating system specific defines to be used when targeting GCC for
++   hosting on Windows32, using a Unix style C library and tools.
++   Copyright (C) 1995-2015 Free Software Foundation, Inc.
++
++This file is part of GCC.
++
++GCC is free software; you can redistribute it and/or modify
++it under the terms of the GNU General Public License as published by
++the Free Software Foundation; either version 3, or (at your option)
++any later version.
++
++GCC is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++GNU General Public License for more details.
++
++You should have received a copy of the GNU General Public License
++along with GCC; see the file COPYING3.  If not see
++<http://www.gnu.org/licenses/>.  */
++
++#define EXTRA_OS_CPP_BUILTINS()					\
++  do								\
++    {								\
++      builtin_define ("__CYGWIN__");			\
++      builtin_define ("__MSYS__");				\
++      if (!TARGET_64BIT)					\
++	builtin_define ("__CYGWIN32__");			\
++      builtin_define ("__unix__");				\
++      builtin_define ("__unix");				\
++    }								\
++  while (0)
++
++#undef CPP_SPEC
++#define CPP_SPEC "%(cpp_cpu) %{posix:-D_POSIX_SOURCE} \
++  %{!ansi:-Dunix} \
++  %{pthread:-D_REENTRANT} \
++  %{mwin32:-DWIN32 -D_WIN32 -D__WIN32 -D__WIN32__ %{!ansi:-DWINNT}} \
++  %{!nostdinc:%{!mno-win32:-idirafter ../include/w32api%s -idirafter ../../include/w32api%s}}\
++"
++
++#undef STARTFILE_SPEC
++#define STARTFILE_SPEC "\
++  %{!shared: %{!mdll: crt0%O%s \
++  %{pg:gcrt0%O%s}}}\
++  %{shared:crtbeginS.o%s;:crtbegin.o%s} \
++  %{fvtable-verify=none:%s; \
++    fvtable-verify=preinit:vtv_start.o%s; \
++    fvtable-verify=std:vtv_start.o%s}"
++
++#undef ENDFILE_SPEC
++#define ENDFILE_SPEC \
++  "%{Ofast|ffast-math|funsafe-math-optimizations:crtfastmath.o%s}\
++   %{!shared:%:if-exists(default-manifest.o%s)}\
++   %{fvtable-verify=none:%s; \
++    fvtable-verify=preinit:vtv_end.o%s; \
++    fvtable-verify=std:vtv_end.o%s} \
++   crtend.o%s"
++
++#undef STANDARD_STARTFILE_PREFIX
++#define STANDARD_STARTFILE_PREFIX "/usr/lib/"
++#undef STANDARD_STARTFILE_PREFIX_1
++#define STANDARD_STARTFILE_PREFIX_1 "/lib/"
++#undef STANDARD_STARTFILE_PREFIX_2
++#define STANDARD_STARTFILE_PREFIX_2 "/usr/lib/w32api/"
++
++/* Normally, -lgcc is not needed since everything in it is in the DLL, but we
++   want to allow things to be added to it when installing new versions of
++   GCC without making a new msys-2.0.dll, so we leave it.  Profiling is handled
++   by calling the init function from main.  */
++
++#ifdef ENABLE_SHARED_LIBGCC
++#define SHARED_LIBGCC_SPEC " \
++ %{static|static-libgcc:-lgcc -lgcc_eh} \
++ %{!static: \
++   %{!static-libgcc: \
++     -lgcc_s -lgcc \
++    } \
++  } "
++#else
++#define SHARED_LIBGCC_SPEC " -lgcc "
++#endif
++
++#undef REAL_LIBGCC_SPEC
++#define REAL_LIBGCC_SPEC SHARED_LIBGCC_SPEC
++
++/* We have to dynamic link to get to the system DLLs.  All of libc, libm and
++   the Unix stuff is in msys-2.0.dll.  The import library is called
++   'libmsys-2.0.a'.  For Windows applications, include more libraries, but
++   always include kernel32.  We'd like to specific subsystem windows to
++   ld, but that doesn't work just yet.  */
++
++#undef LIB_SPEC
++#define LIB_SPEC "\
++  %{pg:-lgmon} \
++  %{pthread: } \
++  -lmsys-2.0 \
++  %{mwindows:-lgdi32 -lcomdlg32} \
++  %{fvtable-verify=preinit:-lvtv -lpsapi; \
++    fvtable-verify=std:-lvtv -lpsapi} \
++  -ladvapi32 -lshell32 -luser32 -lkernel32"
++
++/* To implement C++ function replacement we always wrap the cxx
++   malloc-like operators.  See N2800 #17.6.4.6 [replacement.functions] */
++#undef CXX_WRAP_SPEC_LIST
++#define CXX_WRAP_SPEC_LIST " \
++  --wrap _Znwj \
++  --wrap _Znaj \
++  --wrap _ZdlPv \
++  --wrap _ZdaPv \
++  --wrap _ZnwjRKSt9nothrow_t \
++  --wrap _ZnajRKSt9nothrow_t \
++  --wrap _ZdlPvRKSt9nothrow_t \
++  --wrap _ZdaPvRKSt9nothrow_t \
++"
++/* The GNU C++ standard library requires that these macros be defined.  */
++#undef CPLUSPLUS_CPP_SPEC
++#define CPLUSPLUS_CPP_SPEC "-D_GNU_SOURCE %(cpp)"
++
++#if defined (USE_CYGWIN_LIBSTDCXX_WRAPPERS)
++
++#if USE_CYGWIN_LIBSTDCXX_WRAPPERS
++/* Default on, only explict -mno disables.  */
++#define CXX_WRAP_SPEC_OPT "!mno-use-libstdc-wrappers"
++#else
++/* Default off, only explict -m enables.  */
++#define CXX_WRAP_SPEC_OPT "muse-libstdc-wrappers"
++#endif
++
++#define CXX_WRAP_SPEC "%{" CXX_WRAP_SPEC_OPT ":" CXX_WRAP_SPEC_LIST "}"
++
++#else /* !defined (USE_CYGWIN_LIBSTDCXX_WRAPPERS)  */
++
++#define CXX_WRAP_SPEC ""
++
++#endif /* ?defined (USE_CYGWIN_LIBSTDCXX_WRAPPERS) */
++
++#define LINK_SPEC "\
++  %{mwindows:--subsystem windows} \
++  %{mconsole:--subsystem console} \
++  " CXX_WRAP_SPEC " \
++  %{shared: %{mdll: %eshared and mdll are not compatible}} \
++  %{shared: --shared} %{mdll:--dll} \
++  %{static:-Bstatic} %{!static:-Bdynamic} \
++  %{shared|mdll: --enable-auto-image-base -e __msys_dll_entry@12} \
++  --dll-search-prefix=msys- \
++  %{rdynamic: --export-all-symbols} \
++  %{!shared: %{!mdll: --large-address-aware --tsaware}}"
++
++/* Binutils does not handle weak symbols from dlls correctly.  For now,
++   do not use them unnecessarily in gthr-posix.h.  */
++#define GTHREAD_USE_WEAK 0
++
++/* Every program on MSYS links against msys-2.0.dll which contains 
++   the pthread routines.  There is no need to explicitly link them
++   and the -pthread flag is not recognized.  */
++#undef GOMP_SELF_SPECS
++#define GOMP_SELF_SPECS ""
++#undef GTM_SELF_SPECS
++#define GTM_SELF_SPECS ""
++
++/* This matches SHLIB_SONAME and SHLIB_SOVERSION in t-msys. */
++#if DWARF2_UNWIND_INFO
++#define LIBGCC_EH_EXTN ""
++#else
++#define LIBGCC_EH_EXTN "-sjlj"
++#endif
++#define LIBGCC_SONAME "msys-gcc_s" LIBGCC_EH_EXTN "-1.dll"
++
++/* We should find a way to not have to update this manually.  */
++#define LIBGCJ_SONAME "msys-gcj" /*LIBGCC_EH_EXTN*/ "-16.dll"
++
++/* Make stack executable to avoid DEP problems with trampolines.  */
++#define HAVE_ENABLE_EXECUTE_STACK
++#undef  CHECK_EXECUTE_STACK_ENABLED
++#define CHECK_EXECUTE_STACK_ENABLED flag_setstackexecutable
+diff -Naur gcc-5.3.0-orig/gcc/config/i386/msys-w64.h gcc-5.3.0/gcc/config/i386/msys-w64.h
+--- gcc-5.3.0-orig/gcc/config/i386/msys-w64.h	1970-01-01 03:00:00.000000000 +0300
++++ gcc-5.3.0/gcc/config/i386/msys-w64.h	2016-03-28 10:26:33.066945600 +0300
+@@ -0,0 +1,84 @@
++/* Operating system specific defines to be used when targeting GCC for
++   hosting on Windows 32/64 via MSYS runtime, using GNU tools and
++   the Windows API Library.
++   Copyright (C) 2013-2015 Free Software Foundation, Inc.
++
++This file is part of GCC.
++
++GCC is free software; you can redistribute it and/or modify
++it under the terms of the GNU General Public License as published by
++the Free Software Foundation; either version 3, or (at your option)
++any later version.
++
++GCC is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++GNU General Public License for more details.
++
++You should have received a copy of the GNU General Public License
++along with GCC; see the file COPYING3.  If not see
++<http://www.gnu.org/licenses/>.  */
++
++/* Enable multilib.  */
++
++#undef ASM_SPEC
++#define ASM_SPEC "%{m32:--32} %{m64:--64}"
++
++/* To implement C++ function replacement we always wrap the cxx
++   malloc-like operators.  See N2800 #17.6.4.6 [replacement.functions] */
++#undef CXX_WRAP_SPEC_LIST
++#define CXX_WRAP_SPEC_LIST " \
++  --wrap _Znwm \
++  --wrap _Znam \
++  --wrap _ZdlPv \
++  --wrap _ZdaPv \
++  --wrap _ZnwmRKSt9nothrow_t \
++  --wrap _ZnamRKSt9nothrow_t \
++  --wrap _ZdlPvRKSt9nothrow_t \
++  --wrap _ZdaPvRKSt9nothrow_t \
++"
++
++#undef SPEC_32
++#undef SPEC_64
++#define SPEC_32 "m32"
++#define SPEC_64 "!m32"
++
++#undef SUB_LINK_ENTRY32
++#undef SUB_LINK_ENTRY64
++#define SUB_LINK_ENTRY32 "-e __msys_dll_entry@12"
++#define SUB_LINK_ENTRY64 "-e _msys_dll_entry"
++
++#undef SUB_LINK_SPEC
++#undef SUB_LINK_ENTRY
++#define SUB_LINK_SPEC "%{" SPEC_64 ":-m i386pep} %{" SPEC_32 ":-m i386pe}"
++#define SUB_LINK_ENTRY "%{" SPEC_64 ":" SUB_LINK_ENTRY64 "} %{" SPEC_32 ":" SUB_LINK_ENTRY32 "}"
++
++#undef MULTILIB_DEFAULTS
++#define MULTILIB_DEFAULTS { "m64" }
++
++#undef LINK_SPEC
++#define LINK_SPEC SUB_LINK_SPEC "\
++  %{mwindows:--subsystem windows} \
++  %{mconsole:--subsystem console} \
++  " CXX_WRAP_SPEC " \
++  %{shared: %{mdll: %eshared and mdll are not compatible}} \
++  %{shared: --shared} %{mdll:--dll} \
++  %{static:-Bstatic} %{!static:-Bdynamic} \
++  %{shared|mdll: " SUB_LINK_ENTRY " --enable-auto-image-base} \
++  %(shared_libgcc_undefs) \
++  --dll-search-prefix=msys- \
++  %{rdynamic: --export-all-symbols} \
++  %{!shared: %{!mdll: %{" SPEC_32 ":--large-address-aware} --tsaware}}"
++
++/* MSYS64 will have a 64-bit long type. */
++#undef LONG_TYPE_SIZE
++#define LONG_TYPE_SIZE (TARGET_64BIT ? 64 : 32)
++
++/* Override default "long long unsigned int" from cygming.h. */
++#undef SIZE_TYPE
++#define SIZE_TYPE (TARGET_64BIT ? "long unsigned int" : "unsigned int")
++#undef PTRDIFF_TYPE
++#define PTRDIFF_TYPE (TARGET_64BIT ? "long int" : "int")
++
++#undef LIBGCC_SONAME
++#define LIBGCC_SONAME "msys-gcc_s-seh-1.dll"
+diff -Naur gcc-5.3.0-orig/gcc/config/i386/t-msys-w64 gcc-5.3.0/gcc/config/i386/t-msys-w64
+--- gcc-5.3.0-orig/gcc/config/i386/t-msys-w64	1970-01-01 03:00:00.000000000 +0300
++++ gcc-5.3.0/gcc/config/i386/t-msys-w64	2016-03-28 10:26:33.104945600 +0300
+@@ -0,0 +1,3 @@
++MULTILIB_OPTIONS = m64/m32
++MULTILIB_DIRNAMES = 64
++MULTILIB_OSDIRNAMES = ../lib ../lib32
+diff -Naur gcc-5.3.0-orig/gcc/config.build gcc-5.3.0/gcc/config.build
+--- gcc-5.3.0-orig/gcc/config.build	2015-01-05 15:33:28.000000000 +0300
++++ gcc-5.3.0/gcc/config.build	2016-03-28 10:26:33.117945600 +0300
+@@ -64,6 +64,10 @@
+     build_xm_file=i386/xm-cygwin.h
+     build_exeext=.exe
+     ;;
++  i[34567]86-*-msys* | x86_64-*-msys* )
++    build_xm_file=i386/xm-cygwin.h
++    build_exeext=.exe
++    ;;
+   i[34567]86-*-mingw32* | x86_64-*-mingw*)
+     build_xm_file=i386/xm-mingw32.h
+     build_exeext=.exe
+diff -Naur gcc-5.3.0-orig/gcc/config.gcc gcc-5.3.0/gcc/config.gcc
+--- gcc-5.3.0-orig/gcc/config.gcc	2016-03-28 10:22:09.874786400 +0300
++++ gcc-5.3.0/gcc/config.gcc	2016-03-28 10:26:33.163945600 +0300
+@@ -1645,6 +1645,37 @@
+ 	use_gcc_stdint=wrap
+ 	tm_defines="${tm_defines} TARGET_CYGWIN64=1"
+ 	;;
++i[34567]86-*-msys*)
++	tm_file="${tm_file} i386/unix.h i386/bsd.h i386/gas.h dbxcoff.h i386/cygming.h i386/msys.h i386/cygwin-stdint.h"
++	xm_file=i386/xm-cygwin.h
++	tmake_file="${tmake_file} i386/t-cygming t-slibgcc"
++	target_gtfiles="\$(srcdir)/config/i386/winnt.c"
++	extra_options="${extra_options} i386/cygming.opt i386/cygwin.opt"
++	extra_objs="winnt.o winnt-stubs.o"
++	c_target_objs="${c_target_objs} msformat-c.o"
++	cxx_target_objs="${cxx_target_objs} winnt-cxx.o msformat-c.o"
++	if test x$enable_threads = xyes; then
++		thread_file='posix'
++	fi
++	use_gcc_stdint=wrap
++	default_use_cxa_atexit=yes
++	;;
++x86_64-*-msys*)
++	need_64bit_isa=yes
++	tm_file="${tm_file} i386/unix.h i386/bsd.h i386/gas.h dbxcoff.h i386/cygming.h i386/msys.h i386/msys-w64.h i386/cygwin-stdint.h"
++	xm_file=i386/xm-cygwin.h
++	tmake_file="${tmake_file} i386/t-cygming t-slibgcc i386/t-msys-w64"
++	target_gtfiles="\$(srcdir)/config/i386/winnt.c"
++	extra_options="${extra_options} i386/cygming.opt i386/cygwin.opt"
++	extra_objs="winnt.o winnt-stubs.o"
++	c_target_objs="${c_target_objs} msformat-c.o"
++	cxx_target_objs="${cxx_target_objs} winnt-cxx.o msformat-c.o"
++	if test x$enable_threads = xyes; then
++		thread_file='posix'
++	fi
++	use_gcc_stdint=wrap
++	default_use_cxa_atexit=yes
++	;;
+ i[34567]86-*-mingw* | x86_64-*-mingw*)
+ 	tm_file="${tm_file} i386/unix.h i386/bsd.h i386/gas.h dbxcoff.h i386/cygming.h"
+ 	xm_file=i386/xm-mingw32.h
+@@ -4250,6 +4281,8 @@
+ 		;;
+ 	i[34567]86-*-cygwin* | x86_64-*-cygwin*)
+ 		;;
++	i[34567]86-*-msys* | x86_64-*-msys*)
++		;;
+ 	i[34567]86-*-mingw* | x86_64-*-mingw*)
+ 		;;
+ 	i[34567]86-*-dragonfly* | x86_64-*-dragonfly*)
+diff -Naur gcc-5.3.0-orig/gcc/config.host gcc-5.3.0/gcc/config.host
+--- gcc-5.3.0-orig/gcc/config.host	2016-03-28 10:19:31.986048600 +0300
++++ gcc-5.3.0/gcc/config.host	2016-03-28 10:26:33.205945600 +0300
+@@ -221,6 +221,13 @@
+     host_exeext=.exe
+     host_lto_plugin_soname=cyglto_plugin.dll
+     ;;
++  i[34567]86-*-msys* | x86_64-*-msys*)
++    host_xm_file=i386/xm-cygwin.h
++    out_host_hook_obj=host-cygwin.o
++    host_xmake_file="${host_xmake_file} i386/x-cygwin"
++    host_exeext=.exe
++    host_lto_plugin_soname=msys-lto_plugin.dll
++    ;;
+   i[34567]86-*-mingw32*)
+     host_xm_file=i386/xm-mingw32.h
+     host_xmake_file="${host_xmake_file} i386/x-mingw32"
+diff -Naur gcc-5.3.0-orig/libgcc/config/i386/t-msys gcc-5.3.0/libgcc/config/i386/t-msys
+--- gcc-5.3.0-orig/libgcc/config/i386/t-msys	1970-01-01 03:00:00.000000000 +0300
++++ gcc-5.3.0/libgcc/config/i386/t-msys	2016-03-28 10:26:33.229945600 +0300
+@@ -0,0 +1,19 @@
++# If we are building next to winsup, this will let us find the real
++# limits.h when building libgcc2.  Otherwise, winsup must be installed
++# first.
++LIBGCC2_INCLUDES += -I$(srcdir)/../winsup/include \
++	-I$(srcdir)/../winsup/cygwin/include
++
++# MSYS-specific parts of LIB_SPEC
++SHLIB_LC = -lmsys-2.0 -ladvapi32 -lshell32 -luser32 -lkernel32
++
++# We have already included one of the t-{dw2,sjlj}-eh fragments for EH_MODEL
++SHLIB_EH_EXTENSION = $(subst -dw2,,-$(EH_MODEL))
++
++# MSYS uses different conventions than MinGW; override generic SHLIB_ def'ns here.
++SHLIB_IMPLIB = @shlib_base_name@$(SHLIB_EXT).a
++SHLIB_SONAME = msys-gcc_s$(SHLIB_EH_EXTENSION)-$(SHLIB_SOVERSION)$(SHLIB_EXT)
++# This must match the definitions of SHLIB_SONAME/SHLIB_SOVERSION and LIBGCC_SONAME.
++# We'd like to use SHLIB_SONAME here too, and we can, since
++# we don't rely on shlib_base_name substitution for it.
++SHLIB_MKMAP_OPTS = -v pe_dll=$(SHLIB_SONAME)
+diff -Naur gcc-5.3.0-orig/libgcc/config.host gcc-5.3.0/libgcc/config.host
+--- gcc-5.3.0-orig/libgcc/config.host	2016-03-28 10:16:04.888809100 +0300
++++ gcc-5.3.0/libgcc/config.host	2016-03-28 10:26:33.282945600 +0300
+@@ -319,6 +319,9 @@
+ i[34567]86-*-cygwin* | x86_64-*-cygwin*)
+   enable_execute_stack=config/i386/enable-execute-stack-mingw32.c
+   ;;
++i[34567]86-*-msys* | x86_64-*-msys*)
++  enable_execute_stack=config/i386/enable-execute-stack-mingw32.c
++  ;;
+ *)
+   enable_execute_stack=enable-execute-stack-empty.c;
+   ;;
+@@ -673,6 +676,45 @@
+ 	# FIXME - dj - t-chkstk used to be in here, need a 64-bit version of that
+ 	tmake_file="${tmake_file} ${tmake_eh_file} ${tmake_dlldir_file} i386/t-slibgcc-cygming i386/t-cygming i386/t-cygwin i386/t-crtfm t-dfprules i386/t-chkstk"
+ 	;;
++i[34567]86-*-msys*)
++	extra_parts="crtbegin.o crtbeginS.o crtend.o crtfastmath.o"
++	if test x$enable_vtable_verify = xyes; then
++		extra_parts="$extra_parts vtv_start.o vtv_end.o vtv_start_preinit.o vtv_end_preinit.o"
++	fi
++	# This has to match the logic for DWARF2_UNWIND_INFO in gcc/config/i386/cygming.h
++	if test x$enable_sjlj_exceptions = xyes; then
++		tmake_eh_file="i386/t-sjlj-eh"
++	else
++		tmake_eh_file="i386/t-dw2-eh"
++	fi
++	# Shared libgcc DLL install dir depends on cross/native build.
++	if test x${build} = x${host} ; then
++		tmake_dlldir_file="i386/t-dlldir"
++	else
++		tmake_dlldir_file="i386/t-dlldir-x"
++	fi
++	tmake_file="${tmake_file} ${tmake_eh_file} ${tmake_dlldir_file} i386/t-slibgcc-cygming i386/t-cygming i386/t-msys i386/t-crtfm i386/t-chkstk t-dfprules"
++	;;
++x86_64-*-msys*)
++	extra_parts="crtbegin.o crtbeginS.o crtend.o crtfastmath.o"
++	if test x$enable_vtable_verify = xyes; then
++		extra_parts="$extra_parts vtv_start.o vtv_end.o vtv_start_preinit.o vtv_end_preinit.o"
++	fi
++	# This has to match the logic for DWARF2_UNWIND_INFO in gcc/config/i386/cygming.h
++	if test x$enable_sjlj_exceptions = xyes; then
++		tmake_eh_file="i386/t-sjlj-eh"
++	else
++		tmake_eh_file="i386/t-seh-eh"
++	fi
++	# Shared libgcc DLL install dir depends on cross/native build.
++	if test x${build} = x${host} ; then
++		tmake_dlldir_file="i386/t-dlldir"
++	else
++		tmake_dlldir_file="i386/t-dlldir-x"
++	fi
++	# FIXME - dj - t-chkstk used to be in here, need a 64-bit version of that
++	tmake_file="${tmake_file} ${tmake_eh_file} ${tmake_dlldir_file} i386/t-slibgcc-cygming i386/t-cygming i386/t-msys i386/t-crtfm t-dfprules i386/t-chkstk"
++	;;
+ i[34567]86-*-mingw*)
+ 	extra_parts="crtbegin.o crtend.o crtfastmath.o"
+ 	if test x$enable_vtable_verify = xyes; then
+@@ -1330,6 +1372,7 @@
+   i[34567]86-*-gnu* | \
+   i[34567]86-*-solaris2* | x86_64-*-solaris2.1[0-9]* | \
+   i[34567]86-*-cygwin* | x86_64-*-cygwin* | \
++  i[34567]86-*-msys* | x86_64-*-msys* | \
+   i[34567]86-*-mingw* | x86_64-*-mingw* | \
+   i[34567]86-*-dragonfly* | x86_64-*-dragonfly* | \
+   i[34567]86-*-freebsd* | x86_64-*-freebsd* | \
