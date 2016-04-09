@@ -3,8 +3,10 @@
 # Contributor: Dan McGee <dan@archlinux.org>
 
 pkgname=irssi
-pkgver=0.8.17
-pkgrel=0
+replaces=(irssi-git)
+conflicts=(irssi-git)
+pkgver=0.8.19
+pkgrel=1
 pkgdesc="Modular text mode IRC client with Perl scripting"
 arch=('i686' 'x86_64')
 url="https://irssi.org/"
@@ -12,11 +14,12 @@ license=('GPL')
 depends=('glib2-devel' 'openssl' 'libcrypt-devel' 'pcre-devel')
 optdepends=('perl-libwww: for the scriptassist script')
 backup=('etc/irssi.conf')
-source=("https://github.com/irssi-import/${pkgname}/releases/download/${pkgver}/${pkgname}-${pkgver}.tar.bz2"
+source=("https://github.com/irssi/${pkgname}/releases/download/${pkgver}/${pkgname}-${pkgver}.tar.xz"{,.asc}
         "0000_msysize.patch")
 options=('!strip')
-sha256sums=('3c9600cad2edf58f1d012febc1a0ba844274df6e331c01a9e935467705166807'
-            '59dd34cbc6e2c0734bb8979910a0de5049d033684efa12a0f703bf278be24176')
+sha256sums=('4ca0040548e814ea93eb7d602ab7d6d379afcbbdf10e84160523ce69c73ee5d3'
+            'SKIP'
+            'ec2dc647191717c4abd9b86a51c085e9bb8ca13998726ef0be97f4d213577eb3')
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
@@ -27,16 +30,21 @@ build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
   ./configure \
+    --build=${CHOST} \
+    --sysconfdir=/etc \
+    --prefix=/usr \
     --disable-glibtest \
     --enable-ipv6 \
-    --sysconfdir=/etc \
     --with-perl-lib=vendor \
-    --build=${CHOST}
+    --with-perl-staticlib
+
   make
 }
 
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-
+  echo 'Applying patches to Perl MakeMaker library misname'
+  find . -name "Makefile" -type f | while read line; do sed -i 's/\([i|c|I]\)\.dll$/\1.a/' $line; done
+  
   make DESTDIR="${pkgdir}" install
 }
