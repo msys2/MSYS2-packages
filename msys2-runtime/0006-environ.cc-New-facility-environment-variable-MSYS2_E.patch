@@ -1,0 +1,163 @@
+From 8145073456ea966d932c63e3334fab481bc66a8c Mon Sep 17 00:00:00 2001
+From: Ray Donnelly <mingw.android@gmail.com>
+Date: Sun, 10 Apr 2016 21:47:41 +0100
+Subject: [PATCH 6/6] environ.cc: New facility/environment variable
+ MSYS2_ENV_CONV_EXCL
+
+Works very much like MSYS2_ARG_CONV_EXCL. In fact it uses the same
+function, arg_heuristic_with_exclusions (). Also refactors parsing
+the env. variables to use new function, string_split_delimited ().
+
+The env. that is searched through is the merged (POSIX + Windows)
+one. It remains to be seen if this should be made an option or not.
+
+This feature was prompted because the R language (Windows exe) calls
+bash to run configure.win, which then calls back into R to read its
+config variables (LOCAL_SOFT) and when this happens, msys2-runtime
+converts R_ARCH from "/x64" to an absolute Windows path and appends
+it to another absolute path, R_HOME, forming an invalid path.
+---
+ winsup/cygwin/environ.cc   | 22 ++++++++++++++++++----
+ winsup/cygwin/miscfuncs.cc | 21 +++++++++++++++++++++
+ winsup/cygwin/miscfuncs.h  |  2 ++
+ winsup/cygwin/path.cc      |  1 -
+ winsup/cygwin/spawn.cc     | 12 ++----------
+ 5 files changed, 43 insertions(+), 15 deletions(-)
+
+diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
+index 7b15810..46c7195 100644
+--- a/winsup/cygwin/environ.cc
++++ b/winsup/cygwin/environ.cc
+@@ -1134,6 +1134,10 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+ 
+   int tl = 0;
+   char **pass_dstp;
++#ifdef __MSYS__
++  char *msys2_env_conv_excl_env = NULL;
++  size_t msys2_env_conv_excl_count = 0;
++#endif
+   char **pass_env = (char **) alloca (sizeof (char *)
+ 				      * (n + winnum + SPENVS_SIZE + 1));
+   /* Iterate over input list, generating a new environment list and refreshing
+@@ -1142,9 +1146,18 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+     {
+       bool calc_tl = !no_envblock;
+ #ifdef __MSYS__
+-      /* Don't pass timezone environment to non-msys applications */
+-      if (!keep_posix && ascii_strncasematch(*srcp, "TZ=", 3))
+-        goto next1;
++      if (!keep_posix)
++      {
++	/* Don't pass timezone environment to non-msys applications */
++	if (ascii_strncasematch(*srcp, "TZ=", 3))
++	  goto next1;
++	else if (ascii_strncasematch(*srcp, "MSYS2_ENV_CONV_EXCL=", 20))
++	  {
++	    msys2_env_conv_excl_env = (char*)alloca (strlen(&(*srcp)[20])+1);
++	    strcpy (msys2_env_conv_excl_env, &(*srcp)[20]);
++	    msys2_env_conv_excl_count = string_split_delimited (msys2_env_conv_excl_env, ';');
++	  }
++      }
+ #endif
+       /* Look for entries that require special attention */
+       for (unsigned i = 0; i < SPENVS_SIZE; i++)
+@@ -1268,7 +1281,8 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+ 	    }
+ #ifdef __MSYS__
+ 	  else if (!keep_posix) {
+-	    char *win_arg = arg_heuristic(*srcp);
++	    char *win_arg = arg_heuristic_with_exclusions
++		   (*srcp, msys2_env_conv_excl_env, msys2_env_conv_excl_count);
+ 	    debug_printf("WIN32_PATH is %s", win_arg);
+ 	    p = cstrdup1(win_arg);
+ 	    if (win_arg != *srcp)
+diff --git a/winsup/cygwin/miscfuncs.cc b/winsup/cygwin/miscfuncs.cc
+index 54150f1..220d116 100644
+--- a/winsup/cygwin/miscfuncs.cc
++++ b/winsup/cygwin/miscfuncs.cc
+@@ -530,6 +530,27 @@ slashify (const char *src, char *dst, bool trailing_slash_p)
+   *dst++ = 0;
+ }
+ 
++/* Searches through string for delimiter replacing each instance with '\0'
++   and returning the number of such delimited substrings. This function
++   Will return 0 for the NULL string and at least 1 otherwise. */
++
++size_t
++string_split_delimited (char * string, char delimiter)
++{
++  if ( string == NULL )
++      return 0;
++  size_t count = 1;
++  string = strchr ( string, delimiter );
++  while (string)
++    {
++      *string = '\0';
++      ++count;
++      string = strchr ( string + 1, delimiter );
++    }
++  return count;
++}
++
++
+ /* Return an address from the import jmp table of main program.  */
+ void * __reg1
+ __import_address (void *imp)
+diff --git a/winsup/cygwin/miscfuncs.h b/winsup/cygwin/miscfuncs.h
+index 2690e44..79d3723 100644
+--- a/winsup/cygwin/miscfuncs.h
++++ b/winsup/cygwin/miscfuncs.h
+@@ -61,6 +61,8 @@ void backslashify (const char *, char *, bool);
+ void slashify (const char *, char *, bool);
+ #define isslash(c) ((c) == '/')
+ 
++size_t string_split_delimited (char * string, char delimiter);
++
+ extern void transform_chars (PWCHAR, PWCHAR);
+ extern inline void
+ transform_chars (PUNICODE_STRING upath, USHORT start_idx)
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 13681f0..6f6f74d 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -3463,7 +3463,6 @@ arg_heuristic_with_exclusions (char const * const arg, char const * exclusions,
+     return arg_result;
+   }
+ 
+-  debug_printf("Input value: (%s)", arg);
+   for (size_t excl = 0; excl < exclusions_count; ++excl)
+     {
+       /* Since we've got regex linked we should maybe switch to that, but
+diff --git a/winsup/cygwin/spawn.cc b/winsup/cygwin/spawn.cc
+index 09e8f3a..481b6d6 100644
+--- a/winsup/cygwin/spawn.cc
++++ b/winsup/cygwin/spawn.cc
+@@ -265,8 +265,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+   int res = -1;
+ 
+   /* Environment variable MSYS2_ARG_CONV_EXCL contains a list
+-     of ';' separated argument prefixes to pass un-modified..
+-     It isn't applied to env. variables; only spawn arguments.
++     of ';' separated argument prefixes to pass un-modified.
+      A value of * means don't convert any arguments. */
+   char* msys2_arg_conv_excl_env = getenv("MSYS2_ARG_CONV_EXCL");
+   char* msys2_arg_conv_excl = NULL;
+@@ -275,14 +274,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+     {
+       msys2_arg_conv_excl = (char*)alloca (strlen(msys2_arg_conv_excl_env)+1);
+       strcpy (msys2_arg_conv_excl, msys2_arg_conv_excl_env);
+-      msys2_arg_conv_excl_count = 1;
+-      msys2_arg_conv_excl_env = strchr ( msys2_arg_conv_excl, ';' );
+-      while (msys2_arg_conv_excl_env)
+-        {
+-          *msys2_arg_conv_excl_env = '\0';
+-          ++msys2_arg_conv_excl_count;
+-          msys2_arg_conv_excl_env = strchr ( msys2_arg_conv_excl_env + 1, ';' );
+-        }
++      msys2_arg_conv_excl_count = string_split_delimited (msys2_arg_conv_excl, ';');
+     }
+ 
+   /* Check if we have been called from exec{lv}p or spawn{lv}p and mask
+-- 
+2.8.1
+
