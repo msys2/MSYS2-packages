@@ -1,0 +1,54 @@
+diff -Naur  Win32-0.52/Makefile.PL Win32-0.52/Makefile.PL > Win32-0.52.patch
+--- Win32-0.52/Makefile.PL	Thu Apr 07 13:12:13 2016
++++ Win32-0.52/Makefile.PL	Wed Aug 19 02:44:07 2015
+@@ -3,7 +3,7 @@
+ use warnings;
+ use ExtUtils::MakeMaker;
+
+-unless ($^O eq "MSWin32" || $^O eq "cygwin") {
++unless ($^O eq "MSWin32" || $^O eq "cygwin" ||  $^O eq "msys" ) {
+     die "OS unsupported\n";
+ }
+
+@@ -14,5 +14,6 @@
+ );
+ $param{NO_META} = 1 if eval "$ExtUtils::MakeMaker::VERSION" >= 6.10_03;
+ $param{LIBS} = ['-L/lib/w32api -lole32 -lversion'] if $^O eq "cygwin";
++$param{LIBS} = ['-L/usr/lib/w32api -lole32 -lversion'] if $^O eq "msys";
+
+ WriteMakefile(%param);
+
+diff -Naur Win32-0.52/t/GetCurrentThreadId.t Win32-0.52/t/GetCurrentThreadId.t
+--- Win32-0.52/t/GetCurrentThreadId.t	Wed Aug 19 02:44:07 2015
++++ Win32-0.52/t/GetCurrentThreadId.t	Thu Apr 07 16:59:34 2016
+@@ -10,7 +10,7 @@
+ 
+ my $pid = $$+0; # make sure we don't copy any magic to $pid
+ 
+-if ($^O eq "cygwin") {
++if ($^O eq "cygwin" || $^O eq "msys") {
+     skip(!defined &Cygwin::pid_to_winpid,
+ 	 Cygwin::pid_to_winpid($pid),
+ 	 Win32::GetCurrentProcessId());
+
+diff -Naur  Win32-0.52/t/Unicode.t Win32-0.52/t/Unicode.t
+--- Win32-0.52/t/Unicode.t	Wed Aug 19 02:44:07 2015
++++ Win32-0.52/t/Unicode.t	Thu Apr 07 16:52:12 2016
+@@ -52,7 +52,7 @@
+     next if /^\./;
+     # On Cygwin 1.7 readdir() returns the utf8 representation of the
+     # filename but doesn't turn on the SvUTF8 bit
+-    Encode::_utf8_on($_) if $^O eq "cygwin" && $Config{osvers} !~ /^1.5/;
++    Encode::_utf8_on($_) if $^O eq "cygwin" || $^O eq "msys" && $Config{osvers} !~ /^1.5/;
+     ok($file, Win32::GetLongPathName("$dir\\$_"));
+ }
+ closedir($dh);
+@@ -79,7 +79,7 @@
+ 
+ # cwd() on Cygwin returns a mapped path that we need to translate
+ # back to a Windows path. Invoking `cygpath` on $subdir doesn't work.
+-if ($^O eq "cygwin") {
++if ($^O eq "cygwin" || $^O eq "msys") {
+     $subdir = Cygwin::posix_to_win_path($subdir, 1);
+ }
+ $subdir =~ s,/,\\,g;
