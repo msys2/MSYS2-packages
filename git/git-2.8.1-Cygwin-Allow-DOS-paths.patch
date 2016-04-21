@@ -1,0 +1,88 @@
+--- git-2.8.1/cache.h.orig	2016-04-03 18:14:12.000000000 +0100
++++ git-2.8.1/cache.h	2016-04-21 11:10:05.248614400 +0100
+@@ -989,6 +989,7 @@
+ int normalize_path_copy(char *dst, const char *src);
+ int longest_ancestor_length(const char *path, struct string_list *prefixes);
+ char *strip_path_suffix(const char *path, const char *suffix);
++char *maybe_xstrdup_cyg_conv_path(const char *path, int always_dupe);
+ int daemon_avoid_alias(const char *path);
+ extern int is_ntfs_dotgit(const char *name);
+ 
+--- git-2.8.1/path.c.orig	2016-04-21 10:47:09.080902100 +0100
++++ git-2.8.1/path.c	2016-04-21 11:09:35.644921100 +0100
+@@ -6,6 +6,10 @@
+ #include "string-list.h"
+ #include "dir.h"
+ 
++#if defined(__CYGWIN__)
++#include <sys/cygwin.h>
++#endif
++
+ static int get_st_mode_bits(const char *path, int *mode)
+ {
+ 	struct stat st;
+@@ -1101,6 +1105,29 @@
+ 	return xstrndup(path, chomp_trailing_dir_sep(path, path_len));
+ }
+ 
++/*
++ * Always duplicates `path` even if no conversion was performed.
++ */
++char *maybe_xstrdup_cyg_conv_path(const char *path, int always_dupe)
++{
++#if defined(__CYGWIN__)
++	int dos_prefix = has_dos_drive_prefix(path) ? 1 : 0;
++	int backslash = strchr(path, '\\') ? 1 : 0;
++	if (dos_prefix || backslash)
++	{
++		cygwin_conv_path_t form = dos_prefix ? CCP_ABSOLUTE : CCP_RELATIVE;
++		form |= CCP_WIN_A_TO_POSIX;
++		ssize_t cyg_len = cygwin_conv_path(form, path, NULL, 0);
++		char *cyg_path = (char *)alloca(cyg_len + 1);
++		if (cyg_path == NULL)
++		    die("Couldn't alloca space for cyg_path");
++		cygwin_conv_path(form, path, cyg_path, cyg_len);
++		return xstrndup(cyg_path, cyg_len);
++	}
++#endif
++	return always_dupe ? xstrdup(path) : (char*)path;
++}
++
+ int daemon_avoid_alias(const char *p)
+ {
+ 	int sl, ndot;
+--- git-2.8.1/strbuf.c.orig	2016-04-03 18:14:12.000000000 +0100
++++ git-2.8.1/strbuf.c	2016-04-21 11:16:24.612312700 +0100
+@@ -665,6 +665,10 @@
+ 
+ void strbuf_add_absolute_path(struct strbuf *sb, const char *path)
+ {
++#if defined(__CYGWIN__)
++	const char *in_path = path;
++	path = maybe_xstrdup_cyg_conv_path(path, 0);
++#endif
+ 	if (!*path)
+ 		die("The empty string is not a valid path");
+ 	if (!is_absolute_path(path)) {
+@@ -686,6 +690,10 @@
+ 		free(cwd);
+ 	}
+ 	strbuf_addstr(sb, path);
++#if defined(__CYGWIN__)
++	if (in_path != path)
++		free((void*)path);
++#endif
+ }
+ 
+ int printf_ln(const char *fmt, ...)
+--- git-2.8.1/builtin/clone.c.orig	2016-04-03 18:14:12.000000000 +0100
++++ git-2.8.1/builtin/clone.c	2016-04-21 11:09:52.730898400 +0100
+@@ -887,7 +887,7 @@
+ 		die(_("depth %s is not a positive number"), option_depth);
+ 
+ 	if (argc == 2)
+-		dir = xstrdup(argv[1]);
++		dir = maybe_xstrdup_cyg_conv_path(argv[1], 1);
+ 	else
+ 		dir = guess_dir_name(repo_name, is_bundle, option_bare);
+ 	strip_trailing_slashes(dir);
