@@ -3,7 +3,7 @@ MSYS2-packages
 
 Package scripts for MSYS2.
 
-To build these, run start_shell.cmd then from the bash prompt.
+To build these, run msys2_shell.cmd then from the bash prompt.
 
     cd ${package-name}
     makepkg
