@@ -7,7 +7,7 @@ if "%1"=="" (
   exit /b 1
 )
 
-if not exist %1\msys2_shell.bat (
+if not exist %1\start_shell.cmd (
   echo '%1' does not seem to be the root folder of an existing MSYS2 installation?!
   exit /b 2
 )
