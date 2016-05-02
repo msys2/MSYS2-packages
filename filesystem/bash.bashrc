@@ -15,8 +15,12 @@
 # If not running interactively, don't do anything
 [[ "$-" != *i* ]] && return
 
-# Set a default prompt of: user@host, MSYSTEM variable, and current_directory
-PS1='\[\e]0;\w\a\]\n\[\e[32m\]\u@\h \[\e[35m\]$MSYSTEM\[\e[0m\] \[\e[33m\]\w\[\e[0m\]\n\$ '
+# If MSYS2_PS1 is set, use that as default PS1, otherwise set a default prompt
+# of user@host, MSYSTEM variable, and current_directory
+if test -n "${MSYS2_PS1}"
+    then PS1="${MSYS2_PS1}"
+    else PS1='\[\e]0;\w\a\]\n\[\e[32m\]\u@\h \[\e[35m\]$MSYSTEM\[\e[0m\] \[\e[33m\]\w\[\e[0m\]\n\$ '
+fi
 
 # Uncomment to use the terminal colours set in DIR_COLORS
 # eval "$(dircolors -b /etc/DIR_COLORS)"
