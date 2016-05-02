@@ -1,16 +1,23 @@
 #!/bin/bash
 
-if [[ "${BASH_SOURCE}" = "${0}" || ! "${1}" =~ ^(mingw(32|64)|msys)$ ]]; then tee <<done
+if [[ -z "${1}" || "${1}" =~ ^(--help|-h)$ ]]; then tee <<done
 
-    MSYS2 Shell Switcher 2016.5.1
+    The MSYS2 Shell Manager 2016.5.1
     Copyright (C) 2016 Renato Silva
     Licensed under public domain
 
-    This script switches between shells without restarting MSYS2. This is done
-    by setting the MSYSTEM variable and sourcing /etc/profile, as well as
-    ~/.bashrc, for interactive shells.
+Usage: source $(basename "${0}") mingw32|mingw64|msys
 
-    Usage: source $(basename "${0}") mingw32|mingw64|msys
+    Switch between shells without restarting MSYS2. This is done by setting the
+    MSYSTEM variable and sourcing /etc/profile. For interactive shells,
+    ~/.bashrc is also sourced.
+
+Usage: $(basename "${0}") COMMAND [ARGUMENTS]...
+
+    Execute commands with better MSYS2 integration, currently:
+    - Convert Windows Explorer arguments to backslash paths.
+    - Use winpty for executing Windows command prompt and commands from /mingw32
+      and /mingw64, so they work better under MinTTY and similar terminals.
 
 done
     if [[ "${BASH_SOURCE}" = "${0}" ]]
@@ -19,9 +26,48 @@ done
     fi
 fi
 
-_current_directory="$(pwd)"
-export MSYSTEM="${1^^}"
-source /etc/profile
-[[ "${-}" = *i* ]] && source ~/.bashrc
-cd "${_current_directory}"
-unset _current_directory
+if [[ "${BASH_SOURCE}" != "${0}" && ! "${1}" =~ ^(mingw32|mingw64|msys)$ ]]; then
+    echo "Unrecognized shell type ${1}"
+    return 1
+fi
+
+if [[ "${BASH_SOURCE}" = "${0}" && "${1}" =~ ^(mingw32|mingw64|msys)$ ]]; then
+    echo "Cannot switch to ${1} shell without sourcing"
+    exit 1
+fi
+
+if [[ "${BASH_SOURCE}" = "${0}" && -z "$(type -t "${1}")" ]]; then
+    echo "Could not find command ${1}"
+    exit 1
+fi
+
+if [[ "${BASH_SOURCE}" != "${0}" ]]; then
+    _current_directory="$(pwd)"
+    export MSYSTEM="${1^^}"
+    source /etc/profile
+    [[ "${-}" = *i* ]] && source ~/.bashrc
+    cd "${_current_directory}"
+    unset _current_directory
+    return 0
+else
+    command="$(type -P "${1}")"
+    command="${command,,}"
+    command="${command%.exe}"
+    explorer="$(cygpath --windir)/explorer"
+    explorer="${explorer,,}"
+    cmd="$(cygpath --windir)/system32/cmd"
+    cmd="${cmd,,}"
+    case "${command}" in
+        "${explorer}") _arguments=()
+                       for _argument in "${@:2}"; do
+                           _arguments+=("$(cygpath --windows "${_argument}")")
+                       done
+                       "${1}" "${_arguments[@]}" ;;
+        "${cmd}")      winpty "${@}" || exit ;;
+        /usr/bin/cmd)  winpty "${@}" || exit ;;
+        /mingw32/*)    winpty "${@}" || exit ;;
+        /mingw64/*)    winpty "${@}" || exit ;;
+        *)             "${@}" || exit ;;
+    esac
+    exit 0
+fi
