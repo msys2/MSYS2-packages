@@ -17,12 +17,9 @@ rem set MSYS2_PATH_TYPE=inherit
 :checkparams
 rem Shell types
 if "x%~1" == "x-msys" shift& set MSYSTEM=MSYS& goto :checkparams
-if "x%~1" == "x-msys2" shift& set MSYSTEM=MSYS& goto :checkparams
 if "x%~1" == "x-mingw32" shift& set MSYSTEM=MINGW32& goto :checkparams
 if "x%~1" == "x-mingw64" shift& set MSYSTEM=MINGW64& goto :checkparams
-if "x%~1" == "x-mingw" shift& (
-  if exist "%WD%..\..\mingw64" (set MSYSTEM=MINGW64) else (set MSYSTEM=MINGW32)
-)& goto :checkparams
+if not defined MSYSTEM set MSYSTEM=MSYS
 rem Console types
 if "x%~1" == "x-consolez" shift& set MSYSCON=console.exe& goto :checkparams
 if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe& goto :checkparams
@@ -38,16 +35,6 @@ if "x%~1" == "x-where" shift& (
   rem If not, print error and exit
   echo Invalid directory specified for -where. Exiting. 1>&2
   exit /b 1
-)
-
-
-rem Autodetect shell type if not specified
-if not defined MSYSTEM (
-   if exist "%WD%..\..\mingw64" (
-     set MSYSTEM=MINGW64
-   ) else if exist "%WD%..\..\mingw32" (
-     set MSYSTEM=MINGW32
-   ) else (set MSYSTEM=MSYS)
 )
 
 rem Setup proper title
