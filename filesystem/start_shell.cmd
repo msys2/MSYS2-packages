@@ -11,7 +11,7 @@ rem set MSYS=error_start:%WD%../../mingw64/bin/qtcreator.exe^|-debug^|^<process-
 
 rem To export full current PATH from environment into MSYS2 use '-use-full-path' parameter
 rem or uncomment next line
-rem set SET_FULL_PATH=1
+rem set MSYS2_PATH_TYPE=inherit
 
 :checkparams
 rem Shell types
@@ -25,9 +25,10 @@ if "x%~1" == "x-mingw" shift& (
 rem Console types
 if "x%~1" == "x-consolez" shift& set MSYSCON=console.exe& goto :checkparams
 if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe& goto :checkparams
+if "x%~1" == "x-conemu" shift& set MSYSCON=conemu& goto :checkparams
 if "x%~1" == "x-defterm" shift& set MSYSCON=defterm& goto :checkparams
 rem Other parameters
-if "x%~1" == "x-use-full-path" shift& set SET_FULL_PATH=1& goto :checkparams
+if "x%~1" == "x-use-full-path" shift& set MSYS2_PATH_TYPE=inherit& goto :checkparams
 
 
 rem Autodetect shell type if not specified
@@ -50,6 +51,7 @@ if "%MSYSTEM%" == "MSYS" (
 
 if "x%MSYSCON%" == "xmintty.exe" goto startmintty
 if "x%MSYSCON%" == "xconsole.exe" goto startconsolez
+if "x%MSYSCON%" == "xconemu" goto startconemu
 if "x%MSYSCON%" == "xdefterm" goto startsh
 
 if NOT EXIST "%WD%mintty.exe" goto startsh
@@ -63,9 +65,60 @@ cd %WD%..\lib\ConsoleZ
 start console -t "%CONTITLE%" -r %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
+:startconemu
+call :conemudetect || (
+  echo ConEmu not found. Exiting. 1>&2
+  exit /b 1
+)
+start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd %WD%bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+exit /b %ERRORLEVEL%
+
 :startsh
 set MSYSCON=
 start "%CONTITLE%" "%WD%bash" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :EOF
+exit /b 0
+
+:conemudetect
+set ComEmuCommand=
+if defined ConEmuDir (
+  if exist "%ConEmuDir%\ConEmu64.exe" (
+    set "ComEmuCommand=%ConEmuDir%\ConEmu64.exe"
+    set MSYSCON=conemu64.exe
+  ) else if exist "%ConEmuDir%\ConEmu.exe" (
+    set "ComEmuCommand=%ConEmuDir%\ConEmu.exe"
+    set MSYSCON=conemu.exe
+  )
+)
+if not defined ComEmuCommand (
+  ConEmu64.exe /Exit 2>nul && (
+    set ComEmuCommand=ConEmu64.exe
+    set MSYSCON=conemu64.exe
+  ) || (
+    ConEmu.exe /Exit 2>nul && (
+      set ComEmuCommand=ConEmu.exe
+      set MSYSCON=conemu.exe
+    )
+  )
+)
+if not defined ComEmuCommand (
+  FOR /F "tokens=*" %%A IN ('reg.exe QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\ConEmu64.exe" /ve 2^>nul ^| find "REG_SZ"') DO (
+    set "ComEmuCommand=%%A"
+  )
+  if defined ComEmuCommand (
+    call set "ComEmuCommand=%%ComEmuCommand:*REG_SZ    =%%"
+    set MSYSCON=conemu64.exe
+  ) else (
+    FOR /F "tokens=*" %%A IN ('reg.exe QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\ConEmu.exe" /ve 2^>nul ^| find "REG_SZ"') DO (
+      set "ComEmuCommand=%%A"
+    )
+    if defined ComEmuCommand (
+      call set "ComEmuCommand=%%ComEmuCommand:*REG_SZ    =%%"
+      set MSYSCON=conemu.exe
+    )
+  )
+)
+if not defined ComEmuCommand exit /b 2
+exit /b 0

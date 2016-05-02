@@ -1,0 +1,48 @@
+# Maintainer: Mateusz Mikuła <mati865@gmail.com>
+
+pkgname=ccache
+pkgver=3.2.4
+pkgrel=1
+pkgdesc="A compiler cache (mingw-w64)"
+arch=('i686' 'x86_64')
+url="https://ccache.samba.org/"
+license=("GPL3")
+replaces=("${pkgname}-git")
+makedepends=("gcc" "pkg-config")
+depends=("gcc-libs" "zlib")
+options=('staticlibs' 'strip')
+source=(https://samba.org/ftp/ccache/${pkgname}-${pkgver}.tar.bz2{,.asc}
+        "MSYS2-dont-use-symlinks.patch")
+sha256sums=('ffeb967edb549e67da0bd5f44f729a2022de9fdde65dfd80d2a7204d7f75332e'
+            'SKIP'
+            'a0d2ea2ef1c9e59d4e5fdd659d291a4c7f4afc48ad50b1bc00f77349337d3167')
+
+prepare() {
+  cd ${pkgname}-${pkgver}
+  #./autogen.sh
+
+  patch -p1 -i ${srcdir}/MSYS2-dont-use-symlinks.patch
+}
+
+build() {
+  [[ -d build-${CHOST} ]] && rm -rf build-${CHOST}
+  mkdir -p build-${CHOST}  && cd build-${CHOST}
+  ../${pkgname}-${pkgver}/configure \
+      --prefix=/usr \
+      --build=${CHOST} \
+      --host=${CHOST} \
+      --target=${CHOST}
+  make
+}
+
+package() {
+  cd "${srcdir}/build-${CHOST}"
+  make DESTDIR="${pkgdir}" install
+
+  install -d ${pkgdir}/usr/lib/ccache/bin
+  cd ${pkgdir}/usr/lib/ccache/bin
+  scripts=(c++ cc cpp gcc g++ ${CARCH}-pc-msys-g++ ${CARCH}-pc-msys-c++ ${CARCH}-pc-msys-gcc)
+  for fn in ${scripts[*]}; do
+    echo -e '#!/bin/bash\n\nccache /usr/bin/'$fn' "$@"' > $fn
+  done
+}

@@ -17,21 +17,10 @@ function createShortcuts()
         return;
     }
 
-    var cmdLocation = windir + "\\system32\\cmd.exe";
-    component.addOperation( "CreateShortcut",
-                            cmdLocation,
-                            "@StartMenuDir@/MSYS2 Shell.lnk",
-                            "/A /Q /K " + installer.value("TargetDir") + "\\msys2_shell.bat");
-
-    component.addOperation( "CreateShortcut",
-                            cmdLocation,
-                            "@StartMenuDir@/MinGW-w64 Win32 Shell.lnk",
-                            "/A /Q /K " + installer.value("TargetDir") + "\\mingw32_shell.bat");
-
-    component.addOperation( "CreateShortcut",
-                            cmdLocation,
-                            "@StartMenuDir@/MinGW-w64 Win64 Shell.lnk",
-                            "/A /Q /K " + installer.value("TargetDir") + "\\mingw64_shell.bat");
+    var cmdLocation = installer.value("TargetDir") + "\\start_shell.cmd";
+    component.addOperation("CreateShortcut", cmdLocation, "@StartMenuDir@/MSYS2 MinGW 32-bit.lnk", "-mingw32");
+    component.addOperation("CreateShortcut", cmdLocation, "@StartMenuDir@/MSYS2 MinGW 64-bit.lnk", "-mingw64");
+    component.addOperation("CreateShortcut", cmdLocation, "@StartMenuDir@/MSYS2 MSYS.lnk", "-msys");
 
     if ("@BITNESS@bit" === "32bit") {
         component.addOperation( "Execute",
