@@ -1,4 +1,5 @@
 @echo off
+setlocal
 
 set "WD=%__CD__%"
 if NOT EXIST "%WD%msys-2.0.dll" set "WD=%~dp0usr\bin\"
@@ -29,6 +30,15 @@ if "x%~1" == "x-conemu" shift& set MSYSCON=conemu& goto :checkparams
 if "x%~1" == "x-defterm" shift& set MSYSCON=defterm& goto :checkparams
 rem Other parameters
 if "x%~1" == "x-use-full-path" shift& set MSYS2_PATH_TYPE=inherit& goto :checkparams
+if "x%~1" == "x-where" shift& (
+  set CHERE_INVOKING=1
+  rem Check if next argument is an existing directory
+  if not "%~2" == "" if exist "%~2\" shift& cd /d "%~2\"& goto :checkparams
+
+  rem If not, print error and exit
+  echo Invalid directory specified for -where. Exiting. 1>&2
+  exit /b 1
+)
 
 
 rem Autodetect shell type if not specified
