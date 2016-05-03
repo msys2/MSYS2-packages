@@ -1,8 +1,10 @@
 #!/bin/bash
 
+# Usage
+
 if [[ -z "${1}" || "${1}" =~ ^(--help|-h)$ ]]; then tee <<done
 
-    The MSYS2 Shell Manager 2016.5.1
+    The MSYS2 Shell Manager 2016.5.3
     Copyright (C) 2016 Renato Silva
     Licensed under public domain
 
@@ -14,10 +16,16 @@ Usage: source $(basename "${0}") mingw32|mingw64|msys
 
 Usage: $(basename "${0}") COMMAND [ARGUMENTS]...
 
-    Execute commands with better MSYS2 integration, currently:
-    - Convert Windows Explorer arguments to backslash paths.
-    - Use winpty for executing Windows command prompt and commands from /mingw32
-      and /mingw64, so they work better under MinTTY and similar terminals.
+    Execute native Windows programs with better MSYS2 integration. This is done
+    by using winpty to execute the Windows command prompt and commands from
+    /mingw32, /mingw64 and the Windows system32 directory, enabling them to work
+    better under MinTTY and similar terminals.
+
+Usage: $(basename "${0}") DIRECTORY...
+
+    Open each specified directory with Windows Explorer. This is done by running
+    one separate instance per directory, with paths converted to the expected
+    backslash format.
 
 done
     if [[ "${BASH_SOURCE}" = "${0}" ]]
@@ -25,6 +33,8 @@ done
         else return 1
     fi
 fi
+
+# Argument validation
 
 if [[ "${BASH_SOURCE}" != "${0}" && ! "${1}" =~ ^(mingw32|mingw64|msys)$ ]]; then
     echo "Unrecognized shell type ${1}"
@@ -36,10 +46,12 @@ if [[ "${BASH_SOURCE}" = "${0}" && "${1}" =~ ^(mingw32|mingw64|msys)$ ]]; then
     exit 1
 fi
 
-if [[ "${BASH_SOURCE}" = "${0}" && -z "$(type -t "${1}")" ]]; then
+if [[ "${BASH_SOURCE}" = "${0}" && -z "$(type -t "${1}")" && ! -d "${1}" ]]; then
     echo "Could not find command ${1}"
     exit 1
 fi
+
+# Main section
 
 if [[ "${BASH_SOURCE}" != "${0}" ]]; then
     _current_directory="$(pwd)"
@@ -49,25 +61,25 @@ if [[ "${BASH_SOURCE}" != "${0}" ]]; then
     cd "${_current_directory}"
     unset _current_directory
     return 0
+elif test -d "${1}"; then
+    explorer="$(cygpath --windir)/explorer.exe"
+    for directory in "${@}"; do
+        directory="$(cygpath --windows "${directory}")"
+        test -d "${directory}" && "${explorer}" "${directory}"
+    done
+    exit 0
 else
     command="$(type -P "${1}")"
     command="${command,,}"
     command="${command%.exe}"
-    explorer="$(cygpath --windir)/explorer"
-    explorer="${explorer,,}"
-    cmd="$(cygpath --windir)/system32/cmd"
-    cmd="${cmd,,}"
+    system32="$(cygpath --windir)/system32"
+    system32="${system32,,}"
     case "${command}" in
-        "${explorer}") _arguments=()
-                       for _argument in "${@:2}"; do
-                           _arguments+=("$(cygpath --windows "${_argument}")")
-                       done
-                       "${1}" "${_arguments[@]}" ;;
-        "${cmd}")      winpty "${@}" || exit ;;
-        /usr/bin/cmd)  winpty "${@}" || exit ;;
-        /mingw32/*)    winpty "${@}" || exit ;;
-        /mingw64/*)    winpty "${@}" || exit ;;
-        *)             "${@}" || exit ;;
+        "${system32}"/*) winpty "${@}" || exit ;;
+        /usr/bin/cmd)    winpty "${@}" || exit ;;
+        /mingw32/*)      winpty "${@}" || exit ;;
+        /mingw64/*)      winpty "${@}" || exit ;;
+        *)                      "${@}" || exit ;;
     esac
     exit 0
 fi
