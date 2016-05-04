@@ -15,6 +15,30 @@
 # If not running interactively, don't do anything
 [[ "$-" != *i* ]] && return
 
+# Warnings
+unset _warning_found
+for _warning_prefix in '' ${MINGW_PREFIX}; do
+    for _warning_file in ${_warning_prefix}/etc/profile.d/*.warning{.once,}; do
+        test -f "${_warning_file}" || continue
+        _warning="$(command sed 's/^/\t\t/' "${_warning_file}" 2>/dev/null)"
+        if test -n "${_warning}"; then
+            if test -z "${_warning_found}"; then
+                _warning_found='true'
+                echo
+            fi
+            if test -t 1
+                then printf "\t\e[1;33mwarning:\e[0m\n${_warning}\n\n"
+                else printf "\twarning:\n${_warning}\n\n"
+            fi
+        fi
+        [[ "${_warning_file}" = *.once ]] && rm -f "${_warning_file}"
+    done
+done
+unset _warning_found
+unset _warning_prefix
+unset _warning_file
+unset _warning
+
 # If MSYS2_PS1 is set, use that as default PS1, otherwise set a default prompt
 # of user@host, MSYSTEM variable, and current_directory
 if test -n "${MSYS2_PS1}"

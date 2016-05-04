@@ -26,7 +26,8 @@ if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe& goto :checkparams
 if "x%~1" == "x-conemu" shift& set MSYSCON=conemu& goto :checkparams
 if "x%~1" == "x-defterm" shift& set MSYSCON=defterm& goto :checkparams
 rem Other parameters
-if "x%~1" == "x-use-full-path" shift& set MSYS2_PATH_TYPE=inherit& goto :checkparams
+if "x%~1" == "x-full-path" shift& set MSYS2_PATH_TYPE=inherit& goto :checkparams
+if "x%~1" == "x-use-full-path" shift& set MSYS2_PATH_TYPE=inherit& set _deprecated_use_full_path=true& goto :checkparams
 if "x%~1" == "x-where" shift& (
   set CHERE_INVOKING=1
   rem Check if next argument is an existing directory
@@ -35,6 +36,13 @@ if "x%~1" == "x-where" shift& (
   rem If not, print error and exit
   echo Invalid directory specified for -where. Exiting. 1>&2
   exit /b 1
+)
+
+rem Deprecated parameters
+rem TODO: remove this check when most users have stopped using them
+if "x%_deprecated_use_full_path%" == "xtrue" (
+  echo The MSYS2 shell has been started with the deprecated -use-full-path> "%WD%..\..\etc\profile.d\use_full_path.warning.once"
+  echo option. Please update your shortcuts to use -full-path instead.>>    "%WD%..\..\etc\profile.d\use_full_path.warning.once"
 )
 
 rem Setup proper title
