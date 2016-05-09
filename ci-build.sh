@@ -22,11 +22,11 @@ define_build_order || failure 'Could not determine build order'
 
 # Build
 message 'Building packages' "${packages[@]}"
-execute 'Upgrading the system' pacman --noconfirm --noprogressbar --sync --refresh --refresh --sysupgrade
+execute 'Upgrading the system' pacman --noconfirm --noprogressbar --sync --refresh --refresh --sysupgrade --sysupgrade
 for package in "${packages[@]}"; do
     execute 'Building binary' makepkg --noconfirm --noprogressbar --skippgpcheck --nocheck --syncdeps --rmdeps --cleanbuild
     execute 'Building source' makepkg --noconfirm --noprogressbar --skippgpcheck --allsource
-    yes|execute 'Installing' pacman --noprogressbar --upgrade *.pkg.tar.xz
+    execute 'Installing' yes:pacman --noprogressbar --upgrade *.pkg.tar.xz
     deploy_enabled && mv "${package}"/*.pkg.tar.xz artifacts
     deploy_enabled && mv "${package}"/*.src.tar.gz artifacts
     unset package
