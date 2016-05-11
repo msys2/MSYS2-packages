@@ -1,0 +1,54 @@
+--- screen-4.2.1/screen.c	2014-04-26 12:22:09.000000000 -0400
++++ screen-4.2.1/screen.c	2016-05-10 11:33:42.443307000 -0400
+@@ -1109,8 +1109,10 @@
+ 	      n = (eff_uid == 0 && (real_uid || (st.st_mode & 0775) != 0775)) ? 0755 :
+ 	          (eff_gid == (int)st.st_gid && eff_gid != real_gid) ? 0775 :
+ 		  0777;
+-	      if (((int)st.st_mode & 0777) != n)
++#if !defined(__CYGWIN__) || !defined(__MSYS__)	     
++         if (((int)st.st_mode & 0777) != n)
+ 		Panic(0, "Directory '%s' must have mode %03o.", SockDir, n);
++#endif
+ 	    }
+ 	  sprintf(SockPath, "%s/S-%s", SockDir, LoginName);
+ 	  if (access(SockPath, F_OK))
+@@ -1140,8 +1142,10 @@
+       if ((int)st.st_uid != real_uid)
+ 	Panic(0, "You are not the owner of %s.", SockPath);
+     }
++#if !defined(__CYGWIN__) || !defined(__MSYS__)	     
+   if ((st.st_mode & 0777) != 0700)
+     Panic(0, "Directory %s must have mode 700.", SockPath);
++#endif
+   if (SockMatch && index(SockMatch, '/'))
+     Panic(0, "Bad session name '%s'", SockMatch);
+   SockName = SockPath + strlen(SockPath) + 1;
+--- screen-4.2.1/utmp.c	2014-04-26 12:22:09.000000000 -0400
++++ screen-4.2.1/utmp.c	2016-05-11 04:12:05.528576100 -0400
+@@ -107,7 +107,7 @@
+ #endif
+ 
+ 
+-# if defined(GETUTENT) && (!defined(SVR4) || defined(__hpux)) && ! defined(__CYGWIN__)
++# if defined(GETUTENT) && (!defined(SVR4) || defined(__hpux)) && ! defined(__CYGWIN__) && ! defined(__MSYS__)
+ #  if defined(hpux) /* cruel hpux release 8.0 */
+ #   define pututline _pututline
+ #  endif /* hpux */
+@@ -586,7 +586,7 @@
+     }
+ #endif
+   setutent();
+-#ifndef __CYGWIN__
++#if !defined(__CYGWIN__) || ! defined (__MSYS__)
+   return pututline(u) != 0;
+ #else
+   return 1;
+@@ -598,7 +598,7 @@
+ struct utmp *u;
+ {
+   u->ut_type = DEAD_PROCESS;
+-#if (!defined(linux) || defined(EMPTY)) && !defined(__CYGWIN__)
++#if (!defined(linux) || defined(EMPTY)) && !defined(__CYGWIN__) && ! defined (__MSYS__)
+   u->ut_exit.e_termination = 0;
+   u->ut_exit.e_exit = 0;
+ #endif
