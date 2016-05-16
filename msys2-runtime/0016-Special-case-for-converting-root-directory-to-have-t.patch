@@ -1,0 +1,57 @@
+From 24726a5aa22760cd8d4e1850fed5106064d52b5c Mon Sep 17 00:00:00 2001
+From: Alexpux <alexey.pawlow@gmail.com>
+Date: Tue, 1 Mar 2016 13:19:18 +0300
+Subject: [PATCH 16/16] Special case for converting root directory to have
+ training slash
+
+---
+ winsup/cygwin/path.cc | 25 ++++++++++++++++---------
+ 1 file changed, 16 insertions(+), 9 deletions(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 4b1d6ee..d841c23 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -733,6 +733,12 @@ path_conv::check (const char *src, unsigned opt,
+ 	      need_directory = 1;
+ 	      *--tail = '\0';
+ 	    }
++	  /* Special case for "/" must set need_directory, without removing
++	     trailing slash */
++	  else if (tail == path_copy + 1 && isslash (tail[-1]))
++	    {
++	      need_directory = 1;
++	    }
+ 	  path_end = tail;
+ 
+ 	  /* Scan path_copy from right to left looking either for a symlink
+@@ -1220,16 +1226,17 @@ path_conv::check (const char *src, unsigned opt,
+ 		cfree (wide_path);
+ 	      wide_path = NULL;
+ 	    }
+-	  if (need_directory)
++	}
++
++      if (need_directory)
++	{
++	  size_t n = strlen (this->path);
++	  /* Do not add trailing \ to UNC device names like \\.\a: */
++	  if (this->path[n - 1] != '\\' &&
++	      (strncmp (this->path, "\\\\.\\", 4) != 0))
+ 	    {
+-	      size_t n = strlen (this->path);
+-	      /* Do not add trailing \ to UNC device names like \\.\a: */
+-	      if (this->path[n - 1] != '\\' &&
+-		  (strncmp (this->path, "\\\\.\\", 4) != 0))
+-		{
+-		  this->modifiable_path ()[n] = '\\';
+-		  this->modifiable_path ()[n + 1] = '\0';
+-		}
++	      this->modifiable_path ()[n] = '\\';
++	      this->modifiable_path ()[n + 1] = '\0';
+ 	    }
+ 	}
+ 
+-- 
+2.8.0
+
