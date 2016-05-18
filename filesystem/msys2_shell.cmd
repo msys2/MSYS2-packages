@@ -19,7 +19,6 @@ rem Shell types
 if "x%~1" == "x-msys" shift& set MSYSTEM=MSYS& goto :checkparams
 if "x%~1" == "x-mingw32" shift& set MSYSTEM=MINGW32& goto :checkparams
 if "x%~1" == "x-mingw64" shift& set MSYSTEM=MINGW64& goto :checkparams
-if not defined MSYSTEM set MSYSTEM=MSYS
 rem Console types
 if "x%~1" == "x-consolez" shift& set MSYSCON=console.exe& goto :checkparams
 if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe& goto :checkparams
@@ -46,12 +45,12 @@ if "x%_deprecated_use_full_path%" == "xtrue" (
 )
 
 rem Setup proper title
-if "%MSYSTEM%" == "MSYS" (
-  set CONTITLE=MSys2
-) else if "%MSYSTEM%" == "MINGW32" (
+if "%MSYSTEM%" == "MINGW32" (
   set "CONTITLE=MinGW x32"
 ) else if "%MSYSTEM%" == "MINGW64" (
   set "CONTITLE=MinGW x64"
+) else (
+  set "CONTITLE=MSYS2 MSYS"
 )
 
 if "x%MSYSCON%" == "xmintty.exe" goto startmintty
