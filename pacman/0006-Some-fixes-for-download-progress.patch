@@ -1,0 +1,69 @@
+From 50defbdf69037b4fa243507d773f83e3dbe213fd Mon Sep 17 00:00:00 2001
+From: Renato Silva <br.renatosilva@gmail.com>
+Date: Thu, 19 May 2016 12:49:06 -0300
+Subject: [PATCH] Some fixes for download progress.
+
+* Fix useless displaying of empty progress bar.
+* Fix repeated status message for --noprogressbar.
+---
+ src/pacman/callback.c | 27 +++++++++++++++++++--------
+ 1 file changed, 19 insertions(+), 8 deletions(-)
+
+diff --git a/src/pacman/callback.c b/src/pacman/callback.c
+index c1679e3..7622f9b 100644
+--- a/src/pacman/callback.c
++++ b/src/pacman/callback.c
+@@ -40,6 +40,7 @@
+ /* download progress bar */
+ static off_t list_xfered = 0.0;
+ static off_t list_total = 0.0;
++static int on_dl_progress = 0;
+ 
+ /* delayed output during progress bar */
+ static int on_progress = 0;
+@@ -678,17 +679,10 @@ void cb_dl_progress(const char *filename, off_t file_xfered, off_t file_total)
+ 	double rate_human, xfered_human;
+ 	const char *rate_label, *xfered_label;
+ 	int file_percent = 0, total_percent = 0;
++	int noprogressbar = 0;
+ 
+ 	const unsigned short cols = getcols();
+ 
+-	if(config->noprogressbar || cols == 0 || file_total == -1) {
+-		if(file_xfered == 0) {
+-			printf(_("downloading %s...\n"), filename);
+-			fflush(stdout);
+-		}
+-		return;
+-	}
+-
+ 	infolen = cols * 6 / 10;
+ 	if(infolen < 50) {
+ 		infolen = 50;
+@@ -759,6 +753,23 @@ void cb_dl_progress(const char *filename, off_t file_xfered, off_t file_total)
+ 		xfered_last = xfered;
+ 	}
+ 
++	/* only continue after transfer has been started, so useless printing of
++	 * empty progress bar is avoided when for some reason the download is not
++	 * actually performed */
++	if(xfered == 0) {
++		return;
++	}
++
++	noprogressbar = (config->noprogressbar || cols == 0 || file_total == -1);
++	if(noprogressbar && !on_dl_progress) {
++		printf(_("downloading %s...\n"), filename);
++		fflush(stdout);
++	}
++	on_dl_progress = (xfered < total);
++	if(noprogressbar) {
++		return;
++	}
++
+ 	if(file_total) {
+ 		file_percent = (file_xfered * 100) / file_total;
+ 	} else {
+-- 
+2.8.2
+
