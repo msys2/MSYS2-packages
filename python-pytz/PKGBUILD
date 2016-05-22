@@ -1,0 +1,59 @@
+# Contributor: Runar Tenfjord < runar dot tenfjord at gmail dot com >
+
+_realname=pytz
+pkgbase=python-${_realname}
+pkgname=("python2-${_realname}" "python3-${_realname}")
+pkgver=2016.4
+pkgrel=1
+pkgdesc="Cross platform time zone library for Python"
+arch=('any')
+url="https://pypi.python.org/pypi/pytz"
+license=("MIT")
+makedepends=("python3"
+             "python2")
+_dlseq="5ab2298c902ac92fdf649cc07d1b7d491a241c5cac8be84dd84464db7d8b"
+source=(https://pypi.python.org/packages/ad/30/${_dlseq}/${_realname}-${pkgver}.tar.gz{,.asc})
+validpgpkeys=("C7ECC365AB6F255E1EB9BA1701FA998FBAC6374A")
+sha256sums=('c823de61ff40d1996fe087cec343e0503881ca641b897e0f9b86c7683a0bfee1'
+            'SKIP')
+
+prepare() {
+  cd "${srcdir}"
+  cp -r pytz-${pkgver} build-python2
+  cp -r pytz-${pkgver} build-python3
+}
+
+check(){
+  cd ${srcdir}/build-python2/pytz/tests
+  /usr/bin/python2 test_tzinfo.py
+  cd ${srcdir}/build-python3/pytz/tests
+  /usr/bin/python3 test_tzinfo.py
+}
+
+package_python3-pytz() {
+  depends=("python3")
+
+  cd ${srcdir}/build-python3
+  # Fix locale https://github.com/ipython/ipython/issues/2057
+  export LC_ALL=en_US.UTF-8
+  MSYS2_ARG_CONV_EXCL="--prefix=;--install-scripts=;--install-platlib=" \
+  /usr/bin/python3 setup.py install --prefix=/usr --root=${pkgdir} --optimize=1
+
+  install -D LICENSE.txt ${pkgdir}/usr/share/licenses/python3-${_realname}/LICENSE
+}
+
+package_python2-pytz() {
+  depends=("python2")
+
+  cd ${srcdir}/build-python2
+  # Fix locale https://github.com/ipython/ipython/issues/2057
+  export LC_ALL=en_US.UTF-8
+
+  # python 2 fix
+  sed -i 's_#!/usr/bin/env python_#!/usr/bin/env python2_' pytz/tzfile.py
+  MSYS2_ARG_CONV_EXCL="--prefix=;--install-scripts=;--install-platlib=" \
+  /usr/bin/python2 setup.py install --prefix=/usr --root=${pkgdir} --optimize=1
+
+  install -D LICENSE.txt ${pkgdir}/usr/share/licenses/python2-${_realname}/LICENSE
+}
+
