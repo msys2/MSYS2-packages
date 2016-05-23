@@ -15,6 +15,15 @@ rem or uncomment next line
 rem set MSYS2_PATH_TYPE=inherit
 
 :checkparams
+rem Help option
+if "x%~1" == "x-help" (
+  echo Options:
+  echo     -mingw32,mingw64,msys            Set shell type
+  echo     -defterm,mintty,conemu,consolez  Set terminal type
+  echo     -here [DIRECTORY]                Starting directory
+  echo     -full-path                       Inherit Windows path
+  exit /b 1
+)
 rem Shell types
 if "x%~1" == "x-msys" shift& set MSYSTEM=MSYS& goto :checkparams
 if "x%~1" == "x-mingw32" shift& set MSYSTEM=MINGW32& goto :checkparams
@@ -27,21 +36,19 @@ if "x%~1" == "x-defterm" shift& set MSYSCON=defterm& goto :checkparams
 rem Other parameters
 if "x%~1" == "x-full-path" shift& set MSYS2_PATH_TYPE=inherit& goto :checkparams
 if "x%~1" == "x-use-full-path" shift& set MSYS2_PATH_TYPE=inherit& set _deprecated_use_full_path=true& goto :checkparams
-if "x%~1" == "x-where" shift& (
-  set CHERE_INVOKING=1
-  rem Check if next argument is an existing directory
-  if not "%~2" == "" if exist "%~2\" shift& cd /d "%~2\"& goto :checkparams
-
-  rem If not, print error and exit
-  echo Invalid directory specified for -where. Exiting. 1>&2
-  exit /b 1
-)
+if "x%~1" == "x-here" shift& set CHERE_INVOKING=enabled_from_arguments& goto :checkparams
+if "x%~1" == "x-where" shift& set CHERE_INVOKING=enabled_from_arguments& set _deprecated_where=true& goto :checkparams
+if "x%CHERE_INVOKING%" == "xenabled_from_arguments" if not "%~1" == "" if exist "%~1\" shift& cd /d "%~1\"& goto :checkparams
 
 rem Deprecated parameters
 rem TODO: remove this check when most users have stopped using them
 if "x%_deprecated_use_full_path%" == "xtrue" (
   echo The MSYS2 shell has been started with the deprecated -use-full-path> "%WD%..\..\etc\profile.d\use_full_path.warning.once"
   echo option. Please update your shortcuts to use -full-path instead.>>    "%WD%..\..\etc\profile.d\use_full_path.warning.once"
+)
+if "x%_deprecated_where%" == "xtrue" (
+  echo The MSYS2 shell has been started with the deprecated -where> "%WD%..\..\etc\profile.d\where.warning.once"
+  echo option. Please update your shortcuts to use -here instead.>> "%WD%..\..\etc\profile.d\where.warning.once"
 )
 
 rem Setup proper title
