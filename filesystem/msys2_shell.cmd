@@ -26,8 +26,10 @@ if "x%~1" == "x-help" (
 )
 rem Shell types
 if "x%~1" == "x-msys" shift& set MSYSTEM=MSYS& goto :checkparams
+if "x%~1" == "x-msys2" shift& set MSYSTEM=MSYS& set _deprecated_msys2=true& goto :checkparams
 if "x%~1" == "x-mingw32" shift& set MSYSTEM=MINGW32& goto :checkparams
 if "x%~1" == "x-mingw64" shift& set MSYSTEM=MINGW64& goto :checkparams
+if "x%~1" == "x-mingw" shift& set _deprecated_mingw=true& (if exist "%WD%..\..\mingw64" (set MSYSTEM=MINGW64) else (set MSYSTEM=MINGW32))& goto :checkparams
 rem Console types
 if "x%~1" == "x-consolez" shift& set MSYSCON=console.exe& goto :checkparams
 if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe& goto :checkparams
@@ -43,12 +45,20 @@ if "x%CHERE_INVOKING%" == "xenabled_from_arguments" if not "%~1" == "" if exist 
 rem Deprecated parameters
 rem TODO: remove this check when most users have stopped using them
 if "x%_deprecated_use_full_path%" == "xtrue" (
-  echo The MSYS2 shell has been started with the deprecated -use-full-path> "%WD%..\..\etc\profile.d\use_full_path.warning.once"
-  echo option. Please update your shortcuts to use -full-path instead.>>    "%WD%..\..\etc\profile.d\use_full_path.warning.once"
+  echo The MSYS2 shell has been started with the deprecated -use-full-path> "%WD%..\..\etc\profile.d\msys2_shell.use_full_path.warning.once"
+  echo option. Please update your shortcuts to use -full-path instead.>>    "%WD%..\..\etc\profile.d\msys2_shell.use_full_path.warning.once"
 )
 if "x%_deprecated_where%" == "xtrue" (
-  echo The MSYS2 shell has been started with the deprecated -where> "%WD%..\..\etc\profile.d\where.warning.once"
-  echo option. Please update your shortcuts to use -here instead.>> "%WD%..\..\etc\profile.d\where.warning.once"
+  echo The MSYS2 shell has been started with the deprecated -where> "%WD%..\..\etc\profile.d\msys2_shell.where.warning.once"
+  echo option. Please update your shortcuts to use -here instead.>> "%WD%..\..\etc\profile.d\msys2_shell.where.warning.once"
+)
+if "x%_deprecated_msys2%" == "xtrue" (
+  echo The MSYS2 shell has been started with the deprecated -msys2> "%WD%..\..\etc\profile.d\msys2_shell.msys2.warning.once"
+  echo option. Please update your shortcuts to use -msys instead.>> "%WD%..\..\etc\profile.d\msys2_shell.msys2.warning.once"
+)
+if "x%_deprecated_mingw%" == "xtrue" (
+  echo The MSYS2 shell has been started with the deprecated -mingw option.> "%WD%..\..\etc\profile.d\msys2_shell.mingw.warning.once"
+  echo Please update your shortcuts to use -mingw32 or -mingw64 instead.>>  "%WD%..\..\etc\profile.d\msys2_shell.mingw.warning.once"
 )
 
 rem Setup proper title
