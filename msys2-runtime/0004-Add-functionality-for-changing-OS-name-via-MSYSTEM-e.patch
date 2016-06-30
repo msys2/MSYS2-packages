@@ -1,7 +1,7 @@
-From 8cc0dff130047752c9cbc42657d6ec23af4412f5 Mon Sep 17 00:00:00 2001
+From cbcf242546f30e98e894f76737330d1fba9ad82c Mon Sep 17 00:00:00 2001
 From: Alexpux <alexey.pawlow@gmail.com>
 Date: Thu, 12 Mar 2015 13:58:27 +0300
-Subject: [PATCH 04/16] Add functionality for changing OS name via MSYSTEM
+Subject: [PATCH 04/23] Add functionality for changing OS name via MSYSTEM
  environment variables.
 
 ---
@@ -12,10 +12,10 @@ Subject: [PATCH 04/16] Add functionality for changing OS name via MSYSTEM
  4 files changed, 41 insertions(+), 7 deletions(-)
 
 diff --git a/winsup/cygserver/cygserver-config b/winsup/cygserver/cygserver-config
-index abe943c..950077d 100755
+index 373bfd2..c902857 100755
 --- a/winsup/cygserver/cygserver-config
 +++ b/winsup/cygserver/cygserver-config
-@@ -88,7 +88,7 @@ done
+@@ -86,7 +86,7 @@ done
  
  # Check if running on NT
  _sys="`uname`"
@@ -24,7 +24,7 @@ index abe943c..950077d 100755
  
  # Check for running cygserver processes first.
  if ps -ef | grep -v grep | grep -q ${service_name}
-@@ -180,7 +180,7 @@ then
+@@ -178,7 +178,7 @@ then
      echo "Do you want to install cygserver as service?"
      if request "(Say \"no\" if it's already installed as service)"
      then
@@ -34,10 +34,10 @@ index abe943c..950077d 100755
          echo
  	echo "Installation of cygserver as service failed.  Please check the"
 diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
-index 3629d48..2bb289b 100644
+index 922e29c..5e5b08c 100644
 --- a/winsup/cygwin/environ.cc
 +++ b/winsup/cygwin/environ.cc
-@@ -205,7 +205,11 @@ parse_options (const char *inbuf)
+@@ -202,7 +202,11 @@ parse_options (const char *inbuf)
        if (export_settings)
  	{
  	  debug_printf ("%s", newbuf + 1);
@@ -49,7 +49,7 @@ index 3629d48..2bb289b 100644
  	}
        return;
      }
-@@ -650,7 +654,7 @@ _addenv (const char *name, const char *value, int overwrite)
+@@ -647,7 +651,7 @@ _addenv (const char *name, const char *value, int overwrite)
    win_env *spenv;
    if ((spenv = getwinenv (envhere)))
      spenv->add_cache (value);
@@ -58,7 +58,7 @@ index 3629d48..2bb289b 100644
      parse_options (value);
  
    return 0;
-@@ -734,6 +738,9 @@ static struct renv {
+@@ -731,6 +735,9 @@ static struct renv {
  } renv_arr[] = {
  	{ NL("COMMONPROGRAMFILES=") },		// 0
  	{ NL("COMSPEC=") },
@@ -68,7 +68,7 @@ index 3629d48..2bb289b 100644
  	{ NL("PATH=") },			// 2
  	{ NL("PROGRAMFILES=") },
  	{ NL("SYSTEMDRIVE=") },			// 4
-@@ -745,10 +752,21 @@ static struct renv {
+@@ -742,10 +749,21 @@ static struct renv {
  #define RENV_SIZE (sizeof (renv_arr) / sizeof (renv_arr[0]))
  
  /* Set of first characters of the above list of variables. */
@@ -92,7 +92,7 @@ index 3629d48..2bb289b 100644
  
  /* Turn environment variable part of a=b string into uppercase - for some
     environment variables only. */
-@@ -838,8 +856,13 @@ environ_init (char **envp, int envc)
+@@ -835,8 +853,13 @@ environ_init (char **envp, int envc)
  	  ucenv (newp, eq);	/* uppercase env vars which need it */
  	  if (*newp == 'T' && strncmp (newp, "TERM=", 5) == 0)
  	    sawTERM = 1;
@@ -106,7 +106,7 @@ index 3629d48..2bb289b 100644
  	  if (*eq)
  	    posify_maybe (envp + i, *++eq ? eq : --eq, tmpbuf);
  	  debug_printf ("%p: %s", envp[i], envp[i]);
-@@ -856,7 +879,11 @@ environ_init (char **envp, int envc)
+@@ -853,7 +876,11 @@ environ_init (char **envp, int envc)
        update_envptrs ();
        if (envp_passed_in)
  	{
@@ -118,7 +118,7 @@ index 3629d48..2bb289b 100644
  	  if (p)
  	    parse_options (p);
  	}
-@@ -923,12 +950,13 @@ struct spenv
+@@ -920,12 +947,13 @@ struct spenv
  static NO_COPY spenv spenvs[] =
  {
  #ifdef DEBUGGING
@@ -134,10 +134,10 @@ index 3629d48..2bb289b 100644
    {NL ("SYSTEMROOT="), true, true, &cygheap_user::env_systemroot},
    {NL ("USERDOMAIN="), false, false, &cygheap_user::env_domain},
 diff --git a/winsup/cygwin/include/sys/utsname.h b/winsup/cygwin/include/sys/utsname.h
-index 23ca5ab..de7a502 100644
+index e9dd019..670cd2e 100644
 --- a/winsup/cygwin/include/sys/utsname.h
 +++ b/winsup/cygwin/include/sys/utsname.h
-@@ -17,7 +17,7 @@ extern "C" {
+@@ -15,7 +15,7 @@ extern "C" {
  
  struct utsname
  {
@@ -147,10 +147,10 @@ index 23ca5ab..de7a502 100644
    char release[20];
    char version[20];
 diff --git a/winsup/cygwin/uname.cc b/winsup/cygwin/uname.cc
-index cd19cd4..e6141c2 100644
+index 479cc44..3dabbaf 100644
 --- a/winsup/cygwin/uname.cc
 +++ b/winsup/cygwin/uname.cc
-@@ -29,7 +29,13 @@ uname (struct utsname *name)
+@@ -26,7 +26,13 @@ uname (struct utsname *name)
        char *snp = strstr  (cygwin_version.dll_build_date, "SNP");
  
        memset (name, 0, sizeof (*name));
@@ -165,5 +165,5 @@ index cd19cd4..e6141c2 100644
        /* Add a hint to the sysname, that we're running under WOW64.  This might
  	 give an early clue if somebody encounters problems. */
 -- 
-2.8.0
+2.9.0
 

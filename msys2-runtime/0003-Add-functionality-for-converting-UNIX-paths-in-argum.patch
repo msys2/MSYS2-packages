@@ -1,7 +1,7 @@
-From 3767f9d4f1a8be2f35f0133407f8b71212a22865 Mon Sep 17 00:00:00 2001
+From b8dd79aff0eee72bab120584157e6125c56f006f Mon Sep 17 00:00:00 2001
 From: Alexpux <alexey.pawlow@gmail.com>
 Date: Thu, 12 Mar 2015 13:58:27 +0300
-Subject: [PATCH 03/16] Add functionality for converting UNIX paths in
+Subject: [PATCH 03/23] Add functionality for converting UNIX paths in
  arguments and environment variables to Windows form for native Win32
  applications.
 
@@ -21,10 +21,10 @@ Subject: [PATCH 03/16] Add functionality for converting UNIX paths in
  create mode 100644 winsup/cygwin/msys2_path_conv.h
 
 diff --git a/winsup/cygwin/Makefile.in b/winsup/cygwin/Makefile.in
-index 2473d8a..0a8895e 100644
+index 0c771a5..9bb7e72 100644
 --- a/winsup/cygwin/Makefile.in
 +++ b/winsup/cygwin/Makefile.in
-@@ -334,6 +334,7 @@ DLL_OFILES:= \
+@@ -332,6 +332,7 @@ DLL_OFILES:= \
  	mktemp.o \
  	mmap.o \
  	msg.o \
@@ -33,10 +33,10 @@ index 2473d8a..0a8895e 100644
  	net.o \
  	netdb.o \
 diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
-index b155311..3629d48 100644
+index 6ba1469..922e29c 100644
 --- a/winsup/cygwin/environ.cc
 +++ b/winsup/cygwin/environ.cc
-@@ -1016,7 +1016,7 @@ env_compare (const void *key, const void *memb)
+@@ -1013,7 +1013,7 @@ env_compare (const void *key, const void *memb)
     to the child. */
  char ** __reg3
  build_env (const char * const *envp, PWCHAR &envblock, int &envc,
@@ -45,7 +45,7 @@ index b155311..3629d48 100644
  {
    PWCHAR cwinenv = NULL;
    size_t winnum = 0;
-@@ -1104,6 +1104,11 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+@@ -1101,6 +1101,11 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
    for (srcp = envp, dstp = newenv, pass_dstp = pass_env; *srcp; srcp++)
      {
        bool calc_tl = !no_envblock;
@@ -57,7 +57,7 @@ index b155311..3629d48 100644
        /* Look for entries that require special attention */
        for (unsigned i = 0; i < SPENVS_SIZE; i++)
  	if (!saw_spenv[i] && (*dstp = spenvs[i].retrieve (no_envblock, *srcp)))
-@@ -1224,6 +1229,15 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+@@ -1221,6 +1226,15 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
  		  saw_PATH = true;
  		}
  	    }
@@ -74,10 +74,10 @@ index b155311..3629d48 100644
  	    p = *srcp;		/* Don't worry about it */
  
 diff --git a/winsup/cygwin/environ.h b/winsup/cygwin/environ.h
-index 5048fcd..b549710 100644
+index 46beb2d..ef00c0e 100644
 --- a/winsup/cygwin/environ.h
 +++ b/winsup/cygwin/environ.h
-@@ -45,6 +45,6 @@ extern "C" char **__cygwin_environ, ***main_environ;
+@@ -43,6 +43,6 @@ extern "C" char **__cygwin_environ, ***main_environ;
  extern "C" char __stdcall **cur_environ ();
  #endif
  char ** __reg3 build_env (const char * const *envp, PWCHAR &envblock,
@@ -86,10 +86,10 @@ index 5048fcd..b549710 100644
  
  #define ENV_CVT -1
 diff --git a/winsup/cygwin/external.cc b/winsup/cygwin/external.cc
-index 02335eb..eea2fb4 100644
+index c81bdc0..de3eaa8 100644
 --- a/winsup/cygwin/external.cc
 +++ b/winsup/cygwin/external.cc
-@@ -140,7 +140,7 @@ create_winenv (const char * const *env)
+@@ -137,7 +137,7 @@ create_winenv (const char * const *env)
    int unused_envc;
    PWCHAR envblock = NULL;
    char **envp = build_env (env ?: cur_environ (), envblock, unused_envc, false,
@@ -99,10 +99,10 @@ index 02335eb..eea2fb4 100644
  
    if (envp)
 diff --git a/winsup/cygwin/include/sys/cygwin.h b/winsup/cygwin/include/sys/cygwin.h
-index e663690..89e971f 100644
+index 5990e46..8bc5d8f 100644
 --- a/winsup/cygwin/include/sys/cygwin.h
 +++ b/winsup/cygwin/include/sys/cygwin.h
-@@ -86,6 +86,12 @@ extern ssize_t cygwin_conv_path_list (cygwin_conv_path_t what, const void *from,
+@@ -83,6 +83,12 @@ extern ssize_t cygwin_conv_path_list (cygwin_conv_path_t what, const void *from,
     to one of the above values, or to ENOMEM if malloc fails. */
  extern void *cygwin_create_path (cygwin_conv_path_t what, const void *from);
  
@@ -893,10 +893,10 @@ index 0000000..e1e5e87
 +#endif /* end of include guard: PATH_CONV_H_DB4IQBH3 */
 +
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index 250871d..4a47bb3 100644
+index 7533e00..9e152a5 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
-@@ -71,6 +71,7 @@
+@@ -68,6 +68,7 @@
  #include "cygtls.h"
  #include "tls_pbuf.h"
  #include "environ.h"
@@ -904,7 +904,7 @@ index 250871d..4a47bb3 100644
  #include <assert.h>
  #include <ntdll.h>
  #include <wchar.h>
-@@ -3289,6 +3290,69 @@ fchdir (int fd)
+@@ -3276,6 +3277,69 @@ fchdir (int fd)
    return res;
  }
  
@@ -975,10 +975,10 @@ index 250871d..4a47bb3 100644
  
  /* Cover functions to the path conversion routines.
 diff --git a/winsup/cygwin/spawn.cc b/winsup/cygwin/spawn.cc
-index 9871bb5..7c1cb86 100644
+index b7e09c3..39bbac6 100644
 --- a/winsup/cygwin/spawn.cc
 +++ b/winsup/cygwin/spawn.cc
-@@ -264,6 +264,27 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+@@ -261,6 +261,27 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
    pid_t cygpid;
    int res = -1;
  
@@ -1006,7 +1006,7 @@ index 9871bb5..7c1cb86 100644
    /* Check if we have been called from exec{lv}p or spawn{lv}p and mask
       mode to keep only the spawn mode. */
    bool p_type_exec = !!(mode & _P_PATH_TYPE_EXEC);
-@@ -373,12 +394,26 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+@@ -370,12 +391,26 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
  	      moreinfo->argc = newargv.argc;
  	      moreinfo->argv = newargv;
  	    }
@@ -1038,7 +1038,7 @@ index 9871bb5..7c1cb86 100644
  	    }
  
  
-@@ -514,7 +549,8 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+@@ -511,7 +546,8 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
        moreinfo->envp = build_env (envp, envblock, moreinfo->envc,
  				  real_path.iscygexec (),
  				  switch_user ? ::cygheap->user.primary_token ()
@@ -1049,10 +1049,10 @@ index 9871bb5..7c1cb86 100644
  	{
  	  set_errno (E2BIG);
 diff --git a/winsup/cygwin/winf.h b/winsup/cygwin/winf.h
-index 1d4fdc0..ccf1e71 100644
+index e3a65f8..1aeec8d 100644
 --- a/winsup/cygwin/winf.h
 +++ b/winsup/cygwin/winf.h
-@@ -53,6 +53,10 @@ class av
+@@ -51,6 +51,10 @@ class av
  	calloced = 1;
        }
    }
@@ -1064,5 +1064,5 @@ index 1d4fdc0..ccf1e71 100644
    {
      for (int i = calloced; i < argc; i++)
 -- 
-2.8.0
+2.9.0
 

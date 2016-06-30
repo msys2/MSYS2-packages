@@ -1,7 +1,7 @@
-From b476a641db1795c7299c5fd1694aa29d59b839d9 Mon Sep 17 00:00:00 2001
+From 5934a37b736584683a90fd74cd9e055056766eb4 Mon Sep 17 00:00:00 2001
 From: Alexpux <alexey.pawlow@gmail.com>
 Date: Thu, 12 Mar 2015 14:09:29 +0300
-Subject: [PATCH 05/16] - Move root to /usr. - Change sorting mount points. -
+Subject: [PATCH 05/23] - Move root to /usr. - Change sorting mount points. -
  Do not show warnings for DOS paths. - By default mount without ACLs. - Can
  read /etc/fstab with short mount point format.
 
@@ -14,10 +14,10 @@ Subject: [PATCH 05/16] - Move root to /usr. - Change sorting mount points. -
  5 files changed, 177 insertions(+), 31 deletions(-)
 
 diff --git a/winsup/cygwin/cygheap.cc b/winsup/cygwin/cygheap.cc
-index 615dfc1..441fe91 100644
+index 11f868f..9092913 100644
 --- a/winsup/cygwin/cygheap.cc
 +++ b/winsup/cygwin/cygheap.cc
-@@ -181,14 +181,22 @@ init_cygheap::init_installation_root ()
+@@ -178,14 +178,22 @@ init_cygheap::init_installation_root ()
  
    /* Strip off last path component ("\\cygwin1.dll") */
    PWCHAR w = wcsrchr (installation_root, L'\\');
@@ -41,7 +41,7 @@ index 615dfc1..441fe91 100644
  
    /* Copy result into installation_dir before stripping off "bin" dir and
       revert to Win32 path.  This path is added to the Windows environment
-@@ -211,6 +219,7 @@ init_cygheap::init_installation_root ()
+@@ -208,6 +216,7 @@ init_cygheap::init_installation_root ()
    if (w > p)
      *w = L'\0';
  
@@ -49,7 +49,7 @@ index 615dfc1..441fe91 100644
    for (int i = 1; i >= 0; --i)
      {
        reg_key r (i, KEY_WRITE, _WIDE (CYGWIN_INFO_INSTALLATIONS_NAME),
-@@ -219,6 +228,7 @@ init_cygheap::init_installation_root ()
+@@ -216,6 +225,7 @@ init_cygheap::init_installation_root ()
  				    installation_root)))
  	break;
      }
@@ -58,10 +58,10 @@ index 615dfc1..441fe91 100644
  
  void __stdcall
 diff --git a/winsup/cygwin/globals.cc b/winsup/cygwin/globals.cc
-index 7dfe74d..bbbd359 100644
+index 7427756..bb3ee21 100644
 --- a/winsup/cygwin/globals.cc
 +++ b/winsup/cygwin/globals.cc
-@@ -69,7 +69,7 @@ int NO_COPY dynamically_loaded;
+@@ -66,7 +66,7 @@ int NO_COPY dynamically_loaded;
  /* Some CYGWIN environment variable variables. */
  bool allow_glob = true;
  bool detect_bloda;
@@ -71,10 +71,10 @@ index 7dfe74d..bbbd359 100644
  bool pipe_byte;
  bool reset_com;
 diff --git a/winsup/cygwin/mount.cc b/winsup/cygwin/mount.cc
-index fcb31aa..73d1058 100644
+index 2621680..3343804 100644
 --- a/winsup/cygwin/mount.cc
 +++ b/winsup/cygwin/mount.cc
-@@ -42,7 +42,6 @@ details. */
+@@ -39,7 +39,6 @@ details. */
    (path_prefix_p (proc, (path), proc_len, false))
  
  bool NO_COPY mount_info::got_usr_bin;
@@ -82,7 +82,7 @@ index fcb31aa..73d1058 100644
  int NO_COPY mount_info::root_idx = -1;
  
  /* is_unc_share: Return non-zero if PATH begins with //server/share
-@@ -334,7 +333,6 @@ fs_info::update (PUNICODE_STRING upath, HANDLE in_vol)
+@@ -331,7 +330,6 @@ fs_info::update (PUNICODE_STRING upath, HANDLE in_vol)
  #define MINIMAL_WIN_NTFS_FLAGS (FILE_CASE_SENSITIVE_SEARCH \
  				| FILE_CASE_PRESERVED_NAMES \
  				| FILE_UNICODE_ON_DISK \
@@ -90,7 +90,7 @@ index fcb31aa..73d1058 100644
  				| FILE_FILE_COMPRESSION \
  				| FILE_VOLUME_QUOTAS \
  				| FILE_SUPPORTS_SPARSE_FILES \
-@@ -483,13 +481,13 @@ mount_info::create_root_entry (const PWCHAR root)
+@@ -480,13 +478,13 @@ mount_info::create_root_entry (const PWCHAR root)
    sys_wcstombs (native_root, PATH_MAX, root);
    assert (*native_root != '\0');
    if (add_item (native_root, "/",
@@ -106,7 +106,7 @@ index fcb31aa..73d1058 100644
    strcpy (cygdrive, CYGWIN_INFO_CYGDRIVE_DEFAULT_PREFIX "/");
    cygdrive_len = strlen (cygdrive);
  }
-@@ -509,25 +507,17 @@ mount_info::init (bool user_init)
+@@ -506,25 +504,17 @@ mount_info::init (bool user_init)
    pathend = wcpcpy (pathend, L"\\etc\\fstab");
    from_fstab (user_init, path, pathend);
  
@@ -139,7 +139,7 @@ index fcb31aa..73d1058 100644
  }
  
  static void
-@@ -623,6 +613,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
+@@ -620,6 +610,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
    /* See if this is a cygwin "device" */
    if (win32_device_name (src_path, dst, dev))
      {
@@ -147,7 +147,7 @@ index fcb31aa..73d1058 100644
        *flags = MOUNT_BINARY;	/* FIXME: Is this a sensible default for devices? */
        rc = 0;
        goto out_no_chroot_check;
-@@ -653,6 +644,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
+@@ -650,6 +641,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
      }
    if (isproc (src_path))
      {
@@ -155,7 +155,7 @@ index fcb31aa..73d1058 100644
        dev = *proc_dev;
        dev = fhandler_proc::get_proc_fhandler (src_path);
        if (dev == FH_NADA)
-@@ -674,6 +666,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
+@@ -671,6 +663,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
       off the prefix and transform it into an MS-DOS path. */
    else if (iscygdrive (src_path))
      {
@@ -163,7 +163,7 @@ index fcb31aa..73d1058 100644
        int n = mount_table->cygdrive_len - 1;
        int unit;
  
-@@ -685,11 +678,15 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
+@@ -682,11 +675,15 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
  	}
        else if (cygdrive_win32_path (src_path, dst, unit))
  	{
@@ -179,7 +179,7 @@ index fcb31aa..73d1058 100644
      }
  
    int chroot_pathlen;
-@@ -700,7 +697,9 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
+@@ -697,7 +694,9 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
        const char *path;
        int len;
  
@@ -190,7 +190,7 @@ index fcb31aa..73d1058 100644
        if (!cygheap->root.exists ()
  	  || (mi->posix_pathlen == 1 && mi->posix_path[0] == '/'))
  	{
-@@ -931,7 +930,8 @@ mount_info::conv_to_posix_path (const char *src_path, char *posix_path,
+@@ -928,7 +927,8 @@ mount_info::conv_to_posix_path (const char *src_path, char *posix_path,
    int pathbuflen = tail - pathbuf;
    for (int i = 0; i < nmounts; ++i)
      {
@@ -200,7 +200,7 @@ index fcb31aa..73d1058 100644
        if (!path_prefix_p (mi.native_path, pathbuf, mi.native_pathlen,
  			  mi.flags & MOUNT_NOPOSIX))
  	continue;
-@@ -1159,8 +1159,17 @@ mount_info::from_fstab_line (char *line, bool user)
+@@ -1156,8 +1156,17 @@ mount_info::from_fstab_line (char *line, bool user)
    if (!*c)
      return true;
    cend = find_ws (c);
@@ -219,7 +219,7 @@ index fcb31aa..73d1058 100644
    /* Third field: FS type. */
    c = skip_ws (cend + 1);
    if (!*c)
-@@ -1389,16 +1398,145 @@ sort_by_native_name (const void *a, const void *b)
+@@ -1386,16 +1395,145 @@ sort_by_native_name (const void *a, const void *b)
    return res;
  }
  
@@ -366,7 +366,7 @@ index fcb31aa..73d1058 100644
  }
  
  /* Add an entry to the mount table.
-@@ -1489,12 +1627,9 @@ mount_info::add_item (const char *native, const char *posix,
+@@ -1486,12 +1624,9 @@ mount_info::add_item (const char *native, const char *posix,
    if (i == nmounts)
      nmounts++;
  
@@ -381,10 +381,10 @@ index fcb31aa..73d1058 100644
      root_idx = i;
  
 diff --git a/winsup/cygwin/mount.h b/winsup/cygwin/mount.h
-index 7219461..32befc9 100644
+index d37b673..ee505c8 100644
 --- a/winsup/cygwin/mount.h
 +++ b/winsup/cygwin/mount.h
-@@ -176,7 +176,6 @@ class mount_info
+@@ -173,7 +173,6 @@ class mount_info
    mount_item mount[MAX_MOUNTS];
  
    static bool got_usr_bin;
@@ -392,7 +392,7 @@ index 7219461..32befc9 100644
    static int root_idx;
  
    /* cygdrive_prefix is used as the root of the path automatically
-@@ -188,6 +187,8 @@ class mount_info
+@@ -185,6 +184,8 @@ class mount_info
   private:
    int posix_sorted[MAX_MOUNTS];
    int native_sorted[MAX_MOUNTS];
@@ -402,10 +402,10 @@ index 7219461..32befc9 100644
   public:
    void init (bool);
 diff --git a/winsup/cygwin/uinfo.cc b/winsup/cygwin/uinfo.cc
-index d966dd1..96f5ac9 100644
+index 323222a..e096c67 100644
 --- a/winsup/cygwin/uinfo.cc
 +++ b/winsup/cygwin/uinfo.cc
-@@ -2559,7 +2559,7 @@ pwdgrp::fetch_account_from_windows (fetch_user_arg_t &arg, cyg_ldap *pldap)
+@@ -2548,7 +2548,7 @@ pwdgrp::fetch_account_from_windows (fetch_user_arg_t &arg, cyg_ldap *pldap)
  		     dom, name,
  		     sid.string ((char *) sidstr),
  		     home ?: "/home/", home ? L"" : name,
@@ -415,5 +415,5 @@ index d966dd1..96f5ac9 100644
      free (gecos);
    if (home)
 -- 
-2.8.0
+2.9.0
 
