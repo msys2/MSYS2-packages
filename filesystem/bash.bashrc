@@ -40,14 +40,13 @@ unset _warning_file
 unset _warning
 
 # If MSYS2_PS1 is set, use that as default PS1;
-# if a PS1 is already set, use that;
+# if a PS1 is already set and exported, use that;
 # otherwise set a default prompt
 # of user@host, MSYSTEM variable, and current_directory
-if test -n "${MSYS2_PS1}"
-    then PS1="${MSYS2_PS1}"
-    elif test -z "${PS1}"
-        then PS1='\[\e]0;\w\a\]\n\[\e[32m\]\u@\h \[\e[35m\]$MSYSTEM\[\e[0m\] \[\e[33m\]\w\[\e[0m\]\n\$ '
-fi
+[[ -n "${MSYS2_PS1}" ]] && export PS1="${MSYS2_PS1}"
+[[ $(declare -p PS1 2>/dev/null | cut -c 1-11) = 'declare -x ' ]] || \
+  export PS1='\[\e]0;\w\a\]\n\[\e[32m\]\u@\h \[\e[35m\]$MSYSTEM\[\e[0m\] \[\e[33m\]\w\[\e[0m\]\n\$ '
+
 
 # Uncomment to use the terminal colours set in DIR_COLORS
 # eval "$(dircolors -b /etc/DIR_COLORS)"
