@@ -18,7 +18,7 @@ rem set MSYS2_PATH_TYPE=inherit
 rem Help option
 if "x%~1" == "x-help" (
   call :printhelp "%~nx0"
-  exit /b 1
+  exit /b %ERRORLEVEL%
 )
 rem Shell types
 if "x%~1" == "x-msys" shift& set MSYSTEM=MSYS& goto :checkparams
