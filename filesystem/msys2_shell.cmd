@@ -17,11 +17,7 @@ rem set MSYS2_PATH_TYPE=inherit
 :checkparams
 rem Help option
 if "x%~1" == "x-help" (
-  echo Options:
-  echo     -mingw32,mingw64,msys            Set shell type
-  echo     -defterm,mintty,conemu,consolez  Set terminal type
-  echo     -here [DIRECTORY]                Starting directory
-  echo     -full-path                       Inherit Windows path
+  call :printhelp "%~nx0"
   exit /b 1
 )
 rem Shell types
@@ -123,4 +119,21 @@ if not defined ComEmuCommand (
   )
 )
 if not defined ComEmuCommand exit /b 2
+exit /b 0
+
+:printhelp
+echo Usage:
+echo     %~1 [options] [bash parameters]
+echo.
+echo Options:
+echo     -mingw32 ^| -mingw64 ^| -msys[2]   Set shell type
+echo     -defterm ^| -mintty ^| -conemu ^| -consolez
+echo                                      Set terminal type
+echo     -here [DIRECTORY]                Starting directory
+echo     -[use-]full-path                 Use full currnent PATH variable
+echo                                      instead of triming to minimal
+echo.
+echo Any parameter that cannot be treated as valid option and all
+echo following parameters are passed as bash command parameters.
+echo.
 exit /b 0
