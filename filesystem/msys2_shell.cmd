@@ -64,7 +64,7 @@ exit /b %ERRORLEVEL%
 
 :startconsolez
 cd %WD%..\lib\ConsoleZ
-start console -t "%CONTITLE%" -r %1 %2 %3 %4 %5 %6 %7 %8 %9
+start "%CONTITLE%" console -t "%CONTITLE%" -r %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :startconemu
