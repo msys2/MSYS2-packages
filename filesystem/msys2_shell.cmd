@@ -20,6 +20,18 @@ if "x%~1" == "x-help" (
   call :printhelp "%~nx0"
   exit /b %ERRORLEVEL%
 )
+if "x%~1" == "x--help" (
+  call :printhelp "%~nx0"
+  exit /b %ERRORLEVEL%
+)
+if "x%~1" == "x-?" (
+  call :printhelp "%~nx0"
+  exit /b %ERRORLEVEL%
+)
+if "x%~1" == "x/?" (
+  call :printhelp "%~nx0"
+  exit /b %ERRORLEVEL%
+)
 rem Shell types
 if "x%~1" == "x-msys" shift& set MSYSTEM=MSYS& goto :checkparams
 if "x%~1" == "x-msys2" shift& set MSYSTEM=MSYS& goto :checkparams
@@ -132,6 +144,7 @@ echo                                      Set terminal type
 echo     -here [DIRECTORY]                Starting directory
 echo     -[use-]full-path                 Use full currnent PATH variable
 echo                                      instead of triming to minimal
+echo     -help ^| --help ^| -? ^| /?         Display this help and exit
 echo.
 echo Any parameter that cannot be treated as valid option and all
 echo following parameters are passed as bash command parameters.
