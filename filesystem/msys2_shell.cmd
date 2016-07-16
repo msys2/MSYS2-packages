@@ -47,8 +47,17 @@ rem Other parameters
 if "x%~1" == "x-full-path" shift& set MSYS2_PATH_TYPE=inherit& goto :checkparams
 if "x%~1" == "x-use-full-path" shift& set MSYS2_PATH_TYPE=inherit& goto :checkparams
 if "x%~1" == "x-here" shift& set CHERE_INVOKING=enabled_from_arguments& goto :checkparams
-if "x%~1" == "x-where" shift& set CHERE_INVOKING=enabled_from_arguments& goto :checkparams
-if "x%CHERE_INVOKING%" == "xenabled_from_arguments" if not "%~1" == "" if exist "%~1\" shift& cd /d "%~1\"& goto :checkparams
+if "x%~1" == "x-where" (
+  if "x%~2" == "x" (
+    echo Working directory is not specified for -where parameter. 1>&2
+    exit /b 2
+  )
+  cd /d "%~2" || (
+    echo Cannot set specified working diretory "%~2". 1>&2
+    exit /b 2
+  )
+  set CHERE_INVOKING=enabled_from_arguments
+)& shift& shift& goto :checkparams
 
 rem Setup proper title
 if "%MSYSTEM%" == "MINGW32" (
@@ -141,7 +150,10 @@ echo Options:
 echo     -mingw32 ^| -mingw64 ^| -msys[2]   Set shell type
 echo     -defterm ^| -mintty ^| -conemu ^| -consolez
 echo                                      Set terminal type
-echo     -here [DIRECTORY]                Starting directory
+echo     -here                            Use current directory as working
+echo                                      directory
+echo     -where DIRECTORY                 Use specified DIRECTORY as working
+echo                                      directory
 echo     -[use-]full-path                 Use full currnent PATH variable
 echo                                      instead of triming to minimal
 echo     -help ^| --help ^| -? ^| /?         Display this help and exit
