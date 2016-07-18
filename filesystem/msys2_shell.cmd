@@ -17,19 +17,27 @@ rem set MSYS2_PATH_TYPE=inherit
 :checkparams
 rem Help option
 if "x%~1" == "x-help" (
-  echo Options:
-  echo     -mingw32,mingw64,msys            Set shell type
-  echo     -defterm,mintty,conemu,consolez  Set terminal type
-  echo     -here [DIRECTORY]                Starting directory
-  echo     -full-path                       Inherit Windows path
-  exit /b 1
+  call :printhelp "%~nx0"
+  exit /b %ERRORLEVEL%
+)
+if "x%~1" == "x--help" (
+  call :printhelp "%~nx0"
+  exit /b %ERRORLEVEL%
+)
+if "x%~1" == "x-?" (
+  call :printhelp "%~nx0"
+  exit /b %ERRORLEVEL%
+)
+if "x%~1" == "x/?" (
+  call :printhelp "%~nx0"
+  exit /b %ERRORLEVEL%
 )
 rem Shell types
 if "x%~1" == "x-msys" shift& set MSYSTEM=MSYS& goto :checkparams
-if "x%~1" == "x-msys2" shift& set MSYSTEM=MSYS& set _deprecated_msys2=true& goto :checkparams
+if "x%~1" == "x-msys2" shift& set MSYSTEM=MSYS& goto :checkparams
 if "x%~1" == "x-mingw32" shift& set MSYSTEM=MINGW32& goto :checkparams
 if "x%~1" == "x-mingw64" shift& set MSYSTEM=MINGW64& goto :checkparams
-if "x%~1" == "x-mingw" shift& set _deprecated_mingw=true& (if exist "%WD%..\..\mingw64" (set MSYSTEM=MINGW64) else (set MSYSTEM=MINGW32))& goto :checkparams
+if "x%~1" == "x-mingw" shift& (if exist "%WD%..\..\mingw64" (set MSYSTEM=MINGW64) else (set MSYSTEM=MINGW32))& goto :checkparams
 rem Console types
 if "x%~1" == "x-consolez" shift& set MSYSCON=console.exe& goto :checkparams
 if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe& goto :checkparams
@@ -37,29 +45,19 @@ if "x%~1" == "x-conemu" shift& set MSYSCON=conemu& goto :checkparams
 if "x%~1" == "x-defterm" shift& set MSYSCON=defterm& goto :checkparams
 rem Other parameters
 if "x%~1" == "x-full-path" shift& set MSYS2_PATH_TYPE=inherit& goto :checkparams
-if "x%~1" == "x-use-full-path" shift& set MSYS2_PATH_TYPE=inherit& set _deprecated_use_full_path=true& goto :checkparams
+if "x%~1" == "x-use-full-path" shift& set MSYS2_PATH_TYPE=inherit& goto :checkparams
 if "x%~1" == "x-here" shift& set CHERE_INVOKING=enabled_from_arguments& goto :checkparams
-if "x%~1" == "x-where" shift& set CHERE_INVOKING=enabled_from_arguments& set _deprecated_where=true& goto :checkparams
-if "x%CHERE_INVOKING%" == "xenabled_from_arguments" if not "%~1" == "" if exist "%~1\" shift& cd /d "%~1\"& goto :checkparams
-
-rem Deprecated parameters
-rem TODO: remove this check when most users have stopped using them
-if "x%_deprecated_use_full_path%" == "xtrue" (
-  echo The MSYS2 shell has been started with the deprecated -use-full-path> "%WD%..\..\etc\profile.d\msys2_shell.use_full_path.warning.once"
-  echo option. Please update your shortcuts to use -full-path instead.>>    "%WD%..\..\etc\profile.d\msys2_shell.use_full_path.warning.once"
-)
-if "x%_deprecated_where%" == "xtrue" (
-  echo The MSYS2 shell has been started with the deprecated -where> "%WD%..\..\etc\profile.d\msys2_shell.where.warning.once"
-  echo option. Please update your shortcuts to use -here instead.>> "%WD%..\..\etc\profile.d\msys2_shell.where.warning.once"
-)
-if "x%_deprecated_msys2%" == "xtrue" (
-  echo The MSYS2 shell has been started with the deprecated -msys2> "%WD%..\..\etc\profile.d\msys2_shell.msys2.warning.once"
-  echo option. Please update your shortcuts to use -msys instead.>> "%WD%..\..\etc\profile.d\msys2_shell.msys2.warning.once"
-)
-if "x%_deprecated_mingw%" == "xtrue" (
-  echo The MSYS2 shell has been started with the deprecated -mingw option.> "%WD%..\..\etc\profile.d\msys2_shell.mingw.warning.once"
-  echo Please update your shortcuts to use -mingw32 or -mingw64 instead.>>  "%WD%..\..\etc\profile.d\msys2_shell.mingw.warning.once"
-)
+if "x%~1" == "x-where" (
+  if "x%~2" == "x" (
+    echo Working directory is not specified for -where parameter. 1>&2
+    exit /b 2
+  )
+  cd /d "%~2" || (
+    echo Cannot set specified working diretory "%~2". 1>&2
+    exit /b 2
+  )
+  set CHERE_INVOKING=enabled_from_arguments
+)& shift& shift& goto :checkparams
 
 rem Setup proper title
 if "%MSYSTEM%" == "MINGW32" (
@@ -83,7 +81,7 @@ exit /b %ERRORLEVEL%
 
 :startconsolez
 cd %WD%..\lib\ConsoleZ
-start console -t "%CONTITLE%" -r %1 %2 %3 %4 %5 %6 %7 %8 %9
+start "%CONTITLE%" console -t "%CONTITLE%" -r %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :startconemu
@@ -91,7 +89,7 @@ call :conemudetect || (
   echo ConEmu not found. Exiting. 1>&2
   exit /b 1
 )
-start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd %WD%bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%bash" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :startsh
@@ -142,4 +140,25 @@ if not defined ComEmuCommand (
   )
 )
 if not defined ComEmuCommand exit /b 2
+exit /b 0
+
+:printhelp
+echo Usage:
+echo     %~1 [options] [bash parameters]
+echo.
+echo Options:
+echo     -mingw32 ^| -mingw64 ^| -msys[2]   Set shell type
+echo     -defterm ^| -mintty ^| -conemu ^| -consolez
+echo                                      Set terminal type
+echo     -here                            Use current directory as working
+echo                                      directory
+echo     -where DIRECTORY                 Use specified DIRECTORY as working
+echo                                      directory
+echo     -[use-]full-path                 Use full currnent PATH variable
+echo                                      instead of triming to minimal
+echo     -help ^| --help ^| -? ^| /?         Display this help and exit
+echo.
+echo Any parameter that cannot be treated as valid option and all
+echo following parameters are passed as bash command parameters.
+echo.
 exit /b 0
