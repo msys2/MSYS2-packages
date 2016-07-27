@@ -1,0 +1,160 @@
+From cf3f29f8df148fcd3027690425283dcce2e78f6d Mon Sep 17 00:00:00 2001
+From: Daniel Salby <dsalby@gmail.com>
+Date: Wed, 27 Jul 2016 20:23:21 +1000
+Subject: [PATCH] Support ctrl-c better from dscho:ctrl-c
+
+---
+ winsup/cygwin/common.din              |  1 +
+ winsup/cygwin/exceptions.cc           |  5 ++-
+ winsup/cygwin/include/cygwin/signal.h |  2 ++
+ winsup/cygwin/signal.cc               | 59 +++++++++++++++++++++++++++++++++++
+ winsup/utils/kill.cc                  | 12 ++++---
+ 5 files changed, 74 insertions(+), 5 deletions(-)
+
+diff --git a/winsup/cygwin/common.din b/winsup/cygwin/common.din
+index db7ad78..64e62f8 100644
+--- a/winsup/cygwin/common.din
++++ b/winsup/cygwin/common.din
+@@ -33,6 +33,7 @@ sys_errlist = _sys_errlist DATA
+ sys_nerr = _sys_nerr DATA
+ sys_sigabbrev DATA
+ sys_siglist DATA
++kill_process_tree DATA
+ 
+ # Exported functions
+ _Exit SIGFE
+diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
+index c07d5df..5f45ebb 100644
+--- a/winsup/cygwin/exceptions.cc
++++ b/winsup/cygwin/exceptions.cc
+@@ -1556,7 +1556,10 @@ dosig:
+   if (have_execed)
+     {
+       sigproc_printf ("terminating captive process");
+-      TerminateProcess (ch_spawn, sigExeced = si.si_signo);
++      if ((sigExeced = si.si_signo) == SIGINT)
++        kill_process_tree( GetProcessId (ch_spawn), sigExeced = si.si_signo);
++      else
++        TerminateProcess (ch_spawn, sigExeced = si.si_signo);
+     }
+   /* Dispatch to the appropriate function. */
+   sigproc_printf ("signal %d, signal handler %p", si.si_signo, handler);
+diff --git a/winsup/cygwin/include/cygwin/signal.h b/winsup/cygwin/include/cygwin/signal.h
+index f304995..6c636dd 100644
+--- a/winsup/cygwin/include/cygwin/signal.h
++++ b/winsup/cygwin/include/cygwin/signal.h
+@@ -410,9 +410,11 @@ int siginterrupt (int, int);
+ #ifdef __INSIDE_CYGWIN__
+ extern const char *sys_sigabbrev[];
+ extern const char *sys_siglist[];
++extern void kill_process_tree(pid_t pid, int sig);
+ #else
+ extern const char __declspec(dllimport) *sys_sigabbrev[];
+ extern const char __declspec(dllimport) *sys_siglist[];
++extern void __declspec(dllimport) kill_process_tree(pid_t pid, int sig);
+ #endif
+ 
+ #ifdef __cplusplus
+diff --git a/winsup/cygwin/signal.cc b/winsup/cygwin/signal.cc
+index ff101e3..58ffe44 100644
+--- a/winsup/cygwin/signal.cc
++++ b/winsup/cygwin/signal.cc
+@@ -10,6 +10,7 @@ Cygwin license.  Please consult the file "CYGWIN_LICENSE" for
+ details. */
+ 
+ #include "winsup.h"
++#include <tlhelp32.h>
+ #include <stdlib.h>
+ #include <sys/cygwin.h>
+ #include "pinfo.h"
+@@ -358,6 +359,64 @@ killpg (pid_t pgrp, int sig)
+   return kill (-pgrp, sig);
+ }
+ 
++
++/**
++ * Terminates the process corresponding to the process ID and all of its
++ * directly and indirectly spawned subprocesses.
++ */
++extern "C" void
++kill_process_tree(pid_t pid, int sig)
++{
++	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
++	PROCESSENTRY32 entry;
++	DWORD pids[16384];
++	int max_len = sizeof(pids) / sizeof(*pids), i, len;
++
++	pids[0] = (DWORD) pid;
++	len = 1;
++
++	/*
++	 * Even if Process32First()/Process32Next() seem to traverse the
++	 * processes in topological order (i.e. parent processes before
++	 * child processes), there is nothing in the Win32 API documentation
++	 * suggesting that this is guaranteed.
++	 *
++	 * Therefore, run through them at least twice and stop when no more
++	 * process IDs were added to the list.
++	 */
++	for (;;) {
++		int orig_len = len;
++
++		memset(&entry, 0, sizeof(entry));
++		entry.dwSize = sizeof(entry);
++
++		if (!Process32First(snapshot, &entry))
++			break;
++
++		do {
++			for (i = len - 1; i >= 0; i--) {
++				if (pids[i] == entry.th32ProcessID)
++					break;
++				if (pids[i] == entry.th32ParentProcessID)
++					pids[len++] = entry.th32ProcessID;
++			}
++		} while (len < max_len && Process32Next(snapshot, &entry));
++
++		if (orig_len == len || len >= max_len)
++			break;
++	}
++
++	for (i = len - 1; i >= 0; i--) {
++		HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, pids[i]);
++
++		if (process) {
++			TerminateProcess(process, sig << 8);
++			CloseHandle(process);
++		}
++	}
++}
++
++
+ extern "C" void
+ abort (void)
+ {
+diff --git a/winsup/utils/kill.cc b/winsup/utils/kill.cc
+index e771cdb..fc639e8 100644
+--- a/winsup/utils/kill.cc
++++ b/winsup/utils/kill.cc
+@@ -171,10 +171,14 @@ forcekill (int pid, int sig, int wait)
+       return;
+     }
+   if (!wait || WaitForSingleObject (h, 200) != WAIT_OBJECT_0)
+-    if (sig && !TerminateProcess (h, sig << 8)
+-	&& WaitForSingleObject (h, 200) != WAIT_OBJECT_0)
+-      fprintf (stderr, "%s: couldn't kill pid %u, %u\n",
+-	       prog_name, (unsigned) dwpid, (unsigned int) GetLastError ());
++    {
++      if (sig == SIGINT || sig == SIGTERM)
++        kill_process_tree(dwpid, sig);
++      else if (sig && !TerminateProcess (h, sig << 8)
++        && WaitForSingleObject (h, 200) != WAIT_OBJECT_0)
++        fprintf (stderr, "%s: couldn't kill pid %u, %u\n",
++           prog_name, (unsigned) dwpid, (unsigned int) GetLastError ());
++    }
+   CloseHandle (h);
+ }
+ 
+-- 
+2.8.1
+
