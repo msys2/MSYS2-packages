@@ -1,0 +1,85 @@
+#!/bin/bash
+
+# Usage
+
+if [[ -z "${1}" || "${1}" =~ ^(--help|-h)$ ]]; then tee <<done
+
+    The MSYS2 Shell Manager 2016.6.22
+    Copyright (C) 2016 Renato Silva
+    Licensed under public domain
+
+Usage: source $(basename "${0}") mingw32|mingw64|msys
+
+    Switch between shells without restarting MSYS2. This is done by setting the
+    MSYSTEM variable and sourcing /etc/profile. For interactive shells,
+    ~/.bashrc is also sourced.
+
+Usage: $(basename "${0}") COMMAND [ARGUMENTS]...
+
+    Execute native Windows programs with better MSYS2 integration. This is done
+    by using winpty to execute the Windows command prompt and commands from
+    /mingw32, /mingw64 and the Windows system32 directory, enabling them to work
+    better under MinTTY and similar terminals.
+
+Usage: $(basename "${0}") DIRECTORY_OR_FILE...
+
+    Open each specified directory or file using Windows Explorer. This is done
+    by running one separate instance per argument, with paths converted to the
+    expected backslash format.
+
+done
+    if [[ "${BASH_SOURCE}" = "${0}" ]]
+        then exit 1
+        else return 1
+    fi
+fi
+
+# Argument validation
+
+if [[ "${BASH_SOURCE}" != "${0}" && ! "${1}" =~ ^(mingw32|mingw64|msys)$ ]]; then
+    echo "Unrecognized shell type ${1}"
+    return 1
+fi
+
+if [[ "${BASH_SOURCE}" = "${0}" && "${1}" =~ ^(mingw32|mingw64|msys)$ ]]; then
+    echo "Cannot switch to ${1} shell without sourcing"
+    exit 1
+fi
+
+if [[ "${BASH_SOURCE}" = "${0}" && -z "$(type -t "${1}")" && ! -e "${1}" ]]; then
+    echo "Could not find command ${1}"
+    exit 1
+fi
+
+# Main section
+
+if [[ "${BASH_SOURCE}" != "${0}" ]]; then
+    _current_directory="$(pwd)"
+    export MSYSTEM="${1^^}"
+    source /etc/profile
+    [[ "${-}" = *i* && -f ~/.bashrc ]] && source ~/.bashrc
+    cd "${_current_directory}"
+    unset _current_directory
+    return 0
+elif [[ (-f "${1}" && ! -x "${1}") || -d "${1}" ]]; then
+    explorer="$(cygpath --windir)/explorer.exe"
+    for path in "${@}"; do
+        path="$(cygpath --windows "${path}")"
+        test -e "${path}" && "${explorer}" "${path}"
+    done
+    exit 0
+else
+    command="$(type -P "${1}")"
+    command="${command,,}"
+    command="${command%.exe}"
+    system32="$(cygpath --windir)/system32"
+    system32="${system32,,}"
+    case "${command}" in
+        "${system32}"/*) winpty "${@}" || exit ;;
+        /usr/bin/cmd)    winpty "${@}" || exit ;;
+        /mingw32/*)      winpty "${@}" || exit ;;
+        /mingw64/*)      winpty "${@}" || exit ;;
+        *)                      "${@}" || exit ;;
+    esac
+    exit 0
+fi

@@ -1,0 +1,40 @@
+From 3c7eada27d6d8b32f4fd6c200c3ae7e09794daca Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 24 Mar 2015 14:09:29 +0300
+Subject: [PATCH 07/23] Automatically rewrite TERM=msys to TERM=cygwin
+
+With MSys1, it was necessary to set the TERM variable to "msys". To
+allow for a smooth transition from MSys1 to MSys2, let's simply handle
+TERM=msys as if the user had not specified TERM at all and wanted us to
+use our preferred TERM value.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/environ.cc | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
+index 5e5b08c..7a1a0ed 100644
+--- a/winsup/cygwin/environ.cc
++++ b/winsup/cygwin/environ.cc
+@@ -852,7 +852,16 @@ environ_init (char **envp, int envc)
+ 	  char *eq = strchrnul (newp, '=');
+ 	  ucenv (newp, eq);	/* uppercase env vars which need it */
+ 	  if (*newp == 'T' && strncmp (newp, "TERM=", 5) == 0)
+-	    sawTERM = 1;
++	    {
++	      /* backwards compatibility: override TERM=msys by TERM=cygwin */
++	      if (strcmp (newp + 5, "msys") == 0)
++		{
++		  free(newp);
++		  i--;
++		  continue;
++		}
++	      sawTERM = 1;
++	    }
+ #ifdef __MSYS__
+ 	  else if (*newp == 'M' && strncmp (newp, "MSYS=", 5) == 0)
+ 	    parse_options (newp + 5);
+-- 
+2.9.0
+

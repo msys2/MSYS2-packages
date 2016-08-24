@@ -3,15 +3,19 @@
 # Added /usr/bin/*_perl dirs for scripts
 # Remove /usr/lib/perl5/*_perl/bin in next release
 
-[ -d /usr/bin/site_perl ] && PATH=$PATH:/usr/bin/site_perl
-[ -d /usr/lib/perl5/site_perl/bin ] && PATH=$PATH:/usr/lib/perl5/site_perl/bin
+if test -z "${PERL_PATH}"; then
 
-[ -d /usr/bin/vendor_perl ] && PATH=$PATH:/usr/bin/vendor_perl
-[ -d /usr/lib/perl5/vendor_perl/bin ] && PATH=$PATH:/usr/lib/perl5/vendor_perl/bin
+    [ -d /usr/bin/site_perl ] && PERL_PATH="${PERL_PATH:+${PERL_PATH}:}/usr/bin/site_perl"
+    [ -d /usr/lib/perl5/site_perl/bin ] && PERL_PATH="${PERL_PATH:+${PERL_PATH}:}/usr/lib/perl5/site_perl/bin"
 
-[ -d /usr/bin/core_perl ] && PATH=$PATH:/usr/bin/core_perl
+    [ -d /usr/bin/vendor_perl ] && PERL_PATH="${PERL_PATH:+${PERL_PATH}:}/usr/bin/vendor_perl"
+    [ -d /usr/lib/perl5/vendor_perl/bin ] && PERL_PATH="${PERL_PATH:+${PERL_PATH}:}/usr/lib/perl5/vendor_perl/bin"
 
-export PATH
+    [ -d /usr/bin/core_perl ] && PERL_PATH="${PERL_PATH:+${PERL_PATH}:}/usr/bin/core_perl"
+
+fi
+
+export PERL_PATH PATH="${PATH}:${PERL_PATH}"
 
 # If you have modules in non-standard directories you can add them here.
 #export PERLLIB=dir1:dir2

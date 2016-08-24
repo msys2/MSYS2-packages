@@ -1,0 +1,123 @@
+--- tar-1.29/lib/rmt.h	2009-10-21 10:12:40.000000000 -0600
++++ tar-1.29/lib/rmt.h	2010-12-28 11:55:50.406250000 -0700
+@@ -62,7 +62,7 @@ extern bool force_local_option;
+ #define rmtcreat(dev_name, mode, command) \
+    (_remdev (dev_name) \
+     ? rmt_open__ (dev_name, O_CREAT | O_WRONLY, __REM_BIAS, command) \
+-    : creat (dev_name, mode))
++    : open (dev_name, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, mode))
+ 
+ #define rmtlstat(dev_name, muffer) \
+   (_remdev (dev_name) ? (errno = EOPNOTSUPP), -1 : lstat (dev_name, buffer))
+--- tar-1.29/rmt/rmt.c	2010-09-14 04:11:10.000000000 -0600
++++ tar-1.29/rmt/rmt.c	2010-12-28 11:55:50.437500000 -0700
+@@ -334,7 +334,7 @@ open_device (char *str)
+       if (device_fd >= 0)
+ 	close (device_fd);
+ 
+-      device_fd = open (device, flag, MODE_RW);
++      device_fd = open (device, flag | O_BINARY, MODE_RW);
+       if (device_fd < 0)
+ 	rmt_error (errno);
+       else
+
+--- tar-1.29/src/buffer.c.orig	2016-03-14 16:58:16.000000000 -0400
++++ tar-1.29/src/buffer.c	2016-06-06 00:46:34.983098000 -0400
+@@ -751,6 +751,7 @@
+             enum compress_type type;
+ 
+             archive = STDIN_FILENO;
++            freopen (NULL, "rb", stdin);
+             type = check_compressed_archive (&shortfile);
+             if (type != ct_tar && type != ct_none)
+               FATAL_ERROR ((0, 0,
+@@ -763,12 +764,19 @@
+ 
+         case ACCESS_WRITE:
+           archive = STDOUT_FILENO;
++	  freopen (NULL,
++		   fcntl (STDOUT_FILENO, F_GETFL) & O_APPEND ? "ab" : "wb",
++		   stdout);
+           if (!index_file_name)
+             stdlis = stderr;
+           break;
+ 
+         case ACCESS_UPDATE:
+           archive = STDIN_FILENO;
++	  freopen (NULL, "rb", stdin);
++	  freopen (NULL,
++		   fcntl (STDOUT_FILENO, F_GETFL) & O_APPEND ? "ab" : "wb",
++		   stdout);
+           write_archive_to_stdout = true;
+           record_end = record_start; /* set up for 1st record = # 0 */
+           if (!index_file_name)
+@@ -1160,7 +1168,7 @@
+ void
+ closeout_volume_number (void)
+ {
+-  FILE *file = fopen (volno_file_option, "w");
++  FILE *file = fopen (volno_file_option, "wb");
+ 
+   if (file)
+     {
+--- tar-1.29/src/incremen.c.orig	2016-05-16 04:30:00.000000000 -0400
++++ tar-1.29/src/incremen.c	2016-06-06 00:30:42.988986000 -0400
+@@ -1035,7 +1035,14 @@
+       lineno++;
+ 
+       if (buf[n - 1] == '\n')
+-	buf[n - 1] = '\0';
++	{
++	  buf[n - 1] = '\0';
++	  /* Cygwin hack - older tars created incremental files with \r\n
++	     line endings, so strip the \r.  This breaks on managed mount
++	     on directories with a trailing \r, oh well.  */
++	  if (buf[n - 2] == '\r')
++	    buf[n - 2] = '\0';
++	}
+ 
+       if (version == 1)
+ 	{
+@@ -1330,7 +1337,7 @@
+   int fd;
+   char *buf = NULL;
+   size_t bufsize = 0;
+-  int flags = O_RDWR | O_CREAT;
++  int flags = O_RDWR | O_CREAT | O_BINARY;
+ 
+   if (incremental_level == 0)
+     flags |= O_TRUNC;
+@@ -1344,7 +1351,7 @@
+       return;
+     }
+ 
+-  listed_incremental_stream = fdopen (fd, "r+");
++  listed_incremental_stream = fdopen (fd, "rb+");
+   if (! listed_incremental_stream)
+     {
+       open_error (listed_incremental_option);
+--- tar-1.29/src/system.c.orig	2016-04-14 04:23:45.000000000 -0400
++++ tar-1.29/src/system.c	2016-06-06 00:30:42.995487500 -0400
+@@ -367,7 +367,8 @@
+ 	 compressor.  */
+       if (strcmp (archive_name_array[0], "-"))
+ 	{
+-	  archive = creat (archive_name_array[0], MODE_RW);
++	  archive = open (archive_name_array[0],
++			  O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, MODE_RW);
+ 	  if (archive < 0)
+ 	    {
+ 	      int saved_errno = errno;
+@@ -408,7 +409,11 @@
+   xclose (child_pipe[PWRITE]);
+ 
+   if (strcmp (archive_name_array[0], "-") == 0)
+-    archive = STDOUT_FILENO;
++    {
++      archive = STDOUT_FILENO;
++      freopen (NULL, fcntl (STDOUT_FILENO, F_GETFL) & O_APPEND ? "ab" : "wb",
++	       stdout);
++    }
+   else
+     {
+       archive = rmtcreat (archive_name_array[0], MODE_RW, rsh_command_option);
