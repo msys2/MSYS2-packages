@@ -1,0 +1,77 @@
+# Maintainer: Ricky <rickleaf.wu@gmail.com>
+
+_realname="emacs"
+pkgname="emacs"
+pkgver=24.5
+pkgrel=1
+pkgdesc="The extensible, customizable, self-documenting, real-time display editor (msys2)"
+url="http://www.gnu.org/software/${_realname}/"
+license=('GPL3')
+arch=('any')
+depends=('ncurses')
+groups=('editors')
+makedepends=('gawk' 'perl' 'python2' 'python3' 'ruby' 'libiconv' 'ncurses-devel' 'libcrypt-devel')
+options=('strip')
+source=("http://ftp.gnu.org/gnu/${_realname}/${_realname}-${pkgver}.tar.xz"{,.sig}
+        'image.c.diff'
+        'lread.c.diff'
+        'Makefile.in.diff'
+        'configure.ac.diff'
+        'profiler.c.diff')
+sha256sums=('SKIP'
+            '4571d45ec26fd556e73a70bb0ab0a2a8fa1efc5e3b3c5b472ab68bb7dc9bf52c'
+            'b9db1b7d939301d0fedf52db6ac055f7265ee5bc0c3c757e394700ca39577b7f')
+
+prepare() {
+  cd "${_realname}-${pkgver}"
+  patch --binary --forward -p0 < "${srcdir}/image.c.diff"
+  patch --binary --forward -p0 < "${srcdir}/lread.c.diff"
+  patch --binary --forward -p0 < "${srcdir}/configure.ac.diff"
+  patch --binary --forward -p0 < "${srcdir}/Makefile.in.diff"
+  cd src
+  patch --binary --forward -p0 < "${srcdir}/profiler.c.diff"
+  cd ..
+  ./autogen.sh
+}
+
+build() {
+	
+  cd "${srcdir}/${_realname}-${pkgver}"
+
+  CPPFLAGS="-DNDEBUG"
+  CFLAGS="-pipe -O3 -fomit-frame-pointer -funroll-loops"
+  LDFLAGS="-s -Wl,-s"
+  ./configure \
+    --prefix=/usr \
+    --build="${CHOST}" \
+    --with-wide-int="yes" \
+    --with-w32="yes" \
+    --with-sound="yes" \
+    --with-file-notification="yes" \
+    --without-gpm \
+    --without-gconf \
+    --without-gsettings \
+    --without-selinux
+
+  make
+}
+
+package() {
+  cd "${srcdir}"/${_realname}-${pkgver}
+  make DESTDIR="${pkgdir}" install
+  rm -f "${pkgdir}/usr/bin/ctags.exe"
+  rm -f "${pkgdir}/usr/share/man/man1/ctags.1.gz"
+  rm -f "${pkgdir}/usr/share/info/info.info.gz"
+
+  local dir="${pkgdir}/usr/share/${_realname}"
+        dir="${dir}/$(ls -1 ${dir} | grep -E '([0-9]+\.[0-9]+)(\.[0-9]+)?')/src"
+
+  mkdir -p "${dir}"
+  cd "${srcdir}/${_realname}-${pkgver}/src"
+  cp *.c *.h *.m "${dir}"
+  
+}
+
+# TODO:
+# Patch `shell-file-name' default in the C source code similarly to
+# `source-directory'.
