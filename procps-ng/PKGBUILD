@@ -1,0 +1,53 @@
+pkgname=procps-ng
+pkgver=3.3.12
+pkgrel=1
+pkgdesc='Utilities for monitoring your system and its processes'
+arch=('i686' 'x86_64')
+url='https://gitlab.com/procps-ng/procps'
+license=('GPL' 'LGPL')
+groups=('sys-utils')
+depends=('msys2-runtime' 'ncurses')
+makedepends=('ncurses-devel')
+options=('!emptydirs' 'strip')
+conflicts=('procps')
+provides=('procps')
+#replaces=('procps')
+source=("https://downloads.sourceforge.net/project/${pkgname}/Production/${pkgname}-${pkgver}.tar.xz"
+         procps-ng-3.3.12-msys2.patch)
+sha256sums=('6ed65ab86318f37904e8f9014415a098bec5bc53653e5d9ab404f95ca5e1a7d4'
+            'e2d692b45dd2ba9840ec5cd6a25a9106bd0ac3ca36d1b4a120288be6575c6977')
+
+
+prepare() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+
+  patch -p1 -i ${srcdir}/procps-ng-3.3.12-msys2.patch
+  autoreconf -fi
+}
+
+build() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  ./configure \
+    --build=${CHOST} \
+    --prefix=/usr \
+    --bindir=/usr/bin \
+    --sbindir=/usr/bin \
+    --libexecdir=/usr/lib \
+    --libdir=/usr/lib \
+    --without-libiconv-prefix \
+    --without-libintl-prefix \
+    CFLAGS="${CFLAGS} -I/usr/include/ncursesw" \
+    --enable-watch8bit \
+    --disable-kill
+	# kill is provided by util-linux
+
+  make
+}
+
+package() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  make DESTDIR=${pkgdir} install
+
+  # conflict with `ps` from msys2-runtime
+  rm ${pkgdir}/usr/bin/ps
+}
