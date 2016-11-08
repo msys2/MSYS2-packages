@@ -1,0 +1,40 @@
+pkgname=(rtorrent)
+pkgver=0.9.6
+pkgrel=1
+groups=()
+pkgdesc='Ncurses BitTorrent client based on libTorrent'
+url='http://rakshasa.github.io/rtorrent/'
+license=('GPL')
+arch=('i686' 'x86_64')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/rakshasa/${pkgname}/archive/${pkgver}.tar.gz" '01-fix_flags.patch')
+sha256sums=('8ca89ca9e8f0cf984198d030203087e93d24743dfa158091a5d225a70ca4c8cf' 'SKIP')
+makedepends=(ncurses-devel libcurl-devel libcrypt-devel libiconv-devel libsqlite-devel libtorrent openssl-devel)
+depends=(ncurses curl)
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  sed '/AM_PATH_CPPUNIT/d' -i configure.ac
+  
+  patch -p1 -i ${srcdir}/01-fix_flags.patch
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  ./autogen.sh
+  ./configure \
+    --build=${CHOST} \
+    --prefix=/usr \
+    --disable-debug \
+    CXXFLAGS="${CPPFLAGS} -I/usr/include/ncursesw"
+    
+  make
+}
+
+package() {
+	cd "${srcdir}/${pkgname}-${pkgver}"  
+	make \
+    DESTDIR="${pkgdir}" \
+    install
+    
+  install -D doc/rtorrent.rc "${pkgdir}"/usr/share/doc/rtorrent/rtorrent.rc
+}
