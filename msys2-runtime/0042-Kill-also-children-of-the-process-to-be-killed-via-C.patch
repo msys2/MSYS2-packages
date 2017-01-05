@@ -1,0 +1,157 @@
+From bdae11e61fd013c0704d022952241935133f2811 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Fri, 20 Mar 2015 09:56:28 +0000
+Subject: [PATCH 42/51] Kill also children of the process to be killed via
+ Ctrl+C
+
+When a Win32 process needs to be terminated, the child processes it
+spawned off also need to be terminated. This is no issue for MSys2
+processes because MSys2 emulates Unix' signal system accurately, both
+for the process sending the kill signal and the process receiving it.
+Win32 processes do not have such a signal handler, though, instead
+MSys2 shuts them down via `TerminateProcess()`.
+
+As `TerminateProcess()` leaves the Win32 process no chance to do
+anything, and also does not care about child processes, we have to grow
+a different solution. For console processes, it should be enough to call
+`GenerateConsoleCtrlEvent()`, but sadly even then this seems to handle
+child processes correctly only on Windows 8 but not Windows 7.
+
+So let's identify the tree of processes spawned directly and indirectly
+from the process to be killed, and kill them all. To do so, we do not
+use the NtQueryInformationProcess() function because 1) it is marked
+internal and subject to change at any time of Microsoft's choosing, and
+2) it does not even officially report the child/parent relationship (the
+pid of the parent process is stored in the `Reserved3` slot of the
+`PROCESS_BASIC_INFORMATION` structure).
+
+Instead, we resort to the Toolhelp32 API -- which happily also works on
+64-bit Windows -- to enumerate the process tree and reconstruct the
+process tree rooted in the process we intend to kill.
+
+This fixes the bug where interrupting `git clone https://...` would send
+the spawned-off `git remote-https` process into the background instead of
+interrupting it, i.e. the clone would continue and its progress would be
+reported mercilessly to the console window without the user being able
+to do anything about it (short of firing up the task manager and killing
+the appropriate task manually).
+
+Note that this special-handling is only necessary when *MSys* handles
+the Ctrl+C event, e.g. when interrupting a process started from within
+mintty or any other non-cmd-based terminal emulator. If the process was
+started from within `cmd.exe`'s terminal window, child processes are
+already killed appropriately upon Ctrl+C.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/exceptions.cc           |  5 ++-
+ winsup/cygwin/include/cygwin/signal.h |  1 +
+ winsup/cygwin/signal.cc               | 57 +++++++++++++++++++++++++++++++++++
+ 3 files changed, 62 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
+index 2dd355a..6707eb9 100644
+--- a/winsup/cygwin/exceptions.cc
++++ b/winsup/cygwin/exceptions.cc
+@@ -1547,7 +1547,10 @@ dosig:
+   if (have_execed)
+     {
+       sigproc_printf ("terminating captive process");
+-      TerminateProcess (ch_spawn, sigExeced = si.si_signo);
++      if ((sigExeced = si.si_signo) == SIGINT)
++        kill_process_tree (GetProcessId (ch_spawn), sigExeced = si.si_signo);
++      else
++        TerminateProcess (ch_spawn, sigExeced = si.si_signo);
+     }
+   /* Dispatch to the appropriate function. */
+   sigproc_printf ("signal %d, signal handler %p", si.si_signo, handler);
+diff --git a/winsup/cygwin/include/cygwin/signal.h b/winsup/cygwin/include/cygwin/signal.h
+index f304995..ae86de0 100644
+--- a/winsup/cygwin/include/cygwin/signal.h
++++ b/winsup/cygwin/include/cygwin/signal.h
+@@ -414,6 +414,7 @@ extern const char *sys_siglist[];
+ extern const char __declspec(dllimport) *sys_sigabbrev[];
+ extern const char __declspec(dllimport) *sys_siglist[];
+ #endif
++void kill_process_tree(pid_t pid, int sig);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/winsup/cygwin/signal.cc b/winsup/cygwin/signal.cc
+index f371a23..45cf5d4 100644
+--- a/winsup/cygwin/signal.cc
++++ b/winsup/cygwin/signal.cc
+@@ -10,6 +10,7 @@ Cygwin license.  Please consult the file "CYGWIN_LICENSE" for
+ details. */
+ 
+ #include "winsup.h"
++#include <tlhelp32.h>
+ #include <stdlib.h>
+ #include <sys/cygwin.h>
+ #include "pinfo.h"
+@@ -358,6 +359,62 @@ killpg (pid_t pgrp, int sig)
+   return kill (-pgrp, sig);
+ }
+ 
++/**
++ * Terminates the process corresponding to the process ID and all of its
++ * directly and indirectly spawned subprocesses.
++ */
++extern "C" void
++kill_process_tree(pid_t pid, int sig)
++{
++	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
++	PROCESSENTRY32 entry;
++	DWORD pids[16384];
++	int max_len = sizeof(pids) / sizeof(*pids), i, len;
++
++	pids[0] = (DWORD) pid;
++	len = 1;
++
++	/*
++	 * Even if Process32First()/Process32Next() seem to traverse the
++	 * processes in topological order (i.e. parent processes before
++	 * child processes), there is nothing in the Win32 API documentation
++	 * suggesting that this is guaranteed.
++	 *
++	 * Therefore, run through them at least twice and stop when no more
++	 * process IDs were added to the list.
++	 */
++	for (;;) {
++		int orig_len = len;
++
++		memset(&entry, 0, sizeof(entry));
++		entry.dwSize = sizeof(entry);
++
++		if (!Process32First(snapshot, &entry))
++			break;
++
++		do {
++			for (i = len - 1; i >= 0; i--) {
++				if (pids[i] == entry.th32ProcessID)
++					break;
++				if (pids[i] == entry.th32ParentProcessID)
++					pids[len++] = entry.th32ProcessID;
++			}
++		} while (len < max_len && Process32Next(snapshot, &entry));
++
++		if (orig_len == len || len >= max_len)
++			break;
++	}
++
++	for (i = len - 1; i >= 0; i--) {
++		HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, pids[i]);
++
++		if (process) {
++			TerminateProcess(process, sig << 8);
++			CloseHandle(process);
++		}
++	}
++}
++
+ extern "C" void
+ abort (void)
+ {
+-- 
+2.10.2
+

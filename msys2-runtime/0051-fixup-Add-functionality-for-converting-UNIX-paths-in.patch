@@ -1,0 +1,54 @@
+From 3cf1b9c3ac4c5490bc94b00cc44682d2637d0b95 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Fri, 6 Jan 2017 16:12:05 +0100
+Subject: [PATCH 51/51] fixup! Add functionality for converting UNIX paths in
+ arguments and environment variables to Windows form for native Win32
+ applications.
+
+There is a subtle buffer overrun in the convert() mechanism: after a
+sub_convert() completed, we may very well be at the end of the
+conversion, i.e. the "src" pointer may already point at the trailing
+NUL. Advancing that pointer any further shifts the pointer out of
+bounds, with the predictable result of copying bogus characters into the
+output buffer.
+
+Another very subtle buffer overrun happens when the the buffer passed to
+the find_path_start_and_type() function ends in a colon: in that case,
+the code advances one byte to see whether there is a slash, another
+colon, or a period, or if there is no equal sign in th rest of the
+buffer, but since there is only a NUL byte, the code enters the next
+loop iteration, advancing by one byte *again*, and consequently failing
+the `it2 != end` condition.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/msys2_path_conv.cc | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
+index 2487156..6b77b61 100644
+--- a/winsup/cygwin/msys2_path_conv.cc
++++ b/winsup/cygwin/msys2_path_conv.cc
+@@ -304,6 +304,10 @@ const char* convert(char *dst, size_t dstlen, const char *src) {
+     }
+ 
+     sub_convert(&srcbeg, &srcit, &dstit, dstend, &in_string);
++    if (!*srcit) {
++      *dstit = '\0';
++      return dst;
++    }
+     srcbeg = srcit + 1;
+     for (; *srcit != '\0'; ++srcit) {
+       continue;
+@@ -496,7 +500,7 @@ skip_p2w:
+             return find_path_start_and_type(src, true, end);
+         }
+ 
+-        if (ch == ':') {
++        if (ch == ':' && it2 + 1 != end) {
+             it2 += 1;
+             ch = *it2;
+             if (ch == '/' || ch == ':' || ch == '.') {
+-- 
+2.10.2
+

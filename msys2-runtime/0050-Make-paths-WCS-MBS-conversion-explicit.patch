@@ -1,0 +1,693 @@
+From 33e1cfefd7d5adc561744c18645a08c26fea3509 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Fri, 18 Dec 2015 20:19:57 +0100
+Subject: [PATCH 50/51] Make paths' WCS->MBS conversion explicit
+
+	* dcrt0.cc (dll_crt0_1), dtable.cc (handle_to_fn), environ.cc
+	(environ_init, getwinenveq, build_env), external.cc
+	(fillout_pinfo), fhandler_disk_file.cc (__DIR_mounts::eval_ino,
+	fhandler_disk_file::readdir_helper), fhandler_netdrive.cc
+	(fhandler_netdrive::readdir), fhandler_process.cc
+	(format_process_winexename, format_process_maps,
+	format_process_stat, format_process_status), fhandler_procsys.cc
+	(fill_filebuf, fhandler_procsys::readdir), mount.cc
+	(fs_info::update, mount_info::create_root_entry,
+	mount_info::conv_to_posix_path, mount_info::from_fstab_line),
+	nlsfuncs.cc (internal_setlocale), path.cc (path_conv::check,
+	sysmlink_info::check_shortcut, symlink_info::check_sysfile,
+	symlink_info::check_reparse_point,
+	symlink_info::check_nfs_symlink, cygwin_conv_path,
+	cygwin_conv_path_list, cwdstuff::get_error_desc, cwdstuff::get),
+	strfuncs.cc (sys_wcstombs_no_path, sys_wcstombs_alloc_no_path),
+	uinfo.cc (ontherange, fetch_from_path, cygheap_pwdgrp::get_home,
+	cygheap_pwdgrp::get_shell, cygheap_pwdgrp::get_gecos), wchar.h
+	(sys_wcstombs_no_path, sys_wcstombs_alloc_no_path): Convert call
+	sites of the sys_wcstombs*() family to specify explicitly when the
+	parameter refers to a path or file name, to avoid future
+	misconversions.
+
+Detailed explanation:
+
+The sys_wcstombs() function contains special handling for paths/file
+names, to work around file name restriction on Windows that are
+unexpected in the POSIX context of Cygwin.
+
+We actually do not want that special handling for WCS strings that
+do *not* refer to paths or file names.
+
+Neither do we want to convert those special file names unless they come
+from inside Cygwin: if the source of the string value is the Windows API,
+we *know* it cannot be such a special file name because Windows itself
+would not be able to handle it in the way Cygwin does.
+
+So let's switch the previous sys_wcstombs()/sys_wcstombs_no_path() (and
+the *_alloc* variant) around to sys_wcstombs_path()/sys_wcstombs(). We do
+this for several reasons:
+
+- whenever a call site wants to convert a WCS representation of a path or
+  file name to an MBS one, it should be made very clear that we *want* the
+  special file name conversion to happen.
+
+- it is shorter to read and write.
+
+- future calls to sys_wcstombs() will not incur unwanted conversion by
+  accident (it is easy for unsuspecting programmers to assume that the
+  function name "sys_wcstombs()" refers to a regular text conversion that
+  has nothing to do with paths or filenames).
+
+By keeping the name sys_wcstombs() (and not switching to
+sys_wcstombs_path()), the following call sites are implicitly changed to
+*exclude* the special path/file name conversion:
+
+cygheap.h (get_drive):
+	Cannot contain special characters
+
+dcrt0.cc (dll_crt0_1):
+	Is input from outside of Cygwin
+
+environ.cc (getwinenveq):
+	Is input from outside of Cygwin
+
+external.cc (cygwin_internal):
+	Refers to user/domain names, not paths
+
+fhandler_clipboard.cc (fhandler_dev_clipboard::read):
+	Is not a path or file name but characters from the Windows
+	clipboard
+
+fhandler_console.cc: (dev_console::con_to_str):
+	Is not a path or file name but characters from the console
+
+fhandler_registry.cc (encode_regname):
+	Is a registry key, not a path or filename
+
+fhandler_registry.cc (multi_wcstombs):
+	All call sites pass registry values, not paths or filenames
+
+fhandler_registry.cc (fstat):
+	Is a registry value, not a path or filename
+
+fhandler_registry.cc (fill_filebuf):
+	Is a registry value, not a path or filename
+
+miscfuncs.cc (strlwr):
+	TODO
+
+miscfuncs.cc (strupr):
+	TODO
+
+net.cc (get_ipv4fromreg):
+	Is a registry value, not a path or filename
+
+net.cc (get_friendlyname):
+	Is a device name, not a path or filename
+
+netdb.cc (open_system_file):
+	Is from outside Cygwin
+
+smallprint.cc (__small_vsprintf):
+	Is a free text, not a path or filename
+
+uinfo.cc (cygheap_user::init):
+	Refers to a user name, not a path or filename
+
+uinfo.cc (pwdgrp::fetch_account_from_windows):
+	Refers to value from outside Cygwin
+
+By keeping the function name sys_wcstombs_alloc() (and not changing it to
+sys_wcstombs_alloc_path()), the following call sites are implicitly
+changed to *exclude* the special path/file name conversion:
+
+environ.cc (environ_init):
+	Is input from outside of Cygwin
+
+environ.cc (build_env):
+	Refers to the environment from outside Cygwin
+
+ldap.cc (cyg_ldap::remap_uid):
+	Refers to a user name, not a path or filename
+
+ldap.cc (cyg_ldap::remap_gid):
+	Refers to a group name, not a path or filename
+
+pinfo.cc (_pinfo::cmdline):
+	Refers to a command line from Windows, outside Cygwin
+
+uinfo.cc (cygheap_user::env_logsrv):
+	Is a server name, not a path or filename
+
+uinfo.cc (cygheap_user::env_domain):
+	Refers to the user/domain name, not a path or filename
+
+uinfo.cc (cygheap_user::env_userprofile):
+	Refers to Windows' idea of a path, outside Cygwin
+
+uinfo.cc (cygheap_user::env_systemroot):
+	Refers to Windows' idea of a path, outside Cygwin
+
+uinfo.cc (fetch_from_description):
+	Refers to values from outside of Cygwin
+
+uinfo.cc (cygheap_pwdgrp::get_gecos):
+	Refers to user/domain name and email address, not path nor filename
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/dcrt0.cc              |  4 ++--
+ winsup/cygwin/dtable.cc             |  2 +-
+ winsup/cygwin/environ.cc            |  8 ++++----
+ winsup/cygwin/external.cc           |  2 +-
+ winsup/cygwin/fhandler_disk_file.cc |  6 +++---
+ winsup/cygwin/fhandler_netdrive.cc  |  6 +++---
+ winsup/cygwin/fhandler_process.cc   | 11 ++++++-----
+ winsup/cygwin/fhandler_procsys.cc   |  9 +++++----
+ winsup/cygwin/mount.cc              |  8 ++++----
+ winsup/cygwin/nlsfuncs.cc           |  2 +-
+ winsup/cygwin/path.cc               | 27 ++++++++++++++-------------
+ winsup/cygwin/strfuncs.cc           |  8 ++++----
+ winsup/cygwin/uinfo.cc              | 20 ++++++++++----------
+ winsup/cygwin/wchar.h               |  5 ++++-
+ 14 files changed, 62 insertions(+), 56 deletions(-)
+
+diff --git a/winsup/cygwin/dcrt0.cc b/winsup/cygwin/dcrt0.cc
+index 4d92b2c..93bfa08 100644
+--- a/winsup/cygwin/dcrt0.cc
++++ b/winsup/cygwin/dcrt0.cc
+@@ -935,9 +935,9 @@ dll_crt0_1 (void *)
+   if (!__argc)
+     {
+       PWCHAR wline = GetCommandLineW ();
+-      size_t size = sys_wcstombs_no_path (NULL, 0, wline) + 1;
++      size_t size = sys_wcstombs (NULL, 0, wline) + 1;
+       char *line = (char *) alloca (size);
+-      sys_wcstombs_no_path (line, size, wline);
++      sys_wcstombs (line, size, wline);
+ 
+       /* Scan the command line and build argv.  Expand wildcards if not
+ 	 called from another cygwin process. */
+diff --git a/winsup/cygwin/dtable.cc b/winsup/cygwin/dtable.cc
+index e6f560f..c8ed586 100644
+--- a/winsup/cygwin/dtable.cc
++++ b/winsup/cygwin/dtable.cc
+@@ -995,7 +995,7 @@ handle_to_fn (HANDLE h, char *posix_fn)
+       if (wcsncasecmp (w32, DEVICE_PREFIX, DEVICE_PREFIX_LEN) != 0
+ 	  || !QueryDosDeviceW (NULL, fnbuf, sizeof (fnbuf) / sizeof (WCHAR)))
+ 	{
+-	  sys_wcstombs (posix_fn, NT_MAX_PATH, w32, w32len);
++	  sys_wcstombs_path (posix_fn, NT_MAX_PATH, w32, w32len);
+ 	  return false;
+ 	}
+ 
+diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
+index cdf20b7..9b8f5ac 100644
+--- a/winsup/cygwin/environ.cc
++++ b/winsup/cygwin/environ.cc
+@@ -829,7 +829,7 @@ environ_init (char **envp, int envc)
+ 	 eventually want to use them).  */
+       for (i = 0, w = rawenv; *w != L'\0'; w = wcschr (w, L'\0') + 1, i++)
+ 	{
+-	  sys_wcstombs_alloc_no_path (&newp, HEAP_NOTHEAP, w);
++	  sys_wcstombs_alloc (&newp, HEAP_NOTHEAP, w);
+ 	  if (i >= envc)
+ 	    envp = (char **) realloc (envp, (4 + (envc += 100)) * sizeof (char *));
+ 	  envp[i] = newp;
+@@ -908,7 +908,7 @@ getwinenveq (const char *name, size_t namelen, int x)
+   int totlen = GetEnvironmentVariableW (name0, valbuf, 32768);
+   if (totlen > 0)
+     {
+-      totlen = sys_wcstombs_no_path (NULL, 0, valbuf) + 1;
++      totlen = sys_wcstombs (NULL, 0, valbuf) + 1;
+       if (x == HEAP_1_STR)
+ 	totlen += namelen;
+       else
+@@ -916,7 +916,7 @@ getwinenveq (const char *name, size_t namelen, int x)
+       char *p = (char *) cmalloc_abort ((cygheap_types) x, totlen);
+       if (namelen)
+ 	strcpy (p, name);
+-      sys_wcstombs_no_path (p + namelen, totlen, valbuf);
++      sys_wcstombs (p + namelen, totlen, valbuf);
+       debug_printf ("using value from GetEnvironmentVariable for '%W'", name0);
+       return p;
+     }
+@@ -1069,7 +1069,7 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+ 	  for (winnum = 0, var = cwinenv;
+ 	       *var;
+ 	       ++winnum, var = wcschr (var, L'\0') + 1)
+-	    sys_wcstombs_alloc_no_path (&winenv[winnum], HEAP_NOTHEAP, var);
++	    sys_wcstombs_alloc (&winenv[winnum], HEAP_NOTHEAP, var);
+ 	}
+       DestroyEnvironmentBlock (cwinenv);
+       /* Eliminate variables which are already available in envp, as well as
+diff --git a/winsup/cygwin/external.cc b/winsup/cygwin/external.cc
+index de3eaa8..c118c01 100644
+--- a/winsup/cygwin/external.cc
++++ b/winsup/cygwin/external.cc
+@@ -88,7 +88,7 @@ fillout_pinfo (pid_t pid, int winpid)
+ 	  ep.rusage_self = p->rusage_self;
+ 	  ep.rusage_children = p->rusage_children;
+ 	  ep.progname[0] = '\0';
+-	  sys_wcstombs(ep.progname, MAX_PATH, p->progname);
++	  sys_wcstombs_path (ep.progname, MAX_PATH, p->progname);
+ 	  ep.strace_mask = 0;
+ 	  ep.version = EXTERNAL_PINFO_VERSION;
+ 
+diff --git a/winsup/cygwin/fhandler_disk_file.cc b/winsup/cygwin/fhandler_disk_file.cc
+index fcbe15c..f24f8a2 100644
+--- a/winsup/cygwin/fhandler_disk_file.cc
++++ b/winsup/cygwin/fhandler_disk_file.cc
+@@ -50,7 +50,7 @@ class __DIR_mounts
+       char *c = stpcpy (fname, parent_dir);
+       if (c[- 1] != '/')
+ 	*c++ = '/';
+-      sys_wcstombs (c, mounts[idx].Length + 1,
++      sys_wcstombs_path (c, mounts[idx].Length + 1,
+ 		    mounts[idx].Buffer, mounts[idx].Length / sizeof (WCHAR));
+       path_conv pc (fname, PC_SYM_NOFOLLOW | PC_POSIX | PC_KEEP_HANDLE);
+       if (!stat_worker (pc, &st))
+@@ -2057,7 +2057,7 @@ fhandler_disk_file::readdir_helper (DIR *dir, dirent *de, DWORD w32_err,
+ 	  char *p = stpcpy (file, pc.get_posix ());
+ 	  if (p[-1] != '/')
+ 	    *p++ = '/';
+-	  sys_wcstombs (p, NT_MAX_PATH - (p - file),
++	  sys_wcstombs_path (p, NT_MAX_PATH - (p - file),
+ 			fname->Buffer, fname->Length / sizeof (WCHAR));
+ 	  path_conv fpath (file, PC_SYM_NOFOLLOW);
+ 	  if (fpath.issymlink ())
+@@ -2078,7 +2078,7 @@ fhandler_disk_file::readdir_helper (DIR *dir, dirent *de, DWORD w32_err,
+ 	}
+     }
+ 
+-  sys_wcstombs (de->d_name, NAME_MAX + 1, fname->Buffer,
++  sys_wcstombs_path (de->d_name, NAME_MAX + 1, fname->Buffer,
+ 		fname->Length / sizeof (WCHAR));
+ 
+   /* Don't try to optimize relative to dir->__d_position.  On several
+diff --git a/winsup/cygwin/fhandler_netdrive.cc b/winsup/cygwin/fhandler_netdrive.cc
+index 654360f..a598cb4 100644
+--- a/winsup/cygwin/fhandler_netdrive.cc
++++ b/winsup/cygwin/fhandler_netdrive.cc
+@@ -252,15 +252,15 @@ fhandler_netdrive::readdir (DIR *dir, dirent *de)
+ 	  tp.u_get (&ds);
+ 	  RtlInitUnicodeString (&ss, bs);
+ 	  RtlDowncaseUnicodeString (&ds, &ss, FALSE);
+-	  sys_wcstombs (de->d_name, sizeof de->d_name,
++	  sys_wcstombs_path (de->d_name, sizeof de->d_name,
+ 			ds.Buffer, ds.Length / sizeof (WCHAR));
+ 	  de->d_ino = hash_path_name (get_ino (), de->d_name);
+ 	}
+       else
+ 	{
+-	  sys_wcstombs (de->d_name, sizeof de->d_name, bs);
++	  sys_wcstombs_path (de->d_name, sizeof de->d_name, bs);
+ 	  char *rpath = tp.c_get ();
+-	  sys_wcstombs (rpath, NT_MAX_PATH, nro->lpRemoteName);
++	  sys_wcstombs_path (rpath, NT_MAX_PATH, nro->lpRemoteName);
+ 	  de->d_ino = readdir_get_ino (rpath, false);
+ 	  /* We can't trust remote inode numbers of only 32 bit.  That means,
+ 	     remote NT4 NTFS, as well as shares of Samba version < 3.0. */
+diff --git a/winsup/cygwin/fhandler_process.cc b/winsup/cygwin/fhandler_process.cc
+index 5f530a2..fbedbb5 100644
+--- a/winsup/cygwin/fhandler_process.cc
++++ b/winsup/cygwin/fhandler_process.cc
+@@ -563,10 +563,10 @@ static off_t
+ format_process_winexename (void *data, char *&destbuf)
+ {
+   _pinfo *p = (_pinfo *) data;
+-  size_t len = sys_wcstombs (NULL, 0, p->progname);
++  size_t len = sys_wcstombs_path (NULL, 0, p->progname);
+   destbuf = (char *) crealloc_abort (destbuf, len + 1);
+   /* With trailing \0 for backward compat reasons. */
+-  sys_wcstombs (destbuf, len + 1, p->progname);
++  sys_wcstombs_path (destbuf, len + 1, p->progname);
+   return len;
+ }
+ 
+@@ -1006,7 +1006,7 @@ peb_teb_rinse_repeat:
+ 		      drive_maps.fixup_if_match (msi->SectionFileName.Buffer);
+ 		  if (mount_table->conv_to_posix_path (dosname,
+ 						       posix_modname, 0))
+-		    sys_wcstombs (posix_modname, NT_MAX_PATH, dosname);
++		    sys_wcstombs_path (posix_modname, NT_MAX_PATH, dosname);
+ 		  stat64 (posix_modname, &st);
+ 		}
+ 	      else if (!threads.fill_if_match (cur.abase, mb.Type,
+@@ -1052,7 +1052,7 @@ format_process_stat (void *data, char *&destbuf)
+   else
+     {
+       PWCHAR last_slash = wcsrchr (p->progname, L'\\');
+-      sys_wcstombs (cmd, NAME_MAX + 1,
++      sys_wcstombs_path (cmd, NAME_MAX + 1,
+ 		    last_slash ? last_slash + 1 : p->progname);
+       int len = strlen (cmd);
+       if (len > 4)
+@@ -1170,7 +1170,8 @@ format_process_status (void *data, char *&destbuf)
+ 		vmtext = 0UL, vmshare = 0UL;
+ 
+   PWCHAR last_slash = wcsrchr (p->progname, L'\\');
+-  sys_wcstombs (cmd, NAME_MAX + 1, last_slash ? last_slash + 1 : p->progname);
++  sys_wcstombs_path (cmd, NAME_MAX + 1,
++		  last_slash ? last_slash + 1 : p->progname);
+   int len = strlen (cmd);
+   if (len > 4)
+     {
+diff --git a/winsup/cygwin/fhandler_procsys.cc b/winsup/cygwin/fhandler_procsys.cc
+index e2aebd5..591ae1c 100644
+--- a/winsup/cygwin/fhandler_procsys.cc
++++ b/winsup/cygwin/fhandler_procsys.cc
+@@ -241,10 +241,11 @@ fhandler_procsys::fill_filebuf ()
+   NtClose (h);
+   if (!NT_SUCCESS (status))
+     goto unreadable;
+-  len = sys_wcstombs (NULL, 0, target.Buffer, target.Length / sizeof (WCHAR));
++  len = sys_wcstombs_path (NULL, 0,
++		  target.Buffer, target.Length / sizeof (WCHAR));
+   filebuf = (char *) crealloc_abort (filebuf, procsys_len + len + 1);
+-  sys_wcstombs (fnamep = stpcpy (filebuf, procsys), len + 1, target.Buffer,
+-		target.Length / sizeof (WCHAR));
++  sys_wcstombs_path (fnamep = stpcpy (filebuf, procsys), len + 1,
++		  target.Buffer, target.Length / sizeof (WCHAR));
+   while ((fnamep = strchr (fnamep, '\\')))
+     *fnamep = '/';
+   return true;
+@@ -353,7 +354,7 @@ fhandler_procsys::readdir (DIR *dir, dirent *de)
+ 	res = ENMFILE;
+       else
+ 	{
+-	  sys_wcstombs (de->d_name, NAME_MAX + 1, f.dbi.ObjectName.Buffer,
++	  sys_wcstombs_path (de->d_name, NAME_MAX + 1, f.dbi.ObjectName.Buffer,
+ 			f.dbi.ObjectName.Length / sizeof (WCHAR));
+ 	  de->d_ino = hash_path_name (get_ino (), de->d_name);
+ 	  if (RtlEqualUnicodeString (&f.dbi.ObjectTypeName, &ro_u_natdir,
+diff --git a/winsup/cygwin/mount.cc b/winsup/cygwin/mount.cc
+index fa999c2..b987243 100644
+--- a/winsup/cygwin/mount.cc
++++ b/winsup/cygwin/mount.cc
+@@ -435,7 +435,7 @@ fs_info::update (PUNICODE_STRING upath, HANDLE in_vol)
+     {
+       /* The filesystem name is only used in fillout_mntent and only if
+ 	 the filesystem isn't one of the well-known filesystems anyway. */
+-      sys_wcstombs (fsn, sizeof fsn, ffai_buf.ffai.FileSystemName,
++      sys_wcstombs_path (fsn, sizeof fsn, ffai_buf.ffai.FileSystemName,
+ 		    ffai_buf.ffai.FileSystemNameLength / sizeof (WCHAR));
+       strlwr (fsn);
+     }
+@@ -462,7 +462,7 @@ mount_info::create_root_entry (const PWCHAR root)
+  /* Create a default root dir derived from the location of the Cygwin DLL.
+     The entry is immutable, unless the "override" option is given in /etc/fstab. */
+   char native_root[PATH_MAX];
+-  sys_wcstombs (native_root, PATH_MAX, root);
++  sys_wcstombs_path (native_root, PATH_MAX, root);
+   assert (*native_root != '\0');
+   if (add_item (native_root, "/",
+ 		MOUNT_SYSTEM | MOUNT_BINARY | MOUNT_IMMUTABLE | MOUNT_AUTOMATIC | MOUNT_NOACL)
+@@ -858,7 +858,7 @@ mount_info::conv_to_posix_path (PWCHAR src_path, char *posix_path,
+     }
+   tmp_pathbuf tp;
+   char *buf = tp.c_get ();
+-  sys_wcstombs (buf, NT_MAX_PATH, src_path);
++  sys_wcstombs_path (buf, NT_MAX_PATH, src_path);
+   int ret = conv_to_posix_path (buf, posix_path, ccp_flags);
+   if (changed)
+     src_path[0] = L'C';
+@@ -1204,7 +1204,7 @@ mount_info::from_fstab_line (char *line, bool user)
+ 	{
+ 	  tmp_pathbuf tp;
+ 	  char *mb_tmp = tp.c_get ();
+-	  sys_wcstombs (mb_tmp, PATH_MAX, tmp);
++	  sys_wcstombs_path (mb_tmp, PATH_MAX, tmp);
+ 
+ 	  mount_flags |= MOUNT_USER_TEMP;
+ 	  int res = mount_table->add_item (mb_tmp, posix_path, mount_flags);
+diff --git a/winsup/cygwin/nlsfuncs.cc b/winsup/cygwin/nlsfuncs.cc
+index 60ad2d3..96210ed 100644
+--- a/winsup/cygwin/nlsfuncs.cc
++++ b/winsup/cygwin/nlsfuncs.cc
+@@ -1550,7 +1550,7 @@ internal_setlocale ()
+   if (w_path)
+     {
+       char *c_path = tp.c_get ();
+-      sys_wcstombs (c_path, 32768, w_path);
++      sys_wcstombs_path (c_path, 32768, w_path);
+       setenv ("PATH", c_path, 1);
+     }
+ }
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index c767db4..963607f 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -642,7 +642,8 @@ path_conv::check (const UNICODE_STRING *src, unsigned opt,
+   char *path = tp.c_get ();
+ 
+   user_shared->warned_msdos = true;
+-  sys_wcstombs (path, NT_MAX_PATH, src->Buffer, src->Length / sizeof (WCHAR));
++  sys_wcstombs_path (path, NT_MAX_PATH,
++		  src->Buffer, src->Length / sizeof (WCHAR));
+   path_conv::check (path, opt, suffixes);
+ }
+ 
+@@ -2314,7 +2315,7 @@ symlink_info::check_shortcut (HANDLE h)
+       if (*(PWCHAR) cp == 0xfeff)	/* BOM */
+ 	{
+ 	  char *tmpbuf = tp.c_get ();
+-	  if (sys_wcstombs (tmpbuf, NT_MAX_PATH, (PWCHAR) (cp + 2))
++	  if (sys_wcstombs_path (tmpbuf, NT_MAX_PATH, (PWCHAR) (cp + 2))
+ 	      > SYMLINK_MAX)
+ 	    return 0;
+ 	  res = posixify (tmpbuf);
+@@ -2395,7 +2396,7 @@ symlink_info::check_sysfile (HANDLE h)
+ 	  else
+ 	    srcbuf += 2;
+ 	  char *tmpbuf = tp.c_get ();
+-	  if (sys_wcstombs (tmpbuf, NT_MAX_PATH, (PWCHAR) srcbuf)
++	  if (sys_wcstombs_path (tmpbuf, NT_MAX_PATH, (PWCHAR) srcbuf)
+ 	      > SYMLINK_MAX)
+ 	    debug_printf ("symlink string too long");
+ 	  else
+@@ -2482,7 +2483,7 @@ symlink_info::check_reparse_point (HANDLE h, bool remote)
+       fileattr &= ~FILE_ATTRIBUTE_REPARSE_POINT;
+       return 0;
+     }
+-  sys_wcstombs (srcbuf, SYMLINK_MAX + 7, subst.Buffer,
++  sys_wcstombs_path (srcbuf, SYMLINK_MAX + 7, subst.Buffer,
+ 		subst.Length / sizeof (WCHAR));
+   pflags |= PATH_SYMLINK | PATH_REP;
+   /* A symlink is never a directory. */
+@@ -2515,7 +2516,7 @@ symlink_info::check_nfs_symlink (HANDLE h)
+     {
+       PWCHAR spath = (PWCHAR)
+ 		     (pffei->EaName + pffei->EaNameLength + 1);
+-      res = sys_wcstombs (contents, SYMLINK_MAX + 1,
++      res = sys_wcstombs_path (contents, SYMLINK_MAX + 1,
+ 			  spath, pffei->EaValueLength);
+       pflags |= PATH_SYMLINK;
+     }
+@@ -3547,7 +3548,7 @@ cygwin_conv_path (cygwin_conv_path_t what, const void *from, void *to,
+ 	      }
+ 	    PUNICODE_STRING up = p.get_nt_native_path ();
+ 	    buf = tp.c_get ();
+-	    sys_wcstombs (buf, NT_MAX_PATH,
++	    sys_wcstombs_path (buf, NT_MAX_PATH,
+ 			  up->Buffer, up->Length / sizeof (WCHAR));
+ 	    /* Convert native path to standard DOS path. */
+ 	    if (!strncmp (buf, "\\??\\", 4))
+@@ -3560,11 +3561,11 @@ cygwin_conv_path (cygwin_conv_path_t what, const void *from, void *to,
+ 	      {
+ 		/* Device name points to somewhere else in the NT namespace.
+ 		   Use GLOBALROOT prefix to convert to Win32 path. */
+-		char *p = buf + sys_wcstombs (buf, NT_MAX_PATH,
++		char *p = buf + sys_wcstombs_path (buf, NT_MAX_PATH,
+ 					      ro_u_globalroot.Buffer,
+ 					      ro_u_globalroot.Length
+ 					      / sizeof (WCHAR));
+-		sys_wcstombs (p, NT_MAX_PATH - (p - buf),
++		sys_wcstombs_path (p, NT_MAX_PATH - (p - buf),
+ 			      up->Buffer, up->Length / sizeof (WCHAR));
+ 	      }
+ 	    lsiz = strlen (buf) + 1;
+@@ -3938,8 +3939,8 @@ cygwin_conv_path_list (cygwin_conv_path_t what, const void *from, void *to,
+   switch (what & CCP_CONVTYPE_MASK)
+     {
+     case CCP_WIN_W_TO_POSIX:
+-      if (!sys_wcstombs_alloc (&winp, HEAP_NOTHEAP, (const wchar_t *) from,
+-			       (size_t) -1))
++      if (!sys_wcstombs_alloc_path (&winp, HEAP_NOTHEAP,
++			      (const wchar_t *) from, (size_t) -1))
+ 	return -1;
+       what = (what & ~CCP_CONVTYPE_MASK) | CCP_WIN_A_TO_POSIX;
+       from = (const void *) winp;
+@@ -4847,9 +4848,9 @@ cwdstuff::get_error_desc () const
+ void
+ cwdstuff::reset_posix (wchar_t *w_cwd)
+ {
+-  size_t len = sys_wcstombs (NULL, (size_t) -1, w_cwd);
++  size_t len = sys_wcstombs_path (NULL, (size_t) -1, w_cwd);
+   posix = (char *) crealloc_abort (posix, len + 1);
+-  sys_wcstombs (posix, len + 1, w_cwd);
++  sys_wcstombs_path (posix, len + 1, w_cwd);
+ }
+ 
+ char *
+@@ -4872,7 +4873,7 @@ cwdstuff::get (char *buf, int need_posix, int with_chroot, unsigned ulen)
+   if (!need_posix)
+     {
+       tocopy = tp.c_get ();
+-      sys_wcstombs (tocopy, NT_MAX_PATH, win32.Buffer,
++      sys_wcstombs_path (tocopy, NT_MAX_PATH, win32.Buffer,
+ 		    win32.Length / sizeof (WCHAR));
+     }
+   else
+diff --git a/winsup/cygwin/strfuncs.cc b/winsup/cygwin/strfuncs.cc
+index c962f7c..3942508 100644
+--- a/winsup/cygwin/strfuncs.cc
++++ b/winsup/cygwin/strfuncs.cc
+@@ -490,13 +490,13 @@ sys_wcstombs (char *dst, size_t len, const wchar_t *src, size_t nwc,
+ }
+ 
+ size_t __reg3
+-sys_wcstombs (char *dst, size_t len, const wchar_t * src, size_t nwc)
++sys_wcstombs_path (char *dst, size_t len, const wchar_t * src, size_t nwc)
+ {
+   return sys_wcstombs (dst, len, src, nwc, true);
+ }
+ 
+ size_t __reg3
+-sys_wcstombs_no_path (char *dst, size_t len, const wchar_t * src, size_t nwc)
++sys_wcstombs (char *dst, size_t len, const wchar_t * src, size_t nwc)
+ {
+   return sys_wcstombs (dst, len, src, nwc, false);
+ }
+@@ -534,13 +534,13 @@ sys_wcstombs_alloc (char **dst_p, int type, const wchar_t *src, size_t nwc,
+ }
+ 
+ size_t __reg3
+-sys_wcstombs_alloc (char **dst_p, int type, const wchar_t *src, size_t nwc)
++sys_wcstombs_alloc_path (char **dst_p, int type, const wchar_t *src, size_t nwc)
+ {
+   return sys_wcstombs_alloc (dst_p, type, src, nwc, true);
+ }
+ 
+ size_t __reg3
+-sys_wcstombs_alloc_no_path (char **dst_p, int type, const wchar_t *src,
++sys_wcstombs_alloc (char **dst_p, int type, const wchar_t *src,
+ 		size_t nwc)
+ {
+   return sys_wcstombs_alloc (dst_p, type, src, nwc, false);
+diff --git a/winsup/cygwin/uinfo.cc b/winsup/cygwin/uinfo.cc
+index ff395d1..b3a954d 100644
+--- a/winsup/cygwin/uinfo.cc
++++ b/winsup/cygwin/uinfo.cc
+@@ -416,12 +416,12 @@ cygheap_user::ontherange (homebodies what, struct passwd *pw)
+ 	    {
+ 	      if (ui->usri3_home_dir_drive && *ui->usri3_home_dir_drive)
+ 		{
+-		  sys_wcstombs (homepath_env_buf, NT_MAX_PATH,
++		  sys_wcstombs_path (homepath_env_buf, NT_MAX_PATH,
+ 				ui->usri3_home_dir_drive);
+ 		  strcat (homepath_env_buf, "\\");
+ 		}
+ 	      else if (ui->usri3_home_dir && *ui->usri3_home_dir)
+-		sys_wcstombs (homepath_env_buf, NT_MAX_PATH,
++		sys_wcstombs_path (homepath_env_buf, NT_MAX_PATH,
+ 			      ui->usri3_home_dir);
+ 	    }
+ 	  if (ui)
+@@ -431,7 +431,7 @@ cygheap_user::ontherange (homebodies what, struct passwd *pw)
+       if (!homepath_env_buf[0]
+ 	  && get_user_profile_directory (get_windows_id (win_id),
+ 					 profile, MAX_PATH))
+-	sys_wcstombs (homepath_env_buf, NT_MAX_PATH, profile);
++	sys_wcstombs_path (homepath_env_buf, NT_MAX_PATH, profile);
+       /* Last fallback: Cygwin root dir. */
+       if (!homepath_env_buf[0])
+ 	cygwin_conv_path (CCP_POSIX_TO_WIN_A | CCP_ABSOLUTE,
+@@ -994,7 +994,7 @@ fetch_from_path (cyg_ldap *pldap, PUSER_INFO_3 ui, cygpsid &sid, PCWSTR str,
+ 	}
+     }
+   *w = L'\0';
+-  sys_wcstombs_alloc (&ret, HEAP_NOTHEAP, wpath);
++  sys_wcstombs_alloc_path (&ret, HEAP_NOTHEAP, wpath);
+   return ret;
+ }
+ 
+@@ -1020,7 +1020,7 @@ cygheap_pwdgrp::get_home (cyg_ldap *pldap, cygpsid &sid, PCWSTR dom,
+ 	    {
+ 	      val = pldap->get_string_attribute (L"cygwinHome");
+ 	      if (val && *val)
+-		sys_wcstombs_alloc (&home, HEAP_NOTHEAP, val);
++		sys_wcstombs_alloc_path (&home, HEAP_NOTHEAP, val);
+ 	    }
+ 	  break;
+ 	case NSS_SCHEME_UNIX:
+@@ -1028,7 +1028,7 @@ cygheap_pwdgrp::get_home (cyg_ldap *pldap, cygpsid &sid, PCWSTR dom,
+ 	    {
+ 	      val = pldap->get_string_attribute (L"unixHomeDirectory");
+ 	      if (val && *val)
+-		sys_wcstombs_alloc (&home, HEAP_NOTHEAP, val);
++		sys_wcstombs_alloc_path (&home, HEAP_NOTHEAP, val);
+ 	    }
+ 	  break;
+ 	case NSS_SCHEME_DESC:
+@@ -1053,7 +1053,7 @@ cygheap_pwdgrp::get_home (cyg_ldap *pldap, cygpsid &sid, PCWSTR dom,
+ 		    home = (char *)
+ 			   cygwin_create_path (CCP_WIN_W_TO_POSIX, val);
+ 		  else
+-		    sys_wcstombs_alloc (&home, HEAP_NOTHEAP, val);
++		    sys_wcstombs_alloc_path (&home, HEAP_NOTHEAP, val);
+ 		}
+ 	    }
+ 	  break;
+@@ -1114,7 +1114,7 @@ cygheap_pwdgrp::get_shell (cyg_ldap *pldap, cygpsid &sid, PCWSTR dom,
+ 	    {
+ 	      val = pldap->get_string_attribute (L"cygwinShell");
+ 	      if (val && *val)
+-		sys_wcstombs_alloc (&shell, HEAP_NOTHEAP, val);
++		sys_wcstombs_alloc_path (&shell, HEAP_NOTHEAP, val);
+ 	    }
+ 	  break;
+ 	case NSS_SCHEME_UNIX:
+@@ -1122,7 +1122,7 @@ cygheap_pwdgrp::get_shell (cyg_ldap *pldap, cygpsid &sid, PCWSTR dom,
+ 	    {
+ 	      val = pldap->get_string_attribute (L"loginShell");
+ 	      if (val && *val)
+-		sys_wcstombs_alloc (&shell, HEAP_NOTHEAP, val);
++		sys_wcstombs_alloc_path (&shell, HEAP_NOTHEAP, val);
+ 	    }
+ 	  break;
+ 	case NSS_SCHEME_DESC:
+@@ -1147,7 +1147,7 @@ cygheap_pwdgrp::get_shell (cyg_ldap *pldap, cygpsid &sid, PCWSTR dom,
+ 		    shell = (char *)
+ 			    cygwin_create_path (CCP_WIN_W_TO_POSIX, val);
+ 		  else
+-		    sys_wcstombs_alloc (&shell, HEAP_NOTHEAP, val);
++		    sys_wcstombs_alloc_path (&shell, HEAP_NOTHEAP, val);
+ 		}
+ 	    }
+ 	  break;
+diff --git a/winsup/cygwin/wchar.h b/winsup/cygwin/wchar.h
+index b3dacf3..dfc7e86 100644
+--- a/winsup/cygwin/wchar.h
++++ b/winsup/cygwin/wchar.h
+@@ -45,16 +45,19 @@ extern wctomb_f __utf8_wctomb;
+ 
+ #ifdef __INSIDE_CYGWIN__
+ #ifdef __cplusplus
++size_t __reg3 sys_wcstombs_path (char *dst, size_t len, const wchar_t * src,
++			       size_t nwc = (size_t) -1);
+ size_t __reg3 sys_wcstombs (char *dst, size_t len, const wchar_t * src,
+ 			    size_t nwc = (size_t) -1);
+ size_t __reg3 sys_wcstombs_no_path (char *dst, size_t len,
+ 				    const wchar_t * src,
+ 				    size_t nwc = (size_t) -1);
++size_t __reg3 sys_wcstombs_alloc_path (char **, int, const wchar_t *,
++				       size_t = (size_t) -1);
+ size_t __reg3 sys_wcstombs_alloc (char **, int, const wchar_t *,
+ 				  size_t = (size_t) -1);
+ size_t __reg3 sys_wcstombs_alloc_no_path (char **, int, const wchar_t *,
+ 					  size_t = (size_t) -1);
+-
+ size_t __reg3 sys_cp_mbstowcs (mbtowc_p, wchar_t *, size_t, const char *,
+ 			       size_t = (size_t) -1);
+ size_t __reg3 sys_mbstowcs (wchar_t * dst, size_t dlen, const char *src,
+-- 
+2.10.2
+

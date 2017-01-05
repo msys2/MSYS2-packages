@@ -1,0 +1,36 @@
+From 4a5e28674ec96c2ca5b5a44feb350ccbe7f7d9b3 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Fri, 25 Sep 2015 17:15:41 +0200
+Subject: [PATCH 46/51] Respect `db_home` setting even for the SYSTEM account
+
+We should not blindly set the home directory of the SYSTEM account to
+/home/SYSTEM, especially not when that value disagrees with what is
+configured via the `db_home` line in the `/etc/nsswitch.conf` file.
+
+This fixes https://github.com/git-for-windows/git/issues/435
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/uinfo.cc | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/uinfo.cc b/winsup/cygwin/uinfo.cc
+index 66d75bd..f4b307a 100644
+--- a/winsup/cygwin/uinfo.cc
++++ b/winsup/cygwin/uinfo.cc
+@@ -2222,7 +2222,11 @@ pwdgrp::fetch_account_from_windows (fetch_user_arg_t &arg, cyg_ldap *pldap)
+ 	 it to a well-known group here. */
+       if (acc_type == SidTypeUser
+ 	  && (sid_sub_auth_count (sid) <= 3 || sid_id_auth (sid) == 11))
+-	acc_type = SidTypeWellKnownGroup;
++	{
++	  acc_type = SidTypeWellKnownGroup;
++	  home = cygheap->pg.get_home (pldap, sid, dom, domain, name,
++				       fully_qualified_name);
++	}
+       switch (acc_type)
+       	{
+ 	case SidTypeUser:
+-- 
+2.10.2
+
