@@ -1,4 +1,4 @@
-From bc9a246afa23f538a2ed76ab3324d9147fb0dd4b Mon Sep 17 00:00:00 2001
+From ac703a7e88afbe2c7f45158022fc3ff9c378896f Mon Sep 17 00:00:00 2001
 From: Alexpux <alexey.pawlow@gmail.com>
 Date: Thu, 12 Mar 2015 13:58:27 +0300
 Subject: [PATCH 03/23] Add functionality for converting UNIX paths in
@@ -11,12 +11,12 @@ Subject: [PATCH 03/23] Add functionality for converting UNIX paths in
  winsup/cygwin/environ.h            |   2 +-
  winsup/cygwin/external.cc          |   2 +-
  winsup/cygwin/include/sys/cygwin.h |   6 +
- winsup/cygwin/msys2_path_conv.cc   | 619 +++++++++++++++++++++++++++++++++++++
+ winsup/cygwin/msys2_path_conv.cc   | 623 +++++++++++++++++++++++++++++++++++++
  winsup/cygwin/msys2_path_conv.h    | 146 +++++++++
  winsup/cygwin/path.cc              |  64 ++++
  winsup/cygwin/spawn.cc             |  48 ++-
  winsup/cygwin/winf.h               |   4 +
- 10 files changed, 899 insertions(+), 9 deletions(-)
+ 10 files changed, 903 insertions(+), 9 deletions(-)
  create mode 100644 winsup/cygwin/msys2_path_conv.cc
  create mode 100644 winsup/cygwin/msys2_path_conv.h
 
@@ -117,10 +117,10 @@ index 5990e46..8bc5d8f 100644
  extern void cygwin_split_path (const char *, char *, char *);
 diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
 new file mode 100644
-index 0000000..74ebd2e
+index 0000000..9af9b9f
 --- /dev/null
 +++ b/winsup/cygwin/msys2_path_conv.cc
-@@ -0,0 +1,619 @@
+@@ -0,0 +1,623 @@
 +/*
 +  The MSYS2 Path conversion source code is licensed under:
 +  
@@ -431,6 +431,10 @@ index 0000000..74ebd2e
 +    }
 +
 +    sub_convert(&srcbeg, &srcit, &dstit, dstend, &in_string);
++    if (!*srcit) {
++      *dstit = '\0';
++      return dst;
++    }
 +    srcbeg = srcit + 1;
 +    for (; *srcit != '\0'; ++srcit) {
 +      continue;
@@ -559,7 +563,7 @@ index 0000000..74ebd2e
 +            return find_path_start_and_type(src, true, end);
 +        }
 +
-+        if (ch == ':') {
++        if (ch == ':' && it2 + 1 != end) {
 +            it2 += 1;
 +            ch = *it2;
 +            if (ch == '/' || ch == ':' || ch == '.') {
