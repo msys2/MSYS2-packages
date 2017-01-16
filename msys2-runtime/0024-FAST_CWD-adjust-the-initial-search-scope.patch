@@ -1,0 +1,43 @@
+From cae4d776eede157b280bab696e4631cf09c71771 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Sat, 7 Jan 2017 13:01:52 +0100
+Subject: [PATCH 24/24] FAST_CWD: adjust the initial search scope
+
+A *very* recent Windows build adds more code to the preamble of
+RtlGetCurrentDirectory_U() so that the previous heuristic failed to find
+the call to the locking routine.
+
+This only affects the 64-bit version of ntdll, where the 0xe8 byte is
+now found at offset 40, not the 32-bit version. However, let's just
+double the area we search for said byte for good measure.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/path.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index c767db4..13f4e39 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -4256,7 +4256,7 @@ find_fast_cwd_pointer ()
+   if (!get_dir || !ent_crit)
+     return NULL;
+   /* Search first relative call instruction in RtlGetCurrentDirectory_U. */
+-  const uint8_t *rcall = (const uint8_t *) memchr (get_dir, 0xe8, 40);
++  const uint8_t *rcall = (const uint8_t *) memchr (get_dir, 0xe8, 80);
+   if (!rcall)
+     return NULL;
+   /* Fetch offset from instruction and compute address of called function.
+@@ -4355,7 +4355,7 @@ find_fast_cwd_pointer ()
+   if (!get_dir || !ent_crit)
+     return NULL;
+   /* Search first relative call instruction in RtlGetCurrentDirectory_U. */
+-  const uint8_t *rcall = (const uint8_t *) memchr (get_dir, 0xe8, 32);
++  const uint8_t *rcall = (const uint8_t *) memchr (get_dir, 0xe8, 64);
+   if (!rcall)
+     return NULL;
+   /* Fetch offset from instruction and compute address of called function.
+-- 
+2.9.0
+
