@@ -1,0 +1,61 @@
+From 24eef31e2ba4169d97d271e850d87b82c3306322 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Thu, 19 Jan 2017 16:21:00 +0100
+Subject: [PATCH 55/56] fixup! Add functionality for converting UNIX paths in
+ arguments and environment variables to Windows form for native Win32
+ applications.
+
+When the ppl_convert() function (that is tasked with converting POSIX path
+lists to their Windows equivalents) looks at a "://", it immediately jumps
+to the conclusion that it is looking at a URL right now.
+
+However, this misidentifies, say, "/c/://server/share" as a URL.
+
+Let's not do that. Be more careful by having a closer look at the protocol
+part of the URL: it is safe to assume that it must start with a letter and
+continue with alpha-numeric characters (or a "+", to allow for something
+like "git+http://example.com").
+
+Please note that we still do not go out of our way to verify that the
+*server* part of the URL makes sense: that would complexify the code
+dramatically (see https://url.spec.whatwg.org/#url-parsing for a glimpse
+how complicated URL parsing/validation actually is), so we just err on the
+side of "good enough for now".
+
+Please note that this has become an issue with PATHs containing UNC
+components only recently: it started with the introduction of
+ORIGINAL_PATH into MSYS2, as going through the POSIX->Windows barrier in
+nested calls *will* encounter "://" in ORIGINAL_PATH even if the original
+PATH only contained double *back*-slashes (i.e. ";\\").
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/msys2_path_conv.cc | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
+index bbdc523..57fca1c 100644
+--- a/winsup/cygwin/msys2_path_conv.cc
++++ b/winsup/cygwin/msys2_path_conv.cc
+@@ -631,9 +631,16 @@ void ppl_convert(const char** from, const char* to, char** dst, const char* dste
+             if (prev_was_simc) {
+                 continue;
+             }
+-            if (*(it + 1) == '/' && *(it + 2) == '/') {
++            if (*(it + 1) == '/' && *(it + 2) == '/' && isalpha(*beg)) {
+                 is_url = 1;
+-                continue;
++		/* double-check: protocol must be alnum (or +) */
++		for (const char *p = beg; p != it; ++p)
++		    if (!isalnum(*p) && *p != '+') {
++			is_url = 0;
++			break;
++		    }
++		if (is_url)
++                    continue;
+             }
+             prev_was_simc = 1;
+             subp_convert(&beg, it, is_url, dst, dstend);
+-- 
+2.9.0
+
