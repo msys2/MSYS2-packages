@@ -4,7 +4,7 @@
 pkgbase=msys2-runtime
 pkgname=('msys2-runtime' 'msys2-runtime-devel')
 pkgver=2.6.1
-pkgrel=1
+pkgrel=2
 pkgdesc="Cygwin POSIX emulation engine"
 arch=('i686' 'x86_64')
 url="https://www.cygwin.com/"
@@ -45,7 +45,9 @@ source=('msys2-runtime'::git://sourceware.org/git/newlib-cygwin.git#tag=cygwin-$
         0020-Add-debugging-for-build_argv.patch
         0021-Add-debugging-for-strace-make_command_line.patch
         0022-environ.cc-New-facility-environment-variable-MSYS2_E.patch
-        0023-path.cc-Ignore-zero-length-exclusions.patch)
+        0023-path.cc-Ignore-zero-length-exclusions.patch
+        0200-FAST_CWD-adjust-initial-search-scope.patch
+        0300-gcc6-workaround-nonnull-error.patch)
 sha256sums=('SKIP'
             'f12bf8b297f2712bb6018aa42ddf8ea6ac112ef92aaf00842aa79c72a3e3908a'
             'ce30b608530e938868a17dc1c7545565e8c6718d1f55426324937369848dcd69'
@@ -69,7 +71,9 @@ sha256sums=('SKIP'
             '7cf75169f4f6afb21ef2afc8f7c408a10a5ea1668e065c833abdd9b36f38019a'
             '04b4764ee046b351c3617b168682ec6c2391c4479178216fe518baf9f8de93e0'
             '9256c5f92ff69c66013fcae25343ff0149eb36b22a87b81423105753bd98098a'
-            'a7723f601d524391fbc706392150173a4defb73a274bc28e46c00e51ddf53038')
+            'a7723f601d524391fbc706392150173a4defb73a274bc28e46c00e51ddf53038'
+            'f2fcdf5d91639b527603ee371809cb5d7bf50d9a17a27c6a719c3f74d27e4237'
+            'd291edd51a8adc8380a227e89d7579a2673f19ea06337b502cef98375b564924')
 prepare() {
   cd "${srcdir}"/msys2-runtime
   git am --committer-date-is-author-date "${srcdir}"/0001-Add-MSYS-triplets.patch
@@ -95,6 +99,11 @@ prepare() {
   git am --committer-date-is-author-date "${srcdir}"/0021-Add-debugging-for-strace-make_command_line.patch
   git am --committer-date-is-author-date "${srcdir}"/0022-environ.cc-New-facility-environment-variable-MSYS2_E.patch
   git am --committer-date-is-author-date "${srcdir}"/0023-path.cc-Ignore-zero-length-exclusions.patch
+  
+  # Upstream patches for next release
+  git am --committer-date-is-author-date "${srcdir}"/0200-FAST_CWD-adjust-initial-search-scope.patch
+  
+  patch -p1 -i ${srcdir}/0300-gcc6-workaround-nonnull-error.patch
 }
 
 build() {
@@ -111,8 +120,8 @@ build() {
     OPTIM="-O2"
   fi
 
-  CFLAGS="$OPTIM -pipe -ggdb"
-  CXXFLAGS="$OPTIM -pipe -ggdb"
+  CFLAGS="$OPTIM -pipe -ggdb -Wno-error=frame-address"
+  CXXFLAGS="$OPTIM -pipe -ggdb -Wno-error=frame-address"
 
   "${srcdir}"/msys2-runtime/configure \
     --prefix=/usr \
