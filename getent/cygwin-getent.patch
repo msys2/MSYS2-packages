@@ -1,0 +1,474 @@
+--- a/getent-2.18.90/getent.c	2014-02-20 17:31:43.000000000 +0100
++++ b/getent-2.18.90/getent.c	2014-11-18 11:26:56.195442795 +0100
+@@ -18,30 +18,69 @@
+ 
+ /* getent: get entries from administrative database.  */
+ 
+-#include <aliases.h>
++//#include <aliases.h>
+ #include <argp.h>
+ #include <ctype.h>
+ #include <error.h>
+ #include <grp.h>
++#ifndef __CYGWIN__
+ #include <gshadow.h>
+ #include <libintl.h>
++#endif
+ #include <locale.h>
++#ifndef __CYGWIN__
+ #include <mcheck.h>
++#endif
+ #include <netdb.h>
+ #include <pwd.h>
++#ifndef __CYGWIN__
+ #include <shadow.h>
++#endif
+ #include <stdbool.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <arpa/inet.h>
+ #include <arpa/nameser.h>
++#ifndef __CYGWIN__
+ #include <netinet/ether.h>
++#endif
+ #include <netinet/in.h>
+ #include <sys/socket.h>
+ 
++#ifndef __CYGWIN__
+ /* Get libc version number.  */
+ #include <version.h>
++#else
++#include <windows.h>
++#include <wchar.h>
++#include <sddl.h>
++#include <sys/cygwin.h>
++
++#define _(string) (string)
++#define N_(string) (string)
++#define textdomain(string)
++#define gettext(string) (string)
++
++#define fputc_unlocked fputc
++#define fputs_unlocked fputs
++#define putchar_unlocked putchar
++
++#define PKGVERSION	"(Cygwin)"
++#define VERSION		"2.18.90"	/* glibc version we took getent from. */
++#define REPORT_BUGS_TO	"http://cygwin.com/problems.html"
++
++# define stackinfo_alloca_round(l) (((l) + 15) & -16)
++# define extend_alloca(buf, len, newlen) \
++  (__typeof (buf)) ({ size_t __newlen = stackinfo_alloca_round (newlen);      \
++                      char *__newbuf = alloca (__newlen);                   \
++                      if (__newbuf + __newlen == (char *) buf)                \
++                        len += __newlen;                                      \
++                      else                                                    \
++                        len = __newlen;                                       \
++                      __newbuf; })
++
++#endif /* !__CYGWIN__ */
+ 
+ #define PACKAGE _libc_intl_domainname
+ 
+@@ -57,6 +96,9 @@ static const struct argp_option args_opt
+   {
+     { "service", 's', N_("CONFIG"), 0, N_("Service configuration to be used") },
+     { "no-idn", 'i', NULL, 0, N_("disable IDN encoding") },
++#ifdef __CYGWIN__
++    { "windows", 'w', NULL, 0, N_("Cygwin:Windows account mapping only (with passwd and group databases)") },
++#endif
+     { NULL, 0, NULL, 0, NULL },
+   };
+ 
+@@ -78,6 +120,10 @@ static struct argp argp =
+ /* Additional getaddrinfo flags for IDN encoding.  */
+ static int idn_flags = AI_IDN | AI_CANONIDN;
+ 
++#ifdef __CYGWIN__
++static int windows_only = 0;
++#endif
++
+ /* Print the version information.  */
+ static void
+ print_version (FILE *stream, struct argp_state *state)
+@@ -91,6 +137,7 @@ warranty; not even for MERCHANTABILITY o
+   fprintf (stream, gettext ("Written by %s.\n"), "Thorsten Kukuk");
+ }
+ 
++#ifndef __CYGWIN__
+ /* This is for aliases */
+ static void
+ print_aliases (struct aliasent *alias)
+@@ -179,6 +226,78 @@ ethers_keys (int number, char *key[])
+ 
+   return result;
+ }
++#endif /* !__CYGWIN__ */
++
++#ifdef __CYGWIN__
++static PSID
++get_sid_from_special_string (const char *key, PBOOL try_as_cygname)
++{
++  PSID sid = NULL;
++
++  if (!strncmp (key, "U-", 2))
++    {
++      WCHAR wnam[4096];
++
++      /* DNLEN is moot.  Domain names can now be twice as long. */
++      WCHAR dom[32];
++      DWORD dlen = 32;
++      DWORD slen = SECURITY_MAX_SID_SIZE;
++      SID_NAME_USE use;
++
++      memset (wnam, 0, sizeof wnam);
++      mbstowcs (wnam, key + 2, sizeof wnam / sizeof (wchar_t) - 1);
++      sid = (PSID) LocalAlloc (LMEM_FIXED, SECURITY_MAX_SID_SIZE);
++      if (sid && !LookupAccountNameW (NULL, wnam, sid, &slen,
++				      dom, &dlen, &use))
++	{
++	  LocalFree (sid);
++	  sid = NULL;
++	}
++      if (sid
++	  && (use == SidTypeDomain || use == SidTypeComputer)
++	  && wcslen (wnam) < sizeof wnam / sizeof (wchar_t) / 2 - 2)
++	{
++	  wcpcpy (wnam + wcslen (wnam) + 1, wnam);
++	  wnam[wcslen (wnam)] = L'\\';
++	  dlen = 32;
++	  slen = SECURITY_MAX_SID_SIZE;
++	  if (!LookupAccountNameW (NULL, wnam, sid, &slen,
++				   dom, &dlen, &use))
++	    {
++	      LocalFree (sid);
++	      sid = NULL;
++	    }
++	}
++    }
++  else if (!strncmp (key, "S-1-", 4))
++    {
++      *try_as_cygname = TRUE;
++      ConvertStringSidToSidA (key, &sid);
++    }
++  return sid;
++}
++
++static void
++print_windows_mapping (const char *cygname, unsigned long id,
++		       const char *sid_string)
++{
++  PSID sid;
++  WCHAR name[NAME_MAX + 1];
++  DWORD nlen = NAME_MAX + 1;
++  /* DNLEN is moot.  Domain names can now be twice as long. */
++  WCHAR dom[32];
++  DWORD dlen = 32;
++  SID_NAME_USE use;
++
++  if (!cygname || !sid_string)
++    return;
++  if (!ConvertStringSidToSidA (sid_string, &sid))
++    return;
++  if (LookupAccountSidW (NULL, sid, name, &nlen, dom, &dlen, &use))
++    printf ("%s:%lu:%ls\\%ls:%s\n", cygname, id, dom, name, sid_string);
++  LocalFree (sid);
++}
++#endif
+ 
+ /* This is for group */
+ static void
+@@ -186,6 +305,18 @@ print_group (struct group *grp)
+ {
+   unsigned int i = 0;
+ 
++#ifdef __CYGWIN__
++  /* Disable printing gid -1, the fallback invalid group called "????????" on
++     Cygwin versions prior to the introduction of direct SAM/AD access. */
++  if (grp->gr_gid == (gid_t) -1)
++    return;
++  if (windows_only)
++    {
++      print_windows_mapping (grp->gr_name, (unsigned long) grp->gr_gid,
++			     grp->gr_passwd);
++      return;
++    }
++#endif
+   printf ("%s:%s:%lu:", grp->gr_name ? grp->gr_name : "",
+ 	  grp->gr_passwd ? grp->gr_passwd : "",
+ 	  (unsigned long int) grp->gr_gid);
+@@ -205,7 +336,7 @@ group_keys (int number, char *key[])
+ {
+   int result = 0;
+   int i;
+-  struct group *grp;
++  struct group *grp = NULL;
+ 
+   if (number == 0)
+     {
+@@ -225,8 +356,27 @@ group_keys (int number, char *key[])
+       if (errno != EINVAL && *key[i] != '\0' && *ep == '\0')
+ 	/* Valid numeric gid.  */
+ 	grp = getgrgid (arg_gid);
++#ifdef __CYGWIN__
++      /* Allow searching for Windows SIDs. */
++      else
++	{
++	  BOOL try_as_cygname = FALSE;
++	  PSID sid = get_sid_from_special_string (key[i], &try_as_cygname);
++
++	  if (sid)
++	    {
++	      grp = (struct group *) cygwin_internal (CW_GETGRSID, 0, sid);
++	      if (grp == (struct group *) -1) /* pre 1.7.29 Cygwin */
++		grp = NULL;
++	      LocalFree (sid);
++	    }
++	  else if (!try_as_cygname)
++	    grp = getgrnam (key[i]);
++	}
++#else
+       else
+ 	grp = getgrnam (key[i]);
++#endif
+ 
+       if (grp == NULL)
+ 	result = 2;
+@@ -237,6 +387,7 @@ group_keys (int number, char *key[])
+   return result;
+ }
+ 
++#ifndef __CYGWIN__
+ /* This is for gshadow */
+ static void
+ print_gshadow (struct sgrp *sg)
+@@ -300,6 +451,7 @@ gshadow_keys (int number, char *key[])
+ 
+   return result;
+ }
++#endif /* !__CYGWIN__ */
+ 
+ /* This is for hosts */
+ static void
+@@ -334,11 +486,16 @@ hosts_keys (int number, char *key[])
+ 
+   if (number == 0)
+     {
++#ifdef __CYGWIN__
++      fprintf (stderr, _("Enumeration not supported on %s\n"), "hosts");
++      return 3;
++#else
+       sethostent (0);
+       while ((host = gethostent ()) != NULL)
+ 	print_hosts (host);
+       endhostent ();
+       return result;
++#endif /* !__CYGWIN__ */
+     }
+ 
+   for (i = 0; i < number; ++i)
+@@ -372,11 +529,16 @@ ahosts_keys_int (int af, int xflags, int
+ 
+   if (number == 0)
+     {
++#ifdef __CYGWIN__
++      fprintf (stderr, _("Enumeration not supported on %s\n"), "hosts");
++      return 3;
++#else
+       sethostent (0);
+       while ((host = gethostent ()) != NULL)
+ 	print_hosts (host);
+       endhostent ();
+       return result;
++#endif /* !__CYGWIN__ */
+     }
+ 
+   struct addrinfo hint;
+@@ -466,6 +628,7 @@ ahostsv6_keys (int number, char *key[])
+   return ahosts_keys_int (AF_INET6, AI_V4MAPPED, number, key);
+ }
+ 
++#ifndef __CYGWIN__
+ /* This is for netgroup */
+ static int
+ netgroup_keys (int number, char *key[])
+@@ -508,6 +671,7 @@ netgroup_keys (int number, char *key[])
+ 
+   return result;
+ }
++#endif /* !__CYGWIN__ */
+ 
+ /* This is for initgroups */
+ static int
+@@ -547,6 +711,7 @@ initgroups_keys (int number, char *key[]
+   return 0;
+ }
+ 
++#ifndef __CYGWIN__
+ /* This is for networks */
+ static void
+ print_networks (struct netent *net)
+@@ -598,11 +763,24 @@ networks_keys (int number, char *key[])
+ 
+   return result;
+ }
++#endif /* !__CYGWIN__ */
+ 
+ /* Now is all for passwd */
+ static void
+ print_passwd (struct passwd *pwd)
+ {
++#ifdef __CYGWIN__
++  /* Disable printing uid -1, the fallback invalid user called "????????" on
++     Cygwin versions prior to the introduction of direct SAM/AD access. */
++  if (pwd->pw_uid == (uid_t) -1)
++    return;
++  if (windows_only)
++    {
++      char *c = strstr (pwd->pw_gecos, "S-1-");
++      print_windows_mapping (pwd->pw_name, (unsigned long) pwd->pw_uid, c);
++      return;
++    }
++#endif
+   printf ("%s:%s:%lu:%lu:%s:%s:%s\n",
+ 	  pwd->pw_name ? pwd->pw_name : "",
+ 	  pwd->pw_passwd ? pwd->pw_passwd : "",
+@@ -618,7 +796,7 @@ passwd_keys (int number, char *key[])
+ {
+   int result = 0;
+   int i;
+-  struct passwd *pwd;
++  struct passwd *pwd = NULL;
+ 
+   if (number == 0)
+     {
+@@ -638,8 +816,27 @@ passwd_keys (int number, char *key[])
+       if (errno != EINVAL && *key[i] != '\0' && *ep == '\0')
+ 	/* Valid numeric uid.  */
+ 	pwd = getpwuid (arg_uid);
++#ifdef __CYGWIN__
++      /* Allow searching for Windows SIDs. */
++      else
++	{
++	  BOOL try_as_cygname = FALSE;
++	  PSID sid = get_sid_from_special_string (key[i], &try_as_cygname);
++
++	  if (sid)
++	    {
++	      pwd = (struct passwd *) cygwin_internal (CW_GETPWSID, 0, sid);
++	      if (pwd == (struct passwd *) -1) /* pre 1.7.29 Cygwin */
++		pwd = NULL;
++	      LocalFree (sid);
++	    }
++	  else if (!try_as_cygname)
++	    pwd = getpwnam (key[i]);
++	}
++#else
+       else
+ 	pwd = getpwnam (key[i]);
++#endif
+ 
+       if (pwd == NULL)
+ 	result = 2;
+@@ -700,6 +897,7 @@ protocols_keys (int number, char *key[])
+   return result;
+ }
+ 
++#ifndef __CYGWIN__
+ /* Now is all for rpc */
+ static void
+ print_rpc (struct rpcent *rpc)
+@@ -745,6 +943,7 @@ rpc_keys (int number, char *key[])
+ 
+   return result;
+ }
++#endif /* !__CYGWIN__ */
+ 
+ /* for services */
+ static void
+@@ -806,6 +1005,7 @@ services_keys (int number, char *key[])
+   return result;
+ }
+ 
++#ifndef __CYGWIN__
+ /* This is for shadow */
+ static void
+ print_shadow (struct spwd *sp)
+@@ -863,6 +1063,7 @@ shadow_keys (int number, char *key[])
+ 
+   return result;
+ }
++#endif /* !__CYGWIN__ */
+ 
+ struct
+   {
+@@ -874,19 +1075,29 @@ struct
+ D(ahosts)
+ D(ahostsv4)
+ D(ahostsv6)
++#ifndef __CYGWIN__
+ D(aliases)
+ D(ethers)
++#endif /* !__CYGWIN__ */
+ D(group)
++#ifndef __CYGWIN__
+ D(gshadow)
++#endif /* !__CYGWIN__ */
+ D(hosts)
+ D(initgroups)
++#ifndef __CYGWIN__
+ D(netgroup)
+ D(networks)
++#endif /* !__CYGWIN__ */
+ D(passwd)
+ D(protocols)
++#ifndef __CYGWIN__
+ D(rpc)
++#endif /* !__CYGWIN__ */
+ D(services)
++#ifndef __CYGWIN__
+ D(shadow)
++#endif /* !__CYGWIN__ */
+ #undef D
+     { NULL, NULL }
+   };
+@@ -899,6 +1110,7 @@ parse_option (int key, char *arg, struct
+   switch (key)
+     {
+     case 's':
++#ifndef __CYGWIN__
+       endp = strchr (arg, ':');
+       if (endp == NULL)
+ 	/* No specific database, change them all.  */
+@@ -916,12 +1128,19 @@ parse_option (int key, char *arg, struct
+ 	  if (databases[i].name == NULL)
+ 	    error (EXIT_FAILURE, 0, gettext ("Unknown database name"));
+ 	}
++#endif /* !__CYGWIN__ */
+       break;
+ 
+     case 'i':
+       idn_flags = 0;
+       break;
+ 
++#ifdef __CYGWIN__
++    case 'w':
++      windows_only = 1;
++      break;
++#endif
++
+     default:
+       return ARGP_ERR_UNKNOWN;
+     }
+@@ -986,8 +1205,10 @@ For bug reporting instructions, please s
+ int
+ main (int argc, char *argv[])
+ {
++#ifndef __CYGWIN__
+   /* Debugging support.  */
+   mtrace ();
++#endif /* !__CYGWIN__ */
+ 
+   /* Set locale via LC_ALL.  */
+   setlocale (LC_ALL, "");

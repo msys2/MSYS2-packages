@@ -1,0 +1,99 @@
+Make optional variables work in a Windows DLL
+Patch by Fedin Pavel
+http://cygwin.com/ml/cygwin/2013-07/msg00337.html
+
+diff -ru src/libargp-20110921.orig/gllib/argp.h src/libargp-20110921/gllib/argp.h
+--- src/libargp-20110921.orig/gllib/argp.h	2011-09-23 03:31:26.000000000 +0500
++++ src/libargp-20110921/gllib/argp.h	2013-07-15 12:03:51.616647900 +0500
+@@ -64,6 +64,18 @@
+ typedef int error_t;
+ # define __error_t_defined
+ #endif
++
++#ifndef DLL_EXPORT
++#ifdef __CYGWIN__
++#define __dllexport __declspec(dllexport)
++#endif
++#ifdef _WIN32
++#define __dllexport __declspec(dllexport)
++#endif
++#endif
++#ifndef __dllexport
++#define __dllexport
++#endif
+ 
+ #ifdef  __cplusplus
+ extern "C" {
+@@ -441,14 +453,14 @@
+    option --version is added (unless the ARGP_NO_HELP flag is used), which
+    will print this string followed by a newline and exit (unless the
+    ARGP_NO_EXIT flag is used).  Overridden by ARGP_PROGRAM_VERSION_HOOK.  */
+-extern const char *argp_program_version;
++__dllexport extern const char *argp_program_version;
+ 
+ /* If defined or set by the user program to a non-zero value, then a default
+    option --version is added (unless the ARGP_NO_HELP flag is used), which
+    calls this function with a stream to print the version to and a pointer to
+    the current parsing state, and then exits (unless the ARGP_NO_EXIT flag is
+    used).  This variable takes precedent over ARGP_PROGRAM_VERSION.  */
+-extern void (*argp_program_version_hook) (FILE *__restrict __stream,
++__dllexport extern void (*argp_program_version_hook) (FILE *__restrict __stream,
+                                           struct argp_state *__restrict
+                                           __state);
+ 
+@@ -457,12 +469,12 @@
+    argp_help if the ARGP_HELP_BUG_ADDR flag is set (as it is by various
+    standard help messages), embedded in a sentence that says something like
+    `Report bugs to ADDR.'.  */
+-extern const char *argp_program_bug_address;
++__dllexport extern const char *argp_program_bug_address;
+ 
+ /* The exit status that argp will use when exiting due to a parsing error.
+    If not defined or set by the user program, this defaults to EX_USAGE from
+    <sysexits.h>.  */
+-extern error_t argp_err_exit_status;
++__dllexport extern error_t argp_err_exit_status;
+ 
+ /* Flags for argp_help.  */
+ #define ARGP_HELP_USAGE         0x01 /* a Usage: message. */
+diff -ru src/libargp-20110921.orig/gllib/argp-parse.c src/libargp-20110921/gllib/argp-parse.c
+--- src/libargp-20110921.orig/gllib/argp-parse.c	2011-09-23 03:31:26.000000000 +0500
++++ src/libargp-20110921/gllib/argp-parse.c	2013-07-15 11:39:49.690236100 +0500
+@@ -64,6 +64,36 @@
+ /* EZ alias for ARGP_ERR_UNKNOWN.  */
+ #define EBADKEY ARGP_ERR_UNKNOWN
+ 
++/* Windows does not support things like weak symbols, neither it will merge two
++   external symbols. In order to make our optional variables working, we have
++   to do this trick. What we do here is looking up respective variables in
++   main .exe file and patching our versions with correct pointers
++   Note that the whole thing relies on these variables being declared with
++   __declspec(dllexport). */
++#ifdef DLL_EXPORT
++
++#include <windows.h>
++
++#define PatchPtr(var)					\
++  p = (void **)GetProcAddress(NULL, #var);	\
++  if (p) var = *p;
++
++#define PatchInt(var)					\
++  i = (int *)GetProcAddress(NULL, #var);	\
++  if (i) var = *i;
++
++static void __attribute__((constructor)) patch_vars(void)
++{
++  void **p;
++  int *i;
++
++  PatchPtr(argp_program_version);
++  PatchPtr(argp_program_version_hook);
++  PatchPtr(argp_program_bug_address);
++  PatchInt(argp_err_exit_status);
++}
++#endif
++
+ /* Default options.  */
+ 
+ /* When argp is given the --HANG switch, _ARGP_HANG is set and argp will sleep
+
