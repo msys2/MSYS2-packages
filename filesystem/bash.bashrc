@@ -45,7 +45,7 @@ unset _warning
 # of user@host, MSYSTEM variable, and current_directory
 [[ -n "${MSYS2_PS1}" ]] && export PS1="${MSYS2_PS1}"
 # if we have the "High Mandatory Level" group, it means we're elevated
-if id -G | grep -q "$(getent -w group 'S-1-16-12288' | cut -d: -f2)"
+if [[ -n "$(command -v getent)" ]] && id -G | grep -q "$(getent -w group 'S-1-16-12288' | cut -d: -f2)"
   then _ps1_symbol='\[\e[1m\]#\[\e[0m\]'
   else _ps1_symbol='\$'
 fi
