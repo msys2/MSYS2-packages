@@ -17,20 +17,20 @@
  
  /* Cleanup after a fork */
  PyAPI_FUNC(void) PyThread_ReInitTLS(void);
---- Python-3.4.3/Python/pystate.c.orig	2015-02-25 05:27:46.000000000 -0600
-+++ Python-3.4.3/Python/pystate.c	2015-05-05 11:27:20.122994700 -0500
-@@ -37,7 +37,7 @@ static PyThread_type_lock head_mutex = N
+--- Python-3.6.0/Python/pystate.c.orig	2017-02-08 04:54:10.265051500 -0500
++++ Python-3.6.0/Python/pystate.c	2017-02-08 05:00:43.539089400 -0500
+@@ -47,7 +47,7 @@
     GILState implementation
  */
  static PyInterpreterState *autoInterpreterState = NULL;
--static int autoTLSkey = 0;
-+static long autoTLSkey = 0L;
+-static int autoTLSkey = -1;
++static long autoTLSkey = -1L;
  #else
  #define HEAD_INIT() /* Nothing */
  #define HEAD_LOCK() /* Nothing */
---- Python-3.4.3/Python/thread_pthread.h.orig	2015-02-25 05:27:46.000000000 -0600
-+++ Python-3.4.3/Python/thread_pthread.h	2015-05-05 11:27:20.126495200 -0500
-@@ -603,28 +603,28 @@ _pythread_pthread_set_stacksize(size_t s
+--- Python-3.6.0/Python/thread_pthread.h.orig	2016-12-22 21:21:22.000000000 -0500
++++ Python-3.6.0/Python/thread_pthread.h	2017-02-08 05:18:45.791168100 -0500
+@@ -603,44 +603,44 @@
  
  #define Py_HAVE_NATIVE_TLS
  
@@ -40,8 +40,18 @@
  {
      pthread_key_t key;
      int fail = pthread_key_create(&key, NULL);
--    return fail ? -1 : key;
-+    return fail ? -1L : (long) key;
+     if (fail)
+-        return -1;
++        return -1L;
+     if (key > INT_MAX) {
+         /* Issue #22206: handle integer overflow */
+         pthread_key_delete(key);
+         errno = ENOMEM;
+-        return -1;
++        return -1L;
+     }
+-    return (int)key;
++    return (long)key;
  }
  
  void
@@ -64,7 +74,8 @@
  {
      int fail;
      fail = pthread_setspecific(key, value);
-@@ -632,7 +632,7 @@ PyThread_set_key_value(int key, void *va
+-    return fail ? -1 : 0;
++    return fail ? -1L : 0L;
  }
  
  void *
