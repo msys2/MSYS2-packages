@@ -1,7 +1,7 @@
-From 076d65d9ec93b7945b338a620913254dd5ec487a Mon Sep 17 00:00:00 2001
+From 0165d5191f1a319b61d9423fbcf8a2dc93729231 Mon Sep 17 00:00:00 2001
 From: Alexpux <alexey.pawlow@gmail.com>
 Date: Thu, 12 Mar 2015 13:58:27 +0300
-Subject: [PATCH 04/56] Add functionality for changing OS name via MSYSTEM
+Subject: [PATCH 04/49] Add functionality for changing OS name via MSYSTEM
  environment variables.
 
 ---
@@ -34,7 +34,7 @@ index 373bfd2..c902857 100755
          echo
  	echo "Installation of cygserver as service failed.  Please check the"
 diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
-index 1a4a5f1..df009bf 100644
+index 840608e..6877d2d 100644
 --- a/winsup/cygwin/environ.cc
 +++ b/winsup/cygwin/environ.cc
 @@ -188,7 +188,11 @@ parse_options (const char *inbuf)
@@ -92,21 +92,7 @@ index 1a4a5f1..df009bf 100644
  
  /* Turn environment variable part of a=b string into uppercase - for some
     environment variables only. */
-@@ -821,8 +839,13 @@ environ_init (char **envp, int envc)
- 	  ucenv (newp, eq);	/* uppercase env vars which need it */
- 	  if (*newp == 'T' && strncmp (newp, "TERM=", 5) == 0)
- 	    sawTERM = 1;
-+#ifdef __MSYS__
-+	  else if (*newp == 'M' && strncmp (newp, "MSYS=", 5) == 0)
-+	    parse_options (newp + 5);
-+#else
- 	  else if (*newp == 'C' && strncmp (newp, "CYGWIN=", 7) == 0)
- 	    parse_options (newp + 7);
-+#endif
- 	  if (*eq)
- 	    posify_maybe (envp + i, *++eq ? eq : --eq, tmpbuf);
- 	  debug_printf ("%p: %s", envp[i], envp[i]);
-@@ -839,7 +862,11 @@ environ_init (char **envp, int envc)
+@@ -806,7 +824,11 @@ environ_init (char **envp, int envc)
        update_envptrs ();
        if (envp_passed_in)
  	{
@@ -118,7 +104,21 @@ index 1a4a5f1..df009bf 100644
  	  if (p)
  	    parse_options (p);
  	}
-@@ -906,12 +933,13 @@ struct spenv
+@@ -852,8 +874,13 @@ win32env_to_cygenv (PWCHAR rawenv, bool posify)
+       ucenv (newp, eq);    /* uppercase env vars which need it */
+       if (*newp == 'T' && strncmp (newp, "TERM=", 5) == 0)
+         sawTERM = 1;
++#ifdef __MSYS__
++      else if (*newp == 'M' && strncmp (newp, "MSYS=", 5) == 0)
++        parse_options (newp + 5);
++#else
+       else if (*newp == 'C' && strncmp (newp, "CYGWIN=", 7) == 0)
+         parse_options (newp + 7);
++#endif
+       if (*eq && posify)
+         posify_maybe (envp + i, *++eq ? eq : --eq, tmpbuf);
+       debug_printf ("%p: %s", envp[i], envp[i]);
+@@ -920,12 +947,13 @@ struct spenv
  static NO_COPY spenv spenvs[] =
  {
  #ifdef DEBUGGING

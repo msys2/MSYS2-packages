@@ -1,7 +1,7 @@
-From 33e1cfefd7d5adc561744c18645a08c26fea3509 Mon Sep 17 00:00:00 2001
+From ce8dc45662396f37a20d829d70d062974f166b38 Mon Sep 17 00:00:00 2001
 From: Johannes Schindelin <johannes.schindelin@gmx.de>
 Date: Fri, 18 Dec 2015 20:19:57 +0100
-Subject: [PATCH 50/56] Make paths' WCS->MBS conversion explicit
+Subject: [PATCH 49/49] Make paths' WCS->MBS conversion explicit
 
 	* dcrt0.cc (dll_crt0_1), dtable.cc (handle_to_fn), environ.cc
 	(environ_init, getwinenveq, build_env), external.cc
@@ -199,19 +199,19 @@ index e6f560f..c8ed586 100644
  	}
  
 diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
-index cdf20b7..9b8f5ac 100644
+index e1f54e3..06971ad 100644
 --- a/winsup/cygwin/environ.cc
 +++ b/winsup/cygwin/environ.cc
-@@ -829,7 +829,7 @@ environ_init (char **envp, int envc)
- 	 eventually want to use them).  */
-       for (i = 0, w = rawenv; *w != L'\0'; w = wcschr (w, L'\0') + 1, i++)
- 	{
--	  sys_wcstombs_alloc_no_path (&newp, HEAP_NOTHEAP, w);
-+	  sys_wcstombs_alloc (&newp, HEAP_NOTHEAP, w);
- 	  if (i >= envc)
- 	    envp = (char **) realloc (envp, (4 + (envc += 100)) * sizeof (char *));
- 	  envp[i] = newp;
-@@ -908,7 +908,7 @@ getwinenveq (const char *name, size_t namelen, int x)
+@@ -864,7 +864,7 @@ win32env_to_cygenv (PWCHAR rawenv, bool posify)
+      eventually want to use them).  */
+   for (i = 0, w = rawenv; *w != L'\0'; w = wcschr (w, L'\0') + 1, i++)
+     {
+-      sys_wcstombs_alloc_no_path (&newp, HEAP_NOTHEAP, w);
++      sys_wcstombs_alloc (&newp, HEAP_NOTHEAP, w);
+       if (i >= envc)
+         envp = (char **) realloc (envp, (4 + (envc += 100)) * sizeof (char *));
+       envp[i] = newp;
+@@ -922,7 +922,7 @@ getwinenveq (const char *name, size_t namelen, int x)
    int totlen = GetEnvironmentVariableW (name0, valbuf, 32768);
    if (totlen > 0)
      {
@@ -220,7 +220,7 @@ index cdf20b7..9b8f5ac 100644
        if (x == HEAP_1_STR)
  	totlen += namelen;
        else
-@@ -916,7 +916,7 @@ getwinenveq (const char *name, size_t namelen, int x)
+@@ -930,7 +930,7 @@ getwinenveq (const char *name, size_t namelen, int x)
        char *p = (char *) cmalloc_abort ((cygheap_types) x, totlen);
        if (namelen)
  	strcpy (p, name);
@@ -229,7 +229,7 @@ index cdf20b7..9b8f5ac 100644
        debug_printf ("using value from GetEnvironmentVariable for '%W'", name0);
        return p;
      }
-@@ -1069,7 +1069,7 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+@@ -1083,7 +1083,7 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
  	  for (winnum = 0, var = cwinenv;
  	       *var;
  	       ++winnum, var = wcschr (var, L'\0') + 1)
@@ -306,10 +306,10 @@ index 654360f..a598cb4 100644
  	  /* We can't trust remote inode numbers of only 32 bit.  That means,
  	     remote NT4 NTFS, as well as shares of Samba version < 3.0. */
 diff --git a/winsup/cygwin/fhandler_process.cc b/winsup/cygwin/fhandler_process.cc
-index 5f530a2..fbedbb5 100644
+index bbb44fa..ded41d2 100644
 --- a/winsup/cygwin/fhandler_process.cc
 +++ b/winsup/cygwin/fhandler_process.cc
-@@ -563,10 +563,10 @@ static off_t
+@@ -565,10 +565,10 @@ static off_t
  format_process_winexename (void *data, char *&destbuf)
  {
    _pinfo *p = (_pinfo *) data;
@@ -322,7 +322,7 @@ index 5f530a2..fbedbb5 100644
    return len;
  }
  
-@@ -1006,7 +1006,7 @@ peb_teb_rinse_repeat:
+@@ -1028,7 +1028,7 @@ peb_teb_rinse_repeat:
  		      drive_maps.fixup_if_match (msi->SectionFileName.Buffer);
  		  if (mount_table->conv_to_posix_path (dosname,
  						       posix_modname, 0))
@@ -331,7 +331,7 @@ index 5f530a2..fbedbb5 100644
  		  stat64 (posix_modname, &st);
  		}
  	      else if (!threads.fill_if_match (cur.abase, mb.Type,
-@@ -1052,7 +1052,7 @@ format_process_stat (void *data, char *&destbuf)
+@@ -1074,7 +1074,7 @@ format_process_stat (void *data, char *&destbuf)
    else
      {
        PWCHAR last_slash = wcsrchr (p->progname, L'\\');
@@ -340,7 +340,7 @@ index 5f530a2..fbedbb5 100644
  		    last_slash ? last_slash + 1 : p->progname);
        int len = strlen (cmd);
        if (len > 4)
-@@ -1170,7 +1170,8 @@ format_process_status (void *data, char *&destbuf)
+@@ -1192,7 +1192,8 @@ format_process_status (void *data, char *&destbuf)
  		vmtext = 0UL, vmshare = 0UL;
  
    PWCHAR last_slash = wcsrchr (p->progname, L'\\');
@@ -432,7 +432,7 @@ index 60ad2d3..96210ed 100644
      }
  }
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index c767db4..963607f 100644
+index 13f4e39..101c0ea 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
 @@ -642,7 +642,8 @@ path_conv::check (const UNICODE_STRING *src, unsigned opt,
@@ -537,7 +537,7 @@ index c767db4..963607f 100644
      }
    else
 diff --git a/winsup/cygwin/strfuncs.cc b/winsup/cygwin/strfuncs.cc
-index c962f7c..3942508 100644
+index e0e5703..cd60ba3 100644
 --- a/winsup/cygwin/strfuncs.cc
 +++ b/winsup/cygwin/strfuncs.cc
 @@ -490,13 +490,13 @@ sys_wcstombs (char *dst, size_t len, const wchar_t *src, size_t nwc,
