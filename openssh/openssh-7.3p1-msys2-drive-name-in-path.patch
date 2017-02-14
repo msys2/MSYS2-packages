@@ -1,0 +1,56 @@
+From 0e80940f9ea248f519e23893d0e66079d9ee5f31 Mon Sep 17 00:00:00 2001
+From: Sam Hocevar <sam@hocevar.net>
+Date: Tue, 20 Sep 2016 10:34:18 +0200
+Subject: [PATCH] Allow scp to copy files that start with a Windows drive name.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On Windows, “scp C:/foo/bar remotehost:” will attempt to connect to
+a remote host “C” and access file “/foo/bar”. There is currently no
+syntax or flag to allow copying files that start with a drive name.
+
+This patch changes the behaviour (only on Cygwin) by considering
+that a single letter followed by a colon is a Windows drive name
+and thus an absolute path. This is also more consistent with the
+manual page that recommends to use absolute pathnames “to avoid
+scp treating file names containing ‘:’ as host specifiers.
+
+It is still possible to access files on a machine “C” by using
+square brackets, e.g. “scp [C]:/foo/bar remotehost:”.
+
+There are countless user reports indicating that this behaviour
+is desirable:
+ - http://stackoverflow.com/q/8975798/111461
+ - http://serverfault.com/q/582048/73723
+ - http://superuser.com/q/291840/71253
+ - https://www.reddit.com/r/commandline/comments/371q5i
+ - http://stackoverflow.com/q/21587036/111461
+ - http://askubuntu.com/q/354330/12301
+ - http://superuser.com/q/338075/71253
+ - https://ubuntuforums.org/archive/index.php/t-1131655.html
+ - http://www.linuxquestions.org/questions/linux-newbie-8/transfer-files-from-linux-to-windows-pscp-4175530524/
+
+Signed-off-by: Sam Hocevar <sam@hocevar.net>
+---
+ misc.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/misc.c b/misc.c
+index 9421b4d..cd10287 100644
+--- a/misc.c
++++ b/misc.c
+@@ -435,6 +435,10 @@ colon(char *cp)
+ 
+ 	if (*cp == ':')		/* Leading colon is part of file name. */
+ 		return NULL;
++#ifdef HAVE_CYGWIN
++	if (isalpha(*cp) && *(cp+1) == ':')	/* Do not split at drive name. */
++		return NULL;
++#endif
+ 	if (*cp == '[')
+ 		flag = 1;
+ 
+-- 
+2.9.3
+

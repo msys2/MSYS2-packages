@@ -1,0 +1,42 @@
+# arg 1:  the new package version
+post_install() {
+	add_catalog "${1%-*}"
+}
+
+# arg 1:  the new package version
+# arg 2:  the old package version
+pre_upgrade() {
+	remove_catalog "${2%-*}"
+}
+
+# arg 1:  the new package version
+# arg 2:  the old package version
+post_upgrade() {
+	add_catalog "${1%-*}"
+}
+
+# arg 1:  the old package version
+pre_remove() {
+	remove_catalog "${1%-*}"
+}
+add_catalog() {
+	install-catalog --add /etc/sgml/sgml-docbook-dtd-$1.cat \
+		/usr/share/sgml/docbook-sgml-$1/catalog > /dev/null 2>&1
+
+	install-catalog --add /etc/sgml/sgml-docbook-dtd-$1.cat \
+		/etc/sgml/sgml-docbook.cat > /dev/null 2>&1
+}
+
+remove_catalog() {
+	install-catalog --remove /etc/sgml/sgml-docbook-dtd-$1.cat \
+		/usr/share/sgml/docbook-sgml-$1/catalog > /dev/null 2>&1
+
+	install-catalog --remove /etc/sgml/sgml-docbook-dtd-$1.cat \
+		/etc/sgml/sgml-docbook.cat > /dev/null 2>&1
+}
+op=$1
+shift
+$op "$@"
+
+# vim:set syntax=sh ts=4 sw=4 noet:
+

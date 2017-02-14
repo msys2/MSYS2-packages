@@ -1,0 +1,61 @@
+# Maintainer: Ricky <rickleaf.wu@gmail.com>
+pkgname="emacs"
+pkgver=25.1
+pkgrel=1
+pkgdesc="The extensible, customizable, self-documenting, real-time display editor (msys2)"
+url="http://www.gnu.org/software/${pkgname}/"
+license=('GPL3')
+arch=('i686' 'x86_64')
+depends=('ncurses' 'zlib' 'libxml2' 'libiconv' 'crypt' 'libgnutls' 'glib2' 'libhogweed')
+groups=('editors')
+makedepends=('gawk' 'libiconv-devel' 'libxml2-devel' 'libiconv-devel' 'ncurses-devel' 'libcrypt-devel' 'libgnutls-devel')
+options=('strip')
+source=("http://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz"{,.sig}
+        'configure.ac.diff')
+sha256sums=('19f2798ee3bc26c95dca3303e7ab141e7ad65d6ea2b6945eeba4dbea7df48f33'
+            'fce9c0494bec47106e6d6853e44b825e49558a8da009ec47930d7c7d6814037a'
+            '0cb204f2cab4740d27a47a4adc7e4168d6034e86cd522605a85bbd03fb1db59d')
+
+prepare() {
+  cd "${pkgname}-${pkgver}"
+  patch --binary --forward -p0 < "${srcdir}/configure.ac.diff"
+  ./autogen.sh
+}
+
+build() {
+	
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  CPPFLAGS="-DNDEBUG"
+  CFLAGS="-pipe -O3 -fomit-frame-pointer -funroll-loops"
+  LDFLAGS="-s -Wl,-s"
+  ./configure \
+    --prefix=/usr \
+    --build="${CHOST}" \
+    --with-x-toolkit=no \
+    --with-sound=yes \
+    --with-modules \
+    --without-compress-install
+
+  make
+}
+
+package() {
+  cd "${srcdir}"/${pkgname}-${pkgver}
+  make DESTDIR="${pkgdir}" install
+  rm -f "${pkgdir}/usr/bin/ctags.exe"
+  rm -f "${pkgdir}/usr/share/man/man1/ctags.1.gz"
+  rm -f "${pkgdir}/usr/share/info/info.info.gz"
+
+  local dir="${pkgdir}/usr/share/${pkgname}"
+        dir="${dir}/$(ls -1 ${dir} | grep -E '([0-9]+\.[0-9]+)(\.[0-9]+)?')/src"
+
+  mkdir -p "${dir}"
+  cd "${srcdir}/${pkgname}-${pkgver}/src"
+  cp *.c *.h *.m "${dir}"
+  
+}
+
+# TODO:
+# Patch `shell-file-name' default in the C source code similarly to
+# `source-directory'.

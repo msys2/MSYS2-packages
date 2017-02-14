@@ -1,8 +1,65 @@
+From bc03e2e40e51474f2244f5909f3e8f5a4cf60ab0 Mon Sep 17 00:00:00 2001
+From: Octavian Purdila <octavian dot purdila at intel dot com>
+Date: Mon, 26 Oct 2015 15:57:35 +0200
+Subject: [PATCH 3/3] Convert NT weak externals to locals
+
+This patch allows converting a weak external symbol to a local symbol
+by setting up its section and value to the ones of the alternate
+symbol. This is useful when we want to make only a few selected
+symbols visible (e.g. objcopy -G).
+
+The conversion is triggered when an NT weak external symbol has been
+marked with BSF_LOCAL.
+
+bfd/
+
+2015-10-22  Octavian Purdila <octavian.purdila@intel.com>
+
+    * coffgen.c: add coff_nt_weak_to_local() that implements weak
+      external to local symbol conversion
+    * coffcode.h (coff_write_object_contents): call
+      coff_nt_weak_to_local()
+    * libcoff.h: add coff_nt_weak_to_local() declaration
+
+binutils/
+
+2015-10-26  Octavian Purdila <octavian.purdila@intel.com>
+
+    * objcopy.c (filter_symbols): allow converting undefined weak
+    symbols to local symbols for PE objects (as PE weak externals are
+    implemented as undefined weak symbols)
+---
+ bfd/ChangeLog      |  8 ++++++++
+ bfd/coffcode.h     |  1 +
+ bfd/coffgen.c      | 43 +++++++++++++++++++++++++++++++++++++++++++
+ bfd/libcoff.h      |  2 ++
+ binutils/ChangeLog |  6 ++++++
+ binutils/objcopy.c |  5 ++++-
+ 6 files changed, 64 insertions(+), 1 deletion(-)
+
+diff --git a/bfd/ChangeLog b/bfd/ChangeLog
+index 7c78023d7b..a4ba816cb9 100644
+--- a/bfd/ChangeLog
++++ b/bfd/ChangeLog
+@@ -1,5 +1,13 @@
+ 2015-10-26  octavian purdila  <octavian.purdila@intel.com>
+ 
++	* coffgen.c: add coff_nt_weak_to_local() that implements weak
++	external to local symbol conversion
++	* coffcode.h (coff_write_object_contents): call
++	coff_nt_weak_to_local()
++	* libcoff.h: add coff_nt_weak_to_local() declaration
++
++2015-10-26  Octavian Purdila <octavian.purdila@intel.com>
++
+ 	* cofflink.c (_bfd_coff_link_input_bfd): relocate AUX entries for
+ 	weak externals when generating relocatable objects
+ 
 diff --git a/bfd/coffcode.h b/bfd/coffcode.h
-index 2499885..fc61dee 100644
+index 2b1c3d053f..23d932018d 100644
 --- a/bfd/coffcode.h
 +++ b/bfd/coffcode.h
-@@ -4202,6 +4202,7 @@ coff_write_object_contents (bfd * abfd)
+@@ -4198,6 +4198,7 @@ coff_write_object_contents (bfd * abfd)
      {
        int firstundef;
  
@@ -11,10 +68,10 @@ index 2499885..fc61dee 100644
  	return FALSE;
        coff_mangle_symbols (abfd);
 diff --git a/bfd/coffgen.c b/bfd/coffgen.c
-index 9257f73..dd05823 100644
+index d071d8a36f..cd2a502963 100644
 --- a/bfd/coffgen.c
 +++ b/bfd/coffgen.c
-@@ -788,6 +788,49 @@ coff_renumber_symbols (bfd *bfd_ptr, int *first_undef)
+@@ -801,6 +801,49 @@ coff_renumber_symbols (bfd *bfd_ptr, int *first_undef)
    return TRUE;
  }
  
@@ -32,7 +89,7 @@ index 9257f73..dd05823 100644
 +      combined_entry_type *native;
 +      struct internal_syment *sym;
 +
-+      coff_symbol_ptr = coff_symbol_from (symbol);
++      coff_symbol_ptr = coff_symbol_from (abfd, symbol);
 +      if (!coff_symbol_ptr)
 +        continue;
 +
@@ -65,23 +122,37 @@ index 9257f73..dd05823 100644
     pointers to entries are changed to the entries' index in the output
     symbol table.  */
 diff --git a/bfd/libcoff.h b/bfd/libcoff.h
-index 124e603..3ccf4d6 100644
+index 947998570b..08cf93ac7d 100644
 --- a/bfd/libcoff.h
 +++ b/bfd/libcoff.h
-@@ -309,6 +309,8 @@ extern long coff_canonicalize_symtab
-   (bfd *, asymbol **);
- extern int coff_count_linenumbers
+@@ -326,6 +326,8 @@ extern int coff_count_linenumbers
    (bfd *);
+ extern struct coff_symbol_struct *coff_symbol_from
+   (bfd *, asymbol *);
 +extern void coff_nt_weak_to_local
 +  (bfd *);
  extern bfd_boolean coff_renumber_symbols
    (bfd *, int *);
  extern void coff_mangle_symbols
+diff --git a/binutils/ChangeLog b/binutils/ChangeLog
+index a23a6c3713..07a824e260 100644
+--- a/binutils/ChangeLog
++++ b/binutils/ChangeLog
+@@ -1,3 +1,9 @@
++2015-10-26  Octavian Purdila <octavian.purdila@intel.com>
++
++	* objcopy.c (filter_symbols): allow converting undefined weak
++	symbols to local symbols for PE objects (as PE weak externals are
++	implemented as undefined weak symbols)
++
+ 2015-07-21  Tristan Gingold  <gingold@adacore.com>
+ 
+ 	* configure: Regenerate.
 diff --git a/binutils/objcopy.c b/binutils/objcopy.c
-index 2cd55fd..94b7702 100644
+index da429f54ea..d064119da0 100644
 --- a/binutils/objcopy.c
 +++ b/binutils/objcopy.c
-@@ -1372,7 +1372,10 @@ filter_symbols (bfd *abfd, bfd *obfd, asymbol **osyms,
+@@ -1336,7 +1336,10 @@ filter_symbols (bfd *abfd, bfd *obfd, asymbol **osyms,
  	      sym->flags |= BSF_WEAK;
  	    }
  
@@ -94,4 +165,5 @@ index 2cd55fd..94b7702 100644
  	      && (is_specified_symbol (name, localize_specific_htab)
  		  || (htab_elements (keepglobal_specific_htab) != 0
 -- 
-2.1.0
+2.11.0
+

@@ -44,9 +44,14 @@ unset _warning
 # otherwise set a default prompt
 # of user@host, MSYSTEM variable, and current_directory
 [[ -n "${MSYS2_PS1}" ]] && export PS1="${MSYS2_PS1}"
+# if we have the "High Mandatory Level" group, it means we're elevated
+if [[ -n "$(command -v getent)" ]] && id -G | grep -q "$(getent -w group 'S-1-16-12288' | cut -d: -f2)"
+  then _ps1_symbol='\[\e[1m\]#\[\e[0m\]'
+  else _ps1_symbol='\$'
+fi
 [[ $(declare -p PS1 2>/dev/null | cut -c 1-11) = 'declare -x ' ]] || \
-  export PS1='\[\e]0;\w\a\]\n\[\e[32m\]\u@\h \[\e[35m\]$MSYSTEM\[\e[0m\] \[\e[33m\]\w\[\e[0m\]\n\$ '
-
+  export PS1='\[\e]0;\w\a\]\n\[\e[32m\]\u@\h \[\e[35m\]$MSYSTEM\[\e[0m\] \[\e[33m\]\w\[\e[0m\]\n'"${_ps1_symbol}"' '
+unset _ps1_symbol
 
 # Uncomment to use the terminal colours set in DIR_COLORS
 # eval "$(dircolors -b /etc/DIR_COLORS)"
