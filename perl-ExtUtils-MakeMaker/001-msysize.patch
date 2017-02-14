@@ -1,0 +1,114 @@
+diff -Naur ExtUtils-MakeMaker-7.25_01-orig/bundled/ExtUtils-Install/ExtUtils/Install.pm ExtUtils-MakeMaker-7.25_01/bundled/ExtUtils-Install/ExtUtils/Install.pm
+--- ExtUtils-MakeMaker-7.25_01-orig/bundled/ExtUtils-Install/ExtUtils/Install.pm	2016-04-27 23:08:36.000000000 +0300
++++ ExtUtils-MakeMaker-7.25_01/bundled/ExtUtils-Install/ExtUtils/Install.pm	2017-02-14 21:19:57.359544800 +0300
+@@ -95,7 +95,7 @@
+ my $Is_VMS_noefs = $Is_VMS;
+ my $Is_MacPerl = $^O eq 'MacOS';
+ my $Is_Win32   = $^O eq 'MSWin32';
+-my $Is_cygwin  = $^O eq 'cygwin';
++my $Is_cygwin  = ($^O eq 'cygwin' || $^O eq 'msys');
+ my $CanMoveAtBoot = ($Is_Win32 || $Is_cygwin);
+ 
+     if( $Is_VMS ) {
+diff -Naur ExtUtils-MakeMaker-7.25_01-orig/bundled/File-Temp/File/Temp.pm ExtUtils-MakeMaker-7.25_01/bundled/File-Temp/File/Temp.pm
+--- ExtUtils-MakeMaker-7.25_01-orig/bundled/File-Temp/File/Temp.pm	2016-04-27 23:08:36.000000000 +0300
++++ ExtUtils-MakeMaker-7.25_01/bundled/File-Temp/File/Temp.pm	2017-02-14 21:20:57.049958900 +0300
+@@ -824,7 +824,7 @@
+   return 1 if $level == STANDARD;
+ 
+   # Currently, the systems that can do HIGH or MEDIUM are identical
+-  if ( $^O eq 'MSWin32' || $^O eq 'os2' || $^O eq 'cygwin' || $^O eq 'dos' || $^O eq 'MacOS' || $^O eq 'mpeix') {
++  if ( $^O eq 'MSWin32' || $^O eq 'os2' || $^O eq 'cygwin' || $^O eq 'msys' || $^O eq 'dos' || $^O eq 'MacOS' || $^O eq 'mpeix') {
+     return 0;
+   } else {
+     return 1;
+@@ -1978,7 +1978,7 @@
+     #   on Win9x the link count remains 1
+     # On NFS the link count may still be 1 but we cant know that
+     # we are on NFS
+-    return ( $fh[3] == 0 or $^O eq 'cygwin' ? 1 : 0);
++    return ( $fh[3] == 0 or ($^O eq 'cygwin' || $^O eq 'msys') ? 1 : 0);
+ 
+   } else {
+     _deferred_unlink($fh, $path, 0);
+diff -Naur ExtUtils-MakeMaker-7.25_01-orig/lib/ExtUtils/Liblist/Kid.pm ExtUtils-MakeMaker-7.25_01/lib/ExtUtils/Liblist/Kid.pm
+--- ExtUtils-MakeMaker-7.25_01-orig/lib/ExtUtils/Liblist/Kid.pm	2017-02-03 16:36:18.000000000 +0300
++++ ExtUtils-MakeMaker-7.25_01/lib/ExtUtils/Liblist/Kid.pm	2017-02-14 21:21:52.241115600 +0300
+@@ -169,7 +169,7 @@
+             }
+             elsif ( -f ( $fullname = "$thispth/lib$thislib.dll$Config_libext" ) ) {
+             }
+-            elsif ( $^O eq 'cygwin' && -f ( $fullname = "$thispth/$thislib.dll" ) ) {
++            elsif ( ($^O eq 'cygwin' || $^O eq 'msys') && -f ( $fullname = "$thispth/$thislib.dll" ) ) {
+             }
+             elsif ( -f ( $fullname = "$thispth/Slib$thislib$Config_libext" ) ) {
+             }
+diff -Naur ExtUtils-MakeMaker-7.25_01-orig/lib/ExtUtils/MM.pm ExtUtils-MakeMaker-7.25_01/lib/ExtUtils/MM.pm
+--- ExtUtils-MakeMaker-7.25_01-orig/lib/ExtUtils/MM.pm	2017-02-03 16:36:18.000000000 +0300
++++ ExtUtils-MakeMaker-7.25_01/lib/ExtUtils/MM.pm	2017-02-14 21:22:30.326294000 +0300
+@@ -58,7 +58,7 @@
+     _is_win95() ? $Is{Win95} = 1 : $Is{Win32} = 1;
+ }
+ $Is{UWIN}   = $^O =~ /^uwin(-nt)?$/;
+-$Is{Cygwin} = $^O eq 'cygwin';
++$Is{Cygwin} = ($^O eq 'cygwin' || $^O eq 'msys');
+ $Is{NW5}    = $Config{osname} eq 'NetWare';  # intentional
+ $Is{BeOS}   = ($^O =~ /beos/i or $^O eq 'haiku');
+ $Is{DOS}    = $^O eq 'dos';
+diff -Naur ExtUtils-MakeMaker-7.25_01-orig/t/03-xsstatic.t ExtUtils-MakeMaker-7.25_01/t/03-xsstatic.t
+--- ExtUtils-MakeMaker-7.25_01-orig/t/03-xsstatic.t	2016-04-27 23:08:36.000000000 +0300
++++ ExtUtils-MakeMaker-7.25_01/t/03-xsstatic.t	2017-02-14 21:23:21.404215500 +0300
+@@ -17,7 +17,7 @@
+ plan skip_all => "ExtUtils::CBuilder not installed or couldn't find a compiler"
+   unless have_compiler();
+ plan skip_all => 'Shared perl library' if $Config{useshrplib} eq 'true';
+-plan skip_all => $^O if $^O =~ m!^(MSWin32|cygwin|haiku)$!;
++plan skip_all => $^O if $^O =~ m!^(MSWin32|cygwin|msys|haiku)$!;
+ my @tests = list_static();
+ plan skip_all => "No tests" unless @tests;
+ plan tests => 6 * @tests;
+diff -Naur ExtUtils-MakeMaker-7.25_01-orig/t/eu_command.t ExtUtils-MakeMaker-7.25_01/t/eu_command.t
+--- ExtUtils-MakeMaker-7.25_01-orig/t/eu_command.t	2016-04-27 23:08:36.000000000 +0300
++++ ExtUtils-MakeMaker-7.25_01/t/eu_command.t	2017-02-14 21:24:09.861987100 +0300
+@@ -95,7 +95,7 @@
+     SKIP: {
+         if ($^O eq 'amigaos' || $^O eq 'os2' || $^O eq 'MSWin32' ||
+             $^O eq 'NetWare' || $^O eq 'dos' || $^O eq 'cygwin'  ||
+-            $^O eq 'MacOS'
++            $^O eq 'msys'    || $^O eq 'MacOS'
+            ) {
+             skip( "different file permission semantics on $^O", 3);
+         }
+@@ -135,7 +135,7 @@
+     SKIP: {
+         if ($^O eq 'amigaos' || $^O eq 'os2' || $^O eq 'MSWin32' ||
+             $^O eq 'NetWare' || $^O eq 'dos' || $^O eq 'cygwin'  ||
+-            $^O eq 'MacOS'   || $^O eq 'haiku'
++            $^O eq 'msys'    || $^O eq 'MacOS'   || $^O eq 'haiku'
+            ) {
+             skip( "different file permission semantics on $^O", 5);
+         }
+diff -Naur ExtUtils-MakeMaker-7.25_01-orig/t/MM_Cygwin.t ExtUtils-MakeMaker-7.25_01/t/MM_Cygwin.t
+--- ExtUtils-MakeMaker-7.25_01-orig/t/MM_Cygwin.t	2016-04-27 23:08:36.000000000 +0300
++++ ExtUtils-MakeMaker-7.25_01/t/MM_Cygwin.t	2017-02-14 21:25:01.230925200 +0300
+@@ -9,7 +9,7 @@
+ use Test::More;
+ 
+ BEGIN {
+-	if ($^O =~ /cygwin/i) {
++	if ($^O =~ /cygwin|msys/i) {
+ 		plan tests => 14;
+ 	} else {
+ 		plan skip_all => "This is not cygwin";
+diff -Naur ExtUtils-MakeMaker-7.25_01-orig/t/MM_Unix.t ExtUtils-MakeMaker-7.25_01/t/MM_Unix.t
+--- ExtUtils-MakeMaker-7.25_01-orig/t/MM_Unix.t	2016-04-27 23:08:36.000000000 +0300
++++ ExtUtils-MakeMaker-7.25_01/t/MM_Unix.t	2017-02-14 21:25:24.196238800 +0300
+@@ -8,7 +8,7 @@
+ BEGIN {
+     use Test::More;
+ 
+-    if( $^O =~ /^VMS|os2|MacOS|MSWin32|cygwin|beos|netware$/i ) {
++    if( $^O =~ /^VMS|os2|MacOS|MSWin32|cygwin|msys|beos|netware$/i ) {
+         plan skip_all => 'Non-Unix platform';
+     }
+     else {
