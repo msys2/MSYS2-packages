@@ -47,8 +47,8 @@
      {
        rl_command_func_t *function;
        char **invokers;
---- a/chardefs.h	2011-07-25 19:47:56.000000000 -0600
-+++ b/chardefs.h	2015-01-26 20:51:11.524115600 -0700
+--- readline-7.0/chardefs.h.orig	2016-01-25 10:37:46.000000000 -0500
++++ readline-7.0/chardefs.h	2016-09-20 23:42:06.392543000 -0400
 @@ -71,6 +71,7 @@
  #else
  #  define IN_CTYPE_DOMAIN(c) isascii(c)
@@ -56,28 +56,7 @@
 +#define to_uchar(c) ((unsigned char)(c))
  
  #if !defined (isxdigit) && !defined (HAVE_ISXDIGIT) && !defined (__cplusplus)
- #  define isxdigit(c)   (isdigit((c)) || ((c) >= 'a' && (c) <= 'f') || ((c) >= 'A' && (c) <= 'F'))
-@@ -87,13 +88,13 @@
- 
- /* Beware:  these only work with single-byte ASCII characters. */
- 
--#define ISALNUM(c)	(IN_CTYPE_DOMAIN (c) && isalnum (c))
--#define ISALPHA(c)	(IN_CTYPE_DOMAIN (c) && isalpha (c))
--#define ISDIGIT(c)	(IN_CTYPE_DOMAIN (c) && isdigit (c))
--#define ISLOWER(c)	(IN_CTYPE_DOMAIN (c) && islower (c))
--#define ISPRINT(c)	(IN_CTYPE_DOMAIN (c) && isprint (c))
--#define ISUPPER(c)	(IN_CTYPE_DOMAIN (c) && isupper (c))
--#define ISXDIGIT(c)	(IN_CTYPE_DOMAIN (c) && isxdigit (c))
-+#define ISALNUM(c)	(IN_CTYPE_DOMAIN (c) && isalnum (to_uchar (c)))
-+#define ISALPHA(c)	(IN_CTYPE_DOMAIN (c) && isalpha (to_uchar (c)))
-+#define ISDIGIT(c)	(IN_CTYPE_DOMAIN (c) && isdigit (to_uchar (c)))
-+#define ISLOWER(c)	(IN_CTYPE_DOMAIN (c) && islower (to_uchar (c)))
-+#define ISPRINT(c)	(IN_CTYPE_DOMAIN (c) && isprint (to_uchar (c)))
-+#define ISUPPER(c)	(IN_CTYPE_DOMAIN (c) && isupper (to_uchar (c)))
-+#define ISXDIGIT(c)	(IN_CTYPE_DOMAIN (c) && isxdigit (to_uchar (c)))
- 
- #define _rl_lowercase_p(c)	(NON_NEGATIVE(c) && ISLOWER(c))
- #define _rl_uppercase_p(c)	(NON_NEGATIVE(c) && ISUPPER(c))
+ #  define isxdigit(c)   (isdigit((unsigned char)(c)) || ((c) >= 'a' && (c) <= 'f') || ((c) >= 'A' && (c) <= 'F'))
 --- a/complete.c	2013-10-14 07:27:10.000000000 -0600
 +++ b/complete.c	2015-01-26 20:51:11.524115600 -0700
 @@ -1082,7 +1082,7 @@ _rl_find_completion_word (fp, dp)
@@ -151,18 +130,18 @@
  
  /* Insert COL spaces, keeping the cursor at the same position.  We follow the
     ncurses documentation and use either im/ei with explicit spaces, or IC/ic
---- a/examples/Makefile.in	2013-10-03 10:57:31.000000000 -0600
-+++ b/examples/Makefile.in	2015-01-26 20:51:11.524115600 -0700
-@@ -54,7 +54,7 @@ CPPFLAGS = @CPPFLAGS@
+--- readline-7.0/examples/Makefile.in.orig	2016-04-26 09:50:18.000000000 -0400
++++ readline-7.0/examples/Makefile.in	2016-09-20 23:34:14.991812300 -0400
+@@ -54,7 +54,7 @@
  INCLUDES = -I$(srcdir) -I$(top_srcdir) -I..
  
- CCFLAGS  = $(DEFS) $(LOCAL_CFLAGS) $(CPPFLAGS) $(INCLUDES) $(CFLAGS)
+ CCFLAGS  = $(DEFS) $(LOCAL_CFLAGS) $(INCLUDES) $(CPPFLAGS) $(CFLAGS)
 -LDFLAGS = -g -L.. @LDFLAGS@
 +LDFLAGS = -g -L../shlib -L.. @LDFLAGS@
  
- PURIFY = @PURIFY@
- 
-@@ -86,7 +86,7 @@ all: $(EXECUTABLES)
+ READLINE_LIB = ../libreadline.a
+ HISTORY_LIB = ../libhistory.a
+@@ -84,7 +84,7 @@
  everything: all
  
  check:	rlversion$(EXEEXT)
@@ -171,17 +150,6 @@
  
  installdirs:
  	-$(SHELL) $(top_srcdir)/support/mkdirs $(DESTDIR)$(installdir)
---- a/examples/rlversion.c	2009-01-06 10:04:33.000000000 -0700
-+++ b/examples/rlversion.c	2015-01-26 20:51:11.524115600 -0700
-@@ -41,7 +41,7 @@ extern void exit();
- #  include <readline/readline.h>
- #endif
- 
--main()
-+int main(void)
- {
- 	printf ("%s\n", rl_library_version ? rl_library_version : "unknown");
- 	exit (0);
 --- a/histexpand.c	2013-12-02 07:22:30.000000000 -0700
 +++ b/histexpand.c	2015-01-26 20:51:11.524115600 -0700
 @@ -204,7 +204,7 @@ get_history_event (string, caller_index,
@@ -210,17 +178,6 @@
  		    we = history_tokenize_word (temp, si);
  		  }
  
---- a/histfile.c	2013-07-19 06:17:17.000000000 -0600
-+++ b/histfile.c	2015-01-26 20:51:11.524115600 -0700
-@@ -104,7 +104,7 @@ int history_write_timestamps = 0;
- 
- /* Does S look like the beginning of a history timestamp entry?  Placeholder
-    for more extensive tests. */
--#define HIST_TIMESTAMP_START(s)		(*(s) == history_comment_char && isdigit ((s)[1]) )
-+#define HIST_TIMESTAMP_START(s)		(*(s) == history_comment_char && isdigit ((unsigned char) (s)[1]) )
- 
- /* Return the string that should be used in the place of this
-    filename.  This only matters when you don't specify the
 --- a/input.c	2015-01-26 20:45:49.881252500 -0700
 +++ b/input.c	2015-01-26 20:51:11.524115600 -0700
 @@ -431,7 +431,7 @@ rl_read_key ()
@@ -330,17 +287,17 @@
        rl_point = orig_point;
  #else /* !HAVE_SELECT */
        _rl_insert_char (count, invoking_key);
---- a/posixjmp.h	2012-12-23 20:20:50.000000000 -0700
-+++ b/posixjmp.h	2015-01-26 20:51:11.539711800 -0700
-@@ -27,7 +27,7 @@
+--- readline-7.0/posixjmp.h.orig	2016-09-20 22:30:24.144171600 -0400
++++ readline-7.0/posixjmp.h	2016-09-20 22:41:11.341228300 -0400
+@@ -25,7 +25,7 @@
  
- #if defined (HAVE_POSIX_SIGSETJMP)
+ /* This *must* be included *after* config.h */
+ 
+-#if defined (HAVE_POSIX_SIGSETJMP)
++#if defined (HAVE_POSIX_SIGSETJMP)  && !defined (__CYGWIN__)
  #  define procenv_t	sigjmp_buf
--#  if !defined (__OPENNT)
-+#  if !defined (__OPENNT) && !defined (__CYGWIN__)
- #    undef setjmp
- #    define setjmp(x)	sigsetjmp((x), 1)
- #    define setjmp_nosigs(x)	sigsetjmp((x), 0)
+ 
+ #  define setjmp_nosigs(x)	sigsetjmp((x), 0)
 --- a/readline.c	2015-01-26 20:45:49.740844600 -0700
 +++ b/readline.c	2015-01-26 20:51:11.539711800 -0700
 @@ -95,7 +95,7 @@ static void bind_arrow_keys_internal PAR
@@ -457,18 +414,9 @@
  
    orig_list = rl_undo_list;
    _rl_free_undo_list (rl_undo_list);
---- a/vi_mode.c	2012-09-01 16:55:30.000000000 -0600
-+++ b/vi_mode.c	2015-01-26 20:51:11.555311900 -0700
-@@ -1089,7 +1089,7 @@ static int
- rl_domove_motion_callback (m)
-      _rl_vimotion_cxt *m;
- {
--  int c, save, r;
-+  int c, r;
-   int old_end;
- 
-   _rl_vi_last_motion = c = m->motion;
-@@ -1257,7 +1257,6 @@ int
+--- readline-7.0/vi_mode.c.orig	2016-02-28 14:36:14.000000000 -0500
++++ readline-7.0/vi_mode.c	2016-09-20 21:47:30.957370300 -0400
+@@ -1293,7 +1293,6 @@
  rl_vi_domove (x, ignore)
       int x, *ignore;
  {
