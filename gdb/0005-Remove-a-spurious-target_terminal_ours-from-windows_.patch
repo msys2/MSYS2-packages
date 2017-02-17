@@ -1,0 +1,50 @@
+From 9790b6f69baaa64d9cf545ad64fc370f0722fe84 Mon Sep 17 00:00:00 2001
+From: Jon Turney <jon.turney@dronecode.org.uk>
+Date: Mon, 26 Sep 2016 15:45:28 +0100
+Subject: [PATCH 5/5] Remove a spurious target_terminal_ours() from
+ windows_wait()
+
+This causes the inferior to stop with SIGTTIN if it tries to read from the
+terminal after it has been continued.
+
+See https://cygwin.com/ml/cygwin/2016-09/msg00285.html for reproduction.
+
+I don't think this problem is observed on MinGW, but Cygwin has tcsetpgrp()
+so target_terminal_ours() will call it.
+
+Calling target_terminal_ours() here seems to be is no longer appropriate
+after the "Merge async and sync code paths" changes (??? as the inferior is
+now in a separate process group even in sync mode ???)
+
+This call was added in commit c44537cf (and see
+https://sourceware.org/ml/gdb-patches/2007-02/msg00167.html for what it
+fixed, which is not regressed by this change)
+
+When windows_wait() is entered, the inferior is running (either it's been
+just been started or attached to, or windows_continue() was called), so
+grabbing the controlling terminal away from it here seems to be wrong.
+
+infrun.c takes care of calling target_terminal_ours() when the inferior
+stops.
+
+Signed-off-by: Jon Turney <jon.turney@dronecode.org.uk>
+---
+ gdb/windows-nat.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/gdb/windows-nat.c b/gdb/windows-nat.c
+index 2b75b08..c0fa051 100644
+--- a/gdb/windows-nat.c
++++ b/gdb/windows-nat.c
+@@ -1621,8 +1621,6 @@ windows_wait (struct target_ops *ops,
+ {
+   int pid = -1;
+ 
+-  target_terminal_ours ();
+-
+   /* We loop when we get a non-standard exception rather than return
+      with a SPURIOUS because resume can try and step or modify things,
+      which needs a current_thread->h.  But some of these exceptions mark
+-- 
+2.8.3
+
