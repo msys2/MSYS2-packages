@@ -24,6 +24,11 @@ git -c core.abbrev=7 -C src/msys2-runtime format-patch -o ../.. --signature=2.9.
 die "Could not generate new patch set"
 
 patches="$(ls 0*.patch)" &&
+for p in $patches
+do
+	sed -i 's/^\(Subject: \[PATCH [0-9]*\/\)[1-9][0-9]*/\1N/' $p ||
+	die "Could not fix Subject: line in $p"
+done &&
 git add $patches ||
 die "Could not stage new patch set"
 
