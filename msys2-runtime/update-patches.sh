@@ -8,7 +8,10 @@ die () {
 cd "$(dirname "$0")" ||
 die "Could not cd to msys2-runtime/"
 
-base_tag=refs/tags/cygwin-"$(sed -ne 'y/./_/' -e 's/^pkgver=//p' <PKGBUILD)"-release
+#base_tag=refs/tags/cygwin-"$(sed -ne 'y/./_/' -e 's/^pkgver=//p' <PKGBUILD)"-release
+
+# TEMPORARY, for 2.8.0pre1 only
+base_tag=33c7b2b544a96ee443728f9558ce07a13e05f1e8
 
 git rev-parse --verify HEAD >/dev/null &&
 git update-index -q --ignore-submodules --refresh &&
