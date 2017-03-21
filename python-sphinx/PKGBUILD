@@ -1,0 +1,121 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+# Contributor: Ray Donnelly <mingw.android@gmail.com>
+
+_realname=sphinx
+pkgbase=python-${_realname}
+pkgname=("python2-${_realname}" "python3-${_realname}")
+pkgver=1.4.1
+pkgrel=1
+pkgdesc="A discovery-based unittest extension"
+arch=('any')
+license=('LGPL-2.1')
+url="http://sphinx.pocoo.org/"
+makedepends=(
+            "python3-colorama"
+            "python3-docutils"
+            "python3-imagesize"
+            "python3-jinja"
+            "python3-pygments"
+            "python3-setuptools"
+            "python3-six"
+
+            "python2-colorama"
+            "python2-docutils"
+            "python3-imagesize"
+            "python2-jinja"
+            "python2-pygments"
+            "python2-setuptools"
+            "python2-six"
+            )
+checkdepends=(
+              "python3-nose"
+              "python2-nose"
+              "python3-snowballstemmer"
+              "python2-snowballstemmer"
+              "python3-babel"
+              "python2-babel"
+              "python3-sphinx-alabaster-theme"
+              "python2-sphinx-alabaster-theme"
+              "python3-sphinx_rtd_theme"
+              "python2-sphinx_rtd_theme"
+              "python2-mock"
+              "python3-mock"
+              #'texlive-latexextra'
+              )
+source=("http://pypi.python.org/packages/source/S/Sphinx/Sphinx-$pkgver.tar.gz"{,.asc})
+validpgpkeys=('E9BEABB07E7B9CC3F56E62C91425F8CE5EBA0E07')
+sha256sums=('c6871a784d24aba9270b6b28541537a57e2fcf4d7c799410eba18236bc76d6bc' 'SKIP')
+
+prepare() {
+  # souce duplication is required because makefile modify source code
+  # setyp.py --build tricks don't works well
+  cp -a Sphinx-$pkgver python2-build
+  cp -a Sphinx-$pkgver python3-build
+  # change python2 interpreter
+  find python2-build -type f -exec \
+  sed -i '1s,^#! \?/usr/bin/\(env \|\)python$,#!/usr/bin/python2,' {} \;
+  # change sphinx-binaries name in source code
+  find python2-build -type f -name '*.py' -exec \
+  sed -ri 's,(sphinx-(:?build|apidoc|autogen|quickstart)),\12,' {} \;
+}
+
+build() {
+  cd "${srcdir}"
+  for builddir in python{2,3}-build; do
+    pushd ${builddir}
+    make PYTHON=/usr/bin/${builddir%-build} build
+    popd
+  done
+}
+
+package_python3-sphinx() {
+  pkgdesc='Python3 documentation generator'
+  depends=("python3-babel"
+           "python3-colorama"
+           "python3-docutils"
+           "python3-jinja"
+           "python3-pygments"
+           "python3-sphinx_rtd_theme"
+           "python3-snowballstemmer"
+           "python3-sphinx-alabaster-theme"
+           "python3-six")
+  #optdepends=("texlive-latexextra": for generation of PDF documentation')
+
+  local _mingw_prefix=$(cygpath -am /usr)
+
+  cd "${srcdir}/python3-build"
+  MSYS2_ARG_CONV_EXCL="--prefix=;--install-scripts=;--install-platlib=" \
+  /usr/bin/python3 setup.py install --prefix=/usr --root="${pkgdir}" -O1
+
+  #rm -f ${pkgdir}/usr/bin/sphinx{.exe,-script.py,.exe.manifest}
+  # fix python command in files
+  for _f in "${pkgdir}/usr"/bin/*; do
+    sed -e "s|${_mingw_prefix}/bin/|/usr/bin/env |g" -i ${_f}
+  done
+}
+
+package_python2-sphinx() {
+  pkgdesc='Python2 documentation generator'
+  depends=("python2-babel"
+           "python2-colorama"
+           "python2-docutils"
+           "python2-jinja"
+           "python2-pygments"
+           "python2-sphinx_rtd_theme"
+           "python2-snowballstemmer"
+           "python2-sphinx-alabaster-theme"
+           "python2-six")
+  #optdepends=("texlive-latexextra": for generation of PDF documentation')
+
+  local _mingw_prefix=$(cygpath -am /usr)
+
+  cd "${srcdir}/python2-build"
+  MSYS2_ARG_CONV_EXCL="--prefix=;--install-scripts=;--install-platlib=" \
+  /usr/bin/python2 setup.py install --prefix=/usr --root="${pkgdir}" -O1
+
+  # fix python command in files
+  for _f in "${pkgdir}/usr"/bin/*; do
+    sed -e "s|${_mingw_prefix}/bin/|/usr/bin/env |g" -i ${_f}
+  done
+}
+

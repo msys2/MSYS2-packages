@@ -1,0 +1,62 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=babel
+pkgbase=python-${_realname}
+pkgname=("python2-${_realname}" "python3-${_realname}")
+pkgver=2.3.4
+_cldrver=28
+pkgrel=1
+pkgdesc="A collection of tools for internationalizing Python applications"
+url="http://babel.pocoo.org/"
+license=("BSD")
+arch=('any')
+makedepends=("python2-setuptools"
+             "python3-setuptools"
+             "python2-pytz"
+             "python3-pytz")
+source=("${_realname}-${pkgver}.tar.gz"::"https://github.com/mitsuhiko/babel/archive/${pkgver}.tar.gz"
+        "core-${_cldrver}.zip::http://unicode.org/Public/cldr/${_cldrver}/core.zip")
+noextract=("core-${_cldrver}.zip")
+sha256sums=('41a206f3d4305556a6f103afe04143928ed6663109acfc30ebb4064acb8a4e33'
+            '26f751ab1421192b2ae76c5fd2f83ad477d611c5711098f4fe0ec09c9602ff4d')
+
+prepare() {
+  cd ${srcdir}
+  cp -r ${_realname}-${pkgver} build-python2
+  cp $srcdir/core-${_cldrver}.zip build-python2/cldr/
+  cp -r ${_realname}-${pkgver} build-python3
+  cp $srcdir/core-${_cldrver}.zip build-python3/cldr/
+}
+
+package_python3-babel() {
+  depends=("python3-pytz")
+
+  cd ${srcdir}/build-python3
+  /usr/bin/python3 setup.py import_cldr
+  MSYS2_ARG_CONV_EXCL="--prefix=;--install-scripts=;--install-platlib=" \
+  /usr/bin/python3 setup.py install --prefix=/usr --root="${pkgdir}"
+
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/LICENSE" "${pkgdir}/usr/share/licenses/python3-${_realname}/LICENSE"
+
+  local PREFIX_WIN=$(cygpath -wm /usr)
+  # fix python command in files
+ 
+  sed -e "s|${PREFIX_WIN}/bin/|/usr/bin/env |g" -i $pkgdir/usr/bin/pybabel
+}
+
+package_python2-babel() {
+  depends=("python2-pytz")
+
+  cd ${srcdir}/build-python2
+  /usr/bin/python2 setup.py import_cldr
+  MSYS2_ARG_CONV_EXCL="--prefix=;--install-scripts=;--install-platlib=" \
+  /usr/bin/python2 setup.py install --prefix=/usr --root="${pkgdir}"
+
+  install -Dm644 "${srcdir}/${_realname}-${pkgver}/LICENSE" "${pkgdir}/usr/share/licenses/python2-${_realname}/LICENSE"
+
+  local PREFIX_WIN=$(cygpath -wm /usr)
+ 
+  sed -e "s|${PREFIX_WIN}/bin/|/usr/bin/env |g" -i $pkgdir/usr/bin/pybabel
+  mv $pkgdir/usr/bin/pybabel $pkgdir/usr/bin/pybabel2
+}
+
