@@ -1,10 +1,11 @@
 diff -uprN libbsd-0.8.3.bk/include/bsd/stdio.h libbsd-0.8.3/include/bsd/stdio.h
 --- libbsd-0.8.3.bk/include/bsd/stdio.h	2015-09-23 13:59:34.000000000 +0800
-+++ libbsd-0.8.3/include/bsd/stdio.h	2017-04-13 21:13:34.356859500 +0800
-@@ -51,23 +51,6 @@ char *fgetln(FILE *fp, size_t *lenp)
++++ libbsd-0.8.3/include/bsd/stdio.h	2017-04-13 21:29:05.526890100 +0800
+@@ -50,24 +50,6 @@ char *fgetln(FILE *fp, size_t *lenp)
+ 	__attribute__((deprecated("This functions cannot be safely ported, "
  	                          "use getline(3) instead, as it is supported "
  	                          "by GNU and POSIX.1-2008.")));
- 
+-
 -/*
 - * Note: We diverge from the FreeBSD, OpenBSD and DragonFlyBSD declarations,
 - * because seekfn() there wrongly uses fpos_t, assuming it's an integral
@@ -27,11 +28,77 @@ diff -uprN libbsd-0.8.3.bk/include/bsd/stdio.h libbsd-0.8.3/include/bsd/stdio.h
  
 diff -uprN libbsd-0.8.3.bk/src/funopen.c libbsd-0.8.3/src/funopen.c
 --- libbsd-0.8.3.bk/src/funopen.c	2015-09-23 01:56:09.000000000 +0800
-+++ libbsd-0.8.3/src/funopen.c	2017-04-13 21:14:27.358653400 +0800
-@@ -97,46 +97,6 @@ funopen_close(void *cookie)
- 	return rc;
- }
++++ libbsd-0.8.3/src/funopen.c	2017-04-13 21:29:20.890562400 +0800
+@@ -31,112 +31,6 @@
+ #include <stdio.h>
  
+ #ifdef HAVE_FOPENCOOKIE
+-struct funopen_cookie {
+-	void *orig_cookie;
+-
+-	int (*readfn)(void *cookie, char *buf, int size);
+-	int (*writefn)(void *cookie, const char *buf, int size);
+-	off_t (*seekfn)(void *cookie, off_t offset, int whence);
+-	int (*closefn)(void *cookie);
+-};
+-
+-static ssize_t
+-funopen_read(void *cookie, char *buf, size_t size)
+-{
+-	struct funopen_cookie *cookiewrap = cookie;
+-
+-	if (cookiewrap->readfn == NULL) {
+-		errno = EBADF;
+-		return -1;
+-	}
+-
+-	return cookiewrap->readfn(cookiewrap->orig_cookie, buf, size);
+-}
+-
+-static ssize_t
+-funopen_write(void *cookie, const char *buf, size_t size)
+-{
+-	struct funopen_cookie *cookiewrap = cookie;
+-
+-	if (cookiewrap->writefn == NULL)
+-		return EOF;
+-
+-	return cookiewrap->writefn(cookiewrap->orig_cookie, buf, size);
+-}
+-
+-static int
+-funopen_seek(void *cookie, off64_t *offset, int whence)
+-{
+-	struct funopen_cookie *cookiewrap = cookie;
+-	off_t soff = *offset;
+-
+-	if (cookiewrap->seekfn == NULL) {
+-		errno = ESPIPE;
+-		return -1;
+-	}
+-
+-	soff = cookiewrap->seekfn(cookiewrap->orig_cookie, soff, whence);
+-	*offset = soff;
+-
+-	return *offset;
+-}
+-
+-static int
+-funopen_close(void *cookie)
+-{
+-	struct funopen_cookie *cookiewrap = cookie;
+-	int rc;
+-
+-	if (cookiewrap->closefn == NULL)
+-		return 0;
+-
+-	rc = cookiewrap->closefn(cookiewrap->orig_cookie);
+-
+-	free(cookiewrap);
+-
+-	return rc;
+-}
+-
 -FILE *
 -funopen(const void *cookie,
 -        int (*readfn)(void *cookie, char *buf, int size),
@@ -75,3 +142,15 @@ diff -uprN libbsd-0.8.3.bk/src/funopen.c libbsd-0.8.3/src/funopen.c
  #else
  #error "Function funopen() needs to be ported."
  #endif
+diff -uprN libbsd-0.8.3.bk/src/getpeereid.c libbsd-0.8.3/src/getpeereid.c
+--- libbsd-0.8.3.bk/src/getpeereid.c	2015-09-23 01:56:09.000000000 +0800
++++ libbsd-0.8.3/src/getpeereid.c	2017-04-13 21:30:28.382020400 +0800
+@@ -42,7 +42,7 @@ getpeereid(int s, uid_t *euid, gid_t *eg
+ /* XXX: This should be autodetected at build time instead. */
+ #if defined(__linux__)
+ 	struct ucred cred;
+-#elif defined(__OpenBSD__)
++#else 
+ 	struct sockpeercred cred;
+ #endif
+ 	socklen_t credlen = sizeof(cred);
