@@ -1,589 +1,6 @@
-diff -uprN netcat-openbsd-1.130.bk/arc4random.c netcat-openbsd-1.130/arc4random.c
---- netcat-openbsd-1.130.bk/arc4random.c	1970-01-01 08:00:00.000000000 +0800
-+++ netcat-openbsd-1.130/arc4random.c	2015-12-01 06:48:50.000000000 +0800
-@@ -0,0 +1,212 @@
-+/*	$OpenBSD: arc4random.c,v 1.53 2015/09/10 18:53:50 bcook Exp $	*/
-+
-+/*
-+ * Copyright (c) 1996, David Mazieres <dm@uun.org>
-+ * Copyright (c) 2008, Damien Miller <djm@openbsd.org>
-+ * Copyright (c) 2013, Markus Friedl <markus@openbsd.org>
-+ * Copyright (c) 2014, Theo de Raadt <deraadt@openbsd.org>
-+ * Copyright (c) 2015, Guillem Jover <guillem@hadrons.org>
-+ *
-+ * Permission to use, copy, modify, and distribute this software for any
-+ * purpose with or without fee is hereby granted, provided that the above
-+ * copyright notice and this permission notice appear in all copies.
-+ *
-+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-+ */
-+
-+/*
-+ * ChaCha based random number generator for OpenBSD.
-+ */
-+
-+#include <fcntl.h>
-+#include <limits.h>
-+#include <signal.h>
-+#include <stdint.h>
-+#include <stdlib.h>
-+#include <string.h>
-+#include <unistd.h>
-+#include <sys/types.h>
-+#include <sys/time.h>
-+
-+#define KEYSTREAM_ONLY
-+#include "chacha_private.h"
-+
-+#define minimum(a, b) ((a) < (b) ? (a) : (b))
-+
-+#if defined(__GNUC__) || defined(_MSC_VER)
-+#define inline __inline
-+#else				/* __GNUC__ || _MSC_VER */
-+#define inline
-+#endif				/* !__GNUC__ && !_MSC_VER */
-+
-+#define KEYSZ	32
-+#define IVSZ	8
-+#define BLOCKSZ	64
-+#define RSBUFSZ	(16*BLOCKSZ)
-+
-+/* Marked MAP_INHERIT_ZERO, so zero'd out in fork children. */
-+static struct _rs {
-+	size_t		rs_have;	/* valid bytes at end of rs_buf */
-+	size_t		rs_count;	/* bytes till reseed */
-+} *rs;
-+
-+/* Maybe be preserved in fork children, if _rs_allocate() decides. */
-+static struct _rsx {
-+	chacha_ctx	rs_chacha;	/* chacha context for random keystream */
-+	u_char		rs_buf[RSBUFSZ];	/* keystream blocks */
-+} *rsx;
-+
-+static inline int _rs_allocate(struct _rs **, struct _rsx **);
-+static inline void _rs_forkdetect(void);
-+#include "arc4random.h"
-+
-+static inline void
-+_rs_init(u_char *buf, size_t n)
-+{
-+	if (n < KEYSZ + IVSZ)
-+		return;
-+
-+	if (rs == NULL) {
-+		if (_rs_allocate(&rs, &rsx) == -1)
-+			abort();
-+	}
-+
-+	chacha_keysetup(&rsx->rs_chacha, buf, KEYSZ * 8, 0);
-+	chacha_ivsetup(&rsx->rs_chacha, buf + KEYSZ);
-+}
-+
-+static inline void
-+_rs_rekey(u_char *dat, size_t datlen)
-+{
-+#ifndef KEYSTREAM_ONLY
-+	memset(rsx->rs_buf, 0, sizeof(rsx->rs_buf));
-+#endif
-+	/* fill rs_buf with the keystream */
-+	chacha_encrypt_bytes(&rsx->rs_chacha, rsx->rs_buf,
-+	    rsx->rs_buf, sizeof(rsx->rs_buf));
-+	/* mix in optional user provided data */
-+	if (dat) {
-+		size_t i, m;
-+
-+		m = minimum(datlen, KEYSZ + IVSZ);
-+		for (i = 0; i < m; i++)
-+			rsx->rs_buf[i] ^= dat[i];
-+	}
-+	/* immediately reinit for backtracking resistance */
-+	_rs_init(rsx->rs_buf, KEYSZ + IVSZ);
-+	memset(rsx->rs_buf, 0, KEYSZ + IVSZ);
-+	rs->rs_have = sizeof(rsx->rs_buf) - KEYSZ - IVSZ;
-+}
-+
-+static void
-+_rs_stir(void)
-+{
-+	u_char rnd[KEYSZ + IVSZ];
-+
-+	if (getentropy(rnd, sizeof rnd) == -1)
-+		_getentropy_fail();
-+
-+	if (!rs)
-+		_rs_init(rnd, sizeof(rnd));
-+	else
-+		_rs_rekey(rnd, sizeof(rnd));
-+	explicit_bzero(rnd, sizeof(rnd));	/* discard source seed */
-+
-+	/* invalidate rs_buf */
-+	rs->rs_have = 0;
-+	memset(rsx->rs_buf, 0, sizeof(rsx->rs_buf));
-+
-+	rs->rs_count = 1600000;
-+}
-+
-+static inline void
-+_rs_stir_if_needed(size_t len)
-+{
-+	_rs_forkdetect();
-+	if (!rs || rs->rs_count <= len)
-+		_rs_stir();
-+	if (rs->rs_count <= len)
-+		rs->rs_count = 0;
-+	else
-+		rs->rs_count -= len;
-+}
-+
-+static inline void
-+_rs_random_buf(void *_buf, size_t n)
-+{
-+	u_char *buf = (u_char *)_buf;
-+	u_char *keystream;
-+	size_t m;
-+
-+	_rs_stir_if_needed(n);
-+	while (n > 0) {
-+		if (rs->rs_have > 0) {
-+			m = minimum(n, rs->rs_have);
-+			keystream = rsx->rs_buf + sizeof(rsx->rs_buf)
-+			    - rs->rs_have;
-+			memcpy(buf, keystream, m);
-+			memset(keystream, 0, m);
-+			buf += m;
-+			n -= m;
-+			rs->rs_have -= m;
-+		}
-+		if (rs->rs_have == 0)
-+			_rs_rekey(NULL, 0);
-+	}
-+}
-+
-+static inline void
-+_rs_random_u32(uint32_t *val)
-+{
-+	u_char *keystream;
-+
-+	_rs_stir_if_needed(sizeof(*val));
-+	if (rs->rs_have < sizeof(*val))
-+		_rs_rekey(NULL, 0);
-+	keystream = rsx->rs_buf + sizeof(rsx->rs_buf) - rs->rs_have;
-+	memcpy(val, keystream, sizeof(*val));
-+	memset(keystream, 0, sizeof(*val));
-+	rs->rs_have -= sizeof(*val);
-+}
-+
-+void
-+arc4random_stir(void)
-+{
-+	_ARC4_LOCK();
-+	_rs_stir();
-+	_ARC4_UNLOCK();
-+}
-+
-+void
-+arc4random_addrandom(u_char *dat, int datlen)
-+{
-+	_ARC4_LOCK();
-+	_rs_stir_if_needed(datlen);
-+	_rs_rekey(dat, datlen);
-+	_ARC4_UNLOCK();
-+}
-+
-+uint32_t
-+arc4random(void)
-+{
-+	uint32_t val;
-+
-+	_ARC4_LOCK();
-+	_rs_random_u32(&val);
-+	_ARC4_UNLOCK();
-+	return val;
-+}
-+
-+void
-+arc4random_buf(void *buf, size_t n)
-+{
-+	_ARC4_LOCK();
-+	_rs_random_buf(buf, n);
-+	_ARC4_UNLOCK();
-+}
-diff -uprN netcat-openbsd-1.130.bk/arc4random.h netcat-openbsd-1.130/arc4random.h
---- netcat-openbsd-1.130.bk/arc4random.h	1970-01-01 08:00:00.000000000 +0800
-+++ netcat-openbsd-1.130/arc4random.h	2015-12-07 08:56:05.000000000 +0800
-@@ -0,0 +1,41 @@
-+/*
-+ * Copyright © 2015 Guillem Jover <guillem@hadrons.org>
-+ *
-+ * Redistribution and use in source and binary forms, with or without
-+ * modification, are permitted provided that the following conditions
-+ * are met:
-+ * 1. Redistributions of source code must retain the above copyright
-+ *    notice, this list of conditions and the following disclaimer.
-+ * 2. Redistributions in binary form must reproduce the above copyright
-+ *    notice, this list of conditions and the following disclaimer in the
-+ *    documentation and/or other materials provided with the distribution.
-+ * 3. The name of the author may not be used to endorse or promote products
-+ *    derived from this software without specific prior written permission.
-+ *
-+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,
-+ * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
-+ * AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL
-+ * THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
-+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
-+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-+ */
-+
-+#ifndef LIBBSD_ARC4RANDOM_H
-+#define LIBBSD_ARC4RANDOM_H
-+
-+#include <sys/param.h>
-+
-+int
-+getentropy(void *buf, size_t len);
-+
-+#if defined(__OpenBSD__)
-+#include "arc4random_openbsd.h"
-+#else
-+#include "arc4random_unix.h"
-+#endif
-+
-+#endif
-diff -uprN netcat-openbsd-1.130.bk/arc4random_unix.h netcat-openbsd-1.130/arc4random_unix.h
---- netcat-openbsd-1.130.bk/arc4random_unix.h	1970-01-01 08:00:00.000000000 +0800
-+++ netcat-openbsd-1.130/arc4random_unix.h	2015-12-02 10:03:25.000000000 +0800
-@@ -0,0 +1,92 @@
-+/*	$OpenBSD: arc4random_linux.h,v 1.8 2014/08/13 06:04:10 deraadt Exp $	*/
-+
-+/*
-+ * Copyright (c) 1996, David Mazieres <dm@uun.org>
-+ * Copyright (c) 2008, Damien Miller <djm@openbsd.org>
-+ * Copyright (c) 2013, Markus Friedl <markus@openbsd.org>
-+ * Copyright (c) 2014, Theo de Raadt <deraadt@openbsd.org>
-+ *
-+ * Permission to use, copy, modify, and distribute this software for any
-+ * purpose with or without fee is hereby granted, provided that the above
-+ * copyright notice and this permission notice appear in all copies.
-+ *
-+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-+ */
-+
-+/*
-+ * Stub functions for portability.
-+ */
-+
-+#include <sys/mman.h>
-+
-+#include <pthread.h>
-+#include <signal.h>
-+
-+static pthread_mutex_t arc4random_mtx = PTHREAD_MUTEX_INITIALIZER;
-+#define _ARC4_LOCK()   pthread_mutex_lock(&arc4random_mtx)
-+#define _ARC4_UNLOCK() pthread_mutex_unlock(&arc4random_mtx)
-+
-+#ifdef __GLIBC__
-+extern void *__dso_handle;
-+extern int __register_atfork(void (*)(void), void(*)(void), void (*)(void), void *);
-+#define _ARC4_ATFORK(f) __register_atfork(NULL, NULL, (f), __dso_handle)
-+#else
-+/*
-+ * Unfortunately, pthread_atfork() is broken on FreeBSD (at least 9 and 10) if
-+ * a program does not link to -lthr. Callbacks registered with pthread_atfork()
-+ * appear to fail silently. So, it is not always possible to detect a PID
-+ * wraparound.
-+ */
-+#define _ARC4_ATFORK(f) pthread_atfork(NULL, NULL, (f))
-+#endif
-+
-+static inline void
-+_getentropy_fail(void)
-+{
-+	raise(SIGKILL);
-+}
-+
-+static volatile sig_atomic_t _rs_forked;
-+
-+static inline void
-+_rs_forkhandler(void)
-+{
-+	_rs_forked = 1;
-+}
-+
-+static inline void
-+_rs_forkdetect(void)
-+{
-+	static pid_t _rs_pid = 0;
-+	pid_t pid = getpid();
-+
-+	if (_rs_pid == 0 || _rs_pid != pid || _rs_forked) {
-+		_rs_pid = pid;
-+		_rs_forked = 0;
-+		if (rs)
-+			memset(rs, 0, sizeof(*rs));
-+	}
-+}
-+
-+static inline int
-+_rs_allocate(struct _rs **rsp, struct _rsx **rsxp)
-+{
-+	if ((*rsp = mmap(NULL, sizeof(**rsp), PROT_READ|PROT_WRITE,
-+	    MAP_ANON|MAP_PRIVATE, -1, 0)) == MAP_FAILED)
-+		return (-1);
-+
-+	if ((*rsxp = mmap(NULL, sizeof(**rsxp), PROT_READ|PROT_WRITE,
-+	    MAP_ANON|MAP_PRIVATE, -1, 0)) == MAP_FAILED) {
-+		munmap(*rsp, sizeof(**rsp));
-+		return (-1);
-+	}
-+
-+	_ARC4_ATFORK(_rs_forkhandler);
-+	return (0);
-+}
-diff -uprN netcat-openbsd-1.130.bk/chacha_private.h netcat-openbsd-1.130/chacha_private.h
---- netcat-openbsd-1.130.bk/chacha_private.h	1970-01-01 08:00:00.000000000 +0800
-+++ netcat-openbsd-1.130/chacha_private.h	2015-12-01 06:48:50.000000000 +0800
-@@ -0,0 +1,222 @@
-+/*
-+chacha-merged.c version 20080118
-+D. J. Bernstein
-+Public domain.
-+*/
-+
-+/* $OpenBSD$ */
-+
-+typedef unsigned char u8;
-+typedef unsigned int u32;
-+
-+typedef struct
-+{
-+  u32 input[16]; /* could be compressed */
-+} chacha_ctx;
-+
-+#define U8C(v) (v##U)
-+#define U32C(v) (v##U)
-+
-+#define U8V(v) ((u8)(v) & U8C(0xFF))
-+#define U32V(v) ((u32)(v) & U32C(0xFFFFFFFF))
-+
-+#define ROTL32(v, n) \
-+  (U32V((v) << (n)) | ((v) >> (32 - (n))))
-+
-+#define U8TO32_LITTLE(p) \
-+  (((u32)((p)[0])      ) | \
-+   ((u32)((p)[1]) <<  8) | \
-+   ((u32)((p)[2]) << 16) | \
-+   ((u32)((p)[3]) << 24))
-+
-+#define U32TO8_LITTLE(p, v) \
-+  do { \
-+    (p)[0] = U8V((v)      ); \
-+    (p)[1] = U8V((v) >>  8); \
-+    (p)[2] = U8V((v) >> 16); \
-+    (p)[3] = U8V((v) >> 24); \
-+  } while (0)
-+
-+#define ROTATE(v,c) (ROTL32(v,c))
-+#define XOR(v,w) ((v) ^ (w))
-+#define PLUS(v,w) (U32V((v) + (w)))
-+#define PLUSONE(v) (PLUS((v),1))
-+
-+#define QUARTERROUND(a,b,c,d) \
-+  a = PLUS(a,b); d = ROTATE(XOR(d,a),16); \
-+  c = PLUS(c,d); b = ROTATE(XOR(b,c),12); \
-+  a = PLUS(a,b); d = ROTATE(XOR(d,a), 8); \
-+  c = PLUS(c,d); b = ROTATE(XOR(b,c), 7);
-+
-+static const char sigma[16] = "expand 32-byte k";
-+static const char tau[16] = "expand 16-byte k";
-+
-+static void
-+chacha_keysetup(chacha_ctx *x,const u8 *k,u32 kbits,u32 ivbits)
-+{
-+  const char *constants;
-+
-+  x->input[4] = U8TO32_LITTLE(k + 0);
-+  x->input[5] = U8TO32_LITTLE(k + 4);
-+  x->input[6] = U8TO32_LITTLE(k + 8);
-+  x->input[7] = U8TO32_LITTLE(k + 12);
-+  if (kbits == 256) { /* recommended */
-+    k += 16;
-+    constants = sigma;
-+  } else { /* kbits == 128 */
-+    constants = tau;
-+  }
-+  x->input[8] = U8TO32_LITTLE(k + 0);
-+  x->input[9] = U8TO32_LITTLE(k + 4);
-+  x->input[10] = U8TO32_LITTLE(k + 8);
-+  x->input[11] = U8TO32_LITTLE(k + 12);
-+  x->input[0] = U8TO32_LITTLE(constants + 0);
-+  x->input[1] = U8TO32_LITTLE(constants + 4);
-+  x->input[2] = U8TO32_LITTLE(constants + 8);
-+  x->input[3] = U8TO32_LITTLE(constants + 12);
-+}
-+
-+static void
-+chacha_ivsetup(chacha_ctx *x,const u8 *iv)
-+{
-+  x->input[12] = 0;
-+  x->input[13] = 0;
-+  x->input[14] = U8TO32_LITTLE(iv + 0);
-+  x->input[15] = U8TO32_LITTLE(iv + 4);
-+}
-+
-+static void
-+chacha_encrypt_bytes(chacha_ctx *x,const u8 *m,u8 *c,u32 bytes)
-+{
-+  u32 x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15;
-+  u32 j0, j1, j2, j3, j4, j5, j6, j7, j8, j9, j10, j11, j12, j13, j14, j15;
-+  u8 *ctarget = NULL;
-+  u8 tmp[64];
-+  u_int i;
-+
-+  if (!bytes) return;
-+
-+  j0 = x->input[0];
-+  j1 = x->input[1];
-+  j2 = x->input[2];
-+  j3 = x->input[3];
-+  j4 = x->input[4];
-+  j5 = x->input[5];
-+  j6 = x->input[6];
-+  j7 = x->input[7];
-+  j8 = x->input[8];
-+  j9 = x->input[9];
-+  j10 = x->input[10];
-+  j11 = x->input[11];
-+  j12 = x->input[12];
-+  j13 = x->input[13];
-+  j14 = x->input[14];
-+  j15 = x->input[15];
-+
-+  for (;;) {
-+    if (bytes < 64) {
-+      for (i = 0;i < bytes;++i) tmp[i] = m[i];
-+      m = tmp;
-+      ctarget = c;
-+      c = tmp;
-+    }
-+    x0 = j0;
-+    x1 = j1;
-+    x2 = j2;
-+    x3 = j3;
-+    x4 = j4;
-+    x5 = j5;
-+    x6 = j6;
-+    x7 = j7;
-+    x8 = j8;
-+    x9 = j9;
-+    x10 = j10;
-+    x11 = j11;
-+    x12 = j12;
-+    x13 = j13;
-+    x14 = j14;
-+    x15 = j15;
-+    for (i = 20;i > 0;i -= 2) {
-+      QUARTERROUND( x0, x4, x8,x12)
-+      QUARTERROUND( x1, x5, x9,x13)
-+      QUARTERROUND( x2, x6,x10,x14)
-+      QUARTERROUND( x3, x7,x11,x15)
-+      QUARTERROUND( x0, x5,x10,x15)
-+      QUARTERROUND( x1, x6,x11,x12)
-+      QUARTERROUND( x2, x7, x8,x13)
-+      QUARTERROUND( x3, x4, x9,x14)
-+    }
-+    x0 = PLUS(x0,j0);
-+    x1 = PLUS(x1,j1);
-+    x2 = PLUS(x2,j2);
-+    x3 = PLUS(x3,j3);
-+    x4 = PLUS(x4,j4);
-+    x5 = PLUS(x5,j5);
-+    x6 = PLUS(x6,j6);
-+    x7 = PLUS(x7,j7);
-+    x8 = PLUS(x8,j8);
-+    x9 = PLUS(x9,j9);
-+    x10 = PLUS(x10,j10);
-+    x11 = PLUS(x11,j11);
-+    x12 = PLUS(x12,j12);
-+    x13 = PLUS(x13,j13);
-+    x14 = PLUS(x14,j14);
-+    x15 = PLUS(x15,j15);
-+
-+#ifndef KEYSTREAM_ONLY
-+    x0 = XOR(x0,U8TO32_LITTLE(m + 0));
-+    x1 = XOR(x1,U8TO32_LITTLE(m + 4));
-+    x2 = XOR(x2,U8TO32_LITTLE(m + 8));
-+    x3 = XOR(x3,U8TO32_LITTLE(m + 12));
-+    x4 = XOR(x4,U8TO32_LITTLE(m + 16));
-+    x5 = XOR(x5,U8TO32_LITTLE(m + 20));
-+    x6 = XOR(x6,U8TO32_LITTLE(m + 24));
-+    x7 = XOR(x7,U8TO32_LITTLE(m + 28));
-+    x8 = XOR(x8,U8TO32_LITTLE(m + 32));
-+    x9 = XOR(x9,U8TO32_LITTLE(m + 36));
-+    x10 = XOR(x10,U8TO32_LITTLE(m + 40));
-+    x11 = XOR(x11,U8TO32_LITTLE(m + 44));
-+    x12 = XOR(x12,U8TO32_LITTLE(m + 48));
-+    x13 = XOR(x13,U8TO32_LITTLE(m + 52));
-+    x14 = XOR(x14,U8TO32_LITTLE(m + 56));
-+    x15 = XOR(x15,U8TO32_LITTLE(m + 60));
-+#endif
-+
-+    j12 = PLUSONE(j12);
-+    if (!j12) {
-+      j13 = PLUSONE(j13);
-+      /* stopping at 2^70 bytes per nonce is user's responsibility */
-+    }
-+
-+    U32TO8_LITTLE(c + 0,x0);
-+    U32TO8_LITTLE(c + 4,x1);
-+    U32TO8_LITTLE(c + 8,x2);
-+    U32TO8_LITTLE(c + 12,x3);
-+    U32TO8_LITTLE(c + 16,x4);
-+    U32TO8_LITTLE(c + 20,x5);
-+    U32TO8_LITTLE(c + 24,x6);
-+    U32TO8_LITTLE(c + 28,x7);
-+    U32TO8_LITTLE(c + 32,x8);
-+    U32TO8_LITTLE(c + 36,x9);
-+    U32TO8_LITTLE(c + 40,x10);
-+    U32TO8_LITTLE(c + 44,x11);
-+    U32TO8_LITTLE(c + 48,x12);
-+    U32TO8_LITTLE(c + 52,x13);
-+    U32TO8_LITTLE(c + 56,x14);
-+    U32TO8_LITTLE(c + 60,x15);
-+
-+    if (bytes <= 64) {
-+      if (bytes < 64) {
-+        for (i = 0;i < bytes;++i) ctarget[i] = c[i];
-+      }
-+      x->input[12] = j12;
-+      x->input[13] = j13;
-+      return;
-+    }
-+    bytes -= 64;
-+    c += 64;
-+#ifndef KEYSTREAM_ONLY
-+    m += 64;
-+#endif
-+  }
-+}
 diff -uprN netcat-openbsd-1.130.bk/Makefile netcat-openbsd-1.130/Makefile
 --- netcat-openbsd-1.130.bk/Makefile	2017-04-13 23:16:15.235448400 +0800
-+++ netcat-openbsd-1.130/Makefile	2017-04-13 23:13:25.280208700 +0800
++++ netcat-openbsd-1.130/Makefile	2017-04-13 23:24:53.021349200 +0800
 @@ -1,7 +1,7 @@
  #       $OpenBSD: Makefile,v 1.6 2001/09/02 18:45:41 jakob Exp $
  
@@ -593,18 +10,29 @@ diff -uprN netcat-openbsd-1.130.bk/Makefile netcat-openbsd-1.130/Makefile
  
  PKG_CONFIG ?= pkg-config
  LIBS=  `$(PKG_CONFIG) --libs libbsd` -lresolv
+diff -uprN netcat-openbsd-1.130.bk/Makefile.orig netcat-openbsd-1.130/Makefile.orig
+--- netcat-openbsd-1.130.bk/Makefile.orig	1970-01-01 08:00:00.000000000 +0800
++++ netcat-openbsd-1.130/Makefile.orig	2016-11-11 09:27:26.000000000 +0800
+@@ -0,0 +1,6 @@
++#	$OpenBSD: Makefile,v 1.6 2001/09/02 18:45:41 jakob Exp $
++
++PROG=	nc
++SRCS=	netcat.c atomicio.c socks.c
++
++.include <bsd.prog.mk>
 diff -uprN netcat-openbsd-1.130.bk/netcat.c netcat-openbsd-1.130/netcat.c
 --- netcat-openbsd-1.130.bk/netcat.c	2017-04-13 23:16:15.278979400 +0800
-+++ netcat-openbsd-1.130/netcat.c	2017-04-13 23:05:00.874553000 +0800
-@@ -97,7 +97,6 @@
++++ netcat-openbsd-1.130/netcat.c	2017-04-13 23:27:16.756833300 +0800
+@@ -96,8 +96,6 @@
+ #include <stdlib.h>
  #include <string.h>
  #include <unistd.h>
- #include <bsd/stdlib.h>
+-#include <bsd/stdlib.h>
 -#include <bsd/string.h>
  #include "atomicio.h"
  
  #ifndef SUN_LEN
-@@ -180,7 +179,9 @@ static int connect_with_timeout(int fd,
+@@ -180,7 +178,9 @@ static int connect_with_timeout(int fd,
          socklen_t salen, int ctimeout);
  
  static void quit();
@@ -615,7 +43,7 @@ diff -uprN netcat-openbsd-1.130.bk/netcat.c netcat-openbsd-1.130/netcat.c
  int
  main(int argc, char *argv[])
  {
-@@ -1616,3 +1617,68 @@ static void quit()
+@@ -1616,3 +1616,68 @@ static void quit()
  {
  	exit(0);
  }
@@ -684,3 +112,1326 @@ diff -uprN netcat-openbsd-1.130.bk/netcat.c netcat-openbsd-1.130/netcat.c
 +
 +	return (ll);
 +}
+diff -uprN netcat-openbsd-1.130.bk/netcat.c.orig netcat-openbsd-1.130/netcat.c.orig
+--- netcat-openbsd-1.130.bk/netcat.c.orig	1970-01-01 08:00:00.000000000 +0800
++++ netcat-openbsd-1.130/netcat.c.orig	2016-11-11 09:27:26.000000000 +0800
+@@ -0,0 +1,1294 @@
++/* $OpenBSD: netcat.c,v 1.130 2015/07/26 19:12:28 chl Exp $ */
++/*
++ * Copyright (c) 2001 Eric Jackson <ericj@monkey.org>
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ *
++ * 1. Redistributions of source code must retain the above copyright
++ *   notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *   notice, this list of conditions and the following disclaimer in the
++ *   documentation and/or other materials provided with the distribution.
++ * 3. The name of the author may not be used to endorse or promote products
++ *   derived from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
++ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
++ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
++ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
++ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
++ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
++ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++/*
++ * Re-written nc(1) for OpenBSD. Original implementation by
++ * *Hobbit* <hobbit@avian.org>.
++ */
++
++#include <sys/types.h>
++#include <sys/socket.h>
++#include <sys/time.h>
++#include <sys/uio.h>
++#include <sys/un.h>
++
++#include <netinet/in.h>
++#include <netinet/tcp.h>
++#include <netinet/ip.h>
++#include <arpa/telnet.h>
++
++#include <err.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <limits.h>
++#include <netdb.h>
++#include <poll.h>
++#include <signal.h>
++#include <stdarg.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++#include "atomicio.h"
++
++#ifndef SUN_LEN
++#define SUN_LEN(su) \
++	(sizeof(*(su)) - sizeof((su)->sun_path) + strlen((su)->sun_path))
++#endif
++
++#define PORT_MAX	65535
++#define PORT_MAX_LEN	6
++#define UNIX_DG_TMP_SOCKET_SIZE	19
++
++#define POLL_STDIN 0
++#define POLL_NETOUT 1
++#define POLL_NETIN 2
++#define POLL_STDOUT 3
++#define BUFSIZE 16384
++
++/* Command Line Options */
++int	dflag;					/* detached, no stdin */
++int	Fflag;					/* fdpass sock to stdout */
++unsigned int iflag;				/* Interval Flag */
++int	kflag;					/* More than one connect */
++int	lflag;					/* Bind to local port */
++int	Nflag;					/* shutdown() network socket */
++int	nflag;					/* Don't do name look up */
++char   *Pflag;					/* Proxy username */
++char   *pflag;					/* Localport flag */
++int	rflag;					/* Random ports flag */
++char   *sflag;					/* Source Address */
++int	tflag;					/* Telnet Emulation */
++int	uflag;					/* UDP - Default to TCP */
++int	vflag;					/* Verbosity */
++int	xflag;					/* Socks proxy */
++int	zflag;					/* Port Scan Flag */
++int	Dflag;					/* sodebug */
++int	Iflag;					/* TCP receive buffer size */
++int	Oflag;					/* TCP send buffer size */
++int	Sflag;					/* TCP MD5 signature option */
++int	Tflag = -1;				/* IP Type of Service */
++int	rtableid = -1;
++
++int timeout = -1;
++int family = AF_UNSPEC;
++char *portlist[PORT_MAX+1];
++char *unix_dg_tmp_socket;
++
++void	atelnet(int, unsigned char *, unsigned int);
++void	build_ports(char *);
++void	help(void);
++int	local_listen(char *, char *, struct addrinfo);
++void	readwrite(int);
++void	fdpass(int nfd) __attribute__((noreturn));
++int	remote_connect(const char *, const char *, struct addrinfo);
++int	timeout_connect(int, const struct sockaddr *, socklen_t);
++int	socks_connect(const char *, const char *, struct addrinfo,
++	    const char *, const char *, struct addrinfo, int, const char *);
++int	udptest(int);
++int	unix_bind(char *);
++int	unix_connect(char *);
++int	unix_listen(char *);
++void	set_common_sockopts(int, int);
++int	map_tos(char *, int *);
++void	report_connect(const struct sockaddr *, socklen_t);
++void	usage(int);
++ssize_t drainbuf(int, unsigned char *, size_t *);
++ssize_t fillbuf(int, unsigned char *, size_t *);
++
++int
++main(int argc, char *argv[])
++{
++	int ch, s, ret, socksv;
++	char *host, *uport;
++	struct addrinfo hints;
++	struct servent *sv;
++	socklen_t len;
++	struct sockaddr_storage cliaddr;
++	char *proxy;
++	const char *errstr, *proxyhost = "", *proxyport = NULL;
++	struct addrinfo proxyhints;
++	char unix_dg_tmp_socket_buf[UNIX_DG_TMP_SOCKET_SIZE];
++
++	ret = 1;
++	s = 0;
++	socksv = 5;
++	host = NULL;
++	uport = NULL;
++	sv = NULL;
++
++	signal(SIGPIPE, SIG_IGN);
++
++	while ((ch = getopt(argc, argv,
++	    "46DdFhI:i:klNnO:P:p:rSs:tT:UuV:vw:X:x:z")) != -1) {
++		switch (ch) {
++		case '4':
++			family = AF_INET;
++			break;
++		case '6':
++			family = AF_INET6;
++			break;
++		case 'U':
++			family = AF_UNIX;
++			break;
++		case 'X':
++			if (strcasecmp(optarg, "connect") == 0)
++				socksv = -1; /* HTTP proxy CONNECT */
++			else if (strcmp(optarg, "4") == 0)
++				socksv = 4; /* SOCKS v.4 */
++			else if (strcmp(optarg, "5") == 0)
++				socksv = 5; /* SOCKS v.5 */
++			else
++				errx(1, "unsupported proxy protocol");
++			break;
++		case 'd':
++			dflag = 1;
++			break;
++		case 'F':
++			Fflag = 1;
++			break;
++		case 'h':
++			help();
++			break;
++		case 'i':
++			iflag = strtonum(optarg, 0, UINT_MAX, &errstr);
++			if (errstr)
++				errx(1, "interval %s: %s", errstr, optarg);
++			break;
++		case 'k':
++			kflag = 1;
++			break;
++		case 'l':
++			lflag = 1;
++			break;
++		case 'N':
++			Nflag = 1;
++			break;
++		case 'n':
++			nflag = 1;
++			break;
++		case 'P':
++			Pflag = optarg;
++			break;
++		case 'p':
++			pflag = optarg;
++			break;
++		case 'r':
++			rflag = 1;
++			break;
++		case 's':
++			sflag = optarg;
++			break;
++		case 't':
++			tflag = 1;
++			break;
++		case 'u':
++			uflag = 1;
++			break;
++		case 'V':
++			rtableid = (int)strtonum(optarg, 0,
++			    RT_TABLEID_MAX, &errstr);
++			if (errstr)
++				errx(1, "rtable %s: %s", errstr, optarg);
++			break;
++		case 'v':
++			vflag = 1;
++			break;
++		case 'w':
++			timeout = strtonum(optarg, 0, INT_MAX / 1000, &errstr);
++			if (errstr)
++				errx(1, "timeout %s: %s", errstr, optarg);
++			timeout *= 1000;
++			break;
++		case 'x':
++			xflag = 1;
++			if ((proxy = strdup(optarg)) == NULL)
++				err(1, NULL);
++			break;
++		case 'z':
++			zflag = 1;
++			break;
++		case 'D':
++			Dflag = 1;
++			break;
++		case 'I':
++			Iflag = strtonum(optarg, 1, 65536 << 14, &errstr);
++			if (errstr != NULL)
++				errx(1, "TCP receive window %s: %s",
++				    errstr, optarg);
++			break;
++		case 'O':
++			Oflag = strtonum(optarg, 1, 65536 << 14, &errstr);
++			if (errstr != NULL)
++				errx(1, "TCP send window %s: %s",
++				    errstr, optarg);
++			break;
++		case 'S':
++			Sflag = 1;
++			break;
++		case 'T':
++			errstr = NULL;
++			errno = 0;
++			if (map_tos(optarg, &Tflag))
++				break;
++			if (strlen(optarg) > 1 && optarg[0] == '0' &&
++			    optarg[1] == 'x')
++				Tflag = (int)strtol(optarg, NULL, 16);
++			else
++				Tflag = (int)strtonum(optarg, 0, 255,
++				    &errstr);
++			if (Tflag < 0 || Tflag > 255 || errstr || errno)
++				errx(1, "illegal tos value %s", optarg);
++			break;
++		default:
++			usage(1);
++		}
++	}
++	argc -= optind;
++	argv += optind;
++
++	/* Cruft to make sure options are clean, and used properly. */
++	if (argv[0] && !argv[1] && family == AF_UNIX) {
++		host = argv[0];
++		uport = NULL;
++	} else if (argv[0] && !argv[1]) {
++		if  (!lflag)
++			usage(1);
++		uport = argv[0];
++		host = NULL;
++	} else if (argv[0] && argv[1]) {
++		host = argv[0];
++		uport = argv[1];
++	} else
++		usage(1);
++
++	if (lflag && sflag)
++		errx(1, "cannot use -s and -l");
++	if (lflag && pflag)
++		errx(1, "cannot use -p and -l");
++	if (lflag && zflag)
++		errx(1, "cannot use -z and -l");
++	if (!lflag && kflag)
++		errx(1, "must use -l with -k");
++
++	/* Get name of temporary socket for unix datagram client */
++	if ((family == AF_UNIX) && uflag && !lflag) {
++		if (sflag) {
++			unix_dg_tmp_socket = sflag;
++		} else {
++			strlcpy(unix_dg_tmp_socket_buf, "/tmp/nc.XXXXXXXXXX",
++				UNIX_DG_TMP_SOCKET_SIZE);
++			if (mktemp(unix_dg_tmp_socket_buf) == NULL)
++				err(1, "mktemp");
++			unix_dg_tmp_socket = unix_dg_tmp_socket_buf;
++		}
++	}
++
++	/* Initialize addrinfo structure. */
++	if (family != AF_UNIX) {
++		memset(&hints, 0, sizeof(struct addrinfo));
++		hints.ai_family = family;
++		hints.ai_socktype = uflag ? SOCK_DGRAM : SOCK_STREAM;
++		hints.ai_protocol = uflag ? IPPROTO_UDP : IPPROTO_TCP;
++		if (nflag)
++			hints.ai_flags |= AI_NUMERICHOST;
++	}
++
++	if (xflag) {
++		if (uflag)
++			errx(1, "no proxy support for UDP mode");
++
++		if (lflag)
++			errx(1, "no proxy support for listen");
++
++		if (family == AF_UNIX)
++			errx(1, "no proxy support for unix sockets");
++
++		/* XXX IPv6 transport to proxy would probably work */
++		if (family == AF_INET6)
++			errx(1, "no proxy support for IPv6");
++
++		if (sflag)
++			errx(1, "no proxy support for local source address");
++
++		proxyhost = strsep(&proxy, ":");
++		proxyport = proxy;
++
++		memset(&proxyhints, 0, sizeof(struct addrinfo));
++		proxyhints.ai_family = family;
++		proxyhints.ai_socktype = SOCK_STREAM;
++		proxyhints.ai_protocol = IPPROTO_TCP;
++		if (nflag)
++			proxyhints.ai_flags |= AI_NUMERICHOST;
++	}
++
++	if (lflag) {
++		int connfd;
++		ret = 0;
++
++		if (family == AF_UNIX) {
++			if (uflag)
++				s = unix_bind(host);
++			else
++				s = unix_listen(host);
++		}
++
++		/* Allow only one connection at a time, but stay alive. */
++		for (;;) {
++			if (family != AF_UNIX)
++				s = local_listen(host, uport, hints);
++			if (s < 0)
++				err(1, NULL);
++			/*
++			 * For UDP and -k, don't connect the socket, let it
++			 * receive datagrams from multiple socket pairs.
++			 */
++			if (uflag && kflag)
++				readwrite(s);
++			/*
++			 * For UDP and not -k, we will use recvfrom() initially
++			 * to wait for a caller, then use the regular functions
++			 * to talk to the caller.
++			 */
++			else if (uflag && !kflag) {
++				int rv, plen;
++				char buf[16384];
++				struct sockaddr_storage z;
++
++				len = sizeof(z);
++				plen = 2048;
++				rv = recvfrom(s, buf, plen, MSG_PEEK,
++				    (struct sockaddr *)&z, &len);
++				if (rv < 0)
++					err(1, "recvfrom");
++
++				rv = connect(s, (struct sockaddr *)&z, len);
++				if (rv < 0)
++					err(1, "connect");
++
++				if (vflag)
++					report_connect((struct sockaddr *)&z, len);
++
++				readwrite(s);
++			} else {
++				len = sizeof(cliaddr);
++				connfd = accept(s, (struct sockaddr *)&cliaddr,
++				    &len);
++				if (connfd == -1) {
++					/* For now, all errnos are fatal */
++					err(1, "accept");
++				}
++				if (vflag)
++					report_connect((struct sockaddr *)&cliaddr, len);
++
++				readwrite(connfd);
++				close(connfd);
++			}
++
++			if (family != AF_UNIX)
++				close(s);
++			else if (uflag) {
++				if (connect(s, NULL, 0) < 0)
++					err(1, "connect");
++			}
++
++			if (!kflag)
++				break;
++		}
++	} else if (family == AF_UNIX) {
++		ret = 0;
++
++		if ((s = unix_connect(host)) > 0 && !zflag) {
++			readwrite(s);
++			close(s);
++		} else
++			ret = 1;
++
++		if (uflag)
++			unlink(unix_dg_tmp_socket);
++		exit(ret);
++
++	} else {
++		int i = 0;
++
++		/* Construct the portlist[] array. */
++		build_ports(uport);
++
++		/* Cycle through portlist, connecting to each port. */
++		for (i = 0; portlist[i] != NULL; i++) {
++			if (s)
++				close(s);
++
++			if (xflag)
++				s = socks_connect(host, portlist[i], hints,
++				    proxyhost, proxyport, proxyhints, socksv,
++				    Pflag);
++			else
++				s = remote_connect(host, portlist[i], hints);
++
++			if (s < 0)
++				continue;
++
++			ret = 0;
++			if (vflag || zflag) {
++				/* For UDP, make sure we are connected. */
++				if (uflag) {
++					if (udptest(s) == -1) {
++						ret = 1;
++						continue;
++					}
++				}
++
++				/* Don't look up port if -n. */
++				if (nflag)
++					sv = NULL;
++				else {
++					sv = getservbyport(
++					    ntohs(atoi(portlist[i])),
++					    uflag ? "udp" : "tcp");
++				}
++
++				fprintf(stderr,
++				    "Connection to %s %s port [%s/%s] "
++				    "succeeded!\n", host, portlist[i],
++				    uflag ? "udp" : "tcp",
++				    sv ? sv->s_name : "*");
++			}
++			if (Fflag)
++				fdpass(s);
++			else if (!zflag)
++				readwrite(s);
++		}
++	}
++
++	if (s)
++		close(s);
++
++	exit(ret);
++}
++
++/*
++ * unix_bind()
++ * Returns a unix socket bound to the given path
++ */
++int
++unix_bind(char *path)
++{
++	struct sockaddr_un sun;
++	int s;
++
++	/* Create unix domain socket. */
++	if ((s = socket(AF_UNIX, uflag ? SOCK_DGRAM : SOCK_STREAM,
++	     0)) < 0)
++		return (-1);
++
++	memset(&sun, 0, sizeof(struct sockaddr_un));
++	sun.sun_family = AF_UNIX;
++
++	if (strlcpy(sun.sun_path, path, sizeof(sun.sun_path)) >=
++	    sizeof(sun.sun_path)) {
++		close(s);
++		errno = ENAMETOOLONG;
++		return (-1);
++	}
++
++	if (bind(s, (struct sockaddr *)&sun, SUN_LEN(&sun)) < 0) {
++		close(s);
++		return (-1);
++	}
++	return (s);
++}
++
++/*
++ * unix_connect()
++ * Returns a socket connected to a local unix socket. Returns -1 on failure.
++ */
++int
++unix_connect(char *path)
++{
++	struct sockaddr_un sun;
++	int s;
++
++	if (uflag) {
++		if ((s = unix_bind(unix_dg_tmp_socket)) < 0)
++			return (-1);
++	} else {
++		if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) < 0)
++			return (-1);
++	}
++	(void)fcntl(s, F_SETFD, FD_CLOEXEC);
++
++	memset(&sun, 0, sizeof(struct sockaddr_un));
++	sun.sun_family = AF_UNIX;
++
++	if (strlcpy(sun.sun_path, path, sizeof(sun.sun_path)) >=
++	    sizeof(sun.sun_path)) {
++		close(s);
++		errno = ENAMETOOLONG;
++		return (-1);
++	}
++	if (connect(s, (struct sockaddr *)&sun, SUN_LEN(&sun)) < 0) {
++		close(s);
++		return (-1);
++	}
++	return (s);
++
++}
++
++/*
++ * unix_listen()
++ * Create a unix domain socket, and listen on it.
++ */
++int
++unix_listen(char *path)
++{
++	int s;
++	if ((s = unix_bind(path)) < 0)
++		return (-1);
++
++	if (listen(s, 5) < 0) {
++		close(s);
++		return (-1);
++	}
++	return (s);
++}
++
++/*
++ * remote_connect()
++ * Returns a socket connected to a remote host. Properly binds to a local
++ * port or source address if needed. Returns -1 on failure.
++ */
++int
++remote_connect(const char *host, const char *port, struct addrinfo hints)
++{
++	struct addrinfo *res, *res0;
++	int s, error, on = 1;
++
++	if ((error = getaddrinfo(host, port, &hints, &res)))
++		errx(1, "getaddrinfo: %s", gai_strerror(error));
++
++	res0 = res;
++	do {
++		if ((s = socket(res0->ai_family, res0->ai_socktype,
++		    res0->ai_protocol)) < 0)
++			continue;
++
++		if (rtableid >= 0 && (setsockopt(s, SOL_SOCKET, SO_RTABLE,
++		    &rtableid, sizeof(rtableid)) == -1))
++			err(1, "setsockopt SO_RTABLE");
++
++		/* Bind to a local port or source address if specified. */
++		if (sflag || pflag) {
++			struct addrinfo ahints, *ares;
++
++			/* try SO_BINDANY, but don't insist */
++			setsockopt(s, SOL_SOCKET, SO_BINDANY, &on, sizeof(on));
++			memset(&ahints, 0, sizeof(struct addrinfo));
++			ahints.ai_family = res0->ai_family;
++			ahints.ai_socktype = uflag ? SOCK_DGRAM : SOCK_STREAM;
++			ahints.ai_protocol = uflag ? IPPROTO_UDP : IPPROTO_TCP;
++			ahints.ai_flags = AI_PASSIVE;
++			if ((error = getaddrinfo(sflag, pflag, &ahints, &ares)))
++				errx(1, "getaddrinfo: %s", gai_strerror(error));
++
++			if (bind(s, (struct sockaddr *)ares->ai_addr,
++			    ares->ai_addrlen) < 0)
++				err(1, "bind failed");
++			freeaddrinfo(ares);
++		}
++
++		set_common_sockopts(s, res0->ai_family);
++
++		if (timeout_connect(s, res0->ai_addr, res0->ai_addrlen) == 0)
++			break;
++		else if (vflag)
++			warn("connect to %s port %s (%s) failed", host, port,
++			    uflag ? "udp" : "tcp");
++
++		close(s);
++		s = -1;
++	} while ((res0 = res0->ai_next) != NULL);
++
++	freeaddrinfo(res);
++
++	return (s);
++}
++
++int
++timeout_connect(int s, const struct sockaddr *name, socklen_t namelen)
++{
++	struct pollfd pfd;
++	socklen_t optlen;
++	int flags, optval;
++	int ret;
++
++	if (timeout != -1) {
++		flags = fcntl(s, F_GETFL, 0);
++		if (fcntl(s, F_SETFL, flags | O_NONBLOCK) == -1)
++			err(1, "set non-blocking mode");
++	}
++
++	if ((ret = connect(s, name, namelen)) != 0 && errno == EINPROGRESS) {
++		pfd.fd = s;
++		pfd.events = POLLOUT;
++		if ((ret = poll(&pfd, 1, timeout)) == 1) {
++			optlen = sizeof(optval);
++			if ((ret = getsockopt(s, SOL_SOCKET, SO_ERROR,
++			    &optval, &optlen)) == 0) {
++				errno = optval;
++				ret = optval == 0 ? 0 : -1;
++			}
++		} else if (ret == 0) {
++			errno = ETIMEDOUT;
++			ret = -1;
++		} else
++			err(1, "poll failed");
++	}
++
++	if (timeout != -1 && fcntl(s, F_SETFL, flags) == -1)
++		err(1, "restoring flags");
++
++	return (ret);
++}
++
++/*
++ * local_listen()
++ * Returns a socket listening on a local port, binds to specified source
++ * address. Returns -1 on failure.
++ */
++int
++local_listen(char *host, char *port, struct addrinfo hints)
++{
++	struct addrinfo *res, *res0;
++	int s, ret, x = 1;
++	int error;
++
++	/* Allow nodename to be null. */
++	hints.ai_flags |= AI_PASSIVE;
++
++	/*
++	 * In the case of binding to a wildcard address
++	 * default to binding to an ipv4 address.
++	 */
++	if (host == NULL && hints.ai_family == AF_UNSPEC)
++		hints.ai_family = AF_INET;
++
++	if ((error = getaddrinfo(host, port, &hints, &res)))
++		errx(1, "getaddrinfo: %s", gai_strerror(error));
++
++	res0 = res;
++	do {
++		if ((s = socket(res0->ai_family, res0->ai_socktype,
++		    res0->ai_protocol)) < 0)
++			continue;
++
++		if (rtableid >= 0 && (setsockopt(s, SOL_SOCKET, SO_RTABLE,
++		    &rtableid, sizeof(rtableid)) == -1))
++			err(1, "setsockopt SO_RTABLE");
++
++		ret = setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &x, sizeof(x));
++		if (ret == -1)
++			err(1, NULL);
++
++		set_common_sockopts(s, res0->ai_family);
++
++		if (bind(s, (struct sockaddr *)res0->ai_addr,
++		    res0->ai_addrlen) == 0)
++			break;
++
++		close(s);
++		s = -1;
++	} while ((res0 = res0->ai_next) != NULL);
++
++	if (!uflag && s != -1) {
++		if (listen(s, 1) < 0)
++			err(1, "listen");
++	}
++
++	freeaddrinfo(res);
++
++	return (s);
++}
++
++/*
++ * readwrite()
++ * Loop that polls on the network file descriptor and stdin.
++ */
++void
++readwrite(int net_fd)
++{
++	struct pollfd pfd[4];
++	int stdin_fd = STDIN_FILENO;
++	int stdout_fd = STDOUT_FILENO;
++	unsigned char netinbuf[BUFSIZE];
++	size_t netinbufpos = 0;
++	unsigned char stdinbuf[BUFSIZE];
++	size_t stdinbufpos = 0;
++	int n, num_fds;
++	ssize_t ret;
++
++	/* don't read from stdin if requested */
++	if (dflag)
++		stdin_fd = -1;
++
++	/* stdin */
++	pfd[POLL_STDIN].fd = stdin_fd;
++	pfd[POLL_STDIN].events = POLLIN;
++
++	/* network out */
++	pfd[POLL_NETOUT].fd = net_fd;
++	pfd[POLL_NETOUT].events = 0;
++
++	/* network in */
++	pfd[POLL_NETIN].fd = net_fd;
++	pfd[POLL_NETIN].events = POLLIN;
++
++	/* stdout */
++	pfd[POLL_STDOUT].fd = stdout_fd;
++	pfd[POLL_STDOUT].events = 0;
++
++	while (1) {
++		/* both inputs are gone, buffers are empty, we are done */
++		if (pfd[POLL_STDIN].fd == -1 && pfd[POLL_NETIN].fd == -1
++		    && stdinbufpos == 0 && netinbufpos == 0) {
++			close(net_fd);
++			return;
++		}
++		/* both outputs are gone, we can't continue */
++		if (pfd[POLL_NETOUT].fd == -1 && pfd[POLL_STDOUT].fd == -1) {
++			close(net_fd);
++			return;
++		}
++		/* listen and net in gone, queues empty, done */
++		if (lflag && pfd[POLL_NETIN].fd == -1
++		    && stdinbufpos == 0 && netinbufpos == 0) {
++			close(net_fd);
++			return;
++		}
++
++		/* help says -i is for "wait between lines sent". We read and
++		 * write arbitrary amounts of data, and we don't want to start
++		 * scanning for newlines, so this is as good as it gets */
++		if (iflag)
++			sleep(iflag);
++
++		/* poll */
++		num_fds = poll(pfd, 4, timeout);
++
++		/* treat poll errors */
++		if (num_fds == -1) {
++			close(net_fd);
++			err(1, "polling error");
++		}
++
++		/* timeout happened */
++		if (num_fds == 0)
++			return;
++
++		/* treat socket error conditions */
++		for (n = 0; n < 4; n++) {
++			if (pfd[n].revents & (POLLERR|POLLNVAL)) {
++				pfd[n].fd = -1;
++			}
++		}
++		/* reading is possible after HUP */
++		if (pfd[POLL_STDIN].events & POLLIN &&
++		    pfd[POLL_STDIN].revents & POLLHUP &&
++		    ! (pfd[POLL_STDIN].revents & POLLIN))
++				pfd[POLL_STDIN].fd = -1;
++
++		if (pfd[POLL_NETIN].events & POLLIN &&
++		    pfd[POLL_NETIN].revents & POLLHUP &&
++		    ! (pfd[POLL_NETIN].revents & POLLIN))
++				pfd[POLL_NETIN].fd = -1;
++
++		if (pfd[POLL_NETOUT].revents & POLLHUP) {
++			if (Nflag)
++				shutdown(pfd[POLL_NETOUT].fd, SHUT_WR);
++			pfd[POLL_NETOUT].fd = -1;
++		}
++		/* if HUP, stop watching stdout */
++		if (pfd[POLL_STDOUT].revents & POLLHUP)
++			pfd[POLL_STDOUT].fd = -1;
++		/* if no net out, stop watching stdin */
++		if (pfd[POLL_NETOUT].fd == -1)
++			pfd[POLL_STDIN].fd = -1;
++		/* if no stdout, stop watching net in */
++		if (pfd[POLL_STDOUT].fd == -1) {
++			if (pfd[POLL_NETIN].fd != -1)
++				shutdown(pfd[POLL_NETIN].fd, SHUT_RD);
++			pfd[POLL_NETIN].fd = -1;
++		}
++
++		/* try to read from stdin */
++		if (pfd[POLL_STDIN].revents & POLLIN && stdinbufpos < BUFSIZE) {
++			ret = fillbuf(pfd[POLL_STDIN].fd, stdinbuf,
++			    &stdinbufpos);
++			/* error or eof on stdin - remove from pfd */
++			if (ret == 0 || ret == -1)
++				pfd[POLL_STDIN].fd = -1;
++			/* read something - poll net out */
++			if (stdinbufpos > 0)
++				pfd[POLL_NETOUT].events = POLLOUT;
++			/* filled buffer - remove self from polling */
++			if (stdinbufpos == BUFSIZE)
++				pfd[POLL_STDIN].events = 0;
++		}
++		/* try to write to network */
++		if (pfd[POLL_NETOUT].revents & POLLOUT && stdinbufpos > 0) {
++			ret = drainbuf(pfd[POLL_NETOUT].fd, stdinbuf,
++			    &stdinbufpos);
++			if (ret == -1)
++				pfd[POLL_NETOUT].fd = -1;
++			/* buffer empty - remove self from polling */
++			if (stdinbufpos == 0)
++				pfd[POLL_NETOUT].events = 0;
++			/* buffer no longer full - poll stdin again */
++			if (stdinbufpos < BUFSIZE)
++				pfd[POLL_STDIN].events = POLLIN;
++		}
++		/* try to read from network */
++		if (pfd[POLL_NETIN].revents & POLLIN && netinbufpos < BUFSIZE) {
++			ret = fillbuf(pfd[POLL_NETIN].fd, netinbuf,
++			    &netinbufpos);
++			if (ret == -1)
++				pfd[POLL_NETIN].fd = -1;
++			/* eof on net in - remove from pfd */
++			if (ret == 0) {
++				shutdown(pfd[POLL_NETIN].fd, SHUT_RD);
++				pfd[POLL_NETIN].fd = -1;
++			}
++			/* read something - poll stdout */
++			if (netinbufpos > 0)
++				pfd[POLL_STDOUT].events = POLLOUT;
++			/* filled buffer - remove self from polling */
++			if (netinbufpos == BUFSIZE)
++				pfd[POLL_NETIN].events = 0;
++			/* handle telnet */
++			if (tflag)
++				atelnet(pfd[POLL_NETIN].fd, netinbuf,
++				    netinbufpos);
++		}
++		/* try to write to stdout */
++		if (pfd[POLL_STDOUT].revents & POLLOUT && netinbufpos > 0) {
++			ret = drainbuf(pfd[POLL_STDOUT].fd, netinbuf,
++			    &netinbufpos);
++			if (ret == -1)
++				pfd[POLL_STDOUT].fd = -1;
++			/* buffer empty - remove self from polling */
++			if (netinbufpos == 0)
++				pfd[POLL_STDOUT].events = 0;
++			/* buffer no longer full - poll net in again */
++			if (netinbufpos < BUFSIZE)
++				pfd[POLL_NETIN].events = POLLIN;
++		}
++
++		/* stdin gone and queue empty? */
++		if (pfd[POLL_STDIN].fd == -1 && stdinbufpos == 0) {
++			if (pfd[POLL_NETOUT].fd != -1 && Nflag)
++				shutdown(pfd[POLL_NETOUT].fd, SHUT_WR);
++			pfd[POLL_NETOUT].fd = -1;
++		}
++		/* net in gone and queue empty? */
++		if (pfd[POLL_NETIN].fd == -1 && netinbufpos == 0) {
++			pfd[POLL_STDOUT].fd = -1;
++		}
++	}
++}
++
++ssize_t
++drainbuf(int fd, unsigned char *buf, size_t *bufpos)
++{
++	ssize_t n;
++	ssize_t adjust;
++
++	n = write(fd, buf, *bufpos);
++	/* don't treat EAGAIN, EINTR as error */
++	if (n == -1 && (errno == EAGAIN || errno == EINTR))
++		n = -2;
++	if (n <= 0)
++		return n;
++	/* adjust buffer */
++	adjust = *bufpos - n;
++	if (adjust > 0)
++		memmove(buf, buf + n, adjust);
++	*bufpos -= n;
++	return n;
++}
++
++
++ssize_t
++fillbuf(int fd, unsigned char *buf, size_t *bufpos)
++{
++	size_t num = BUFSIZE - *bufpos;
++	ssize_t n;
++
++	n = read(fd, buf + *bufpos, num);
++	/* don't treat EAGAIN, EINTR as error */
++	if (n == -1 && (errno == EAGAIN || errno == EINTR))
++		n = -2;
++	if (n <= 0)
++		return n;
++	*bufpos += n;
++	return n;
++}
++
++/*
++ * fdpass()
++ * Pass the connected file descriptor to stdout and exit.
++ */
++void
++fdpass(int nfd)
++{
++	struct msghdr mh;
++	union {
++		struct cmsghdr hdr;
++		char buf[CMSG_SPACE(sizeof(int))];
++	} cmsgbuf;
++	struct cmsghdr *cmsg;
++	struct iovec iov;
++	char c = '\0';
++	ssize_t r;
++	struct pollfd pfd;
++
++	/* Avoid obvious stupidity */
++	if (isatty(STDOUT_FILENO))
++		errx(1, "Cannot pass file descriptor to tty");
++
++	bzero(&mh, sizeof(mh));
++	bzero(&cmsgbuf, sizeof(cmsgbuf));
++	bzero(&iov, sizeof(iov));
++
++	mh.msg_control = (caddr_t)&cmsgbuf.buf;
++	mh.msg_controllen = sizeof(cmsgbuf.buf);
++	cmsg = CMSG_FIRSTHDR(&mh);
++	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
++	cmsg->cmsg_level = SOL_SOCKET;
++	cmsg->cmsg_type = SCM_RIGHTS;
++	*(int *)CMSG_DATA(cmsg) = nfd;
++
++	iov.iov_base = &c;
++	iov.iov_len = 1;
++	mh.msg_iov = &iov;
++	mh.msg_iovlen = 1;
++
++	bzero(&pfd, sizeof(pfd));
++	pfd.fd = STDOUT_FILENO;
++	pfd.events = POLLOUT;
++	for (;;) {
++		r = sendmsg(STDOUT_FILENO, &mh, 0);
++		if (r == -1) {
++			if (errno == EAGAIN || errno == EINTR) {
++				if (poll(&pfd, 1, -1) == -1)
++					err(1, "poll");
++				continue;
++			}
++			err(1, "sendmsg");
++		} else if (r != 1)
++			errx(1, "sendmsg: unexpected return value %zd", r);
++		else
++			break;
++	}
++	exit(0);
++}
++
++/* Deal with RFC 854 WILL/WONT DO/DONT negotiation. */
++void
++atelnet(int nfd, unsigned char *buf, unsigned int size)
++{
++	unsigned char *p, *end;
++	unsigned char obuf[4];
++
++	if (size < 3)
++		return;
++	end = buf + size - 2;
++
++	for (p = buf; p < end; p++) {
++		if (*p != IAC)
++			continue;
++
++		obuf[0] = IAC;
++		p++;
++		if ((*p == WILL) || (*p == WONT))
++			obuf[1] = DONT;
++		else if ((*p == DO) || (*p == DONT))
++			obuf[1] = WONT;
++		else
++			continue;
++
++		p++;
++		obuf[2] = *p;
++		if (atomicio(vwrite, nfd, obuf, 3) != 3)
++			warn("Write Error!");
++	}
++}
++
++/*
++ * build_ports()
++ * Build an array of ports in portlist[], listing each port
++ * that we should try to connect to.
++ */
++void
++build_ports(char *p)
++{
++	const char *errstr;
++	char *n;
++	int hi, lo, cp;
++	int x = 0;
++
++	if ((n = strchr(p, '-')) != NULL) {
++		*n = '\0';
++		n++;
++
++		/* Make sure the ports are in order: lowest->highest. */
++		hi = strtonum(n, 1, PORT_MAX, &errstr);
++		if (errstr)
++			errx(1, "port number %s: %s", errstr, n);
++		lo = strtonum(p, 1, PORT_MAX, &errstr);
++		if (errstr)
++			errx(1, "port number %s: %s", errstr, p);
++
++		if (lo > hi) {
++			cp = hi;
++			hi = lo;
++			lo = cp;
++		}
++
++		/* Load ports sequentially. */
++		for (cp = lo; cp <= hi; cp++) {
++			portlist[x] = calloc(1, PORT_MAX_LEN);
++			if (portlist[x] == NULL)
++				err(1, NULL);
++			snprintf(portlist[x], PORT_MAX_LEN, "%d", cp);
++			x++;
++		}
++
++		/* Randomly swap ports. */
++		if (rflag) {
++			int y;
++			char *c;
++
++			for (x = 0; x <= (hi - lo); x++) {
++				y = (arc4random() & 0xFFFF) % (hi - lo);
++				c = portlist[x];
++				portlist[x] = portlist[y];
++				portlist[y] = c;
++			}
++		}
++	} else {
++		hi = strtonum(p, 1, PORT_MAX, &errstr);
++		if (errstr)
++			errx(1, "port number %s: %s", errstr, p);
++		portlist[0] = strdup(p);
++		if (portlist[0] == NULL)
++			err(1, NULL);
++	}
++}
++
++/*
++ * udptest()
++ * Do a few writes to see if the UDP port is there.
++ * Fails once PF state table is full.
++ */
++int
++udptest(int s)
++{
++	int i, ret;
++
++	for (i = 0; i <= 3; i++) {
++		if (write(s, "X", 1) == 1)
++			ret = 1;
++		else
++			ret = -1;
++	}
++	return (ret);
++}
++
++void
++set_common_sockopts(int s, int af)
++{
++	int x = 1;
++
++	if (Sflag) {
++		if (setsockopt(s, IPPROTO_TCP, TCP_MD5SIG,
++			&x, sizeof(x)) == -1)
++			err(1, NULL);
++	}
++	if (Dflag) {
++		if (setsockopt(s, SOL_SOCKET, SO_DEBUG,
++			&x, sizeof(x)) == -1)
++			err(1, NULL);
++	}
++	if (Tflag != -1) {
++		int proto, option;
++
++		if (af == AF_INET6) {
++			proto = IPPROTO_IPV6;
++			option = IPV6_TCLASS;
++		} else {
++			proto = IPPROTO_IP;
++			option = IP_TOS;
++		}
++
++		if (setsockopt(s, proto, option, &Tflag, sizeof(Tflag)) == -1)
++			err(1, "set IP ToS");
++	}
++	if (Iflag) {
++		if (setsockopt(s, SOL_SOCKET, SO_RCVBUF,
++		    &Iflag, sizeof(Iflag)) == -1)
++			err(1, "set TCP receive buffer size");
++	}
++	if (Oflag) {
++		if (setsockopt(s, SOL_SOCKET, SO_SNDBUF,
++		    &Oflag, sizeof(Oflag)) == -1)
++			err(1, "set TCP send buffer size");
++	}
++}
++
++int
++map_tos(char *s, int *val)
++{
++	/* DiffServ Codepoints and other TOS mappings */
++	const struct toskeywords {
++		const char	*keyword;
++		int		 val;
++	} *t, toskeywords[] = {
++		{ "af11",		IPTOS_DSCP_AF11 },
++		{ "af12",		IPTOS_DSCP_AF12 },
++		{ "af13",		IPTOS_DSCP_AF13 },
++		{ "af21",		IPTOS_DSCP_AF21 },
++		{ "af22",		IPTOS_DSCP_AF22 },
++		{ "af23",		IPTOS_DSCP_AF23 },
++		{ "af31",		IPTOS_DSCP_AF31 },
++		{ "af32",		IPTOS_DSCP_AF32 },
++		{ "af33",		IPTOS_DSCP_AF33 },
++		{ "af41",		IPTOS_DSCP_AF41 },
++		{ "af42",		IPTOS_DSCP_AF42 },
++		{ "af43",		IPTOS_DSCP_AF43 },
++		{ "critical",		IPTOS_PREC_CRITIC_ECP },
++		{ "cs0",		IPTOS_DSCP_CS0 },
++		{ "cs1",		IPTOS_DSCP_CS1 },
++		{ "cs2",		IPTOS_DSCP_CS2 },
++		{ "cs3",		IPTOS_DSCP_CS3 },
++		{ "cs4",		IPTOS_DSCP_CS4 },
++		{ "cs5",		IPTOS_DSCP_CS5 },
++		{ "cs6",		IPTOS_DSCP_CS6 },
++		{ "cs7",		IPTOS_DSCP_CS7 },
++		{ "ef",			IPTOS_DSCP_EF },
++		{ "inetcontrol",	IPTOS_PREC_INTERNETCONTROL },
++		{ "lowdelay",		IPTOS_LOWDELAY },
++		{ "netcontrol",		IPTOS_PREC_NETCONTROL },
++		{ "reliability",	IPTOS_RELIABILITY },
++		{ "throughput",		IPTOS_THROUGHPUT },
++		{ NULL, 		-1 },
++	};
++
++	for (t = toskeywords; t->keyword != NULL; t++) {
++		if (strcmp(s, t->keyword) == 0) {
++			*val = t->val;
++			return (1);
++		}
++	}
++
++	return (0);
++}
++
++void
++report_connect(const struct sockaddr *sa, socklen_t salen)
++{
++	char remote_host[NI_MAXHOST];
++	char remote_port[NI_MAXSERV];
++	int herr;
++	int flags = NI_NUMERICSERV;
++	
++	if (nflag)
++		flags |= NI_NUMERICHOST;
++	
++	if ((herr = getnameinfo(sa, salen,
++	    remote_host, sizeof(remote_host),
++	    remote_port, sizeof(remote_port),
++	    flags)) != 0) {
++		if (herr == EAI_SYSTEM)
++			err(1, "getnameinfo");
++		else
++			errx(1, "getnameinfo: %s", gai_strerror(herr));
++	}
++	
++	fprintf(stderr,
++	    "Connection from %s %s "
++	    "received!\n", remote_host, remote_port);
++}
++
++void
++help(void)
++{
++	usage(0);
++	fprintf(stderr, "\tCommand Summary:\n\
++	\t-4		Use IPv4\n\
++	\t-6		Use IPv6\n\
++	\t-D		Enable the debug socket option\n\
++	\t-d		Detach from stdin\n\
++	\t-F		Pass socket fd\n\
++	\t-h		This help text\n\
++	\t-I length	TCP receive buffer length\n\
++	\t-i secs\t	Delay interval for lines sent, ports scanned\n\
++	\t-k		Keep inbound sockets open for multiple connects\n\
++	\t-l		Listen mode, for inbound connects\n\
++	\t-N		Shutdown the network socket after EOF on stdin\n\
++	\t-n		Suppress name/port resolutions\n\
++	\t-O length	TCP send buffer length\n\
++	\t-P proxyuser\tUsername for proxy authentication\n\
++	\t-p port\t	Specify local port for remote connects\n\
++	\t-r		Randomize remote ports\n\
++	\t-S		Enable the TCP MD5 signature option\n\
++	\t-s addr\t	Local source address\n\
++	\t-T toskeyword\tSet IP Type of Service\n\
++	\t-t		Answer TELNET negotiation\n\
++	\t-U		Use UNIX domain socket\n\
++	\t-u		UDP mode\n\
++	\t-V rtable	Specify alternate routing table\n\
++	\t-v		Verbose\n\
++	\t-w secs\t	Timeout for connects and final net reads\n\
++	\t-X proto	Proxy protocol: \"4\", \"5\" (SOCKS) or \"connect\"\n\
++	\t-x addr[:port]\tSpecify proxy address and port\n\
++	\t-z		Zero-I/O mode [used for scanning]\n\
++	Port numbers can be individual or ranges: lo-hi [inclusive]\n");
++	exit(1);
++}
++
++void
++usage(int ret)
++{
++	fprintf(stderr,
++	    "usage: nc [-46DdFhklNnrStUuvz] [-I length] [-i interval] [-O length]\n"
++	    "\t  [-P proxy_username] [-p source_port] [-s source] [-T ToS]\n"
++	    "\t  [-V rtable] [-w timeout] [-X proxy_protocol]\n"
++	    "\t  [-x proxy_address[:port]] [destination] [port]\n");
++	if (ret)
++		exit(1);
++}
+diff -uprN netcat-openbsd-1.130.bk/netcat.c.rej netcat-openbsd-1.130/netcat.c.rej
+--- netcat-openbsd-1.130.bk/netcat.c.rej	1970-01-01 08:00:00.000000000 +0800
++++ netcat-openbsd-1.130/netcat.c.rej	2017-04-13 23:24:05.419474900 +0800
+@@ -0,0 +1,21 @@
++--- netcat.c	2017-04-13 23:16:15.278979400 +0800
+++++ netcat.c	2017-04-13 23:05:00.874553000 +0800
++@@ -97,7 +97,6 @@
++ #include <string.h>
++ #include <unistd.h>
++ #include <bsd/stdlib.h>
++-#include <bsd/string.h>
++ #include "atomicio.h"
++ 
++ #ifndef SUN_LEN
++@@ -180,7 +179,9 @@ static int connect_with_timeout(int fd,
++         socklen_t salen, int ctimeout);
++ 
++ static void quit();
++-
+++size_t strlcpy(char *dst, const char *src, size_t siz);
+++long long strtonum(const char *numstr, long long minval,
+++        long long maxval, const char **errstrp);
++ int
++ main(int argc, char *argv[])
++ {
