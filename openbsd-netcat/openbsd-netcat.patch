@@ -577,10 +577,33 @@ diff -uprN netcat-openbsd-1.130.bk/chacha_private.h netcat-openbsd-1.130/chacha_
 +#endif
 +  }
 +}
-diff -uprN netcat-openbsd-1.130.bk/getentropy_linux.c netcat-openbsd-1.130/getentropy_linux.c
---- netcat-openbsd-1.130.bk/getentropy_linux.c	1970-01-01 08:00:00.000000000 +0800
-+++ netcat-openbsd-1.130/getentropy_linux.c	2017-04-14 00:26:32.393124500 +0800
-@@ -0,0 +1,546 @@
+diff -uprN netcat-openbsd-1.130.bk/explicit_bzero.c netcat-openbsd-1.130/explicit_bzero.c
+--- netcat-openbsd-1.130.bk/explicit_bzero.c	1970-01-01 08:00:00.000000000 +0800
++++ netcat-openbsd-1.130/explicit_bzero.c	2015-09-25 10:10:03.000000000 +0800
+@@ -0,0 +1,19 @@
++/*	$OpenBSD: explicit_bzero.c,v 1.3 2014/06/21 02:34:26 matthew Exp $ */
++/*
++ * Public domain.
++ * Written by Matthew Dempsky.
++ */
++
++#include <string.h>
++
++__attribute__((weak)) void
++__explicit_bzero_hook(void *buf, size_t len)
++{
++}
++
++void
++explicit_bzero(void *buf, size_t len)
++{
++	memset(buf, 0, len);
++	__explicit_bzero_hook(buf, len);
++}
+diff -uprN netcat-openbsd-1.130.bk/getentropy_hurd.c netcat-openbsd-1.130/getentropy_hurd.c
+--- netcat-openbsd-1.130.bk/getentropy_hurd.c	1970-01-01 08:00:00.000000000 +0800
++++ netcat-openbsd-1.130/getentropy_hurd.c	2016-03-27 18:21:36.000000000 +0800
+@@ -0,0 +1,446 @@
 +/*	$OpenBSD: getentropy_linux.c,v 1.40 2015/08/25 17:26:43 deraadt Exp $	*/
 +
 +/*
@@ -609,18 +632,16 @@ diff -uprN netcat-openbsd-1.130.bk/getentropy_linux.c netcat-openbsd-1.130/geten
 +#include <sys/param.h>
 +#include <sys/ioctl.h>
 +#include <sys/resource.h>
-+#ifdef SYS__sysctl
-+#include <linux/sysctl.h>
-+#endif
++#include <sys/syscall.h>
 +#include <sys/statvfs.h>
 +#include <sys/socket.h>
-+#include <sys/mount.h>
 +#include <sys/mman.h>
 +#include <sys/stat.h>
 +#include <sys/time.h>
 +#include <stdlib.h>
 +#include <stdint.h>
 +#include <stdio.h>
++#include <link.h>
 +#include <termios.h>
 +#include <fcntl.h>
 +#include <signal.h>
@@ -631,8 +652,6 @@ diff -uprN netcat-openbsd-1.130.bk/getentropy_linux.c netcat-openbsd-1.130/geten
 +
 +#include "hash/sha512.h"
 +
-+#include <linux/types.h>
-+#include <linux/random.h>
 +#ifdef HAVE_GETAUXVAL
 +#include <sys/auxv.h>
 +#endif
@@ -656,13 +675,7 @@ diff -uprN netcat-openbsd-1.130.bk/getentropy_linux.c netcat-openbsd-1.130/geten
 +int	getentropy(void *buf, size_t len);
 +
 +static int gotdata(char *buf, size_t len);
-+#ifdef SYS_getrandom
-+static int getentropy_getrandom(void *buf, size_t len);
-+#endif
 +static int getentropy_urandom(void *buf, size_t len);
-+#ifdef SYS__sysctl
-+static int getentropy_sysctl(void *buf, size_t len);
-+#endif
 +static int getentropy_fallback(void *buf, size_t len);
 +static int getentropy_phdr(struct dl_phdr_info *info, size_t size, void *data);
 +
@@ -676,17 +689,6 @@ diff -uprN netcat-openbsd-1.130.bk/getentropy_linux.c netcat-openbsd-1.130/geten
 +		return (-1);
 +	}
 +
-+#ifdef SYS_getrandom
-+	/*
-+	 * Try descriptor-less getrandom()
-+	 */
-+	ret = getentropy_getrandom(buf, len);
-+	if (ret != -1)
-+		return (ret);
-+	if (errno != ENOSYS)
-+		return (-1);
-+#endif
-+
 +	/*
 +	 * Try to get entropy with /dev/urandom
 +	 *
@@ -697,32 +699,8 @@ diff -uprN netcat-openbsd-1.130.bk/getentropy_linux.c netcat-openbsd-1.130/geten
 +	if (ret != -1)
 +		return (ret);
 +
-+#ifdef SYS__sysctl
 +	/*
-+	 * Try to use sysctl CTL_KERN, KERN_RANDOM, RANDOM_UUID.
-+	 * sysctl is a failsafe API, so it guarantees a result.  This
-+	 * should work inside a chroot, or when file descriptors are
-+	 * exhuasted.
-+	 *
-+	 * However this can fail if the Linux kernel removes support
-+	 * for sysctl.  Starting in 2007, there have been efforts to
-+	 * deprecate the sysctl API/ABI, and push callers towards use
-+	 * of the chroot-unavailable fd-using /proc mechanism --
-+	 * essentially the same problems as /dev/urandom.
-+	 *
-+	 * Numerous setbacks have been encountered in their deprecation
-+	 * schedule, so as of June 2014 the kernel ABI still exists on
-+	 * most Linux architectures. The sysctl() stub in libc is missing
-+	 * on some systems.  There are also reports that some kernels
-+	 * spew messages to the console.
-+	 */
-+	ret = getentropy_sysctl(buf, len);
-+	if (ret != -1)
-+		return (ret);
-+#endif /* SYS__sysctl */
-+
-+	/*
-+	 * Entropy collection via /dev/urandom and sysctl have failed.
++	 * Entropy collection via /dev/urandom has failed.
 +	 *
 +	 * No other API exists for collecting entropy.  See the large
 +	 * comment block above.
@@ -737,10 +715,10 @@ diff -uprN netcat-openbsd-1.130.bk/getentropy_linux.c netcat-openbsd-1.130/geten
 +	 *       should raise(SIGKILL)
 +	 *     - Do the best under the circumstances....
 +	 *
-+	 * This code path exists to bring light to the issue that Linux
++	 * This code path exists to bring light to the issue that Hurd
 +	 * does not provide a failsafe API for entropy collection.
 +	 *
-+	 * We hope this demonstrates that Linux should either retain their
++	 * We hope this demonstrates that Hurd should either get a
 +	 * sysctl ABI, or consider providing a new failsafe API which
 +	 * works in a chroot or when file descriptors are exhausted.
 +	 */
@@ -772,31 +750,12 @@ diff -uprN netcat-openbsd-1.130.bk/getentropy_linux.c netcat-openbsd-1.130/geten
 +	return (0);
 +}
 +
-+#ifdef SYS_getrandom
-+static int
-+getentropy_getrandom(void *buf, size_t len)
-+{
-+	int pre_errno = errno;
-+	int ret;
-+	if (len > 256)
-+		return (-1);
-+	do {
-+		ret = syscall(SYS_getrandom, buf, len, 0);
-+	} while (ret == -1 && errno == EINTR);
-+
-+	if (ret != (int)len)
-+		return (-1);
-+	errno = pre_errno;
-+	return (0);
-+}
-+#endif
-+
 +static int
 +getentropy_urandom(void *buf, size_t len)
 +{
 +	struct stat st;
 +	size_t i;
-+	int fd, cnt, flags;
++	int fd, flags;
 +	int save_errno = errno;
 +
 +start:
@@ -823,10 +782,6 @@ diff -uprN netcat-openbsd-1.130.bk/getentropy_linux.c netcat-openbsd-1.130/geten
 +		close(fd);
 +		goto nodevrandom;
 +	}
-+	if (ioctl(fd, RNDGETENTCNT, &cnt) == -1) {
-+		close(fd);
-+		goto nodevrandom;
-+	}
 +	for (i = 0; i < len; ) {
 +		size_t wanted = len - i;
 +		ssize_t ret = read(fd, (char *)buf + i, wanted);
@@ -848,38 +803,6 @@ diff -uprN netcat-openbsd-1.130.bk/getentropy_linux.c netcat-openbsd-1.130/geten
 +	errno = EIO;
 +	return (-1);
 +}
-+
-+#ifdef SYS__sysctl
-+static int
-+getentropy_sysctl(void *buf, size_t len)
-+{
-+	static int mib[] = { CTL_KERN, KERN_RANDOM, RANDOM_UUID };
-+	size_t i;
-+	int save_errno = errno;
-+
-+	for (i = 0; i < len; ) {
-+		size_t chunk = min(len - i, 16);
-+
-+		/* SYS__sysctl because some systems already removed sysctl() */
-+		struct __sysctl_args args = {
-+			.name = mib,
-+			.nlen = 3,
-+			.oldval = (char *)buf + i,
-+			.oldlenp = &chunk,
-+		};
-+		if (syscall(SYS__sysctl, &args) != 0)
-+			goto sysctlfailed;
-+		i += chunk;
-+	}
-+	if (gotdata(buf, len) == 0) {
-+		errno = save_errno;
-+		return (0);			/* satisfied */
-+	}
-+sysctlfailed:
-+	errno = EIO;
-+	return (-1);
-+}
-+#endif /* SYS__sysctl */
 +
 +static const int cl[] = {
 +	CLOCK_REALTIME,
@@ -1671,13 +1594,13 @@ diff -uprN netcat-openbsd-1.130.bk/hash/sha512c.c netcat-openbsd-1.130/hash/sha5
 +}
 diff -uprN netcat-openbsd-1.130.bk/Makefile netcat-openbsd-1.130/Makefile
 --- netcat-openbsd-1.130.bk/Makefile	2017-04-13 23:37:45.291164300 +0800
-+++ netcat-openbsd-1.130/Makefile	2017-04-14 00:10:01.268813000 +0800
++++ netcat-openbsd-1.130/Makefile	2017-04-14 00:30:24.101146400 +0800
 @@ -1,12 +1,12 @@
  #       $OpenBSD: Makefile,v 1.6 2001/09/02 18:45:41 jakob Exp $
  
  PROG=	nc
 -SRCS=	netcat.c atomicio.c socks.c
-+SRCS=	netcat.c atomicio.c socks.c arc4random.c readpassphrase.c getentropy_linux.c hash/sha512c.c
++SRCS=	netcat.c atomicio.c socks.c arc4random.c readpassphrase.c getentropy_hurd.c explicit_bzero.c hash/sha512c.c
  
  PKG_CONFIG ?= pkg-config
 -LIBS=  `$(PKG_CONFIG) --libs libbsd` -lresolv
