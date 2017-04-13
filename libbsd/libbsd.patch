@@ -159,18 +159,128 @@ diff -uprN libbsd-0.8.3.bk/src/getpeereid.c libbsd-0.8.3/src/getpeereid.c
  
 diff -uprN libbsd-0.8.3.bk/src/nlist.c libbsd-0.8.3/src/nlist.c
 --- libbsd-0.8.3.bk/src/nlist.c	2016-03-27 19:33:21.000000000 +0800
-+++ libbsd-0.8.3/src/nlist.c	2017-04-13 22:34:47.302087500 +0800
-@@ -44,11 +44,11 @@ static char sccsid[] = "@(#)nlist.c	8.1
- #include <stdio.h>
- #include <string.h>
- #include <unistd.h>
--
-+#include <bout.h>
-+#include <aout/hp.h>
++++ libbsd-0.8.3/src/nlist.c	2017-04-13 22:49:22.384160500 +0800
+@@ -48,7 +48,7 @@ static char sccsid[] = "@(#)nlist.c	8.1
  #if !defined(__NO_A_OUT_SUPPORT)
  #define _NLIST_DO_AOUT
  #endif
 -#define _NLIST_DO_ELF
++
  
  #ifdef _NLIST_DO_ELF
  #include "local-elf.h"
+@@ -57,21 +57,21 @@ static char sccsid[] = "@(#)nlist.c	8.1
+ #define SIZE_T_MAX 0xffffffffU
+ 
+ #ifdef _NLIST_DO_AOUT
+-static int __aout_fdnlist(int, struct nlist *);
++static int __aout_fdnlist(int, struct external_nlist *);
+ #ifndef N_SYMSIZE
+ #define N_SYMSIZE(a)	((a).a_syms)
+ #endif
+ #endif
+ #ifdef _NLIST_DO_ELF
+-static int __elf_fdnlist(int, struct nlist *);
++static int __elf_fdnlist(int, struct external_nlist *);
+ #endif
+ 
+ /* FIXME: This function is used by libkvm0, so we need to export it.
+    It is not declared in the include files though. */
+-int __fdnlist(int, struct nlist *);
++int __fdnlist(int, struct external_nlist *);
+ 
+ int
+-nlist(const char *name, struct nlist *list)
++nlist(const char *name, struct external_nlist *list)
+ {
+ 	int fd, n;
+ 
+@@ -83,8 +83,8 @@ nlist(const char *name, struct nlist *li
+ 	return (n);
+ }
+ 
+-static struct nlist_handlers {
+-	int	(*fn)(int fd, struct nlist *list);
++static struct external_nlist_handlers {
++	int	(*fn)(int fd, struct external_nlist *list);
+ } nlist_fn[] = {
+ #ifdef _NLIST_DO_AOUT
+ 	{ __aout_fdnlist },
+@@ -95,7 +95,7 @@ static struct nlist_handlers {
+ };
+ 
+ int
+-__fdnlist(int fd, struct nlist *list)
++__fdnlist(int fd, struct external_nlist *list)
+ {
+ 	size_t i;
+ 	int n = -1;
+@@ -112,9 +112,9 @@ __fdnlist(int fd, struct nlist *list)
+ 
+ #ifdef _NLIST_DO_AOUT
+ static int
+-__aout_fdnlist(int fd, struct nlist *list)
++__aout_fdnlist(int fd, struct external_nlist *list)
+ {
+-	struct nlist *p, *symtab;
++	struct external_nlist *p, *symtab;
+ 	caddr_t strtab, a_out_mmap;
+ 	off_t stroff, symoff;
+ 	u_long symsize;
+@@ -159,7 +159,7 @@ __aout_fdnlist(int fd, struct nlist *lis
+ 
+ 	/* find the string table in our mmapped area */
+ 	strtab = a_out_mmap + stroff;
+-	symtab = (struct nlist *)(a_out_mmap + symoff);
++	symtab = (struct external_nlist *)(a_out_mmap + symoff);
+ 
+ 	/*
+ 	 * clean out any left-over information for all valid entries.
+@@ -183,7 +183,7 @@ __aout_fdnlist(int fd, struct nlist *lis
+ 	while (symsize > 0) {
+ 		int soff;
+ 
+-		symsize-= sizeof(struct nlist);
++		symsize-= sizeof(struct external_nlist);
+ 		soff = symtab->n_un.n_strx;
+ 
+ 
+@@ -205,7 +205,7 @@ __aout_fdnlist(int fd, struct nlist *lis
+ #endif
+ 
+ #ifdef _NLIST_DO_ELF
+-static void elf_sym_to_nlist(struct nlist *, Elf_Sym *, Elf_Shdr *, int);
++static void elf_sym_to_nlist(struct external_nlist *, Elf_Sym *, Elf_Shdr *, int);
+ 
+ /*
+  * __elf_is_okay__ - Determine if ehdr really
+@@ -238,9 +238,9 @@ __elf_is_okay__(Elf_Ehdr *ehdr)
+ }
+ 
+ static int
+-__elf_fdnlist(int fd, struct nlist *list)
++__elf_fdnlist(int fd, struct external_nlist *list)
+ {
+-	struct nlist *p;
++	struct external_nlist *p;
+ 	Elf_Off symoff = 0, symstroff = 0;
+ 	Elf_Word symsize = 0, symstrsize = 0;
+ 	Elf_Sword cc, i;
+@@ -346,7 +346,7 @@ __elf_fdnlist(int fd, struct nlist *list
+ 		symsize -= cc;
+ 		for (s = sbuf; cc > 0 && nent > 0; ++s, cc -= sizeof(*s)) {
+ 			char *name;
+-			struct nlist *p;
++			struct external_nlist *p;
+ 
+ 			name = strtab + s->st_name;
+ 			if (name[0] == '\0')
+@@ -378,7 +378,7 @@ __elf_fdnlist(int fd, struct nlist *list
+  * n_value and n_type members.
+  */
+ static void
+-elf_sym_to_nlist(struct nlist *nl, Elf_Sym *s, Elf_Shdr *shdr, int shnum)
++elf_sym_to_nlist(struct external_nlist *nl, Elf_Sym *s, Elf_Shdr *shdr, int shnum)
+ {
+ 	nl->n_value = s->st_value;
+ 
