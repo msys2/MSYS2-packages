@@ -579,13 +579,13 @@ diff -uprN netcat-openbsd-1.130.bk/chacha_private.h netcat-openbsd-1.130/chacha_
 +}
 diff -uprN netcat-openbsd-1.130.bk/Makefile netcat-openbsd-1.130/Makefile
 --- netcat-openbsd-1.130.bk/Makefile	2017-04-13 23:37:45.291164300 +0800
-+++ netcat-openbsd-1.130/Makefile	2017-04-13 23:39:39.231377500 +0800
++++ netcat-openbsd-1.130/Makefile	2017-04-13 23:54:43.939272400 +0800
 @@ -1,10 +1,10 @@
  #       $OpenBSD: Makefile,v 1.6 2001/09/02 18:45:41 jakob Exp $
  
  PROG=	nc
 -SRCS=	netcat.c atomicio.c socks.c
-+SRCS=	netcat.c atomicio.c socks.c arc4random.c
++SRCS=	netcat.c atomicio.c socks.c arc4random.c readpassphrase.c
  
  PKG_CONFIG ?= pkg-config
 -LIBS=  `$(PKG_CONFIG) --libs libbsd` -lresolv
@@ -595,8 +595,17 @@ diff -uprN netcat-openbsd-1.130.bk/Makefile netcat-openbsd-1.130/Makefile
  LDFLAGS=  -Wl,--no-add-needed
 diff -uprN netcat-openbsd-1.130.bk/netcat.c netcat-openbsd-1.130/netcat.c
 --- netcat-openbsd-1.130.bk/netcat.c	2017-04-13 23:37:45.463285600 +0800
-+++ netcat-openbsd-1.130/netcat.c	2017-04-13 23:47:38.148270100 +0800
-@@ -96,8 +96,7 @@
++++ netcat-openbsd-1.130/netcat.c	2017-04-13 23:50:44.617258500 +0800
+@@ -49,6 +49,8 @@
+ # define IPTOS_RELIABILITY 0x04
+ # define IPTOS_LOWCOST 0x02
+ # define IPTOS_MINCOST IPTOS_LOWCOST
++#else
++# define IPTOS_LOWCOST IPTOS_MINCOST
+ #endif /* IPTOS_LOWDELAY */
+ 
+ # ifndef IPTOS_DSCP_AF11
+@@ -96,8 +98,7 @@
  #include <stdlib.h>
  #include <string.h>
  #include <unistd.h>
@@ -606,7 +615,7 @@ diff -uprN netcat-openbsd-1.130.bk/netcat.c netcat-openbsd-1.130/netcat.c
  #include "atomicio.h"
  
  #ifndef SUN_LEN
-@@ -180,7 +179,11 @@ static int connect_with_timeout(int fd,
+@@ -180,7 +181,11 @@ static int connect_with_timeout(int fd,
          socklen_t salen, int ctimeout);
  
  static void quit();
@@ -619,7 +628,7 @@ diff -uprN netcat-openbsd-1.130.bk/netcat.c netcat-openbsd-1.130/netcat.c
  int
  main(int argc, char *argv[])
  {
-@@ -1616,3 +1619,72 @@ static void quit()
+@@ -1616,3 +1621,72 @@ static void quit()
  {
  	exit(0);
  }
@@ -693,3 +702,251 @@ diff -uprN netcat-openbsd-1.130.bk/netcat.c netcat-openbsd-1.130/netcat.c
 +	return (ll);
 +}
 \ No newline at end of file
+diff -uprN netcat-openbsd-1.130.bk/readpassphrase.c netcat-openbsd-1.130/readpassphrase.c
+--- netcat-openbsd-1.130.bk/readpassphrase.c	1970-01-01 08:00:00.000000000 +0800
++++ netcat-openbsd-1.130/readpassphrase.c	2017-04-13 23:54:33.289325900 +0800
+@@ -0,0 +1,187 @@
++/*	$OpenBSD: readpassphrase.c,v 1.20 2007/10/30 12:03:48 millert Exp $	*/
++
++/*
++ * Copyright (c) 2000-2002, 2007 Todd C. Miller <Todd.Miller@courtesan.com>
++ *
++ * Permission to use, copy, modify, and distribute this software for any
++ * purpose with or without fee is hereby granted, provided that the above
++ * copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
++ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
++ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
++ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
++ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
++ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++ *
++ * Sponsored in part by the Defense Advanced Research Projects
++ * Agency (DARPA) and Air Force Research Laboratory, Air Force
++ * Materiel Command, USAF, under agreement number F39502-99-1-0512.
++ */
++
++#include <ctype.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <paths.h>
++#include <pwd.h>
++#include <signal.h>
++#include <string.h>
++#include <termios.h>
++#include <unistd.h>
++#include "readpassphrase.h"
++
++#ifndef TCSASOFT
++#define TCSASOFT 0
++#endif
++
++static volatile sig_atomic_t signo;
++
++static void handler(int);
++
++char *
++readpassphrase(const char *prompt, char *buf, size_t bufsiz, int flags)
++{
++	ssize_t nr;
++	int input, output, save_errno;
++	char ch, *p, *end;
++	struct termios term, oterm;
++	struct sigaction sa, savealrm, saveint, savehup, savequit, saveterm;
++	struct sigaction savetstp, savettin, savettou, savepipe;
++
++	/* I suppose we could alloc on demand in this case (XXX). */
++	if (bufsiz == 0) {
++		errno = EINVAL;
++		return(NULL);
++	}
++
++restart:
++	signo = 0;
++	nr = -1;
++	save_errno = 0;
++	/*
++	 * Read and write to /dev/tty if available.  If not, read from
++	 * stdin and write to stderr unless a tty is required.
++	 */
++	if ((flags & RPP_STDIN) ||
++	    (input = output = open(_PATH_TTY, O_RDWR)) == -1) {
++		if (flags & RPP_REQUIRE_TTY) {
++			errno = ENOTTY;
++			return(NULL);
++		}
++		input = STDIN_FILENO;
++		output = STDERR_FILENO;
++	}
++
++	/*
++	 * Catch signals that would otherwise cause the user to end
++	 * up with echo turned off in the shell.  Don't worry about
++	 * things like SIGXCPU and SIGVTALRM for now.
++	 */
++	sigemptyset(&sa.sa_mask);
++	sa.sa_flags = 0;		/* don't restart system calls */
++	sa.sa_handler = handler;
++	(void)sigaction(SIGALRM, &sa, &savealrm);
++	(void)sigaction(SIGHUP, &sa, &savehup);
++	(void)sigaction(SIGINT, &sa, &saveint);
++	(void)sigaction(SIGPIPE, &sa, &savepipe);
++	(void)sigaction(SIGQUIT, &sa, &savequit);
++	(void)sigaction(SIGTERM, &sa, &saveterm);
++	(void)sigaction(SIGTSTP, &sa, &savetstp);
++	(void)sigaction(SIGTTIN, &sa, &savettin);
++	(void)sigaction(SIGTTOU, &sa, &savettou);
++
++	/* Turn off echo if possible. */
++	if (input != STDIN_FILENO && tcgetattr(input, &oterm) == 0) {
++		memcpy(&term, &oterm, sizeof(term));
++		if (!(flags & RPP_ECHO_ON))
++			term.c_lflag &= ~(ECHO | ECHONL);
++#ifdef VSTATUS
++		if (term.c_cc[VSTATUS] != _POSIX_VDISABLE)
++			term.c_cc[VSTATUS] = _POSIX_VDISABLE;
++#endif
++		(void)tcsetattr(input, TCSAFLUSH|TCSASOFT, &term);
++	} else {
++		memset(&term, 0, sizeof(term));
++		term.c_lflag |= ECHO;
++		memset(&oterm, 0, sizeof(oterm));
++		oterm.c_lflag |= ECHO;
++	}
++
++	/* No I/O if we are already backgrounded. */
++	if (signo != SIGTTOU && signo != SIGTTIN) {
++		if (!(flags & RPP_STDIN))
++			(void)write(output, prompt, strlen(prompt));
++		end = buf + bufsiz - 1;
++		p = buf;
++		while ((nr = read(input, &ch, 1)) == 1 && ch != '\n' && ch != '\r') {
++			if (p < end) {
++				if ((flags & RPP_SEVENBIT))
++					ch &= 0x7f;
++				if (isalpha(ch)) {
++					if ((flags & RPP_FORCELOWER))
++						ch = (char)tolower(ch);
++					if ((flags & RPP_FORCEUPPER))
++						ch = (char)toupper(ch);
++				}
++				*p++ = ch;
++			}
++		}
++		*p = '\0';
++		save_errno = errno;
++		if (!(term.c_lflag & ECHO))
++			(void)write(output, "\n", 1);
++	}
++
++	/* Restore old terminal settings and signals. */
++	if (memcmp(&term, &oterm, sizeof(term)) != 0) {
++		while (tcsetattr(input, TCSAFLUSH|TCSASOFT, &oterm) == -1 &&
++		    errno == EINTR)
++			continue;
++	}
++	(void)sigaction(SIGALRM, &savealrm, NULL);
++	(void)sigaction(SIGHUP, &savehup, NULL);
++	(void)sigaction(SIGINT, &saveint, NULL);
++	(void)sigaction(SIGQUIT, &savequit, NULL);
++	(void)sigaction(SIGPIPE, &savepipe, NULL);
++	(void)sigaction(SIGTERM, &saveterm, NULL);
++	(void)sigaction(SIGTSTP, &savetstp, NULL);
++	(void)sigaction(SIGTTIN, &savettin, NULL);
++	(void)sigaction(SIGTTOU, &savettou, NULL);
++	if (input != STDIN_FILENO)
++		(void)close(input);
++
++	/*
++	 * If we were interrupted by a signal, resend it to ourselves
++	 * now that we have restored the signal handlers.
++	 */
++	if (signo) {
++		kill(getpid(), signo);
++		switch (signo) {
++		case SIGTSTP:
++		case SIGTTIN:
++		case SIGTTOU:
++			goto restart;
++		}
++	}
++
++	if (save_errno)
++		errno = save_errno;
++	return(nr == -1 ? NULL : buf);
++}
++
++#if 0
++char *
++getpass(const char *prompt)
++{
++	static char buf[_PASSWORD_LEN + 1];
++
++	return(readpassphrase(prompt, buf, sizeof(buf), RPP_ECHO_OFF));
++}
++#endif
++
++static void handler(int s)
++{
++
++	signo = s;
++}
+diff -uprN netcat-openbsd-1.130.bk/readpassphrase.h netcat-openbsd-1.130/readpassphrase.h
+--- netcat-openbsd-1.130.bk/readpassphrase.h	1970-01-01 08:00:00.000000000 +0800
++++ netcat-openbsd-1.130/readpassphrase.h	2011-07-06 02:58:44.000000000 +0800
+@@ -0,0 +1,41 @@
++/*	$OpenBSD: readpassphrase.h,v 1.4 2003/06/03 01:52:39 millert Exp $	*/
++
++/*
++ * Copyright (c) 2000, 2002 Todd C. Miller <Todd.Miller@courtesan.com>
++ *
++ * Permission to use, copy, modify, and distribute this software for any
++ * purpose with or without fee is hereby granted, provided that the above
++ * copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
++ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
++ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
++ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
++ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
++ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++ *
++ * Sponsored in part by the Defense Advanced Research Projects
++ * Agency (DARPA) and Air Force Research Laboratory, Air Force
++ * Materiel Command, USAF, under agreement number F39502-99-1-0512.
++ */
++
++#ifndef _READPASSPHRASE_H_
++#define _READPASSPHRASE_H_
++
++#define RPP_ECHO_OFF    0x00		/* Turn off echo (default). */
++#define RPP_ECHO_ON     0x01		/* Leave echo on. */
++#define RPP_REQUIRE_TTY 0x02		/* Fail if there is no tty. */
++#define RPP_FORCELOWER  0x04		/* Force input to lower case. */
++#define RPP_FORCEUPPER  0x08		/* Force input to upper case. */
++#define RPP_SEVENBIT    0x10		/* Strip the high bit from input. */
++#define RPP_STDIN       0x20		/* Read from stdin, not /dev/tty */
++
++#include <sys/cdefs.h>
++#include <sys/types.h>
++
++__BEGIN_DECLS
++char * readpassphrase(const char *, char *, size_t, int);
++__END_DECLS
++
++#endif /* !_READPASSPHRASE_H_ */
+diff -uprN netcat-openbsd-1.130.bk/socks.c netcat-openbsd-1.130/socks.c
+--- netcat-openbsd-1.130.bk/socks.c	2017-04-13 23:37:44.301963600 +0800
++++ netcat-openbsd-1.130/socks.c	2017-04-13 23:53:42.075212400 +0800
+@@ -38,7 +38,7 @@
+ #include <string.h>
+ #include <unistd.h>
+ #include <resolv.h>
+-#include <bsd/readpassphrase.h>
++#include "readpassphrase.h"
+ #include "atomicio.h"
+ 
+ #define SOCKS_PORT	"1080"
