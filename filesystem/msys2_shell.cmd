@@ -57,6 +57,7 @@ if "x%~1" == "x-where" (
   )
   set CHERE_INVOKING=enabled_from_arguments
 )& shift& shift& goto :checkparams
+if "x%~1" == "x-no-start" shift& set MSYS2_NOSTART=yes& goto :checkparams
 
 rem Setup proper title
 if "%MSYSTEM%" == "MINGW32" (
@@ -74,7 +75,11 @@ if "x%MSYSCON%" == "xdefterm" goto startsh
 if NOT EXIST "%WD%mintty.exe" goto startsh
 set MSYSCON=mintty.exe
 :startmintty
-start "%CONTITLE%" "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" /usr/bin/bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+if not defined MSYS2_NOSTART (
+  start "%CONTITLE%" "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" /usr/bin/bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+) else (
+  "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" /usr/bin/bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+)
 exit /b %ERRORLEVEL%
 
 :startconemu
@@ -82,12 +87,20 @@ call :conemudetect || (
   echo ConEmu not found. Exiting. 1>&2
   exit /b 1
 )
-start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%bash" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+if not defined MSYS2_NOSTART (
+  start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%bash" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+) else (
+  "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%bash" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+)
 exit /b %ERRORLEVEL%
 
 :startsh
 set MSYSCON=
-start "%CONTITLE%" "%WD%bash" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+if not defined MSYS2_NOSTART (
+  start "%CONTITLE%" "%WD%bash" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+) else (
+  "%WD%bash" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+)
 exit /b %ERRORLEVEL%
 
 :EOF
@@ -148,6 +161,9 @@ echo     -where DIRECTORY                 Use specified DIRECTORY as working
 echo                                      directory
 echo     -[use-]full-path                 Use full currnent PATH variable
 echo                                      instead of triming to minimal
+echo     -no-start                        Do not use "start" command and
+echo                                      return bash resulting errorcode as
+echo                                      this batch file resulting errorcode
 echo     -help ^| --help ^| -? ^| /?         Display this help and exit
 echo.
 echo Any parameter that cannot be treated as valid option and all
