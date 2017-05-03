@@ -74,7 +74,7 @@ if "x%MSYSCON%" == "xdefterm" goto startsh
 if NOT EXIST "%WD%mintty.exe" goto startsh
 set MSYSCON=mintty.exe
 :startmintty
-start "%CONTITLE%" "%WD%mintty" -i /msys2.ico /usr/bin/bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+start "%CONTITLE%" "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" /usr/bin/bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 exit /b %ERRORLEVEL%
 
 :startconemu
