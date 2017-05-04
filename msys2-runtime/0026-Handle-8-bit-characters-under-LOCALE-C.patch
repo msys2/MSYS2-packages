@@ -1,0 +1,63 @@
+From 4ca66d098d57eb7c662c43cc821c786ff4eb3427 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Fri, 20 Feb 2015 13:56:22 +0000
+Subject: [PATCH 26/N] Handle 8-bit characters under LOCALE=C
+
+Even when the character set is specified as ASCII, we should handle data
+outside the 7-bit range gracefully by simply copying it, even if it is
+technically no longer ASCII.
+
+This fixes several of Git for Windows' tests, e.g. t7400.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ newlib/libc/stdlib/mbtowc_r.c | 2 +-
+ newlib/libc/stdlib/wctomb_r.c | 2 +-
+ winsup/cygwin/strfuncs.cc     | 4 ++++
+ 3 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/newlib/libc/stdlib/mbtowc_r.c b/newlib/libc/stdlib/mbtowc_r.c
+index 116b4d8..adeea7e 100644
+--- a/newlib/libc/stdlib/mbtowc_r.c
++++ b/newlib/libc/stdlib/mbtowc_r.c
+@@ -38,7 +38,7 @@ _DEFUN (__ascii_mbtowc, (r, pwc, s, n, state),
+   if (n == 0)
+     return -2;
+ 
+-#ifdef __CYGWIN__
++#ifdef STRICTLY_7BIT_ASCII
+   if ((wchar_t)*t >= 0x80)
+     {
+       r->_errno = EILSEQ;
+diff --git a/newlib/libc/stdlib/wctomb_r.c b/newlib/libc/stdlib/wctomb_r.c
+index 2c018f9..0c3699c 100644
+--- a/newlib/libc/stdlib/wctomb_r.c
++++ b/newlib/libc/stdlib/wctomb_r.c
+@@ -31,7 +31,7 @@ _DEFUN (__ascii_wctomb, (r, s, wchar, state),
+   if (s == NULL)
+     return 0;
+  
+-#ifdef __CYGWIN__
++#ifdef STRICTLY_7BIT_ASCII
+   if ((size_t)wchar >= 0x80)
+ #else
+   if ((size_t)wchar >= 0x100)
+diff --git a/winsup/cygwin/strfuncs.cc b/winsup/cygwin/strfuncs.cc
+index e0e5703..559116b 100644
+--- a/winsup/cygwin/strfuncs.cc
++++ b/winsup/cygwin/strfuncs.cc
+@@ -632,7 +632,11 @@ sys_cp_mbstowcs (mbtowc_p f_mbtowc, wchar_t *dst, size_t dlen,
+ 	     to store them in a symmetric way. */
+ 	  bytes = 1;
+ 	  if (dst)
++#ifdef STRICTLY_7BIT_ASCII
+ 	    *ptr = L'\xf000' | *pmbs;
++#else
++	    *ptr = *pmbs;
++#endif
+ 	  memset (&ps, 0, sizeof ps);
+ 	}
+ 
+-- 
+2.9.0
+

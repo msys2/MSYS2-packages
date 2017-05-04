@@ -1,0 +1,100 @@
+From 4313382ed8741a2706456f42dd43af901319eb79 Mon Sep 17 00:00:00 2001
+From: Karsten Blees <blees@dcon.de>
+Date: Wed, 20 May 2015 16:32:52 +0200
+Subject: [PATCH 47/N] Allow native symlinks to non-existing targets in
+ 'nativestrict' mode
+
+Windows native symlinks must match the type of their target (file or
+directory), otherwise native Windows tools will fail. Creating symlinks in
+'nativestrict' mode currently requires the target to exist in order to
+check its type.
+
+However, the target of a symlink can change at any time after the symlink
+has been created. Thus users of native symlinks must be prepared to deal
+with type mismatches anyway. Checking the target type at symlink creation
+time is not a good reason to violate the symlink() API specification.
+
+In 'nativestrict' mode, always create native symlinks. Choose the symlink
+type according to the target if it exists. Otherwise check the target path
+for a trailing '/' as hint to create a directory symlink.
+
+This allows callers to explicitly specify the expected target type, e.g.:
+
+  $ ln -s test/ link-to-test
+  $ mkdir test
+
+Signed-off-by: Karsten Blees <blees@dcon.de>
+---
+ winsup/cygwin/path.cc | 41 ++++++++++++++++++++++++++++++++---------
+ 1 file changed, 32 insertions(+), 9 deletions(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 13f4e39..ee7fe72 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -1716,6 +1716,7 @@ symlink_native (const char *oldpath, path_conv &win32_newpath)
+   path_conv win32_oldpath;
+   PUNICODE_STRING final_oldpath, final_newpath;
+   UNICODE_STRING final_oldpath_buf;
++  bool isdir;
+ 
+   if (isabspath (oldpath))
+     {
+@@ -1776,14 +1777,37 @@ symlink_native (const char *oldpath, path_conv &win32_newpath)
+ 	  wcpcpy (e_old, c_old);
+ 	}
+     }
+-  /* If the symlink target doesn't exist, don't create native symlink.
+-     Otherwise the directory flag in the symlink is potentially wrong
+-     when the target comes into existence, and native tools will fail.
+-     This is so screwball. This is no problem on AFS, fortunately. */
+-  if (!win32_oldpath.exists () && !win32_oldpath.fs_is_afs ())
++
++  /* The directory flag in the symlink must match the target type,
++     otherwise native tools will fail (fortunately this is no problem
++     on AFS). Do our best to guess the symlink type correctly. */
++  if (win32_oldpath.exists () || win32_oldpath.fs_is_afs ())
+     {
+-      SetLastError (ERROR_FILE_NOT_FOUND);
+-      return -1;
++      /* If the target exists (or on AFS), check the target type. Note
++	 that this may still be wrong if the target is changed after
++	 creating the symlink (e.g. in bulk operations such as rsync,
++	 unpacking archives or VCS checkouts). */
++      isdir = win32_oldpath.isdir ();
++    }
++  else
++    {
++      if (allow_winsymlinks == WSYM_nativestrict)
++	{
++	  /* In nativestrict mode, if the target does not exist, use
++	     trailing '/' in the target path as hint to create a
++	     directory symlink. */
++	  ssize_t len = strlen(oldpath);
++	  isdir = len && isdirsep(oldpath[len - 1]);
++	}
++      else
++	{
++	 /* In native mode, if the target does not exist, fall back
++	    to creating a Cygwin symlink file (or in case of MSys:
++	    try to copy the (non-existing) target, which will of
++	    course fail). */
++	  SetLastError (ERROR_FILE_NOT_FOUND);
++	  return -1;
++	}
+     }
+   /* Don't allow native symlinks to Cygwin special files.  However, the
+      caller shoud know because this case shouldn't be covered by the
+@@ -1813,8 +1837,7 @@ symlink_native (const char *oldpath, path_conv &win32_newpath)
+     }
+   /* Try to create native symlink. */
+   if (!CreateSymbolicLinkW (final_newpath->Buffer, final_oldpath->Buffer,
+-			    win32_oldpath.isdir ()
+-			    ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0))
++			    isdir ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0))
+     {
+       /* Repair native newpath, we still need it. */
+       final_newpath->Buffer[1] = L'?';
+-- 
+2.9.0
+

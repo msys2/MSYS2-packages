@@ -1,0 +1,151 @@
+From 790564d3be6e63c598a2d019d09825b694d4980d Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Mon, 27 Apr 2015 11:58:08 +0200
+Subject: [PATCH 44/N] Allow overriding the home directory via the HOME
+ variable
+
+In Git for Windows, it is a well-established technique to use the
+`$HOME` variable to define where the current user's home directory is,
+falling back to `$HOMEDRIVE$HOMEPATH` and `$USERPROFILE`.
+
+This strategy is particular important when Cygwin, or command-line
+programs depending on the HOME variable, cannot cope with the Windows'
+idea of the user's home directory e.g. when it is set to a hidden
+directory via an UNC path (\\share\some\hidden\folder$).
+
+Of course this strategy needs to be opt-in. For that reason, this
+strategy is activated via the `env` keyword in the `db_home` line in
+`/etc/nsswitch.conf`.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/cygheap.h |  3 ++-
+ winsup/cygwin/uinfo.cc  | 49 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 51 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/cygheap.h b/winsup/cygwin/cygheap.h
+index abbf9ec..243b0ef 100644
+--- a/winsup/cygwin/cygheap.h
++++ b/winsup/cygwin/cygheap.h
+@@ -408,7 +408,8 @@ public:
+     NSS_SCHEME_UNIX,
+     NSS_SCHEME_DESC,
+     NSS_SCHEME_PATH,
+-    NSS_SCHEME_FREEATTR
++    NSS_SCHEME_FREEATTR,
++    NSS_SCHEME_ENV
+   };
+   struct nss_scheme_t {
+     nss_scheme_method	method;
+diff --git a/winsup/cygwin/uinfo.cc b/winsup/cygwin/uinfo.cc
+index ff395d1..66d75bd 100644
+--- a/winsup/cygwin/uinfo.cc
++++ b/winsup/cygwin/uinfo.cc
+@@ -808,6 +808,8 @@ cygheap_pwdgrp::nss_init_line (const char *line)
+ 		    scheme[idx].method = NSS_SCHEME_UNIX;
+ 		  else if (NSS_CMP ("desc"))
+ 		    scheme[idx].method = NSS_SCHEME_DESC;
++		  else if (NSS_CMP ("env"))
++		    scheme[idx].method = NSS_SCHEME_ENV;
+ 		  else if (NSS_NCMP ("/"))
+ 		    {
+ 		      const char *e = c + strcspn (c, " \t");
+@@ -998,6 +1000,40 @@ fetch_from_path (cyg_ldap *pldap, PUSER_INFO_3 ui, cygpsid &sid, PCWSTR str,
+   return ret;
+ }
+ 
++static size_t
++fetch_env(LPCWSTR key, char *buf, size_t size)
++{
++  WCHAR wbuf[32767];
++  DWORD max = sizeof wbuf / sizeof *wbuf;
++  DWORD len = GetEnvironmentVariableW (key, wbuf, max);
++
++  if (!len || len >= max)
++    return 0;
++
++  len = sys_wcstombs (buf, size, wbuf, len);
++  return len && len < size ? len : 0;
++}
++
++static char *
++fetch_home_env (void)
++{
++  char home[32767];
++  size_t max = sizeof home / sizeof *home, len;
++
++  if (fetch_env (L"HOME", home, max)
++      || ((len = fetch_env (L"HOMEDRIVE", home, max))
++        && fetch_env (L"HOMEPATH", home + len, max - len))
++      || fetch_env (L"USERPROFILE", home, max))
++    {
++      tmp_pathbuf tp;
++      cygwin_conv_path (CCP_WIN_A_TO_POSIX | CCP_ABSOLUTE,
++	  home, tp.c_get(), NT_MAX_PATH);
++      return strdup(tp.c_get());
++    }
++
++  return NULL;
++}
++
+ char *
+ cygheap_pwdgrp::get_home (cyg_ldap *pldap, cygpsid &sid, PCWSTR dom,
+ 			  PCWSTR dnsdomain, PCWSTR name, bool full_qualified)
+@@ -1057,6 +1093,10 @@ cygheap_pwdgrp::get_home (cyg_ldap *pldap, cygpsid &sid, PCWSTR dom,
+ 		}
+ 	    }
+ 	  break;
++	case NSS_SCHEME_ENV:
++	  if (RtlEqualSid (sid, cygheap->user.sid ()))
++	    home = fetch_home_env ();
++	  break;
+ 	}
+     }
+   return home;
+@@ -1089,6 +1129,10 @@ cygheap_pwdgrp::get_home (PUSER_INFO_3 ui, cygpsid &sid, PCWSTR dom,
+ 	  home = fetch_from_path (NULL, ui, sid, home_scheme[idx].attrib,
+ 				  dom, NULL, name, full_qualified);
+ 	  break;
++	case NSS_SCHEME_ENV:
++	  if (RtlEqualSid (sid, cygheap->user.sid ()))
++	    home = fetch_home_env ();
++	  break;
+ 	}
+     }
+   return home;
+@@ -1108,6 +1152,7 @@ cygheap_pwdgrp::get_shell (cyg_ldap *pldap, cygpsid &sid, PCWSTR dom,
+ 	case NSS_SCHEME_FALLBACK:
+ 	  return NULL;
+ 	case NSS_SCHEME_WINDOWS:
++	case NSS_SCHEME_ENV:
+ 	  break;
+ 	case NSS_SCHEME_CYGWIN:
+ 	  if (pldap->fetch_ad_account (sid, false, dnsdomain))
+@@ -1172,6 +1217,7 @@ cygheap_pwdgrp::get_shell (PUSER_INFO_3 ui, cygpsid &sid, PCWSTR dom,
+ 	case NSS_SCHEME_CYGWIN:
+ 	case NSS_SCHEME_UNIX:
+ 	case NSS_SCHEME_FREEATTR:
++	case NSS_SCHEME_ENV:
+ 	  break;
+ 	case NSS_SCHEME_DESC:
+ 	  if (ui)
+@@ -1253,6 +1299,8 @@ cygheap_pwdgrp::get_gecos (cyg_ldap *pldap, cygpsid &sid, PCWSTR dom,
+ 		sys_wcstombs_alloc (&gecos, HEAP_NOTHEAP, val);
+ 	    }
+ 	  break;
++	case NSS_SCHEME_ENV:
++	  break;
+ 	}
+     }
+   if (gecos)
+@@ -1279,6 +1327,7 @@ cygheap_pwdgrp::get_gecos (PUSER_INFO_3 ui, cygpsid &sid, PCWSTR dom,
+ 	case NSS_SCHEME_CYGWIN:
+ 	case NSS_SCHEME_UNIX:
+ 	case NSS_SCHEME_FREEATTR:
++	case NSS_SCHEME_ENV:
+ 	  break;
+ 	case NSS_SCHEME_DESC:
+ 	  if (ui)
+-- 
+2.9.0
+

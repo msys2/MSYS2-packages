@@ -1,0 +1,131 @@
+From d78ff1309cecda457c9b41cf7f93deaadadaa655 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Fri, 14 Aug 2015 15:53:05 +0000
+Subject: [PATCH 3/3] Allow overriding the command line when pinning to the
+ taskbar
+
+Windows 7 and later allow applications to be pinned to the taskbar. In
+particular when calling mintty as the work horse of Git for Windows'
+"Git Bash", we will want to re-launch the Git Bash when being pinned, not
+just mintty.
+
+Let's just add a setting to allow users to override which command gets
+to be launched when the pinned mintty is called, and also a setting to
+configure the display name in the task bar.
+
+Note: the RelaunchCommand setting will be ignored unless the AppID *and*
+RelaunchDisplayName are configured, too.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ docs/mintty.1 | 14 ++++++++++++++
+ src/config.c  |  4 ++++
+ src/config.h  |  2 +-
+ src/winmain.c | 24 ++++++++++++++++++++++--
+ 4 files changed, 41 insertions(+), 3 deletions(-)
+
+diff --git a/docs/mintty.1 b/docs/mintty.1
+index 0223610..2f1904b 100644
+--- a/docs/mintty.1
++++ b/docs/mintty.1
+@@ -948,6 +948,20 @@ be done using the \fBwin7appid\fP utility available from
+ \fIhttp://win7appid.googlecode.com\fP.
+ 
+ .TP
++\fBRelaunch Command\fP (RelaunchCommand=)
++Windows 7 and above allow pinning applications to the taskbar. With this
++property, the command line to be called can be customized. Note that the
++Relaunch Display Name and the Application ID property need to be set,
++too, or the setting will be ignored by Windows.
++
++.TP
++\fBRelaunch Display Name\fP (RelaunchDisplayName=)
++Windows 7 and above allow pinning applications to the taskbar. With this
++property, the label of the taskbar menu can be customized. Note that the
++Application ID property needs to be set, too, or the setting will be ignored
++by Windows.
++
++.TP
+ \fBWord selection characters\fP (WordChars=)
+ By default, this string setting is empty, in which case double-click word
+ selection uses the default algorithm that is geared towards picking out
+diff --git a/src/config.c b/src/config.c
+index 22ad2fc..0accc0b 100644
+--- a/src/config.c
++++ b/src/config.c
+@@ -83,6 +83,8 @@ const config default_cfg = {
+   .title = "",
+   // "Hidden"
+   .app_id = "",
++  .relaunch_command = "",
++  .relaunch_display_name = "",
+   .col_spacing = 0,
+   .row_spacing = 0,
+   .word_chars = "",
+@@ -204,6 +206,8 @@ options[] = {
+   // "Hidden"
+   {"AppID", OPT_STRING, offcfg(app_id)},
+   {"ColSpacing", OPT_INT, offcfg(col_spacing)},
++  {"RelaunchCommand", OPT_STRING, offcfg(relaunch_command)},
++  {"RelaunchDisplayName", OPT_STRING, offcfg(relaunch_display_name)},
+   {"RowSpacing", OPT_INT, offcfg(row_spacing)},
+   {"WordChars", OPT_STRING, offcfg(word_chars)},
+   {"WordCharsExcl", OPT_STRING, offcfg(word_chars_excl)},
+diff --git a/src/config.h b/src/config.h
+index 5ce3976..776a34d 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -103,7 +103,7 @@ typedef struct {
+   char window;
+   int x, y;
+   // "Hidden"
+-  string app_id;
++  string app_id, relaunch_command, relaunch_display_name;
+   int col_spacing, row_spacing;
+   string word_chars;
+   string word_chars_excl;
+diff --git a/src/winmain.c b/src/winmain.c
+index a5c31b5..2993e96 100644
+--- a/src/winmain.c
++++ b/src/winmain.c
+@@ -1025,8 +1025,8 @@ main(int argc, char *argv[])
+                         null, null, inst, null);
+ 
+ #if WINVER >= 0x601
+-  // Set the app ID explicitly
+-  if (*cfg.app_id) {
++  // Set the app ID explicitly, as well as the relaunch command and display name
++  if (*cfg.app_id || *cfg.relaunch_command || *cfg.relaunch_display_name) {
+     HMODULE shell = load_sys_library("shell32.dll");
+     HRESULT (WINAPI *pGetPropertyStore)(HWND hwnd, REFIID riid, void **ppv) =
+       (void *)GetProcAddress(shell, "SHGetPropertyStoreForWindow");
+@@ -1049,6 +1049,26 @@ main(int argc, char *argv[])
+                 &PKEY_AppUserModel_ID, &var);
+           }
+         }
++        if (*cfg.relaunch_command &&
++            (size = cs_mbstowcs(0, cfg.relaunch_command, 0) + 1)) {
++          var.pwszVal = malloc(size * sizeof(wchar));
++          if (var.pwszVal) {
++            cs_mbstowcs(var.pwszVal, cfg.relaunch_command, size);
++            var.vt = VT_LPWSTR;
++            pps->lpVtbl->SetValue(pps,
++                &PKEY_AppUserModel_RelaunchCommand, &var);
++          }
++        }
++        if (*cfg.relaunch_display_name &&
++            (size = cs_mbstowcs(0, cfg.relaunch_display_name, 0) + 1)) {
++          var.pwszVal = malloc(size * sizeof(wchar));
++          if (var.pwszVal) {
++            cs_mbstowcs(var.pwszVal, cfg.relaunch_display_name, size);
++            var.vt = VT_LPWSTR;
++            pps->lpVtbl->SetValue(pps,
++                &PKEY_AppUserModel_RelaunchDisplayNameResource, &var);
++          }
++        }
+         pps->lpVtbl->Commit(pps);
+         pps->lpVtbl->Release(pps);
+       }
+-- 
+2.5.0
+

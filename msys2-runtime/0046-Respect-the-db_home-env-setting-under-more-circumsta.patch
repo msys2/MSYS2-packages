@@ -1,0 +1,65 @@
+From dd3fcafe95a71a979777fee1e74fefd8e7bcde96 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Thu, 7 Jan 2016 15:54:27 +0000
+Subject: [PATCH 46/N] Respect the `db_home: env` setting under more
+ circumstances
+
+In particular when we cannot figure out a uid for the current user, we
+should still respect the `db_home: env` setting. Such a situation occurs
+for example when the domain returned by `LookupAccountSid()` is not our
+machine name and at the same time our machine is no domain member: In
+that case, we have nobody to ask for the POSIX offset necessary to come
+up with the uid.
+
+It is important that even in such cases, the HOME environment variable
+can be used to override the home directory, e.g. when Git for Windows is
+used by an account that was generated on the fly, e.g. for transient use
+in a cloud scenario.
+
+Reported by David Ebbo.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/uinfo.cc | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/uinfo.cc b/winsup/cygwin/uinfo.cc
+index f4b307a..bf7fc9a 100644
+--- a/winsup/cygwin/uinfo.cc
++++ b/winsup/cygwin/uinfo.cc
+@@ -1110,6 +1110,8 @@ cygheap_pwdgrp::get_home (PUSER_INFO_3 ui, cygpsid &sid, PCWSTR dom,
+ 
+   for (uint16_t idx = 0; !home && idx < NSS_SCHEME_MAX; ++idx)
+     {
++      if (!ui && home_scheme[idx].method != NSS_SCHEME_ENV)
++        continue;
+       switch (home_scheme[idx].method)
+ 	{
+ 	case NSS_SCHEME_FALLBACK:
+@@ -2169,6 +2171,9 @@ pwdgrp::fetch_account_from_windows (fetch_user_arg_t &arg, cyg_ldap *pldap)
+ 	{
+ 	  /* Just some fake. */
+ 	  sid = csid.create (99, 1, 0);
++	  if (arg.id == cygheap->user.real_uid)
++	    home = cygheap->pg.get_home(NULL, cygheap->user.sid(),
++	      NULL, NULL, false);
+ 	  break;
+ 	}
+       else if (arg.id >= UNIX_POSIX_OFFSET)
+@@ -2698,10 +2703,11 @@ pwdgrp::fetch_account_from_windows (fetch_user_arg_t &arg, cyg_ldap *pldap)
+      logon.  Unless it's the SYSTEM account.  This conveniently allows to
+      logon interactively as SYSTEM for debugging purposes. */
+   else if (acc_type != SidTypeUser && sid != well_known_system_sid)
+-    __small_sprintf (linebuf, "%W:*:%u:%u:U-%W\\%W,%s:/:/sbin/nologin",
++    __small_sprintf (linebuf, "%W:*:%u:%u:U-%W\\%W,%s:%s:/sbin/nologin",
+ 		     posix_name, uid, gid,
+ 		     dom, name,
+-		     sid.string ((char *) sidstr));
++		     sid.string ((char *) sidstr),
++		     home ? home : "/");
+   else
+     __small_sprintf (linebuf, "%W:*:%u:%u:%s%sU-%W\\%W,%s:%s%W:%s",
+ 		     posix_name, uid, gid,
+-- 
+2.9.0
+

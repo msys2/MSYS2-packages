@@ -1,0 +1,49 @@
+From 0d4abcda11f9c8719691a46d0883237b1f2364ef Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Wed, 18 Feb 2015 11:07:17 +0000
+Subject: [PATCH 38/N] Prevent scp-style arguments from being mangled
+
+An argument like me@example.com:/tmp/ is not something we should convert
+into a Windows path; Use the absence of a slash before the colon as a
+tell-tale that it is *not* a POSIX path list (exception: if the part
+left of the colon is "." or "..").
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/msys2_path_conv.cc | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
+index 7d22e11..d125bd5 100644
+--- a/winsup/cygwin/msys2_path_conv.cc
++++ b/winsup/cygwin/msys2_path_conv.cc
+@@ -454,6 +454,8 @@ skip_p2w:
+ 
+     int starts_with_minus = 0;
+     int starts_with_minus_alpha = 0;
++    int only_dots = *it == '.';
++    int has_slashes = 0;
+     if (*it == '-') {
+       starts_with_minus = 1;
+       it += 1;
+@@ -497,11 +499,17 @@ skip_p2w:
+                 if (ch == '/' && *(it2 + 1) == '/') {
+                     return URL;
+                 } else {
++                    if (!only_dots && !has_slashes)
++                        goto skip_p2w;
+                     return POSIX_PATH_LIST;
+                 }
+             } else if (memchr(it2, '=', end - it) == NULL) {
+                 return SIMPLE_WINDOWS_PATH;
+             }
++        } else if (ch != '.') {
++            only_dots = 0;
++            if (ch == '/' || ch == '\\')
++                has_slashes = 1;
+         }
+     }
+ 
+-- 
+2.9.0
+

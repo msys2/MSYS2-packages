@@ -1,7 +1,7 @@
-From d5d0db14ce7e6bf7b68c0f5ba83fe669ae750124 Mon Sep 17 00:00:00 2001
+From ec0b562338c30ef32d91562aedbb601a31882448 Mon Sep 17 00:00:00 2001
 From: Alexpux <alexey.pawlow@gmail.com>
 Date: Thu, 12 Mar 2015 13:58:27 +0300
-Subject: [PATCH 03/23] Add functionality for converting UNIX paths in
+Subject: [PATCH 03/N] Add functionality for converting UNIX paths in
  arguments and environment variables to Windows form for native Win32
  applications.
 
@@ -11,17 +11,17 @@ Subject: [PATCH 03/23] Add functionality for converting UNIX paths in
  winsup/cygwin/environ.h            |   2 +-
  winsup/cygwin/external.cc          |   2 +-
  winsup/cygwin/include/sys/cygwin.h |   6 +
- winsup/cygwin/msys2_path_conv.cc   | 619 +++++++++++++++++++++++++++++++++++++
+ winsup/cygwin/msys2_path_conv.cc   | 630 +++++++++++++++++++++++++++++++++++++
  winsup/cygwin/msys2_path_conv.h    | 146 +++++++++
  winsup/cygwin/path.cc              |  64 ++++
  winsup/cygwin/spawn.cc             |  48 ++-
  winsup/cygwin/winf.h               |   4 +
- 10 files changed, 899 insertions(+), 9 deletions(-)
+ 10 files changed, 910 insertions(+), 9 deletions(-)
  create mode 100644 winsup/cygwin/msys2_path_conv.cc
  create mode 100644 winsup/cygwin/msys2_path_conv.h
 
 diff --git a/winsup/cygwin/Makefile.in b/winsup/cygwin/Makefile.in
-index 8d7d1473e..4997058f0 100644
+index 8d7d147..4997058 100644
 --- a/winsup/cygwin/Makefile.in
 +++ b/winsup/cygwin/Makefile.in
 @@ -333,6 +333,7 @@ DLL_OFILES:= \
@@ -33,7 +33,7 @@ index 8d7d1473e..4997058f0 100644
  	net.o \
  	netdb.o \
 diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
-index 667e7c0ef..840608e34 100644
+index 667e7c0..840608e 100644
 --- a/winsup/cygwin/environ.cc
 +++ b/winsup/cygwin/environ.cc
 @@ -1013,7 +1013,7 @@ env_compare (const void *key, const void *memb)
@@ -74,7 +74,7 @@ index 667e7c0ef..840608e34 100644
  	    p = *srcp;		/* Don't worry about it */
  
 diff --git a/winsup/cygwin/environ.h b/winsup/cygwin/environ.h
-index 269591a01..71c3f2208 100644
+index 269591a..71c3f22 100644
 --- a/winsup/cygwin/environ.h
 +++ b/winsup/cygwin/environ.h
 @@ -43,7 +43,7 @@ extern "C" char **__cygwin_environ, ***main_environ;
@@ -87,7 +87,7 @@ index 269591a01..71c3f2208 100644
  char ** __reg2 win32env_to_cygenv (PWCHAR rawenv, bool posify);
  
 diff --git a/winsup/cygwin/external.cc b/winsup/cygwin/external.cc
-index c81bdc0fa..de3eaa88d 100644
+index c81bdc0..de3eaa8 100644
 --- a/winsup/cygwin/external.cc
 +++ b/winsup/cygwin/external.cc
 @@ -137,7 +137,7 @@ create_winenv (const char * const *env)
@@ -100,7 +100,7 @@ index c81bdc0fa..de3eaa88d 100644
  
    if (envp)
 diff --git a/winsup/cygwin/include/sys/cygwin.h b/winsup/cygwin/include/sys/cygwin.h
-index 5990e469a..8bc5d8f28 100644
+index 5990e46..8bc5d8f 100644
 --- a/winsup/cygwin/include/sys/cygwin.h
 +++ b/winsup/cygwin/include/sys/cygwin.h
 @@ -83,6 +83,12 @@ extern ssize_t cygwin_conv_path_list (cygwin_conv_path_t what, const void *from,
@@ -118,10 +118,10 @@ index 5990e469a..8bc5d8f28 100644
  extern void cygwin_split_path (const char *, char *, char *);
 diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
 new file mode 100644
-index 000000000..74ebd2e0b
+index 0000000..4fdcda2
 --- /dev/null
 +++ b/winsup/cygwin/msys2_path_conv.cc
-@@ -0,0 +1,619 @@
+@@ -0,0 +1,630 @@
 +/*
 +  The MSYS2 Path conversion source code is licensed under:
 +  
@@ -432,6 +432,10 @@ index 000000000..74ebd2e0b
 +    }
 +
 +    sub_convert(&srcbeg, &srcit, &dstit, dstend, &in_string);
++    if (!*srcit) {
++      *dstit = '\0';
++      return dst;
++    }
 +    srcbeg = srcit + 1;
 +    for (; *srcit != '\0'; ++srcit) {
 +      continue;
@@ -560,7 +564,7 @@ index 000000000..74ebd2e0b
 +            return find_path_start_and_type(src, true, end);
 +        }
 +
-+        if (ch == ':') {
++        if (ch == ':' && it2 + 1 != end) {
 +            it2 += 1;
 +            ch = *it2;
 +            if (ch == '/' || ch == ':' || ch == '.') {
@@ -655,7 +659,7 @@ index 000000000..74ebd2e0b
 +
 +void subp_convert(const char** from, const char* end, int is_url, char** dst, const char* dstend) {
 +    const char* begin = *from;
-+    path_type type = find_path_start_and_type(from, 0, end);
++    path_type type = is_url ? URL : find_path_start_and_type(from, 0, end);
 +    copy_to_dst(begin, *from, dst, dstend);
 +
 +    if (type == NONE) {
@@ -684,9 +688,16 @@ index 000000000..74ebd2e0b
 +            if (prev_was_simc) {
 +                continue;
 +            }
-+            if (*(it + 1) == '/' && *(it + 2) == '/') {
++            if (*(it + 1) == '/' && *(it + 2) == '/' && isalpha(*beg)) {
 +                is_url = 1;
-+                continue;
++		/* double-check: protocol must be alnum (or +) */
++		for (const char *p = beg; p != it; ++p)
++		    if (!isalnum(*p) && *p != '+') {
++			is_url = 0;
++			break;
++		    }
++		if (is_url)
++                    continue;
 +            }
 +            prev_was_simc = 1;
 +            subp_convert(&beg, it, is_url, dst, dstend);
@@ -743,7 +754,7 @@ index 000000000..74ebd2e0b
 +
 diff --git a/winsup/cygwin/msys2_path_conv.h b/winsup/cygwin/msys2_path_conv.h
 new file mode 100644
-index 000000000..e1e5e8781
+index 0000000..e1e5e87
 --- /dev/null
 +++ b/winsup/cygwin/msys2_path_conv.h
 @@ -0,0 +1,146 @@
@@ -894,7 +905,7 @@ index 000000000..e1e5e8781
 +#endif /* end of include guard: PATH_CONV_H_DB4IQBH3 */
 +
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index ee7636dbf..8ca3466c9 100644
+index ee7636d..8ca3466 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
 @@ -68,6 +68,7 @@
@@ -976,7 +987,7 @@ index ee7636dbf..8ca3466c9 100644
  
  /* Cover functions to the path conversion routines.
 diff --git a/winsup/cygwin/spawn.cc b/winsup/cygwin/spawn.cc
-index 37db52608..d94167507 100644
+index 37db526..d941675 100644
 --- a/winsup/cygwin/spawn.cc
 +++ b/winsup/cygwin/spawn.cc
 @@ -261,6 +261,27 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
@@ -1050,7 +1061,7 @@ index 37db52608..d94167507 100644
  	{
  	  set_errno (E2BIG);
 diff --git a/winsup/cygwin/winf.h b/winsup/cygwin/winf.h
-index e3a65f8cc..1aeec8d9c 100644
+index e3a65f8..1aeec8d 100644
 --- a/winsup/cygwin/winf.h
 +++ b/winsup/cygwin/winf.h
 @@ -51,6 +51,10 @@ class av
@@ -1065,5 +1076,5 @@ index e3a65f8cc..1aeec8d9c 100644
    {
      for (int i = calloced; i < argc; i++)
 -- 
-2.11.1
+2.9.0
 
