@@ -43,7 +43,6 @@ unset _warning
 # if a PS1 is already set and exported, use that;
 # otherwise set a default prompt
 # of user@host, MSYSTEM variable, and current_directory
-# Also tell mintty the current directory with \e]7; so that Alt-F2 inherits it.
 [[ -n "${MSYS2_PS1}" ]] && export PS1="${MSYS2_PS1}"
 # if we have the "High Mandatory Level" group, it means we're elevated
 if [[ -n "$(command -v getent)" ]] && id -G | grep -q "$(getent -w group 'S-1-16-12288' | cut -d: -f2)"
@@ -51,7 +50,7 @@ if [[ -n "$(command -v getent)" ]] && id -G | grep -q "$(getent -w group 'S-1-16
   else _ps1_symbol='\$'
 fi
 [[ $(declare -p PS1 2>/dev/null | cut -c 1-11) = 'declare -x ' ]] || \
-  export PS1='\[\e]0;\w\a\]\n\[\e[32m\]\u@\h \[\e[35m\]$MSYSTEM\[\e[0m\] \[\e[33m\]\w\[\e[0m\]\n\[\e]7;$PWD\a\]'"${_ps1_symbol}"' '
+  export PS1='\[\e]0;\w\a\]\n\[\e[32m\]\u@\h \[\e[35m\]$MSYSTEM\[\e[0m\] \[\e[33m\]\w\[\e[0m\]\n'"${_ps1_symbol}"' '
 unset _ps1_symbol
 
 # Uncomment to use the terminal colours set in DIR_COLORS
