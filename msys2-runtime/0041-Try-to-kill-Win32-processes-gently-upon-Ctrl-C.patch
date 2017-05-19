@@ -1,0 +1,281 @@
+From bee3f4f5bf8610fe64a66b4d99f5ba0fbc3fc30a Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Fri, 20 Mar 2015 09:56:28 +0000
+Subject: [PATCH 41/N] Try to kill Win32 processes gently upon Ctrl+C
+
+When a process is terminated via TerminateProcess(), it has no chance to
+do anything in the way of cleaning up. This is particularly noticeable
+when a lengthy Git for Windows process tries to update Git's index file
+and leaves behind an index.lock file. Git's idea is to remove the stale
+index.lock file in that case, using the signal and atexit handlers
+available in Linux. But those signal handlers never run.
+
+Note: this is not an issue for MSYS2 processes because MSYS2 emulates
+Unix' signal system accurately, both for the process sending the kill
+signal and the process receiving it.  Win32 processes do not have such a
+signal handler, though, instead MSYS2 shuts them down via
+`TerminateProcess()`.
+
+Let's use a gentler method, described in the Dr Dobb's article "A Safer
+Alternative to TerminateProcess()" by Andrew Tucker (July 1, 1999),
+http://www.drdobbs.com/a-safer-alternative-to-terminateprocess/184416547
+
+Essentially, we inject a new thread into the running process that does
+nothing else than running the ExitProcess() function.
+
+If that fails, or when the process still lives on after 10 seconds, we
+fall back to calling TerminateProcess(), but in that case we take pains
+to kill also processes directly or indirectly spawned by that process;
+TerminateProcess() does not give any process a chance to terminate its
+child processes. Originally, we wanted to call the function
+`GenerateConsoleCtrlEvent()` for SIGTERM with console processes, but 1)
+that may not work as it requires a process *group* ID (i.e. the process
+ID of the initial process group member, which we may not have), and 2)
+it does not kill the process *tree* on Windows 7 and earlier.
+
+Note: we do not use the NtQueryInformationProcess() function because 1)
+it is marked internal and subject to change at any time of Microsoft's
+choosing, and 2) it does not even officially report the child/parent
+relationship (the pid of the parent process is stored in the `Reserved3`
+slot of the `PROCESS_BASIC_INFORMATION` structure). Instead, we resort
+to the Toolhelp32 API -- which happily also works on 64-bit Windows --
+to enumerate the process tree and reconstruct the process tree rooted in
+the process we intend to kill.
+
+While at it, we also fix the exit status: the convention is to add 128
+to the signal number, to give exit code handlers a chance to detect an
+"exit by signal" condition.
+
+This fixes the MSYS2 side of the bug where interrupting `git clone
+https://...` would send the spawned-off `git remote-https` process into
+the background instead of interrupting it, i.e. the clone would continue
+and its progress would be reported mercilessly to the console window
+without the user being able to do anything about it (short of firing up
+the task manager and killing the appropriate task manually).
+
+Note that this special-handling is only necessary when *MSYS2* handles
+the Ctrl+C event, e.g. when interrupting a process started from within
+MinTTY or any other non-cmd-based terminal emulator. If the process was
+started from within `cmd.exe`'s terminal window, child processes are
+already killed appropriately upon Ctrl+C.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/exceptions.cc                 |   3 +-
+ winsup/cygwin/include/cygwin/exit_process.h | 170 ++++++++++++++++++++++++++++
+ winsup/cygwin/include/cygwin/signal.h       |   1 +
+ 3 files changed, 173 insertions(+), 1 deletion(-)
+ create mode 100644 winsup/cygwin/include/cygwin/exit_process.h
+
+diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
+index 2dd355a..73a16ac 100644
+--- a/winsup/cygwin/exceptions.cc
++++ b/winsup/cygwin/exceptions.cc
+@@ -27,6 +27,7 @@ details. */
+ #include "child_info.h"
+ #include "ntdll.h"
+ #include "exception.h"
++#include "cygwin/exit_process.h"
+ 
+ /* Definitions for code simplification */
+ #ifdef __x86_64__
+@@ -1547,7 +1548,7 @@ dosig:
+   if (have_execed)
+     {
+       sigproc_printf ("terminating captive process");
+-      TerminateProcess (ch_spawn, sigExeced = si.si_signo);
++      exit_process (ch_spawn, 128 + (sigExeced = si.si_signo));
+     }
+   /* Dispatch to the appropriate function. */
+   sigproc_printf ("signal %d, signal handler %p", si.si_signo, handler);
+diff --git a/winsup/cygwin/include/cygwin/exit_process.h b/winsup/cygwin/include/cygwin/exit_process.h
+new file mode 100644
+index 0000000..ca75535
+--- /dev/null
++++ b/winsup/cygwin/include/cygwin/exit_process.h
+@@ -0,0 +1,170 @@
++#ifndef EXIT_PROCESS_H
++#define EXIT_PROCESS_H
++
++/*
++ * This file contains functions to terminate a Win32 process, as gently as
++ * possible.
++ *
++ * At first, we will attempt to inject a thread that calls ExitProcess(). If
++ * that fails, we will fall back to terminating the entire process tree.
++ *
++ * As we do not want to export this function in the MSYS2 runtime, these
++ * functions are marked as file-local.
++ */
++
++#include <tlhelp32.h>
++
++/**
++ * Terminates the process corresponding to the process ID and all of its
++ * directly and indirectly spawned subprocesses.
++ *
++ * This way of terminating the processes is not gentle: the processes get
++ * no chance of cleaning up after themselves (closing file handles, removing
++ * .lock files, terminating spawned processes (if any), etc).
++ */
++static int
++terminate_process_tree(HANDLE main_process, int exit_code)
++{
++  HANDLE snapshot = CreateToolhelp32Snapshot (TH32CS_SNAPPROCESS, 0);
++  PROCESSENTRY32 entry;
++  DWORD pids[16384];
++  int max_len = sizeof (pids) / sizeof (*pids), i, len, ret = 0;
++  pid_t pid = GetProcessId (main_process);
++
++  pids[0] = (DWORD) pid;
++  len = 1;
++
++  /*
++   * Even if Process32First()/Process32Next() seem to traverse the
++   * processes in topological order (i.e. parent processes before
++   * child processes), there is nothing in the Win32 API documentation
++   * suggesting that this is guaranteed.
++   *
++   * Therefore, run through them at least twice and stop when no more
++   * process IDs were added to the list.
++   */
++  for (;;)
++    {
++      int orig_len = len;
++
++      memset (&entry, 0, sizeof (entry));
++      entry.dwSize = sizeof (entry);
++
++      if (!Process32First (snapshot, &entry))
++        break;
++
++      do
++        {
++          for (i = len - 1; i >= 0; i--)
++            {
++              if (pids[i] == entry.th32ProcessID)
++                break;
++              if (pids[i] == entry.th32ParentProcessID)
++                pids[len++] = entry.th32ProcessID;
++            }
++        }
++      while (len < max_len && Process32Next (snapshot, &entry));
++
++      if (orig_len == len || len >= max_len)
++        break;
++    }
++
++  for (i = len - 1; i >= 0; i--)
++    {
++      HANDLE process = i == 0 ? main_process :
++        OpenProcess (PROCESS_TERMINATE, FALSE, pids[i]);
++
++      if (process)
++        {
++          if (!TerminateProcess (process, exit_code))
++            ret = -1;
++          CloseHandle (process);
++        }
++    }
++
++  return ret;
++}
++
++/**
++ * Determine whether a process runs in the same architecture as the current
++ * one. That test is required before we assume that GetProcAddress() returns
++ * a valid address *for the target process*.
++ */
++static inline bool
++process_architecture_matches_current(HANDLE process)
++{
++  static BOOL current_is_wow = -1;
++  BOOL is_wow;
++
++  if (current_is_wow == -1 &&
++      !IsWow64Process (GetCurrentProcess (), &current_is_wow))
++        current_is_wow = -2;
++  if (current_is_wow == -2)
++    return false; /* could not determine current process' WoW-ness */
++  if (!IsWow64Process (process, &is_wow))
++    return false; /* cannot determine */
++  return is_wow == current_is_wow;
++}
++
++/**
++ * Inject a thread into the given process that runs ExitProcess().
++ *
++ * Note: as kernel32.dll is loaded before any process, the other process and
++ * this process will have ExitProcess() at the same address.
++ *
++ * This function expects the process handle to have the access rights for
++ * CreateRemoteThread(): PROCESS_CREATE_THREAD, PROCESS_QUERY_INFORMATION,
++ * PROCESS_VM_OPERATION, PROCESS_VM_WRITE, and PROCESS_VM_READ.
++ *
++ * The idea comes from the Dr Dobb's article "A Safer Alternative to
++ * TerminateProcess()" by Andrew Tucker (July 1, 1999),
++ * http://www.drdobbs.com/a-safer-alternative-to-terminateprocess/184416547
++ *
++ * If this method fails, we fall back to running terminate_process_tree().
++ */
++static int
++exit_process(HANDLE process, int exit_code)
++{
++  DWORD code;
++
++  if (GetExitCodeProcess (process, &code) && code == STILL_ACTIVE)
++    {
++      /*
++       * We cannot determine the address of ExitProcess() for a process
++       * that does not match the current architecture (e.g. for a 32-bit
++       * process when we're running in 64-bit mode).
++       */
++      if (process_architecture_matches_current (process))
++        {
++          static LPTHREAD_START_ROUTINE exit_process_address;
++          if (!exit_process_address)
++            {
++              HINSTANCE kernel32 = GetModuleHandle ("kernel32");
++              exit_process_address = (LPTHREAD_START_ROUTINE)
++                GetProcAddress (kernel32, "ExitProcess");
++            }
++          DWORD thread_id;
++          HANDLE thread = !exit_process_address ? NULL :
++            CreateRemoteThread (process, NULL, 0, exit_process_address,
++                                (PVOID)exit_code, 0, &thread_id);
++
++          if (thread)
++            {
++              CloseHandle (thread);
++              /*
++               * Wait 10 seconds (arbitrary constant) for the process to
++               * finish; After that grace period, fall back to terminating
++               * non-gently.
++               */
++              if (WaitForSingleObject (process, 10000) == WAIT_OBJECT_0)
++                return 0;
++            }
++        }
++
++      return terminate_process_tree (process, exit_code);
++    }
++
++  return -1;
++}
++
++#endif
+diff --git a/winsup/cygwin/include/cygwin/signal.h b/winsup/cygwin/include/cygwin/signal.h
+index f304995..ae86de0 100644
+--- a/winsup/cygwin/include/cygwin/signal.h
++++ b/winsup/cygwin/include/cygwin/signal.h
+@@ -414,6 +414,7 @@ extern const char *sys_siglist[];
+ extern const char __declspec(dllimport) *sys_sigabbrev[];
+ extern const char __declspec(dllimport) *sys_siglist[];
+ #endif
++void kill_process_tree(pid_t pid, int sig);
+ 
+ #ifdef __cplusplus
+ }
+-- 
+2.9.0
+
