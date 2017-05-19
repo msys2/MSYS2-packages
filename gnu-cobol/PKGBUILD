@@ -1,0 +1,69 @@
+# Maintainer: Masanori Shirayama <mashir43@gmail.com>
+
+pkgname=("gnu-cobol" "libcob" "libcob-devel")
+pkgver=1.1
+pkgrel=1
+pkgdesc="A free COBOL compiler"
+arch=('i686' 'x86_64')
+url="http://www.opencobol.org/"
+license=('GPL')
+groups=()
+makedepends=('gcc' 'gettext-devel' 'gmp-devel' 'libdb-devel' 'ncurses-devel')
+options=()
+source=("http://sourceforge.net/projects/open-cobol/files/$pkgname/$pkgver/$pkgname-$pkgver.tar.gz"
+        "fix-scriptpath.patch")
+sha1sums=('86e928c43cb3372f1f4564f3fd5e1dde668e8c1f'
+          '38c8afd8ae310eb82cf618016653448d31eb922d')
+
+prepare() {
+  cd "$srcdir/$pkgname-$pkgver"
+  patch -p1 -i "${srcdir}"/fix-scriptpath.patch
+  autoreconf -ivf
+}
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  ./configure --prefix=/usr
+  make
+  make DESTDIR="$srcdir/dest" install
+}
+
+check() {
+  cd "$srcdir/$pkgname-$pkgver"
+  make -k check
+}
+
+package_gnu-cobol() {
+  depends=("libcob-devel=${pkgver}")
+
+  mkdir -p $pkgdir/usr/bin
+  cp -f $srcdir/dest/usr/bin/cob-config $pkgdir/usr/bin/
+  cp -f $srcdir/dest/usr/bin/*.exe $pkgdir/usr/bin/
+
+  cp -rf $srcdir/dest/usr/share $pkgdir/usr/
+}
+
+package_libcob() {
+  pkgdesc="GNU Cobol runtime library (libraries)"
+  depends=('gcc-libs' 'gettext' 'gmp' 'libdb' 'ncurses')
+  license=('LGPL')
+  groups=('libraries')
+
+  mkdir -p $pkgdir/usr/bin
+  cp -f $srcdir/dest/usr/bin/*.dll $pkgdir/usr/bin/
+
+  mkdir -p $pkgdir/usr/lib
+  cp -rf $srcdir/dest/usr/lib/gnu-cobol $pkgdir/usr/lib/
+}
+
+package_libcob-devel() {
+  pkgdesc="Libcob headers and libraries (development)"
+  depends=("libcob=${pkgver}" 'gettext-devel' 'gmp-devel' 'libdb-devel' 'ncurses-devel')
+  license=('LGPL')
+  groups=('development')
+
+  mkdir -p $pkgdir/usr/lib
+  cp -f $srcdir/dest/usr/lib/*.a $pkgdir/usr/lib/
+
+  cp -rf $srcdir/dest/usr/include $pkgdir/usr/
+}
