@@ -1,7 +1,7 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=man-db
-pkgver=2.7.4
+pkgver=2.7.6
 pkgrel=1
 pkgdesc="A utility for reading man pages"
 arch=('i686' 'x86_64')
@@ -18,17 +18,30 @@ replaces=('man')
 install=${pkgname}.install
 source=(https://download-mirror.savannah.gnu.org/releases/man-db/${pkgname}-${pkgver}.tar.xz{,.sig}
         convert-mans
-        man-db-2.6.7.1-msysize.patch)
-sha256sums=('153f4d3c33f5f9b0c8484bb39d9d271f6ae4aa1b3f5d6d515879692dba944f0b'
+		man-db-2.7.6-update-gnulib.patch
+        man-db-2.7.6-msysize.patch)
+sha256sums=('c68cffa6b93f6362beb1d1259f9ad5b65af2aee9a7d9910086082ea4b75f5da2'
             'SKIP'
             '15c9452984c06335543d9692e25d7825063d39e4d7897a224a36bbbd5e0ffaa8'
-            'a34881dc86c6e60204a6cddb33a6c1e66c397ef86d31ca8155ffb6308526120c')
+			'4931ce4f6ac8e4697ff51d5d5ea5dde2dcde4f0d6e6dc6e02b0e5cedb477647c'
+            'c43501b7ddf75bceabdb7b8b20a84e52d4caed8e44c09f5b827794e562d78012')
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
-  patch -p1 -i ${srcdir}/man-db-2.6.7.1-msysize.patch
+  patch -p1 -i ${srcdir}/man-db-2.7.6-update-gnulib.patch
+  patch -p1 -i ${srcdir}/man-db-2.7.6-msysize.patch
 
   autoreconf -fi
+  
+  # fix error: 
+  #		gettext infrastructure mismatch: using a Makefile.in.in from gettext version 0.18 but the autoconf macros are from gettext version 0.19
+
+  local f
+  for f in .{,/gnulib}/po/Makefile.in{,.in}; do
+	if [ -f ${f} ]; then
+		sed -i -r "s/^(GETTEXT_MACRO_VERSION[[:space:]]*=[[:space:]]*).*/\1$(grep -Po '(?<=GETTEXT_MACRO_VERSION=)[\d.]+' ./configure)/g" ${f}
+	fi
+  done
 }
 
 build() {
