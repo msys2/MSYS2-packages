@@ -60,17 +60,13 @@ bfd/
     * cofflink.c (coff_link_add_symbols): Fill in the class and aux
     when adding a weak external over an undefined or weakly defined
     symbol
----
- bfd/ChangeLog  | 10 +++++++++
- bfd/cofflink.c | 66 ++++++++++++++++++++++++++++++++--------------------------
- 2 files changed, 46 insertions(+), 30 deletions(-)
 
-diff --git a/bfd/ChangeLog b/bfd/ChangeLog
-index 96152768ab..b5b5df1b13 100644
---- a/bfd/ChangeLog
-+++ b/bfd/ChangeLog
+diff --git binutils-2.28.orig/bfd/ChangeLog binutils-2.28/bfd/ChangeLog
+index 85c6a81..246bb64 100644
+--- binutils-2.28.orig/bfd/ChangeLog
++++ binutils-2.28/bfd/ChangeLog
 @@ -1,3 +1,13 @@
-+2015-10-26  octavian purdila  <octavian.purdila@intel.com>
++2017-04-29  octavian purdila  <octavian.purdila@intel.com>
 +
 +	* cofflink.c: Move weak external relocation code to a new function
 +	(_bfd_coff_relocate_weak_externals)
@@ -80,14 +76,14 @@ index 96152768ab..b5b5df1b13 100644
 +	when adding a weak external over an undefined or weakly defined
 +	symbol
 +
- 2015-07-21  Tristan Gingold  <gingold@adacore.com>
+ 2017-03-02  Tristan Gingold  <gingold@adacore.com>
  
- 	* version.m4: Bump version to 2.25.1
-diff --git a/bfd/cofflink.c b/bfd/cofflink.c
-index ef9e3623fe..caed7e4aa9 100644
---- a/bfd/cofflink.c
-+++ b/bfd/cofflink.c
-@@ -426,7 +426,7 @@ coff_link_add_symbols (bfd *abfd,
+ 	* version.m4: Bump version to 2.28
+diff --git binutils-2.28.orig/bfd/cofflink.c binutils-2.28/bfd/cofflink.c
+index 41cf77d..7c4637c 100644
+--- binutils-2.28.orig/bfd/cofflink.c
++++ binutils-2.28/bfd/cofflink.c
+@@ -427,7 +427,7 @@ coff_link_add_symbols (bfd *abfd,
    	      if (((*sym_hash)->symbol_class == C_NULL
    		   && (*sym_hash)->type == T_NULL)
    		  || sym.n_scnum != 0
@@ -96,7 +92,7 @@ index ef9e3623fe..caed7e4aa9 100644
    		      && (*sym_hash)->root.type != bfd_link_hash_defined
    		      && (*sym_hash)->root.type != bfd_link_hash_defweak))
    		{
-@@ -2890,6 +2890,37 @@ _bfd_coff_reloc_link_order (bfd *output_bfd,
+@@ -2920,6 +2920,37 @@ _bfd_coff_reloc_link_order (bfd *output_bfd,
    return TRUE;
  }
  
@@ -134,7 +130,7 @@ index ef9e3623fe..caed7e4aa9 100644
  /* A basic reloc handling routine which may be used by processors with
     simple relocs.  */
  
-@@ -3007,39 +3038,14 @@ _bfd_coff_generic_relocate_section (bfd *output_bfd,
+@@ -3036,38 +3067,14 @@ _bfd_coff_generic_relocate_section (bfd *output_bfd,
  	  else if (h->root.type == bfd_link_hash_undefweak)
  	    {
                if (h->symbol_class == C_NT_WEAK && h->numaux == 1)
@@ -149,7 +145,6 @@ index ef9e3623fe..caed7e4aa9 100644
 -		     will resolve a weak external only if a normal
 -		     external causes the library member to be linked.
 -		     See also linker.c: generic_link_check_archive_element. */
--		  asection *sec;
 -		  struct coff_link_hash_entry *h2 =
 -		    h->auxbfd->tdata.coff_obj_data->sym_hashes[
 -		    h->aux->x_sym.x_tagndx.l];
@@ -166,7 +161,7 @@ index ef9e3623fe..caed7e4aa9 100644
 -			+ sec->output_section->vma + sec->output_offset;
 -		    }
 -		}
-+	        _bfd_coff_relocate_weak_externals(h, &val);
++			_bfd_coff_relocate_weak_externals(h, &val);
  	      else
                  /* This is a GNU extension.  */
  		val = 0;
@@ -175,9 +170,6 @@ index ef9e3623fe..caed7e4aa9 100644
 +	  else if (h->root.type == bfd_link_hash_undefined &&
 +		   h->symbol_class == C_NT_WEAK && h->numaux == 1)
 +	    _bfd_coff_relocate_weak_externals(h, &val);
- 	  else if (! info->relocatable)
- 	    {
- 	      if (! ((*info->callbacks->undefined_symbol)
--- 
-2.11.0
-
+ 	  else if (! bfd_link_relocatable (info))
+ 	    (*info->callbacks->undefined_symbol)
+ 	      (info, h->root.root.string, input_bfd, input_section,
