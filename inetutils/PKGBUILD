@@ -1,7 +1,7 @@
 # Maintainer: Martell Malone <martellmalone@gmail.com>
 
 pkgname=inetutils
-pkgver=1.9.2
+pkgver=1.9.4
 pkgrel=1
 pkgdesc="A collection of common network programs."
 arch=('i686' 'x86_64')
@@ -23,12 +23,13 @@ source=(https://ftp.gnu.org/gnu/inetutils/${pkgname}-${pkgver}.tar.xz
         15-syslogd.patch
         16-talk.patch
         17-talkd.patch
-        inetutils-1.9.2-1.src.patch
+        inetutils-1.9.4-1.src.patch
         osockaddr.h
         talkd.h
         tftp.h
+		inetutils-1.9.4-update-gnulib.patch
         99-msysize.patch)
-sha256sums=('e3783372540772bbadd6aa2c90f8a75511db4e7d40bbfa37ffdb1bc7a9697f3e'
+sha256sums=('849d96f136effdef69548a940e3e0ec0624fc0c81265296987986a0dd36ded37'
             'e88387223e1559bc4919dc8963149ecdb6ee8d812bdd07afa0342bd35de4fd65'
             'ba3131b7825bb1b23280515a104391f69ae00f4e0caf285b2487080e008a979d'
             'bd5308733b610233b23af51760d849f53aae038253ead1430193be03b89c0e45'
@@ -36,14 +37,15 @@ sha256sums=('e3783372540772bbadd6aa2c90f8a75511db4e7d40bbfa37ffdb1bc7a9697f3e'
             '2751a47380c59d0d99a4d5c9eea0cf14ef9f40469a33fa32af1b12c3cac1d90d'
             '277491be3779b4993f3e1a200c8fa899201c4630e18e62fd268556d4c8e1a3c5'
             '90bc197ed42fe646b44b40fa68c0b76c1baf82daa047bd9e63758513f4e0e6f3'
-            '1825bf2aa561fe2ada4f90531a4509300b0b8df69191ad8baae13ce87369c45a'
+            '09f4b2375eb350613aea8c2ae6726bf3df6f7d4cc737f3ea7473e6d2e0ba0257'
             '4260c0a18a7a16e4485aeb7cd8acc998cbb8e4c29d4b8d6bcbc535d86c79452c'
             'd749005e6733f3ab7912a1c5952713499b76155386c2bfa9235a3e02dbce4fd8'
-            'be442da1850a2cde766b850eb5228363737adea14fed8a194e87889891041aa6'
+            '66fa288a99beed6d7b885b980d06c8b13ce43f5c34461e515875f8705fbb84c1'
             'e19596afff3b2ed163cf1a5c8a8d034208f9f996ace1ac76fd877a2d16aa448d'
             '5ad3115e95be02f1d0467ec13750f2d9096c7dfd6cf723a775e8718954e58018'
             'f486d5235c54c03af270c85a9c519e21315534412d0787e159116e132f1b47da'
-            'a93c25cb9d5d27e864babb5efd2420cfe10ec01715fcd4a30fd84b8a89bf8a4c')
+			'22d6de583f4313a37eec070fb2a15bac576b95d62acc4ad759ec25cb2133dc6c'
+            'a59a4e285ad7b93aff30fca42d29d8d68ebdfad55066cb74e5c49959a16104f6')
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
@@ -63,7 +65,8 @@ prepare() {
   patch -p1 -i ${srcdir}/15-syslogd.patch
   patch -p1 -i ${srcdir}/16-talk.patch
   patch -p1 -i ${srcdir}/17-talkd.patch
-  patch -p1 -i ${srcdir}/inetutils-1.9.2-1.src.patch
+  patch -p1 -i ${srcdir}/inetutils-1.9.4-1.src.patch
+  patch -p1 -i ${srcdir}/inetutils-1.9.4-update-gnulib.patch
   patch -p1 -i ${srcdir}/99-msysize.patch
 
   autoreconf -fiv
@@ -72,6 +75,12 @@ prepare() {
 build() {
   CPPFLAGS+=" -I${srcdir}/${pkgname}-${pkgver}/headers"
   cd ${srcdir}/${pkgname}-${pkgver}
+  
+  cat > config.cache << EOF
+gl_cv_func_getcwd_path_max=yes
+ac_cv_func_mmap_fixed_mapped=no
+EOF
+
   ./configure --prefix=/usr \
     --libexec=/usr/bin \
     --localstatedir=/var \
@@ -96,7 +105,7 @@ build() {
     --disable-uucpd --disable-ifconfig \
     --enable-dnsdomainname \
     --disable-traceroute \
-    ac_cv_func_mmap_fixed_mapped=no
+    --cache-file=config.cache
 
   make
 }

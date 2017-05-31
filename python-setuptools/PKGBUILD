@@ -1,69 +1,82 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
-pkgbase=python-setuptools
-pkgname=('python3-setuptools' 'python2-setuptools')
-pkgver=20.2.2
+pkgbase=setuptools
+pkgname=("python3-${pkgbase}" "python2-${pkgbase}")
+pkgver=35.0.2
 pkgrel=1
 pkgdesc="Easily download, build, install, upgrade, and uninstall Python packages"
 arch=('any')
 license=('PSF')
-url="https://pypi.python.org/pypi/setuptools"
-makedepends=('python' 'python2')
-source=("https://pypi.python.org/packages/source/s/setuptools/setuptools-${pkgver}.tar.gz")
-sha256sums=('24fcfc15364a9fe09a220f37d2dcedc849795e3de3e4b393ee988e66a9cbd85a')
+url="http://pypi.python.org/pypi/setuptools"
+makedepends=('python3-packaging' 'python2-packaging' 'python3-appdirs' 'python2-appdirs' 'python3-pip'
+             'python2-pip')
+source=("$pkgbase-$pkgver.tar.gz::https://github.com/pypa/setuptools/archive/v$pkgver.tar.gz")
+sha512sums=('1682eb8288d3c06bf4d44e175e40a13ccf64157e3505da622df40a6d30586bb7952d058848ef4c62b0f76c6dcba5fc95096dd15abd936bfc4a2118ffe31de4b4')
 
 prepare() {
-   cd "${srcdir}"
+  # Don't download and install deps
+  sed -i '/pip.main(args)/d' setuptools-$pkgver/bootstrap.py
 
-   pushd setuptools-${pkgver}
-   popd
+  # Remove post-release tag since we are using stable tags
+  sed -e '/tag_build = .post/d' \
+      -e '/tag_date = 1/d' \
+      -i setuptools-$pkgver/setup.cfg
 
-   cp -a setuptools-${pkgver}{,-python2}
+  cp -a setuptools-$pkgver{,-py2}
 
-   cd "${srcdir}"/setuptools-${pkgver}
-   sed -i -e "s|^#\!.*/usr/bin/python|#!/usr/bin/python3|" tests/manual_test.py
-   sed -i -e "s|^#\!.*/usr/bin/env python|#!/usr/bin/env python3|" setuptools/command/easy_install.py
+  cd "$srcdir"/setuptools-$pkgver
+  sed -i -e "s|^#\!.*/usr/bin/env python|#!/usr/bin/env python3|" setuptools/command/easy_install.py
 
-   cd ../setuptools-${pkgver}-python2
-   sed -i -e "s|^#\!.*/usr/bin/python|#!/usr/bin/python2|" tests/manual_test.py
-   sed -i -e "s|^#\!.*/usr/bin/env python|#!/usr/bin/env python2|" setuptools/command/easy_install.py
+  cd "$srcdir"/setuptools-$pkgver-py2
+  sed -i -e "s|^#\!.*/usr/bin/env python|#!/usr/bin/env python2|" setuptools/command/easy_install.py
+  sed -i -e "s|'pip'|'pip2'|" setuptools/tests/{test_develop.py,test_namespaces.py}
+
+  export SETUPTOOLS_INSTALL_WINDOWS_SPECIFIC_FILES=0
 }
 
 build() {
-   # Build python 3 module
-   cd "${srcdir}"/setuptools-${pkgver}
-   python3 setup.py build
+  # Build python 3 module
+  cd "$srcdir"/setuptools-$pkgver
+  python3 bootstrap.py
+  python3 setup.py build
 
-   # Build python 2 module
-   cd ../setuptools-${pkgver}-python2
-   python2 setup.py build
+  # Build python 2 module
+  cd "$srcdir"/setuptools-$pkgver-py2
+  python2 bootstrap.py
+  python2 setup.py build
 }
 
-check() {
-   # Check python3 module
-   cd "${srcdir}"/setuptools-${pkgver}
-   python3 setup.py test
+check() { (
+  # Workaround UTF-8 tests by setting LC_CTYPE
+  export LC_CTYPE=en_US.UTF-8
 
-   # Check python2 module
-   cd "${srcdir}"/setuptools-${pkgver}-python2
-   python2 setup.py test
-}
+  # https://github.com/pypa/setuptools/pull/810
+  export PYTHONDONTWRITEBYTECODE=1
+
+  # Check python3 module
+  cd "$srcdir"/setuptools-$pkgver
+  python3 setup.py pytest
+
+  # Check python2 module
+  cd "$srcdir"/setuptools-$pkgver-py2
+  python2 setup.py pytest
+)}
 
 package_python3-setuptools() {
-   depends=('python>=3.3')
-   provides=('python3-distribute')
-   replaces=('python3-distribute')
+  depends=('python3-packaging' 'python3-appdirs')
+  provides=('python3-distribute')
+  replaces=('python3-distribute')
 
-   cd "${srcdir}/setuptools-${pkgver}"
-   python3 setup.py install --prefix=/usr --root="${pkgdir}" --optimize=1 --skip-build
+  cd "$srcdir"/setuptools-$pkgver
+  python3 setup.py install --prefix=/usr --root="$pkgdir" --optimize=1 --skip-build
 }
 
 package_python2-setuptools() {
-   depends=('python2>=2.7')
-   provides=('python2-distribute' 'setuptools')
-   replaces=('python2-distribute' 'setuptools')
+  depends=('python2-packaging' 'python2-appdirs')
+  provides=('python2-distribute')
+  replaces=('python2-distribute')
 
-   cd "${srcdir}/setuptools-${pkgver}-python2"
-   python2 setup.py install --prefix=/usr --root="${pkgdir}" --optimize=1 --skip-build
-   rm "${pkgdir}/usr/bin/easy_install"
+  cd "$srcdir"/setuptools-$pkgver-py2
+  python2 setup.py install --prefix=/usr --root="$pkgdir" --optimize=1 --skip-build
+  rm "$pkgdir"/usr/bin/easy_install
 }
