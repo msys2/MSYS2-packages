@@ -1,0 +1,83 @@
+diff -Naur bobcat.org/bobcat/exception/data.cc bobcat/bobcat/exception/data.cc
+--- bobcat.org/bobcat/exception/data.cc	2017-05-20 12:01:57.000000000 +0800
++++ bobcat/bobcat/exception/data.cc	2017-05-31 19:08:12.969114500 +0800
+@@ -1,4 +1,8 @@
+ namespace FBB
+ {
+     thread_local int g_errno;
++    int &getErrno()
++    {
++        return g_errno;
++    }
+ }
+diff -Naur bobcat.org/bobcat/exception/exception bobcat/bobcat/exception/exception
+--- bobcat.org/bobcat/exception/exception	2017-05-20 12:01:57.000000000 +0800
++++ bobcat/bobcat/exception/exception	2017-05-31 19:08:29.455183100 +0800
+@@ -10,7 +10,7 @@
+ namespace FBB
+ {
+ 
+-extern thread_local int g_errno;
++extern int &getErrno();
+ 
+ class Exception: public std::exception
+ {
+diff -Naur bobcat.org/bobcat/exception/exception.f bobcat/bobcat/exception/exception.f
+--- bobcat.org/bobcat/exception/exception.f	2017-05-20 12:01:57.000000000 +0800
++++ bobcat/bobcat/exception/exception.f	2017-05-31 19:22:28.281985400 +0800
+@@ -1,4 +1,4 @@
+ inline Exception::Exception()
+ {
+-    g_errno = 0;
++    getErrno() = 0;
+ }
+diff -Naur bobcat.org/bobcat/exception/exception1.cc bobcat/bobcat/exception/exception1.cc
+--- bobcat.org/bobcat/exception/exception1.cc	2017-05-20 12:01:57.000000000 +0800
++++ bobcat/bobcat/exception/exception1.cc	2017-05-31 19:08:53.689634500 +0800
+@@ -2,5 +2,5 @@
+ 
+ Exception::Exception(int errnoValue)
+ {
+-    g_errno = errno = errnoValue;
++    getErrno() = errno = errnoValue;
+ }
+diff -Naur bobcat.org/bobcat/icmake/install bobcat/bobcat/icmake/install
+--- bobcat.org/bobcat/icmake/install	2017-05-20 12:01:57.000000000 +0800
++++ bobcat/bobcat/icmake/install	2017-05-31 20:03:37.566949300 +0800
+@@ -85,7 +85,9 @@
+         printf("\n  installing the manual pages\n");
+     
+         logZip("tmp/man/man3",  "", base + MAN "/man3");
+-    
++        
++        chdir(g_cwd + base + MAN "/man3");
++        
+         run("ln -sf iterator.3bobcat.gz reverseiterator.3bobcat.gz");
+     
+         logZip("tmp/man/man7",  "", base + MAN "/man7");
+diff -Naur bobcat.org/bobcat/icmake/libraries bobcat/bobcat/icmake/libraries
+--- bobcat.org/bobcat/icmake/libraries	2017-05-20 12:01:57.000000000 +0800
++++ bobcat/bobcat/icmake/libraries	2017-05-31 19:37:05.374003800 +0800
+@@ -131,7 +131,7 @@
+         run(gxx +  
+                     " " + setOpt(LDFLAGS, "LDFLAGS") +
+                     " -shared -Wl,--as-needed,"
+-                    "-z,defs,-soname," + 
++                    "-soname," + 
+                     libsomajor +
+                     " -o " + g_tmplibso + "/" + libsoshared +
+                     " */os/*.o " +
+@@ -145,10 +145,10 @@
+         run("chmod -x " + libsoshared);
+         
+         run("ln -sf " + libsoshared + " " + libsomajor);
+-
++        
+         chdir(g_cwd + g_tmpliba);
+-
+-        run("ln -sf " + libsomajor  + " " + libso);
++        
++        run("ln -sf "+ g_cwd + g_tmplibso + "/" + libsomajor  + " " + libso);
+     
+         chdir(g_cwd);
+         run("rm -f */os/*");
