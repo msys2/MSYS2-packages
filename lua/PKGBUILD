@@ -1,0 +1,57 @@
+# $Id$
+# Maintainer: Sébastien Luttringer <seblu@archlinux.org>
+# Contributor: Juergen Hoetzel <juergen@archlinux.org>
+# Contributor: Damir Perisa <damir.perisa@bluewin.ch>
+
+pkgname=lua
+pkgver=5.3.3
+_majorver=${pkgver%.*}
+pkgrel=1
+pkgdesc='Powerful lightweight programming language designed for extending applications'
+arch=('i686' 'x86_64')
+url='http://www.lua.org/'
+depends=('libreadline-devel')
+license=('MIT')
+options=('!emptydirs')
+source=(http://www.lua.org/ftp/lua-$pkgver.tar.gz
+        liblua.so.patch
+        lua.pc
+        LICENSE)
+md5sums=('703f75caa4fdf4a911c1a72e67a27498'
+         '85fe4e5f780376457eba3bc23d2cb2d3'
+         'e7ba6c2b695b0b84a5ea0cbff5fc9067'
+         '83d9af31a1a29fec409a4e204271f5e3')
+
+prepare() {
+  cd lua-$pkgver
+  patch -p1 -i ../liblua.so.patch
+
+  sed "s/%VER%/$_majorver/g;s/%REL%/$pkgver/g" ../lua.pc > lua.pc
+}
+
+build() {
+  cd lua-$pkgver
+
+  # quite a lot of packages still use lua 5.1 API, enable 5.1 compat mode
+  make MYCFLAGS="$CFLAGS -fPIC -DLUA_COMPAT_5_2 -DLUA_COMPAT_5_1" MYLDFLAGS="$LDFLAGS" linux
+}
+
+package() {
+  cd lua-$pkgver
+
+  make \
+    TO_LIB="liblua.a liblua.so liblua.so.$_majorver liblua.so.$pkgver" \
+    INSTALL_DATA='cp -d' \
+    INSTALL_TOP="$pkgdir"/usr \
+    INSTALL_MAN="$pkgdir"/usr/share/man/man1 \
+    install
+  ln -sf "$pkgdir"/usr/bin/lua "$pkgdir"/usr/bin/lua$_majorver
+  ln -sf "$pkgdir"/usr/bin/luac "$pkgdir"/usr/bin/luac$_majorver
+
+  install -Dm644 lua.pc "$pkgdir"/usr/lib/pkgconfig/${pkgname}53.pc
+  ln -sf "$pkgdir"/usr/lib/pkgconfig/${pkgname}53.pc "$pkgdir"/usr/lib/pkgconfig/$pkgname.pc
+
+  install -d "$pkgdir"/usr/share/doc/$pkgname
+  install -m644 doc/*.{gif,png,css,html} "$pkgdir"/usr/share/doc/$pkgname
+  install -Dm644 ../LICENSE "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
+}

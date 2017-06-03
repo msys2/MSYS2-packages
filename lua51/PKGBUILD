@@ -1,0 +1,61 @@
+# $Id$
+# Maintainer: Sébastien Luttringer <seblu@aur.archlinux.org>
+# Contributor: Juergen Hoetzel <juergen@archlinux.org>
+# Contributor: Damir Perisa <damir.perisa@bluewin.ch>
+
+pkgname=lua51
+pkgver=5.1.5
+pkgrel=5
+pkgdesc='Powerful lightweight programming language designed for extending applications'
+arch=('i686' 'x86_64')
+url='http://www.lua.org/'
+depends=('libreadline-devel')
+license=('MIT')
+options=('!makeflags' '!emptydirs')
+source=(http://www.lua.org/ftp/lua-$pkgver.tar.gz
+        lua-arch.patch
+        lua-5.1-cflags.diff)
+md5sums=('2e115fe26e435e33b0d5c022e4490567'
+         'fa25feb70ef9fec975b1c20da5098b3c'
+         '249582bf1fd861ccf492d2c35a9fe732')
+
+prepare() {
+  cd lua-$pkgver
+  patch -p1 -i ../lua-arch.patch
+  patch -p1 -i ../lua-5.1-cflags.diff
+
+  sed -e 's:llua:llua5.1:' -e 's:/include:/include/lua5.1:' -i etc/lua.pc
+  sed -r -e '/^LUA_(SO|A|T)=/ s/lua/lua5.1/' -e '/^LUAC_T=/ s/luac/luac5.1/' -i src/Makefile
+}
+
+build() {
+  cd lua-$pkgver
+
+  [[ $CARCH == x86_64 ]] && export CFLAGS="$CFLAGS -fPIC"
+  make MYCFLAGS="$CFLAGS" MYLDFLAGS="$LDFLAGS" linux
+}
+
+package() {
+  cd lua-$pkgver
+
+  make \
+    TO_BIN='lua5.1 luac5.1' \
+    TO_LIB="liblua5.1.a liblua5.1.so liblua5.1.so.5.1 liblua5.1.so.$pkgver" \
+    INSTALL_DATA='cp -d' \
+    INSTALL_TOP="$pkgdir"/usr \
+    INSTALL_INC="$pkgdir"/usr/include/lua5.1 \
+    INSTALL_MAN="$pkgdir"/usr/share/man/man1 \
+    install
+
+  install -Dm644 etc/lua.pc "$pkgdir"/usr/lib/pkgconfig/$pkgname.pc
+  install -d "$pkgdir"/usr/share/doc/$pkgname
+  install -m644 doc/*.{gif,png,css,html} "$pkgdir"/usr/share/doc/$pkgname
+  install -Dm644 COPYRIGHT "$pkgdir"/usr/share/licenses/$pkgname/COPYRIGHT
+
+  ln -s liblua5.1.so "$pkgdir"/usr/lib/liblua.so.5.1
+  ln -s liblua5.1.so "$pkgdir"/usr/lib/liblua.so.$pkgver
+
+  cd "$pkgdir"/usr/share/man/man1
+  mv lua.1 lua5.1.1
+  mv luac.1 luac5.1.1
+}
