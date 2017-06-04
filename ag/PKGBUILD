@@ -1,0 +1,52 @@
+# Maintainer: Yasuhiro Matsumoto <mattn.jp@gmail.com>
+
+pkgname=ag
+pkgver=0.31.0.r1696.edae22e
+pkgrel=1
+pkgdesc="The Silver Searcher: An attempt to make something better than ack, which itself is better than grep (mingw-w64)"
+arch=('any')
+url="http://geoff.greer.fm/ag"
+license=("Apache")
+makedepends=("pcre-devel"
+             "liblzma-devel"
+             "zlib-devel")
+depends=("pcre"
+         "xz"
+         "zlib")
+options=('staticlibs') # '!strip' 'debug')
+source=("${pkgname}"::"git+https://github.com/ggreer/the_silver_searcher.git")
+
+pkgver() {
+  cd ${srcdir}/${pkgname}
+  local AC_INIT_VER=$(grep AC_INIT configure.ac -A5 | tr '\n' ' ' | sed -e 's/AC_INIT([^,]\+,\s*\[\?\([0-9.a-z]\+\).*/\1/')
+  printf "%s.r%s.%s" "${AC_INIT_VER}" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd "${srcdir}"/${pkgname}
+
+  # configure.ac forces -O2, so force it to -O0 if debugging.
+  if check_option "debug" "y"; then
+    sed -i "s#-O2#-O0#g" configure.ac
+  fi
+
+  autoreconf -fi
+}
+
+build() {
+
+  mkdir -p "${srcdir}/build-${CARCH}"
+  cd "${srcdir}/build-${CARCH}"
+
+  "${srcdir}"/${pkgname}/configure \
+    --prefix=/usr \
+    --{build,host}=${CHOST}
+
+  make
+}
+
+package() {
+  cd "${srcdir}/build-${CARCH}"
+  make DESTDIR="${pkgdir}" install
+}
+md5sums=('SKIP')
