@@ -1,0 +1,683 @@
+diff --git a/Doc/using/cmdline.rst b/Doc/using/cmdline.rst
+index 195f63f..0d0a127 100644
+--- a/Doc/using/cmdline.rst
++++ b/Doc/using/cmdline.rst
+@@ -713,6 +713,40 @@ conflict.
+ 
+    .. versionadded:: 3.6
+ 
++
++.. envvar:: PYTHONCOERCECLOCALE
++
++   If set to the value ``0``, causes the main Python command line application
++   to skip coercing the legacy ASCII-based C locale to a more capable UTF-8
++   based alternative. Note that this setting is checked even when the
++   :option:`-E` or :option:`-I` options are used, as it is handled prior to
++   the processing of command line options.
++
++   If this variable is *not* set, or is set to a value other than ``0``, and
++   the current locale reported for the ``LC_CTYPE`` category is the default
++   ``C`` locale, then the Python CLI will attempt to configure one of the
++   following locales for the given locale categories before loading the
++   interpreter runtime:
++
++   * ``C.UTF-8`` (``LC_ALL``)
++   * ``C.utf8`` (``LC_ALL``)
++   * ``UTF-8`` (``LC_CTYPE``)
++
++   If setting one of these locale categories succeeds, then the matching
++   environment variables will be set (both ``LC_ALL`` and ``LANG`` for the
++   ``LC_ALL`` category, and ``LC_CTYPE`` for the ``LC_CTYPE`` category) in
++   the current process environment before the Python runtime is initialized.
++
++   Configuring one of these locales (either explicitly or via the above
++   implicit locale coercion) will automatically set the error handler for
++   :data:`sys.stdin` and :data:`sys.stdout` to ``surrogateescape``. This
++   behavior can be overridden using :envvar:`PYTHONIOENCODING` as usual.
++
++   Availability: \*nix
++
++   .. versionadded:: 3.7
++      See :pep:`538` for more details.
++
+ Debug-mode variables
+ ~~~~~~~~~~~~~~~~~~~~
+ 
+diff --git a/Lib/test/support/script_helper.py b/Lib/test/support/script_helper.py
+index ca5f9c2..7aa460b 100644
+--- a/Lib/test/support/script_helper.py
++++ b/Lib/test/support/script_helper.py
+@@ -51,8 +51,35 @@ def interpreter_requires_environment():
+     return __cached_interp_requires_environment
+ 
+ 
+-_PythonRunResult = collections.namedtuple("_PythonRunResult",
+-                                          ("rc", "out", "err"))
++class _PythonRunResult(collections.namedtuple("_PythonRunResult",
++                                          ("rc", "out", "err"))):
++    """Helper for reporting Python subprocess run results"""
++    def fail(self, cmd_line):
++        """Provide helpful details about failed subcommand runs"""
++        # Limit to 80 lines to ASCII characters
++        maxlen = 80 * 100
++        out, err = self.out, self.err
++        if len(out) > maxlen:
++            out = b'(... truncated stdout ...)' + out[-maxlen:]
++        if len(err) > maxlen:
++            err = b'(... truncated stderr ...)' + err[-maxlen:]
++        out = out.decode('ascii', 'replace').rstrip()
++        err = err.decode('ascii', 'replace').rstrip()
++        raise AssertionError("Process return code is %d\n"
++                             "command line: %r\n"
++                             "\n"
++                             "stdout:\n"
++                             "---\n"
++                             "%s\n"
++                             "---\n"
++                             "\n"
++                             "stderr:\n"
++                             "---\n"
++                             "%s\n"
++                             "---"
++                             % (self.rc, cmd_line,
++                                out,
++                                err))
+ 
+ 
+ # Executing the interpreter in a subprocess
+@@ -110,30 +137,7 @@ def run_python_until_end(*args, **env_vars):
+ def _assert_python(expected_success, *args, **env_vars):
+     res, cmd_line = run_python_until_end(*args, **env_vars)
+     if (res.rc and expected_success) or (not res.rc and not expected_success):
+-        # Limit to 80 lines to ASCII characters
+-        maxlen = 80 * 100
+-        out, err = res.out, res.err
+-        if len(out) > maxlen:
+-            out = b'(... truncated stdout ...)' + out[-maxlen:]
+-        if len(err) > maxlen:
+-            err = b'(... truncated stderr ...)' + err[-maxlen:]
+-        out = out.decode('ascii', 'replace').rstrip()
+-        err = err.decode('ascii', 'replace').rstrip()
+-        raise AssertionError("Process return code is %d\n"
+-                             "command line: %r\n"
+-                             "\n"
+-                             "stdout:\n"
+-                             "---\n"
+-                             "%s\n"
+-                             "---\n"
+-                             "\n"
+-                             "stderr:\n"
+-                             "---\n"
+-                             "%s\n"
+-                             "---"
+-                             % (res.rc, cmd_line,
+-                                out,
+-                                err))
++        res.fail(cmd_line)
+     return res
+ 
+ def assert_python_ok(*args, **env_vars):
+diff --git a/Lib/test/test_capi.py b/Lib/test/test_capi.py
+index 2a53f3d..391ca15 100644
+--- a/Lib/test/test_capi.py
++++ b/Lib/test/test_capi.py
+@@ -369,14 +369,15 @@ class EmbeddingTests(unittest.TestCase):
+     def tearDown(self):
+         os.chdir(self.oldcwd)
+ 
+-    def run_embedded_interpreter(self, *args):
++    def run_embedded_interpreter(self, *args, env=None):
+         """Runs a test in the embedded interpreter"""
+         cmd = [self.test_exe]
+         cmd.extend(args)
+         p = subprocess.Popen(cmd,
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE,
+-                             universal_newlines=True)
++                             universal_newlines=True,
++                             env=env)
+         (out, err) = p.communicate()
+         self.assertEqual(p.returncode, 0,
+                          "bad returncode %d, stderr is %r" %
+@@ -386,7 +387,7 @@ class EmbeddingTests(unittest.TestCase):
+     def test_subinterps(self):
+         # This is just a "don't crash" test
+         out, err = self.run_embedded_interpreter("repeated_init_and_subinterpreters")
+-        if support.verbose:
++        if support.verbose > 1:
+             print()
+             print(out)
+             print(err)
+@@ -403,13 +404,14 @@ class EmbeddingTests(unittest.TestCase):
+ 
+     def test_forced_io_encoding(self):
+         # Checks forced configuration of embedded interpreter IO streams
+-        out, err = self.run_embedded_interpreter("forced_io_encoding")
+-        if support.verbose:
++        env = {"PYTHONIOENCODING": "UTF-8:surrogateescape"}
++        out, err = self.run_embedded_interpreter("forced_io_encoding", env=env)
++        if support.verbose > 1:
+             print()
+             print(out)
+             print(err)
+-        expected_errors = sys.__stdout__.errors
+-        expected_stdin_encoding = sys.__stdin__.encoding
++        expected_errors = "surrogateescape"
++        expected_stdin_encoding = "UTF-8"
+         expected_pipe_encoding = self._get_default_pipe_encoding()
+         expected_output = '\n'.join([
+         "--- Use defaults ---",
+diff --git a/Lib/test/test_cmd_line.py b/Lib/test/test_cmd_line.py
+index ae2bcd4..0a302ff 100644
+--- a/Lib/test/test_cmd_line.py
++++ b/Lib/test/test_cmd_line.py
+@@ -9,8 +9,9 @@ import sys
+ import subprocess
+ import tempfile
+ from test.support import script_helper, is_android
+-from test.support.script_helper import (spawn_python, kill_python, assert_python_ok,
+-    assert_python_failure)
++from test.support.script_helper import (
++    spawn_python, kill_python, assert_python_ok, assert_python_failure
++)
+ 
+ 
+ # XXX (ncoghlan): Move to script_helper and make consistent with run_python
+@@ -151,6 +152,7 @@ class CmdLineTest(unittest.TestCase):
+         env = os.environ.copy()
+         # Use C locale to get ascii for the locale encoding
+         env['LC_ALL'] = 'C'
++        env['PYTHONCOERCECLOCALE'] = '0'
+         code = (
+             b'import locale; '
+             b'print(ascii("' + undecodable + b'"), '
+diff --git a/Lib/test/test_sys.py b/Lib/test/test_sys.py
+index df9ebd4..63145e4 100644
+--- a/Lib/test/test_sys.py
++++ b/Lib/test/test_sys.py
+@@ -680,6 +680,7 @@ class SysModuleTest(unittest.TestCase):
+         # Force the POSIX locale
+         env = os.environ.copy()
+         env["LC_ALL"] = "C"
++        env["PYTHONCOERCECLOCALE"] = "0"
+         code = '\n'.join((
+             'import sys',
+             'def dump(name):',
+diff --git a/Programs/_testembed.c b/Programs/_testembed.c
+index a68d4fa..e28de1c 100644
+--- a/Programs/_testembed.c
++++ b/Programs/_testembed.c
+@@ -1,4 +1,5 @@
+-#include <Python.h>
++#include "Python.h"
++#include "pyconfig.h"
+ #include <stdio.h>
+ 
+ /*********************************************************
+@@ -126,6 +127,20 @@ static int test_forced_io_encoding(void)
+     return 0;
+ }
+ 
++static int test_c_locale_warning(void)
++{
++#ifdef PY_WARN_ON_C_LOCALE
++    /* Force use of the C locale */
++    setenv("LC_ALL", "C", 1);
++
++    _testembed_Py_Initialize();
++    Py_Finalize();
++#else
++    printf("C locale compatibility warning disabled at compile time\n");
++#endif
++    return 0;
++}
++
+ /* *********************************************************
+  * List of test cases and the function that implements it.
+  * 
+@@ -147,6 +162,7 @@ struct TestCase
+ static struct TestCase TestCases[] = {
+     { "forced_io_encoding", test_forced_io_encoding },
+     { "repeated_init_and_subinterpreters", test_repeated_init_and_subinterpreters },
++    { "c_locale_warning", test_c_locale_warning },
+     { NULL, NULL }
+ };
+ 
+diff --git a/Programs/python.c b/Programs/python.c
+index a7afbc7..03f8295 100644
+--- a/Programs/python.c
++++ b/Programs/python.c
+@@ -15,6 +15,21 @@ wmain(int argc, wchar_t **argv)
+ }
+ #else
+ 
++/* Access private pylifecycle helper API to better handle the legacy C locale
++ *
++ * The legacy C locale assumes ASCII as the default text encoding, which
++ * causes problems not only for the CPython runtime, but also other
++ * components like GNU readline.
++ *
++ * Accordingly, when the CLI detects it, it attempts to coerce it to a
++ * more capable UTF-8 based alternative.
++ *
++ * See the documentation of the PYTHONCOERCECLOCALE setting for more details.
++ *
++ */
++extern int _Py_LegacyLocaleDetected(void);
++extern void _Py_CoerceLegacyLocale(void);
++
+ int
+ main(int argc, char **argv)
+ {
+@@ -25,7 +40,11 @@ main(int argc, char **argv)
+     char *oldloc;
+ 
+     /* Force malloc() allocator to bootstrap Python */
++#ifdef Py_DEBUG
++    (void)_PyMem_SetupAllocators("malloc_debug");
++#  else
+     (void)_PyMem_SetupAllocators("malloc");
++#  endif
+ 
+     argv_copy = (wchar_t **)PyMem_RawMalloc(sizeof(wchar_t*) * (argc+1));
+     argv_copy2 = (wchar_t **)PyMem_RawMalloc(sizeof(wchar_t*) * (argc+1));
+@@ -49,7 +68,21 @@ main(int argc, char **argv)
+         return 1;
+     }
+ 
++#ifdef __ANDROID__
++    /* Passing "" to setlocale() on Android requests the C locale rather
++     * than checking environment variables, so request C.UTF-8 explicitly
++     */
++    setlocale(LC_ALL, "C.UTF-8");
++#else
++    /* Reconfigure the locale to the default for this process */
+     setlocale(LC_ALL, "");
++#endif
++
++    if (_Py_LegacyLocaleDetected()) {
++        _Py_CoerceLegacyLocale();
++    }
++
++    /* Convert from char to wchar_t based on the locale settings */
+     for (i = 0; i < argc; i++) {
+         argv_copy[i] = Py_DecodeLocale(argv[i], NULL);
+         if (!argv_copy[i]) {
+@@ -70,7 +103,11 @@ main(int argc, char **argv)
+ 
+     /* Force again malloc() allocator to release memory blocks allocated
+        before Py_Main() */
++#ifdef Py_DEBUG
++    (void)_PyMem_SetupAllocators("malloc_debug");
++#  else
+     (void)_PyMem_SetupAllocators("malloc");
++#  endif
+ 
+     for (i = 0; i < argc; i++) {
+         PyMem_RawFree(argv_copy2[i]);
+diff --git a/Python/pylifecycle.c b/Python/pylifecycle.c
+index a4f7f82..261ed34 100644
+--- a/Python/pylifecycle.c
++++ b/Python/pylifecycle.c
+@@ -167,6 +167,7 @@ Py_SetStandardStreamEncoding(const char *encoding, const char *errors)
+     return 0;
+ }
+ 
++
+ /* Global initializations.  Can be undone by Py_FinalizeEx().  Don't
+    call this twice without an intervening Py_FinalizeEx() call.  When
+    initializations fail, a fatal error is issued and the function does
+@@ -301,6 +302,173 @@ import_init(PyInterpreterState *interp, PyObject *sysmod)
+ }
+ 
+ 
++/* Helper functions to better handle the legacy C locale
++ *
++ * The legacy C locale assumes ASCII as the default text encoding, which
++ * causes problems not only for the CPython runtime, but also other
++ * components like GNU readline.
++ *
++ * Accordingly, when the CLI detects it, it attempts to coerce it to a
++ * more capable UTF-8 based alternative as follows:
++ *
++ *     if (_Py_LegacyLocaleDetected()) {
++ *         _Py_CoerceLegacyLocale();
++ *     }
++ *
++ * See the documentation of the PYTHONCOERCECLOCALE setting for more details.
++ *
++ * Locale coercion also impacts the default error handler for the standard
++ * streams: while the usual default is "strict", the default for the legacy
++ * C locale and for any of the coercion target locales is "surrogateescape".
++ */
++
++int
++_Py_LegacyLocaleDetected(void)
++{
++    const char *ctype_loc = setlocale(LC_CTYPE, NULL);
++    return ctype_loc != NULL && strcmp(ctype_loc, "C") == 0;
++}
++
++typedef struct _CandidateLocale {
++    const char *locale_name;
++    int category;
++} _LocaleCoercionTarget;
++
++static _LocaleCoercionTarget _TARGET_LOCALES[] = {
++    { "C.UTF-8", LC_ALL },
++    { "C.utf8", LC_ALL },
++    { "UTF-8", LC_CTYPE },
++    { NULL, 0 }
++};
++
++static char *
++get_default_standard_stream_error_handler(void)
++{
++    const char *ctype_loc = setlocale(LC_CTYPE, NULL);
++    if (ctype_loc != NULL) {
++        /* "surrogateescape" is the default in the legacy C locale */
++        if (strcmp(ctype_loc, "C") == 0) {
++            return "surrogateescape";
++        }
++
++        /* "surrogateescape" is the default in locale coercion target locales */
++        const _LocaleCoercionTarget *target = NULL;
++        for (target = _TARGET_LOCALES; target->locale_name; target++) {
++            if (strcmp(ctype_loc, target->locale_name) == 0) {
++                return "surrogateescape";
++            }
++        }
++   }
++
++   /* Otherwise return NULL to request the typical default error handler */
++   return NULL;
++}
++
++#ifdef PY_COERCE_C_LOCALE
++static const char *_C_LOCALE_COERCION_WARNING =
++    "Python detected LC_CTYPE=C: %.20s coerced to %.20s (set another locale "
++    "or PYTHONCOERCECLOCALE=0 to disable this locale coercion behavior).\n";
++
++static void
++_coerce_default_locale_settings(const _LocaleCoercionTarget *target)
++{
++    const char *newloc = target->locale_name;
++    int category = target->category;
++
++    /* Reset locale back to currently configured defaults */
++    setlocale(LC_ALL, "");
++
++    /* Set the relevant locale environment variables */
++    if (category == LC_ALL) {
++        const char *env_vars_updated = "LC_ALL & LANG";
++        if (setenv("LC_ALL", newloc, 1)) {
++            fprintf(stderr,
++                    "Error setting LC_ALL, skipping C locale coercion\n");
++            return;
++        }
++        if (setenv("LANG", newloc, 1)) {
++            fprintf(stderr,
++                    "Error setting LANG during C locale coercion\n");
++            env_vars_updated = "LC_ALL";
++        }
++        fprintf(stderr, _C_LOCALE_COERCION_WARNING, env_vars_updated, newloc);
++    } else if (category == LC_CTYPE) {
++        if (setenv("LC_CTYPE", newloc, 1)) {
++            fprintf(stderr,
++                    "Error setting LC_CTYPE, skipping C locale coercion\n");
++            return;
++        }
++        fprintf(stderr, _C_LOCALE_COERCION_WARNING, "LC_CTYPE", newloc);
++    } else {
++        fprintf(stderr, "Locale coercion must target LC_ALL or LC_CTYPE\n");
++        return;
++    }
++
++    /* Reconfigure with the overridden environment variables */
++    setlocale(LC_ALL, "");
++}
++
++static int
++c_locale_coercion_is_expected(void)
++{
++    /* This may be called prior to Py_Initialize, so we don't call any other
++     * Python APIs, and we ignore the -E and -I flags
++     */
++    const char *coerce_c_locale = getenv("PYTHONCOERCECLOCALE");
++    if (coerce_c_locale == NULL || strncmp(coerce_c_locale, "0", 2) != 0) {
++        return 1;
++    }
++    return 0;
++}
++#endif
++
++void
++_Py_CoerceLegacyLocale(void)
++{
++#ifdef PY_COERCE_C_LOCALE
++    /* We ignore the Python -E and -I flags here, as the CLI needs to sort out
++     * the locale settings *before* we try to do anything with the command
++     * line arguments. For cross-platform debugging purposes, we also need
++     * to give end users a way to force even scripts that are otherwise
++     * isolated from their environment to use the legacy ASCII-centric C
++     * locale.
++    */
++    if (c_locale_coercion_is_expected()) {
++        /* PYTHONCOERCECLOCALE is not set, or is not set to exactly "0" */
++        const _LocaleCoercionTarget *target = NULL;
++        for (target = _TARGET_LOCALES; target->locale_name; target++) {
++            const char *reconfigured_locale = setlocale(target->category,
++                                                        target->locale_name);
++            if (reconfigured_locale != NULL) {
++                /* Successfully configured locale, so make it the default */
++                _coerce_default_locale_settings(target);
++                return;
++            }
++        }
++    }
++    /* No C locale warning here, as Py_Initialize will emit one later */
++#endif
++}
++
++
++#ifdef PY_WARN_ON_C_LOCALE
++static const char *_C_LOCALE_WARNING =
++    "Python runtime initialized with LC_CTYPE=C (a locale with default ASCII "
++    "encoding), which may cause Unicode compatibility problems. Using C.UTF-8, "
++    "C.utf8, or UTF-8 (if available) as alternative Unicode-compatible "
++    "locales is recommended.\n";
++
++static void
++_emit_stderr_warning_for_c_locale(void)
++{
++    if (c_locale_coercion_is_expected()) {
++        if (_Py_LegacyLocaleDetected()) {
++            fprintf(stderr, "%s", _C_LOCALE_WARNING);
++        }
++    }
++}
++#endif
++
+ void
+ _Py_InitializeEx_Private(int install_sigs, int install_importlib)
+ {
+@@ -315,11 +483,19 @@ _Py_InitializeEx_Private(int install_sigs, int install_importlib)
+     initialized = 1;
+     _Py_Finalizing = NULL;
+ 
+-#ifdef HAVE_SETLOCALE
++#ifdef __ANDROID__
++    /* Passing "" to setlocale() on Android requests the C locale rather
++     * than checking environment variables, so request C.UTF-8 explicitly
++     */
++    setlocale(LC_CTYPE, "C.UTF-8");
++#else
+     /* Set up the LC_CTYPE locale, so we can obtain
+        the locale's charset without having to switch
+        locales. */
+     setlocale(LC_CTYPE, "");
++#ifdef PY_WARN_ON_C_LOCALE
++    _emit_stderr_warning_for_c_locale();
++#endif
+ #endif
+ 
+     if ((p = Py_GETENV("PYTHONDEBUG")) && *p != '\0')
+@@ -1242,12 +1418,8 @@ initstdio(void)
+             }
+         }
+         if (!errors && !(pythonioencoding && *pythonioencoding)) {
+-            /* When the LC_CTYPE locale is the POSIX locale ("C locale"),
+-               stdin and stdout use the surrogateescape error handler by
+-               default, instead of the strict error handler. */
+-            char *loc = setlocale(LC_CTYPE, NULL);
+-            if (loc != NULL && strcmp(loc, "C") == 0)
+-                errors = "surrogateescape";
++            /* Choose the default error handler based on the current locale */
++            errors = get_default_standard_stream_error_handler();
+         }
+     }
+ 
+diff --git a/configure b/configure
+index 2915246..39e5a27 100755
+--- a/configure
++++ b/configure
+@@ -834,6 +834,8 @@ with_thread
+ enable_ipv6
+ with_doc_strings
+ with_pymalloc
++with_c_locale_coercion
++with_c_locale_warning
+ with_valgrind
+ with_dtrace
+ with_fpectl
+@@ -1527,6 +1529,12 @@ Optional Packages:
+                           deprecated; use --with(out)-threads
+   --with(out)-doc-strings disable/enable documentation strings
+   --with(out)-pymalloc    disable/enable specialized mallocs
++  --with(out)-c-locale-coercion
++                          disable/enable C locale coercion to a UTF-8 based
++                          locale
++  --with(out)-c-locale-warning
++                          disable/enable locale compatibility warning in the C
++                          locale
+   --with-valgrind         Enable Valgrind support
+   --with(out)-dtrace      disable/enable DTrace support
+   --with-fpectl           enable SIGFPE catching
+@@ -11010,6 +11018,52 @@ fi
+ { $as_echo "$as_me:${as_lineno-$LINENO}: result: $with_pymalloc" >&5
+ $as_echo "$with_pymalloc" >&6; }
+ 
++# Check for --with-c-locale-coercion
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for --with-c-locale-coercion" >&5
++$as_echo_n "checking for --with-c-locale-coercion... " >&6; }
++
++# Check whether --with-c-locale-coercion was given.
++if test "${with_c_locale_coercion+set}" = set; then :
++  withval=$with_c_locale_coercion;
++fi
++
++
++if test -z "$with_c_locale_coercion"
++then
++    with_c_locale_coercion="yes"
++fi
++if test "$with_c_locale_coercion" != "no"
++then
++
++$as_echo "#define PY_COERCE_C_LOCALE 1" >>confdefs.h
++
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $with_c_locale_coercion" >&5
++$as_echo "$with_c_locale_coercion" >&6; }
++
++# Check for --with-c-locale-warning
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for --with-c-locale-warning" >&5
++$as_echo_n "checking for --with-c-locale-warning... " >&6; }
++
++# Check whether --with-c-locale-warning was given.
++if test "${with_c_locale_warning+set}" = set; then :
++  withval=$with_c_locale_warning;
++fi
++
++
++if test -z "$with_c_locale_warning"
++then
++    with_c_locale_warning="yes"
++fi
++if test "$with_c_locale_warning" != "no"
++then
++
++$as_echo "#define PY_WARN_ON_C_LOCALE 1" >>confdefs.h
++
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $with_c_locale_warning" >&5
++$as_echo "$with_c_locale_warning" >&6; }
++
+ # Check for Valgrind support
+ { $as_echo "$as_me:${as_lineno-$LINENO}: checking for --with-valgrind" >&5
+ $as_echo_n "checking for --with-valgrind... " >&6; }
+diff --git a/configure.ac b/configure.ac
+index 67dfba3..b9c9f04 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -3279,6 +3279,40 @@ then
+ fi
+ AC_MSG_RESULT($with_pymalloc)
+ 
++# Check for --with-c-locale-coercion
++AC_MSG_CHECKING(for --with-c-locale-coercion)
++AC_ARG_WITH(c-locale-coercion,
++            AS_HELP_STRING([--with(out)-c-locale-coercion],
++              [disable/enable C locale coercion to a UTF-8 based locale]))
++
++if test -z "$with_c_locale_coercion"
++then
++    with_c_locale_coercion="yes"
++fi
++if test "$with_c_locale_coercion" != "no"
++then
++    AC_DEFINE(PY_COERCE_C_LOCALE, 1,
++      [Define if you want to coerce the C locale to a UTF-8 based locale])
++fi
++AC_MSG_RESULT($with_c_locale_coercion)
++
++# Check for --with-c-locale-warning
++AC_MSG_CHECKING(for --with-c-locale-warning)
++AC_ARG_WITH(c-locale-warning,
++            AS_HELP_STRING([--with(out)-c-locale-warning],
++              [disable/enable locale compatibility warning in the C locale]))
++
++if test -z "$with_c_locale_warning"
++then
++    with_c_locale_warning="yes"
++fi
++if test "$with_c_locale_warning" != "no"
++then
++    AC_DEFINE(PY_WARN_ON_C_LOCALE, 1,
++      [Define to emit a locale compatibility warning in the C locale])
++fi
++AC_MSG_RESULT($with_c_locale_warning)
++
+ # Check for Valgrind support
+ AC_MSG_CHECKING([for --with-valgrind])
+ AC_ARG_WITH([valgrind],
+diff --git a/pyconfig.h.in b/pyconfig.h.in
+index b10c57f..0a6f3e2 100644
+--- a/pyconfig.h.in
++++ b/pyconfig.h.in
+@@ -1244,9 +1244,15 @@
+ /* Define as the preferred size in bits of long digits */
+ #undef PYLONG_BITS_IN_DIGIT
+ 
++/* Define if you want to coerce the C locale to a UTF-8 based locale */
++#undef PY_COERCE_C_LOCALE
++
+ /* Define to printf format modifier for Py_ssize_t */
+ #undef PY_FORMAT_SIZE_T
+ 
++/* Define to emit a locale compatibility warning in the C locale */
++#undef PY_WARN_ON_C_LOCALE
++
+ /* Define if you want to build an interpreter with many run-time checks. */
+ #undef Py_DEBUG
+ 
