@@ -1,0 +1,184 @@
+diff -uprN libbsd-0.8.3.bk/include/bsd/stdio.h libbsd-0.8.3/include/bsd/stdio.h
+--- libbsd-0.8.3.bk/include/bsd/stdio.h	2015-09-23 13:59:34.000000000 +0800
++++ libbsd-0.8.3/include/bsd/stdio.h	2017-04-13 21:29:05.526890100 +0800
+@@ -50,24 +50,6 @@ char *fgetln(FILE *fp, size_t *lenp)
+ 	__attribute__((deprecated("This functions cannot be safely ported, "
+ 	                          "use getline(3) instead, as it is supported "
+ 	                          "by GNU and POSIX.1-2008.")));
+-
+-/*
+- * Note: We diverge from the FreeBSD, OpenBSD and DragonFlyBSD declarations,
+- * because seekfn() there wrongly uses fpos_t, assuming it's an integral
+- * type, and any code using that on a system where fpos_t is a struct
+- * (such as GNU-based systems or NetBSD) will fail to build. In which case,
+- * as the code has to be modified anyway, we might just as well use the
+- * correct declaration here.
+- */
+-FILE *funopen(const void *cookie,
+-              int (*readfn)(void *cookie, char *buf, int size),
+-              int (*writefn)(void *cookie, const char *buf, int size),
+-              off_t (*seekfn)(void *cookie, off_t offset, int whence),
+-              int (*closefn)(void *cookie));
+-
+-#define fropen(cookie, fn) funopen(cookie, fn, NULL, NULL, NULL)
+-#define fwopen(cookie, fn) funopen(cookie, NULL, fn, NULL, NULL)
+-
+ int fpurge(FILE *fp);
+ __END_DECLS
+ 
+diff -uprN libbsd-0.8.3.bk/src/funopen.c libbsd-0.8.3/src/funopen.c
+--- libbsd-0.8.3.bk/src/funopen.c	2015-09-23 01:56:09.000000000 +0800
++++ libbsd-0.8.3/src/funopen.c	2017-04-13 21:29:20.890562400 +0800
+@@ -31,112 +31,6 @@
+ #include <stdio.h>
+ 
+ #ifdef HAVE_FOPENCOOKIE
+-struct funopen_cookie {
+-	void *orig_cookie;
+-
+-	int (*readfn)(void *cookie, char *buf, int size);
+-	int (*writefn)(void *cookie, const char *buf, int size);
+-	off_t (*seekfn)(void *cookie, off_t offset, int whence);
+-	int (*closefn)(void *cookie);
+-};
+-
+-static ssize_t
+-funopen_read(void *cookie, char *buf, size_t size)
+-{
+-	struct funopen_cookie *cookiewrap = cookie;
+-
+-	if (cookiewrap->readfn == NULL) {
+-		errno = EBADF;
+-		return -1;
+-	}
+-
+-	return cookiewrap->readfn(cookiewrap->orig_cookie, buf, size);
+-}
+-
+-static ssize_t
+-funopen_write(void *cookie, const char *buf, size_t size)
+-{
+-	struct funopen_cookie *cookiewrap = cookie;
+-
+-	if (cookiewrap->writefn == NULL)
+-		return EOF;
+-
+-	return cookiewrap->writefn(cookiewrap->orig_cookie, buf, size);
+-}
+-
+-static int
+-funopen_seek(void *cookie, off64_t *offset, int whence)
+-{
+-	struct funopen_cookie *cookiewrap = cookie;
+-	off_t soff = *offset;
+-
+-	if (cookiewrap->seekfn == NULL) {
+-		errno = ESPIPE;
+-		return -1;
+-	}
+-
+-	soff = cookiewrap->seekfn(cookiewrap->orig_cookie, soff, whence);
+-	*offset = soff;
+-
+-	return *offset;
+-}
+-
+-static int
+-funopen_close(void *cookie)
+-{
+-	struct funopen_cookie *cookiewrap = cookie;
+-	int rc;
+-
+-	if (cookiewrap->closefn == NULL)
+-		return 0;
+-
+-	rc = cookiewrap->closefn(cookiewrap->orig_cookie);
+-
+-	free(cookiewrap);
+-
+-	return rc;
+-}
+-
+-FILE *
+-funopen(const void *cookie,
+-        int (*readfn)(void *cookie, char *buf, int size),
+-        int (*writefn)(void *cookie, const char *buf, int size),
+-        off_t (*seekfn)(void *cookie, off_t offset, int whence),
+-        int (*closefn)(void *cookie))
+-{
+-	struct funopen_cookie *cookiewrap;
+-	cookie_io_functions_t funcswrap = {
+-		.read = funopen_read,
+-		.write = funopen_write,
+-		.seek = funopen_seek,
+-		.close = funopen_close,
+-	};
+-	const char *mode;
+-
+-	if (readfn) {
+-		if (writefn == NULL)
+-			mode = "r";
+-		else
+-			mode = "r+";
+-	} else if (writefn) {
+-		mode = "w";
+-	} else {
+-		errno = EINVAL;
+-		return NULL;
+-	}
+-
+-	cookiewrap = malloc(sizeof(*cookiewrap));
+-	if (cookiewrap == NULL)
+-		return NULL;
+-
+-	cookiewrap->orig_cookie = (void *)cookie;
+-	cookiewrap->readfn = readfn;
+-	cookiewrap->writefn = writefn;
+-	cookiewrap->seekfn = seekfn;
+-	cookiewrap->closefn = closefn;
+-
+-	return fopencookie(cookiewrap, mode, funcswrap);
+-}
+ #else
+ #error "Function funopen() needs to be ported."
+ #endif
+diff -uprN libbsd-0.8.3.bk/src/getpeereid.c libbsd-0.8.3/src/getpeereid.c
+--- libbsd-0.8.3.bk/src/getpeereid.c	2015-09-23 01:56:09.000000000 +0800
++++ libbsd-0.8.3/src/getpeereid.c	2017-04-13 21:35:46.559698600 +0800
+@@ -40,11 +40,7 @@ int
+ getpeereid(int s, uid_t *euid, gid_t *egid)
+ {
+ /* XXX: This should be autodetected at build time instead. */
+-#if defined(__linux__)
+ 	struct ucred cred;
+-#elif defined(__OpenBSD__)
+-	struct sockpeercred cred;
+-#endif
+ 	socklen_t credlen = sizeof(cred);
+ 	int ret;
+ 
+diff -uprN libbsd-0.8.3.bk/src/nlist.c libbsd-0.8.3/src/nlist.c
+--- libbsd-0.8.3.bk/src/nlist.c	2016-03-27 19:33:21.000000000 +0800
++++ libbsd-0.8.3/src/nlist.c	2017-04-13 22:56:37.711004100 +0800
+@@ -44,11 +44,10 @@ static char sccsid[] = "@(#)nlist.c	8.1
+ #include <stdio.h>
+ #include <string.h>
+ #include <unistd.h>
+-
++#include <sys/exec_aout.h>
+ #if !defined(__NO_A_OUT_SUPPORT)
+ #define _NLIST_DO_AOUT
+ #endif
+-#define _NLIST_DO_ELF
+ 
+ #ifdef _NLIST_DO_ELF
+ #include "local-elf.h"
+@@ -147,7 +146,7 @@ __aout_fdnlist(int fd, struct nlist *lis
+ 	if (a_out_mmap == MAP_FAILED)
+ 		return (-1);
+ 
+-	exec = (struct exec *)a_out_mmap;
++	exec = (struct external_exec *)a_out_mmap;
+ 	if (N_BADMAG(*exec)) {
+ 		munmap(a_out_mmap, (size_t)st.st_size);
+ 		return (-1);
