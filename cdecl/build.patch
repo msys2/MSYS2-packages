@@ -1,52 +1,7 @@
-diff -Naur cdecl-blocks-2.5-orig/cdecl.c cdecl-blocks-2.5/cdecl.c
---- cdecl-blocks-2.5-orig/cdecl.c	2009-10-20 04:25:25.000000000 -0500
-+++ cdecl-blocks-2.5/cdecl.c	2014-08-30 14:15:06.676600900 -0500
-@@ -93,12 +93,12 @@
- #endif /* __STDC__ || DOS */
- 
- #ifdef USE_READLINE
--# include <readline/readline.h>
-+# include <editline/readline.h>
-   /* prototypes for functions related to readline() */
--  char * getline();
-+  char * _getline();
-   char ** attempt_completion(char *, int, int);
-   char * keyword_completion(char *, int);
--  char * command_completion(char *, int);
-+  char * command_completion(const char *, int);
- #endif
- 
- /* maximum # of chars from progname to display in prompt */
-@@ -379,7 +379,7 @@
- static char *line_read = NULL;
- 
- /* Read a string, and return a pointer to it.  Returns NULL on EOF. */
--char * getline ()
-+char * _getline ()
- {
-   /* If the buffer has already been allocated, return the memory
-      to the free pool. */
-@@ -408,7 +408,7 @@
-   return matches;
- }
- 
--char * command_completion(char *text, int flag)
-+char * command_completion(const char *text, int flag)
- {
-   static int index, len;
-   char *command;
-@@ -891,7 +891,7 @@
- 
- 	if (!quiet) (void) printf("Type `help' or `?' for help\n");
- 	ret = 0;
--	while ((line = getline())) {
-+	while ((line = _getline())) {
- 	    if (!strcmp(line, "quit") || !strcmp(line, "exit")) {
- 		free(line);
- 		return ret;
-diff -Naur cdecl-blocks-2.5-orig/Makefile cdecl-blocks-2.5/Makefile
---- cdecl-blocks-2.5-orig/Makefile	2009-10-20 04:25:25.000000000 -0500
-+++ cdecl-blocks-2.5/Makefile	2014-08-30 14:37:29.722208400 -0500
+diff --git cdecl-blocks-2.5.orig/Makefile cdecl-blocks-2.5/Makefile
+index 2a1429d..86f759b 100644
+--- cdecl-blocks-2.5.orig/Makefile
++++ cdecl-blocks-2.5/Makefile
 @@ -15,13 +15,13 @@
  #
  # add -DUSE_READLINE	To compile in support for the GNU readline library.
@@ -66,7 +21,7 @@ diff -Naur cdecl-blocks-2.5-orig/Makefile cdecl-blocks-2.5/Makefile
  INSTALL= install -c
  INSTALL_DATA= install -c -m 644
  
-@@ -33,18 +33,20 @@
+@@ -34,10 +34,10 @@ c++decl: cdgram.c cdlex.c cdecl.c
  	rm -f cdecl
  
  cdlex.c: cdlex.l
@@ -77,8 +32,9 @@ diff -Naur cdecl-blocks-2.5-orig/Makefile cdecl-blocks-2.5/Makefile
 -	yacc cdgram.y && mv y.tab.c cdgram.c
 +	yacc -ocdgram.c cdgram.y
  
- test:
- 	./cdecl < testset
+ test: cdecl
+ 	@./cdecl < testset | diff -U 3 - test_expected_output.txt \
+@@ -48,8 +48,10 @@ test_cpp: c++decl
  	./c++decl < testset++
  
  install: cdecl
@@ -89,3 +45,50 @@ diff -Naur cdecl-blocks-2.5-orig/Makefile cdecl-blocks-2.5/Makefile
  	$(INSTALL_DATA) cdecl.1 $(MANDIR)
  	$(INSTALL_DATA) c++decl.1 $(MANDIR)
  
+diff --git cdecl-blocks-2.5.orig/cdecl.c cdecl-blocks-2.5/cdecl.c
+index 8ecaca4..c839c17 100644
+--- cdecl-blocks-2.5.orig/cdecl.c
++++ cdecl-blocks-2.5/cdecl.c
+@@ -93,12 +93,12 @@ void free(), exit(), perror();
+ #endif /* __STDC__ || DOS */
+ 
+ #ifdef USE_READLINE
+-# include <readline/readline.h>
++# include <editline/readline.h>
+   /* prototypes for functions related to readline() */
+-  char * getline();
++  char * _getline();
+   char ** attempt_completion(char *, int, int);
+   char * keyword_completion(char *, int);
+-  char * command_completion(char *, int);
++  char * command_completion(const char *, int);
+ #endif
+ 
+ /* maximum # of chars from progname to display in prompt */
+@@ -379,7 +379,7 @@ char *options[] = {
+ static char *line_read = NULL;
+ 
+ /* Read a string, and return a pointer to it.  Returns NULL on EOF. */
+-char * getline ()
++char * _getline ()
+ {
+   /* If the buffer has already been allocated, return the memory
+      to the free pool. */
+@@ -408,7 +408,7 @@ char ** attempt_completion(char *text, int start, int end)
+   return matches;
+ }
+ 
+-char * command_completion(char *text, int flag)
++char * command_completion(const char *text, int flag)
+ {
+   static int index, len;
+   char *command;
+@@ -891,7 +891,7 @@ int dostdin()
+ 
+ 	if (!quiet) (void) printf("Type `help' or `?' for help\n");
+ 	ret = 0;
+-	while ((line = getline())) {
++	while ((line = _getline())) {
+ 	    if (!strcmp(line, "quit") || !strcmp(line, "exit")) {
+ 		free(line);
+ 		return ret;
