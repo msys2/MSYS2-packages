@@ -1,0 +1,181 @@
+diff -Naur bobcat-4.07.00-1-orig/bobcat/configfile/build bobcat-4.07.00-1/bobcat/configfile/build
+--- bobcat-4.07.00-1-orig/bobcat/configfile/build	2017-05-31 12:04:01.000000000 +0300
++++ bobcat-4.07.00-1/bobcat/configfile/build	2017-06-01 13:43:03.452084100 +0300
+@@ -298,10 +298,8 @@
+             version;
+     
+         version = strtok(BUILD_LIBRARY, ".");
+-        libso = "lib" + library + ".so";
+-        libxxx = libso + ".";
+-        libsomajor = libxxx + element(0, version);
+-        libxxx += BUILD_LIBRARY;
++        libxxx = "msys-" + library + ".dll";
++        libso = "lib" + library + ".dll.a";
+     
+         for (index = 0; index < nClasses; index++)
+         {
+@@ -318,7 +316,7 @@
+         exec(COMPILER,
+             gdb,
+             "-shared",
+-            "-Wl,-soname," + libsomajor,
++            "-Wl,--out-implib," + libso,
+             "-o", libxxx,
+             ofiles,
+             libs,
+@@ -335,12 +333,6 @@
+             chdir(cwd);                     // go back to parent dir
+         }
+     
+-    
+-        exec("ln", "-sf", libxxx, libsomajor);
+-        printf("ok: ", libsomajor, "\n");
+-    
+-        exec("ln", "-sf", libsomajor, libso);
+-        printf("ok: ", libso, "\n");
+     #endif
+ }
+ /*
+diff -Naur bobcat-4.07.00-1-orig/bobcat/hostname/build bobcat-4.07.00-1/bobcat/hostname/build
+--- bobcat-4.07.00-1-orig/bobcat/hostname/build	2017-05-31 12:04:01.000000000 +0300
++++ bobcat-4.07.00-1/bobcat/hostname/build	2017-06-01 13:43:27.880731300 +0300
+@@ -409,10 +409,8 @@
+             version;
+     
+         version = strtok(BUILD_LIBRARY, ".");
+-        libso = "lib" + library + ".so";
+-        libxxx = libso + ".";
+-        libsomajor = libxxx + element(0, version);
+-        libxxx += BUILD_LIBRARY;
++        libxxx = "msys-" + library + ".dll";
++        libso = "lib" + library + ".dll.a";
+     
+         for (index = 0; index < nClasses; index++)
+         {
+@@ -429,7 +427,7 @@
+         exec(COMPILER,
+             gdb,
+             "-shared",
+-            "-Wl,-soname," + libsomajor,
++            "-Wl,--out-implib," + libso,
+             "-o", libxxx,
+             ofiles,
+             libs,
+@@ -446,12 +444,6 @@
+             chdir(cwd);                     // go back to parent dir
+         }
+     
+-    
+-        exec("ln", "-sf", libxxx, libsomajor);
+-        printf("ok: ", libsomajor, "\n");
+-    
+-        exec("ln", "-sf", libsomajor, libso);
+-        printf("ok: ", libso, "\n");
+     #endif
+ }
+ /*
+diff -Naur bobcat-4.07.00-1-orig/bobcat/icmake/libraries bobcat-4.07.00-1/bobcat/icmake/libraries
+--- bobcat-4.07.00-1-orig/bobcat/icmake/libraries	2017-06-01 12:49:54.055681100 +0300
++++ bobcat-4.07.00-1/bobcat/icmake/libraries	2017-06-01 13:34:36.509177000 +0300
+@@ -131,24 +131,23 @@
+         run(gxx +  
+                     " " + setOpt(LDFLAGS, "LDFLAGS") +
+                     " -shared -Wl,--as-needed,"
+-                    "-soname," + 
+-                    libsomajor +
+-                    " -o " + g_tmplibso + "/" + libsoshared +
++                    "--out-implib," + 
++                    g_tmplibso + "/" + libsoshared + 
++                    " -o " + g_tmplibso + "/" + libso +
+                     " */os/*.o " +
+                     g_sharedLibReq);
+     
+         chdir(g_tmplibso);
+     
+         if (strip)
+-            run("strip --strip-unneeded " + libsoshared);
++            run("strip --strip-unneeded " + libso);
+ 
+-        run("chmod -x " + libsoshared);
+-        
+-        run("ln -sf " + libsoshared + " " + libsomajor);
++        run("chmod -x " + libso);
+         
+         chdir(g_cwd + g_tmpliba);
+         
+-        run("ln -sf "+ g_cwd + g_tmplibso + "/" + libsomajor  + " " + libso);
++        run("ln -sf "+ g_cwd + g_tmplibso + "/" + libso  + " " + libso);
++        run("ln -sf "+ g_cwd + g_tmplibso + "/" + libsoshared  + " " + libsoshared);
+     
+         chdir(g_cwd);
+         run("rm -f */os/*");
+@@ -179,8 +177,8 @@
+     static_library(staticLib);              // build static library
+ 
+ #ifdef BUILD_SHARED
+-    libso = "lib" LIBRARY ".so";
+-    libsoshared = libso + "." + g_version;
++    libso = "msys-" LIBRARY ".dll";
++    libsoshared = "lib" LIBRARY ".dll.a";
+ 
+     g_copt += " -fPIC";
+                                           // adds option for shared lib
+diff -Naur bobcat-4.07.00-1-orig/bobcat/redirector/driver/build bobcat-4.07.00-1/bobcat/redirector/driver/build
+--- bobcat-4.07.00-1-orig/bobcat/redirector/driver/build	2017-05-31 12:04:01.000000000 +0300
++++ bobcat-4.07.00-1/bobcat/redirector/driver/build	2017-06-01 13:37:48.168616200 +0300
+@@ -232,7 +232,7 @@
+ void link(string library)
+ {
+     printf("\n");
+-    system("mv ../../lib/libbobcat.so ../../lib/libbobcat.OFF");
++    system("mv ../../lib/msys-bobcat.dll ../../lib/msys-bobcat.OFF");
+     exec(COMPILER, "-o", programname,
+              ofiles,
+          libs,
+@@ -241,7 +241,7 @@
+             , "-s"
+         #endif
+     );
+-    system("mv ../../lib/libbobcat.OFF ../../lib/libbobcat.so");
++    system("mv ../../lib/msys-bobcat.OFF ../../lib/msys-bobcat.dll");
+     printf("ok: ", programname, "\n");
+ }
+ /*
+diff -Naur bobcat-4.07.00-1-orig/bobcat/syslogstream/driver/build bobcat-4.07.00-1/bobcat/syslogstream/driver/build
+--- bobcat-4.07.00-1-orig/bobcat/syslogstream/driver/build	2017-05-31 12:04:01.000000000 +0300
++++ bobcat-4.07.00-1/bobcat/syslogstream/driver/build	2017-06-01 13:44:34.935265800 +0300
+@@ -408,10 +408,8 @@
+             version;
+     
+         version = strtok(BUILD_LIBRARY, ".");
+-        libso = "lib" + library + ".so";
+-        libxxx = libso + ".";
+-        libsomajor = libxxx + element(0, version);
+-        libxxx += BUILD_LIBRARY;
++        libso = "lib" + library + ".dll.a";
++        libxxx = "msys-" + library + ".dll";
+     
+         for (index = 0; index < nClasses; index++)
+         {
+@@ -428,7 +426,7 @@
+         exec(COMPILER,
+             gdb,
+             "-shared",
+-            "-Wl,-soname," + libsomajor,
++            "-Wl,--out-implib," + libso,
+             "-o", libxxx,
+             ofiles,
+             libs,
+@@ -445,12 +443,6 @@
+             chdir(cwd);                     // go back to parent dir
+         }
+     
+-    
+-        exec("ln", "-sf", libxxx, libsomajor);
+-        printf("ok: ", libsomajor, "\n");
+-    
+-        exec("ln", "-sf", libsomajor, libso);
+-        printf("ok: ", libso, "\n");
+     #endif
+ }
+ /*

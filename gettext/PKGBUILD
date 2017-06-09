@@ -2,8 +2,8 @@
 
 pkgbase=gettext
 pkgname=('gettext' 'gettext-devel' 'libgettextpo' 'libasprintf' 'libintl')
-pkgver=0.19.7
-pkgrel=4
+pkgver=0.19.8.1
+pkgrel=1
 pkgdesc="GNU internationalization library"
 arch=('i686' 'x86_64')
 url="https://www.gnu.org/software/gettext/"
@@ -12,32 +12,38 @@ groups=('base-devel')
 makedepends=('libiconv-devel')
 options=(!docs)
 source=(https://ftp.gnu.org/pub/gnu/gettext/${pkgname}-${pkgver}.tar.gz{,.sig}
-        0.18.1.1-autopoint-V.patch
-        0.19.3-localename.patch
-        0.18.1.1-no-woe32dll.patch
-        0.19.3-tests-cygwin.patch
-        gettext-0.18.3.1-msys2.patch
+        0.19.8.1-autopoint-V.patch
+        0.19.8.1-localename.patch
+        0.19.8.1-no-woe32dll.patch
+        0.19.8.1-tests-cygwin.patch
+        0.19.8.1-cygwin-ftm.patch
+        0.19.8.1-have_wprintf.patch
+        gettext-0.19.8.1-msys2.patch
         gettext-0.19.7-archive.patch)
-sha256sums=('5386d2a40500295783c6a52121adcf42a25519e2d23675950619c9e69558c23f'
+sha256sums=('ff942af0e438ced4a8b0ea4b0b6e0d6d657157c5e2364de57baa279c1c125c43'
             'SKIP'
-            'b3d99574c53670235523c042484be01f59df47d60c4e1ceb52908745d20ef9a2'
-            '43d9cde60e83a5b97426a7ed5e5a8cfd2a1783e521c707207fffd17747ba4968'
-            'fa9f760897a58c054a9e6c592427b5d179706e9fbd750508dbe8e9f45b03dfe6'
-            '4abccad673712a1401a6ceebda90bf1bb6b9e2968a5f157251e4f085282bd637'
-            'ff40f36dde5b6f82848cdf4a216981da7788838aeb63ee812bbb180fddb045fa'
+            '0d3082e9a6b997b61dbb160f5af234a1bc89cddf9dc680999429276cf605b731'
+            '25aa01d5a2f58e60878f03bead62662434f56247ba965668fd7b26108b80c4f3'
+            'b182af5d1e60c520fc6e716565c58a5f7497f608b5d4b07e3a58500fec54cdc5'
+            'd564c2d10ded1c60c421b0790639339f60ea7a4bc7e6d3034e59ec50d04d07be'
+            '22cfaca417f04507a901cba93a7eb219183d5e681b7459d8c0e9660621a9a696'
+            'd4df598ebde60ea4e069991baed43b00dbb28d3b8a40cc7cf4a6e12847ee3616'
+            'c049be2f812524647b662d421dc2a5df59e7da68a42ab0e1cef6af6665cb00a0'
             'e117ddf7cbb175c0ceabc03d8114f875fa120e8f9999e914ecb2bc4ded8d92ce')
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
   # Cygwin patches
-  patch -p2 -i $srcdir/0.18.1.1-autopoint-V.patch
-  patch -p2 -i $srcdir/0.19.3-localename.patch
-  patch -p2 -i $srcdir/0.18.1.1-no-woe32dll.patch
-  patch -p2 -i $srcdir/0.19.3-tests-cygwin.patch
+  patch -p2 -i $srcdir/0.19.8.1-autopoint-V.patch
+  patch -p2 -i $srcdir/0.19.8.1-localename.patch
+  patch -p2 -i $srcdir/0.19.8.1-no-woe32dll.patch
+  patch -p2 -i $srcdir/0.19.8.1-tests-cygwin.patch
+  patch -p2 -i $srcdir/0.19.8.1-cygwin-ftm.patch
+  patch -p3 -i $srcdir/0.19.8.1-have_wprintf.patch
 
   # MSYS2 patch
-  patch -p1 -i $srcdir/gettext-0.18.3.1-msys2.patch
+  patch -p1 -i $srcdir/gettext-0.19.8.1-msys2.patch
 
   pushd gettext-tools/misc > /dev/null
     mkdir archive
@@ -55,7 +61,13 @@ prepare() {
 }
 
 build() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+
+	cd "${srcdir}/${pkgname}-${pkgver}"
+
+cat > config.cache << EOF
+ac_cv_header_dirent_h=no
+EOF
+ 
   ./configure --build=${CHOST} \
     --prefix=/usr \
     --with-included-libcroco \
@@ -69,7 +81,8 @@ build() {
     --disable-java \
     --disable-native-java \
     --disable-csharp \
-    --disable-openmp
+    --disable-openmp \
+    --cache-file=config.cache
 
   make
 
