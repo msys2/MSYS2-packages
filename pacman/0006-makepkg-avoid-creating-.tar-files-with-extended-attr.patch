@@ -1,0 +1,39 @@
+From 3757cecebbf77f05742f0226c858edaad0e9654c Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Thu, 29 Jun 2017 11:54:48 +0200
+Subject: [PATCH] makepkg: avoid creating .tar files with extended attributes
+
+Extended attributes are not necessary for pacman to work. Extended
+attributes may not even be supported by the file system to which we
+extract the files.
+
+And worst of all: pacman cannot handle extended attributes, but simply
+stops extracting files when it encounters an extended attribute.
+
+This is particularly nasty when creating packages on a system configured
+to cache, say, file integrity information about .exe files in extended
+attributes, as the created packages will fail to install any .exe files.
+
+The fix is very easy: simply pass the -no-xattrs option to bsdtar.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ scripts/makepkg.sh.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/makepkg.sh.in b/scripts/makepkg.sh.in
+index 0770640..513e4f1 100644
+--- a/scripts/makepkg.sh.in
++++ b/scripts/makepkg.sh.in
+@@ -1216,7 +1216,7 @@ create_package() {
+ 	# bsdtar's gzip compression always saves the time stamp, making one
+ 	# archive created using the same command line distinct from another.
+ 	# Disable bsdtar compression and use gzip -n for now.
+-	LANG=C bsdtar -cf - "${comp_files[@]}" * |
++	LANG=C bsdtar --no-xattrs -cf - "${comp_files[@]}" * |
+ 	case "$PKGEXT" in
+ 		*tar.gz)  ${COMPRESSGZ[@]:-gzip -c -f -n} ;;
+ 		*tar.bz2) ${COMPRESSBZ2[@]:-bzip2 -c -f} ;;
+-- 
+2.13.0
+
