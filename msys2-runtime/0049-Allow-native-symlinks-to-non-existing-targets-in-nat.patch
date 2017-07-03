@@ -1,7 +1,7 @@
-From 83c2abb318bff40afc13b7e78a96bbd214f0b2a2 Mon Sep 17 00:00:00 2001
+From 78df292e1c6c4f3c50435ee16204d9c817b9f486 Mon Sep 17 00:00:00 2001
 From: Karsten Blees <blees@dcon.de>
 Date: Wed, 20 May 2015 16:32:52 +0200
-Subject: [PATCH 46/N] Allow native symlinks to non-existing targets in
+Subject: [PATCH 49/N] Allow native symlinks to non-existing targets in
  'nativestrict' mode
 
 Windows native symlinks must match the type of their target (file or
@@ -24,23 +24,25 @@ This allows callers to explicitly specify the expected target type, e.g.:
   $ mkdir test
 
 Signed-off-by: Karsten Blees <blees@dcon.de>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
 ---
- winsup/cygwin/path.cc | 41 ++++++++++++++++++++++++++++++++---------
- 1 file changed, 32 insertions(+), 9 deletions(-)
+ winsup/cygwin/path.cc | 42 +++++++++++++++++++++++++++++++++---------
+ 1 file changed, 33 insertions(+), 9 deletions(-)
 
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index 1e1b572..1702170 100644
+index b0837a7..6fb07be 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
-@@ -1716,6 +1716,7 @@ symlink_native (const char *oldpath, path_conv &win32_newpath)
+@@ -1720,7 +1720,7 @@ symlink_native (const char *oldpath, path_conv &win32_newpath)
    path_conv win32_oldpath;
    PUNICODE_STRING final_oldpath, final_newpath;
    UNICODE_STRING final_oldpath_buf;
-+  bool isdir;
+-  DWORD flags;
++  DWORD flags = 0;
  
    if (isabspath (oldpath))
      {
-@@ -1776,14 +1777,37 @@ symlink_native (const char *oldpath, path_conv &win32_newpath)
+@@ -1781,14 +1781,39 @@ symlink_native (const char *oldpath, path_conv &win32_newpath)
  	  wcpcpy (e_old, c_old);
  	}
      }
@@ -61,7 +63,8 @@ index 1e1b572..1702170 100644
 +	 that this may still be wrong if the target is changed after
 +	 creating the symlink (e.g. in bulk operations such as rsync,
 +	 unpacking archives or VCS checkouts). */
-+      isdir = win32_oldpath.isdir ();
++      if (win32_oldpath.isdir ())
++        flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
 +    }
 +  else
 +    {
@@ -71,7 +74,8 @@ index 1e1b572..1702170 100644
 +	     trailing '/' in the target path as hint to create a
 +	     directory symlink. */
 +	  ssize_t len = strlen(oldpath);
-+	  isdir = len && isdirsep(oldpath[len - 1]);
++	  if (len && isdirsep(oldpath[len - 1]))
++            flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
 +	}
 +      else
 +	{
@@ -85,16 +89,14 @@ index 1e1b572..1702170 100644
      }
    /* Don't allow native symlinks to Cygwin special files.  However, the
       caller shoud know because this case shouldn't be covered by the
-@@ -1813,8 +1837,7 @@ symlink_native (const char *oldpath, path_conv &win32_newpath)
+@@ -1817,7 +1842,6 @@ symlink_native (const char *oldpath, path_conv &win32_newpath)
+ 	final_oldpath->Buffer[1] = L'\\';
      }
    /* Try to create native symlink. */
+-  flags = win32_oldpath.isdir () ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0;
+   if (wincap.has_unprivileged_createsymlink ())
+     flags |= SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
    if (!CreateSymbolicLinkW (final_newpath->Buffer, final_oldpath->Buffer,
--			    win32_oldpath.isdir ()
--			    ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0))
-+			    isdir ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0))
-     {
-       /* Repair native newpath, we still need it. */
-       final_newpath->Buffer[1] = L'?';
 -- 
 2.9.0
 
