@@ -1,0 +1,63 @@
+# Maintainer: Joseph Benden <joe@benden.us>
+
+pkgname=rsync2
+pkgver=3.1.3dev_msys2.7.0_r2
+pkgrel=0
+pkgdesc="A file transfer program to keep remote files in sync"
+arch=('i686' 'x86_64')
+url="https://github.com/jbenden/rsync"
+groups=('net-utils')
+license=('GPL3')
+depends=('libiconv')
+makedepends=('msys2-w32api-headers' 'perl' 'yodl')
+conflicts=('rsync')
+provides=('rsync')
+pkgsname=rsync
+pkgsver="3.1.3dev-msys2.7.0-r2"
+source=("https://codeload.github.com/jbenden/rsync/tar.gz/v3.1.3dev-msys2.7.0-r2"
+        "ssh-6-option.patch"
+        "check-debug_levels.patch"
+        "msys2-testsuite.patch")
+sha256sums=('9e5e8931404d5d874046cabc7490daf77cd2614aabd3670e903528ef703629ea'
+            'ea88046d8935e7a597cca7379d21edffefa520792d896bd7ce663b4cdc0f2069'
+            '9b79e706eb8880be4600c1e7b93051a9e5ae068d732807d4b136ae0c54af8b3e'
+            '55adb27e5a5899553bb282944b6d73e1bead5d72c6fa5bd1a4037b08b54dec54')
+
+prepare() {
+  cd "${srcdir}/${pkgsname}-${pkgsver}"
+
+  patch -p1 -i ${srcdir}/ssh-6-option.patch
+  patch -p1 -i ${srcdir}/check-debug_levels.patch
+  patch -p1 -i ${srcdir}/msys2-testsuite.patch
+
+  autoreconf -fiv
+}
+
+build() {
+  cd "${srcdir}/${pkgsname}-${pkgsver}"
+  env CFLAGS="$CFLAGS -O2 -std=c99 -Wall -Wextra -Wno-unused-but-set-variable -Wno-unused-variable -Wno-unused-parameter -Wno-deprecated-declarations -DNDEBUG" \
+      LDFLAGS="$LDFLAGS -Wl,--enable-auto-image-base" \
+        ./configure \
+          --build=${CHOST} \
+          --prefix=/usr \
+          --with-w32api-include-path=/usr/include/w32api \
+          --with-protected-args \
+          --with-included-popt \
+          --with-included-zlib \
+          --disable-debug \
+          --enable-iconv
+  
+  make reconfigure
+  make man all
+}
+
+check() {
+  cd "${srcdir}/${pkgsname}-${pkgsver}"
+  make test || make test
+}
+
+package() {
+  cd "${srcdir}/${pkgsname}-${pkgsver}"
+  make DESTDIR="${pkgdir}" install
+  install -Dm755 support/rrsync "${pkgdir}/usr/lib/rsync/rrsync"
+}
