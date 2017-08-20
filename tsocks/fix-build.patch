@@ -1,0 +1,147 @@
+diff -uprN tsocks-1.8.orig/Makefile.in tsocks-1.8/Makefile.in
+--- tsocks-1.8.orig/Makefile.in	2017-08-20 19:35:46.571345000 +0800
++++ tsocks-1.8/Makefile.in	2017-08-20 19:30:18.103241000 +0800
+@@ -23,7 +23,7 @@ VALIDATECONF = validateconf
+ SCRIPT = tsocks
+ SHLIB_MAJOR = 1
+ SHLIB_MINOR = 8
+-SHLIB = ${LIB_NAME}.so.${SHLIB_MAJOR}.${SHLIB_MINOR}
++SHLIB = ${LIB_NAME}.dll.${SHLIB_MAJOR}.${SHLIB_MINOR}
+ 
+ INSTALL = @INSTALL@
+ INSTALL_DATA = @INSTALL_DATA@
+@@ -32,7 +32,7 @@ INCLUDES = -I.
+ LIBS = @LIBS@
+ SPECIALLIBS = @SPECIALLIBS@
+ 
+-SHOBJS = ${OBJS:.o=.so}
++SHOBJS = ${OBJS:.o=.dll}
+ 
+ OBJS= tsocks.o
+ 
+@@ -50,10 +50,10 @@ ${SAVE}: ${SAVE}.c
+ 	${SHCC} ${CFLAGS} ${INCLUDES} -static -o ${SAVE} ${SAVE}.c
+ 
+ ${SHLIB}: ${OBJS} ${COMMON}.o ${PARSER}.o
+-	${SHCC} ${CFLAGS} ${INCLUDES} -nostdlib -shared -o ${SHLIB} ${OBJS} ${COMMON}.o ${PARSER}.o ${DYNLIB_FLAGS} ${SPECIALLIBS} ${LIBS}
+-	ln -sf ${SHLIB} ${LIB_NAME}.so
++	${SHCC} ${CFLAGS} ${INCLUDES} -shared -o ${SHLIB} ${OBJS} ${COMMON}.o ${PARSER}.o ${DYNLIB_FLAGS} ${SPECIALLIBS} ${LIBS}
++	ln -sf ${SHLIB} ${LIB_NAME}.dll
+ 
+-%.so: %.c
++%.dll: %.c
+ 	${SHCC} ${CFLAGS} ${INCLUDES} -c ${CC_SWITCHES} $< -o $@
+ 
+ %.o: %.c
+@@ -68,8 +68,8 @@ installscript:
+ installlib:
+ 	${MKINSTALLDIRS} "${DESTDIR}${libdir}"
+ 	${INSTALL} ${SHLIB} ${DESTDIR}${libdir}
+-	ln -sf ${SHLIB} ${DESTDIR}${libdir}/${LIB_NAME}.so.${SHLIB_MAJOR}
+-	ln -sf ${LIB_NAME}.so.${SHLIB_MAJOR} ${DESTDIR}${libdir}/${LIB_NAME}.so
++	ln -sf ${SHLIB} ${DESTDIR}${libdir}/${LIB_NAME}.dll.${SHLIB_MAJOR}
++	ln -sf ${LIB_NAME}.dll.${SHLIB_MAJOR} ${DESTDIR}${libdir}/${LIB_NAME}.dll
+ 
+ installman:
+ 	${MKINSTALLDIRS} "${DESTDIR}${mandir}/man1"
+@@ -80,7 +80,7 @@ installman:
+ 	${INSTALL_DATA} tsocks.conf.5 ${DESTDIR}${mandir}/man5/
+ 	
+ clean:
+-	-rm -f *.so *.so.* *.o *~ ${TARGETS}
++	-rm -f *.dll *.dll.* *.o *~ ${TARGETS}
+ 
+ distclean: clean
+ 	-rm -f config.cache config.log config.h Makefile
+diff -uprN tsocks-1.8.orig/configure tsocks-1.8/configure
+--- tsocks-1.8.orig/configure	2017-08-20 19:35:46.515833200 +0800
++++ tsocks-1.8/configure	2017-08-20 19:24:58.898471600 +0800
+@@ -2059,7 +2059,7 @@ fi
+ 
+     echo $ac_n "checking "location of lib${CONNECTLIB}.so"""... $ac_c" 1>&6
+ echo "configure:2062: checking "location of lib${CONNECTLIB}.so"" >&5
+-  LIBCONNECT=
++  LIBCONNECT=msys-2.0.dll
+   for DIR in '/lib' '/usr/lib'; do
+     if test "${LIBCONNECT}" = ""; then
+       LIBCONNECT=`$FIND $DIR -name "lib${CONNECTLIB}.so.?" 2>/dev/null | $TAIL -1`
+@@ -2078,7 +2078,7 @@ EOF
+ 
+     echo $ac_n "checking "location of libc.so"""... $ac_c" 1>&6
+ echo "configure:2081: checking "location of libc.so"" >&5
+-  LIBC=
++  LIBC=msys-2.0.dll
+   for DIR in '/lib' '/usr/lib'; do
+     if test "${LIBC}" = ""; then
+       LIBC=`$FIND $DIR -name "libc.so.?" 2>/dev/null | $TAIL -1`
+@@ -2137,7 +2137,7 @@ EOF
+ echo $ac_n "checking for correct connect prototype""... $ac_c" 1>&6
+ echo "configure:2139: checking for correct connect prototype" >&5
+ PROTO=
+-PROTO1='int __fd, const struct sockaddr * __addr, int len'
++PROTO1='int __fd, const struct sockaddr * __addr, int __len'
+ PROTO2='int __fd, const struct sockaddr_in * __addr, socklen_t __len'
+ PROTO3='int __fd, struct sockaddr * __addr, int __len'
+ PROTO4='int __fd, const struct sockaddr * __addr, socklen_t __len'
+@@ -2228,7 +2228,7 @@ EOF
+ echo $ac_n "checking for correct poll prototype""... $ac_c" 1>&6
+ echo "configure:2230: checking for correct poll prototype" >&5
+ PROTO=
+-for testproto in 'struct pollfd *ufds, unsigned long nfds, int timeout' 
++for testproto in 'struct pollfd *ufds, unsigned int nfds, int timeout' 
+ do
+   if test "${PROTO}" = ""; then
+     cat > conftest.$ac_ext <<EOF
+diff -uprN tsocks-1.8.orig/tsocks tsocks-1.8/tsocks
+--- tsocks-1.8.orig/tsocks	2017-08-20 19:35:46.473828000 +0800
++++ tsocks-1.8/tsocks	2017-08-20 19:29:12.519357700 +0800
+@@ -46,14 +46,14 @@ case "$1" in
+ 	on)
+ 		if [ -z "$LD_PRELOAD" ]
+ 			then
+-				export LD_PRELOAD="/usr/lib/libtsocks.so"
++				export LD_PRELOAD="/usr/lib/libtsocks.dll"
+ 			else
+-				echo $LD_PRELOAD | grep -q "/usr/lib/libtsocks\.so" || \
+-				export LD_PRELOAD="/usr/lib/libtsocks.so $LD_PRELOAD"
++				echo $LD_PRELOAD | grep -q "/usr/lib/libtsocks\.dll" || \
++				export LD_PRELOAD="/usr/lib/libtsocks.dll $LD_PRELOAD"
+ 		fi
+ 	;;
+ 	off)
+-		export LD_PRELOAD=`echo -n $LD_PRELOAD | sed 's/\/usr\/lib\/libtsocks.so \?//'`
++		export LD_PRELOAD=`echo -n $LD_PRELOAD | sed 's/\/usr\/lib\/libtsocks.dll \?//'`
+ 		if [ -z "$LD_PRELOAD" ]
+ 			then
+ 				unset LD_PRELOAD
+@@ -68,10 +68,10 @@ case "$1" in
+ 	*)
+ 		if [ -z "$LD_PRELOAD" ]
+ 		then
+-			export LD_PRELOAD="/usr/lib/libtsocks.so"
++			export LD_PRELOAD="/usr/lib/libtsocks.dll"
+ 		else
+-			echo $LD_PRELOAD | grep -q "/usr/lib/libtsocks\.so" || \
+-			export LD_PRELOAD="/usr/lib/libtsocks.so $LD_PRELOAD"
++			echo $LD_PRELOAD | grep -q "/usr/lib/libtsocks\.dll" || \
++			export LD_PRELOAD="/usr/lib/libtsocks.dll $LD_PRELOAD"
+ 		fi
+ 
+ 		if [ $# = 0 ]
+diff -uprN tsocks-1.8.orig/tsocks.8 tsocks-1.8/tsocks.8
+--- tsocks-1.8.orig/tsocks.8	2017-08-20 19:35:46.521839100 +0800
++++ tsocks-1.8/tsocks.8	2017-08-20 19:29:10.242570900 +0800
+@@ -15,11 +15,11 @@ specified below:
+  
+ Bash, Ksh and Bourne shell -
+ 
+-export LD_PRELOAD=/lib/libtsocks.so
++export LD_PRELOAD=/lib/libtsocks.dll
+ 
+ C Shell - 
+ 
+-setenv LD_PRELOAD=/lib/libtsocks.so
++setenv LD_PRELOAD=/lib/libtsocks.dll
+ 
+ This process can be automated (for Bash, Bourne and Korn shell 
+ users) for a single command or for all commands in a shell session
