@@ -1,0 +1,51 @@
+# $Id$
+# Maintainer: Love Sy <shana@zju.edu.cn>
+
+pkgname=tsocks
+pkgver=1.8beta5
+pkgrel=1
+pkgdesc='Transparent SOCKS proxying library'
+url='http://tsocks.sourceforge.net/'
+license=('GPL')
+arch=('i686' 'x86_64')
+source=("http://downloads.sourceforge.net/${pkgname}/${pkgname}-${pkgver}.tar.gz"
+        "msys2-mingw-fixes.patch"
+        "prognames.patch")
+sha1sums=('489f88c5df999ba21b27cdaa7836d9426d062aec'
+          '2d34222f9d8e44974c7eb350be18d1cd25b408bf'
+          '280f44861e5be7a7fbff13821804221f89423c49')
+
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying $_patch"
+    patch -Nbp1 -i "${srcdir}/${_patch}"
+  done
+}
+#========================================= #
+
+prepare() {
+  cd "${srcdir}/${pkgname}-1.8"
+  apply_patch_with_msg msys2-mingw-fixes.patch \
+   prognames.patch 
+  autoreconf -fiv
+}
+
+build() {
+	cd "${srcdir}/${pkgname}-1.8"
+	export CPPFLAGS=
+	./configure --prefix=/usr --sysconfdir=/etc --mandir=/usr/share/man --libdir=/usr/lib  host=msys
+	make
+}
+
+package() {
+	cd "${srcdir}/${pkgname}-1.8"
+	make DESTDIR="${pkgdir}" install
+	install -d "${pkgdir}/usr/share/${pkgname}"
+	install -m644 tsocks.conf.{simple,complex}.example "${pkgdir}/usr/share/${pkgname}"
+
+        install -D saveme.exe "${pkgdir}/usr/bin/tsocks-saveme"
+        install validateconf.exe "${pkgdir}/usr/bin/tsocks-validateconf"
+        install inspectsocks.exe "${pkgdir}/usr/bin"
+}
