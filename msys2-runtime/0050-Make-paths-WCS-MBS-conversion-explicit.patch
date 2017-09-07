@@ -1,7 +1,7 @@
-From a2c324b7a39438c3bd2d1c42bc65fec9d2d8257f Mon Sep 17 00:00:00 2001
+From 52622f4b047e4819e9245aa710adc7d8a0c7c031 Mon Sep 17 00:00:00 2001
 From: Johannes Schindelin <johannes.schindelin@gmx.de>
 Date: Fri, 18 Dec 2015 20:19:57 +0100
-Subject: [PATCH 48/N] Make paths' WCS->MBS conversion explicit
+Subject: [PATCH 50/N] Make paths' WCS->MBS conversion explicit
 
 	* dcrt0.cc (dll_crt0_1), dtable.cc (handle_to_fn), environ.cc
 	(environ_init, getwinenveq, build_env), external.cc
@@ -252,10 +252,10 @@ index de3eaa8..c118c01 100644
  	  ep.version = EXTERNAL_PINFO_VERSION;
  
 diff --git a/winsup/cygwin/fhandler_disk_file.cc b/winsup/cygwin/fhandler_disk_file.cc
-index ca1da38..9d1073d 100644
+index 2144a4c..cf94646 100644
 --- a/winsup/cygwin/fhandler_disk_file.cc
 +++ b/winsup/cygwin/fhandler_disk_file.cc
-@@ -2056,7 +2056,7 @@ fhandler_disk_file::readdir_helper (DIR *dir, dirent *de, DWORD w32_err,
+@@ -2019,7 +2019,7 @@ fhandler_disk_file::readdir_helper (DIR *dir, dirent *de, DWORD w32_err,
  	  char *p = stpcpy (file, pc.get_posix ());
  	  if (p[-1] != '/')
  	    *p++ = '/';
@@ -264,7 +264,7 @@ index ca1da38..9d1073d 100644
  			fname->Buffer, fname->Length / sizeof (WCHAR));
  	  path_conv fpath (file, PC_SYM_NOFOLLOW);
  	  if (fpath.issymlink ())
-@@ -2077,7 +2077,7 @@ fhandler_disk_file::readdir_helper (DIR *dir, dirent *de, DWORD w32_err,
+@@ -2040,7 +2040,7 @@ fhandler_disk_file::readdir_helper (DIR *dir, dirent *de, DWORD w32_err,
  	}
      }
  
@@ -423,7 +423,7 @@ index 5bf7d22..ec389cf 100644
      }
  }
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index b0837a7..01359c6 100644
+index 71ecb51..3ad87a5 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
 @@ -642,7 +642,8 @@ path_conv::check (const UNICODE_STRING *src, unsigned opt,
@@ -454,16 +454,16 @@ index b0837a7..01359c6 100644
  	      > SYMLINK_MAX)
  	    debug_printf ("symlink string too long");
  	  else
-@@ -2524,7 +2525,7 @@ symlink_info::check_reparse_point (HANDLE h, bool remote)
-       fileattr &= ~FILE_ATTRIBUTE_REPARSE_POINT;
-       return 0;
+@@ -2541,7 +2542,7 @@ symlink_info::check_reparse_point (HANDLE h, bool remote)
+       return ret;
      }
--  sys_wcstombs (srcbuf, SYMLINK_MAX + 7, subst.Buffer,
-+  sys_wcstombs_path (srcbuf, SYMLINK_MAX + 7, subst.Buffer,
- 		subst.Length / sizeof (WCHAR));
+   /* ret is > 0, so it's a reparse point, path in symbuf. */
+-  sys_wcstombs (srcbuf, SYMLINK_MAX + 7, symbuf.Buffer,
++  sys_wcstombs_path (srcbuf, SYMLINK_MAX + 7, symbuf.Buffer,
+ 		symbuf.Length / sizeof (WCHAR));
    pflags |= PATH_SYMLINK | PATH_REP;
    /* A symlink is never a directory. */
-@@ -2557,7 +2558,7 @@ symlink_info::check_nfs_symlink (HANDLE h)
+@@ -2574,7 +2575,7 @@ symlink_info::check_nfs_symlink (HANDLE h)
      {
        PWCHAR spath = (PWCHAR)
  		     (pffei->EaName + pffei->EaNameLength + 1);
@@ -472,7 +472,7 @@ index b0837a7..01359c6 100644
  			  spath, pffei->EaValueLength);
        pflags |= PATH_SYMLINK;
      }
-@@ -3589,7 +3590,7 @@ cygwin_conv_path (cygwin_conv_path_t what, const void *from, void *to,
+@@ -3606,7 +3607,7 @@ cygwin_conv_path (cygwin_conv_path_t what, const void *from, void *to,
  	      }
  	    PUNICODE_STRING up = p.get_nt_native_path ();
  	    buf = tp.c_get ();
@@ -481,7 +481,7 @@ index b0837a7..01359c6 100644
  			  up->Buffer, up->Length / sizeof (WCHAR));
  	    /* Convert native path to standard DOS path. */
  	    if (!strncmp (buf, "\\??\\", 4))
-@@ -3602,11 +3603,11 @@ cygwin_conv_path (cygwin_conv_path_t what, const void *from, void *to,
+@@ -3619,11 +3620,11 @@ cygwin_conv_path (cygwin_conv_path_t what, const void *from, void *to,
  	      {
  		/* Device name points to somewhere else in the NT namespace.
  		   Use GLOBALROOT prefix to convert to Win32 path. */
@@ -495,7 +495,7 @@ index b0837a7..01359c6 100644
  			      up->Buffer, up->Length / sizeof (WCHAR));
  	      }
  	    lsiz = strlen (buf) + 1;
-@@ -3980,8 +3981,8 @@ cygwin_conv_path_list (cygwin_conv_path_t what, const void *from, void *to,
+@@ -3997,8 +3998,8 @@ cygwin_conv_path_list (cygwin_conv_path_t what, const void *from, void *to,
    switch (what & CCP_CONVTYPE_MASK)
      {
      case CCP_WIN_W_TO_POSIX:
@@ -506,7 +506,7 @@ index b0837a7..01359c6 100644
  	return -1;
        what = (what & ~CCP_CONVTYPE_MASK) | CCP_WIN_A_TO_POSIX;
        from = (const void *) winp;
-@@ -4923,9 +4924,9 @@ cwdstuff::get_error_desc () const
+@@ -4940,9 +4941,9 @@ cwdstuff::get_error_desc () const
  void
  cwdstuff::reset_posix (wchar_t *w_cwd)
  {
@@ -518,7 +518,7 @@ index b0837a7..01359c6 100644
  }
  
  char *
-@@ -4948,7 +4949,7 @@ cwdstuff::get (char *buf, int need_posix, int with_chroot, unsigned ulen)
+@@ -4965,7 +4966,7 @@ cwdstuff::get (char *buf, int need_posix, int with_chroot, unsigned ulen)
    if (!need_posix)
      {
        tocopy = tp.c_get ();
