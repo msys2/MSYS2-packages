@@ -1,0 +1,58 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgbase=libidn2
+pkgname=('libidn2' 'libidn2-devel')
+pkgver=2.0.4
+pkgrel=1
+pkgdesc="Implementation of the Stringprep, Punycode and IDNA specifications"
+url="https://www.gnu.org/software/libidn/"
+arch=('i686' 'x86_64')
+license=('GPL3' 'LGPL')
+makedepends=('gcc' 'make' 'pkg-config' 'texinfo')
+options=('!libtool' 'staticlibs')
+source=(https://ftp.gnu.org/gnu/libidn/${pkgname}-${pkgver}.tar.gz{,.sig}
+        libidn2-2.0.4-msys2.patch)
+sha256sums=('644b6b03b285fb0ace02d241d59483d98bc462729d8bb3608d5cad5532f3d2f0'
+            'SKIP'
+            '4a440e917cf2f23b4ea153be73f40e561e4b7e20305e55a82351e1630fb318bc')
+
+prepare() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  patch -p1 -i ${srcdir}/libidn2-2.0.4-msys2.patch
+
+  autoreconf -ivf
+}
+
+build() {
+  [[ -d ${srcdir}/build-${CHOST} ]] && rm -rf ${srcdir}/build-${CHOST}
+  mkdir ${srcdir}/build-${CHOST}
+  cd ${srcdir}/build-${CHOST}
+  ../${pkgname}-${pkgver}/configure \
+    --prefix=/usr \
+    --build=${CHOST} \
+    --enable-shared \
+    --enable-static
+  make
+  make DESTDIR=${srcdir}/dest-${CHOST} install
+}
+
+package_libidn2() {
+  groups=('libraries')
+  depends=('info')
+  install=libidn2.install
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest-${CHOST}/usr/bin/*.dll ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest-${CHOST}/usr/share ${pkgdir}/usr/
+}
+
+package_libidn2-devel() {
+  pkgdesc="Libidn2 headers and libraries"
+  groups=('development')
+  depends=("libidn2=${pkgver}")
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest-${CHOST}/usr/bin/*.exe ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest-${CHOST}/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest-${CHOST}/usr/lib ${pkgdir}/usr/
+}
