@@ -1,0 +1,73 @@
+# Maintainer: J. Peter Mugaas <jpmugaas@suddenlink.net>
+
+pkgbase=jansson
+pkgname=("${pkgbase}" "${pkgbase}-devel")
+pkgver=2.10
+pkgrel=1
+pkgdesc='C library for encoding, decoding and manipulating JSON data'
+arch=('i686' 'x86_64')
+url='http://www.digip.org/jansson/'
+license=('MIT')
+options=('staticlibs')
+source=("http://www.digip.org/$pkgname/releases/$pkgname-$pkgver.tar.bz2"
+        "jansson-2.10-msys2.patch")
+md5sums=('8f85f653fba3ac8220ad8f2f47646ef1'
+         'fd1db3bf76f9954fc25c95d0a5f1ee36')
+
+
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying $_patch"
+    patch -Nbp1 -i "${srcdir}/${_patch}"
+  done
+}
+
+del_file_exists() {
+  for _fname in "$@"
+  do
+    if [ -f $_fname ]; then
+      rm -rf $_fname
+    fi
+  done
+}
+# =========================================== #
+
+prepare() {
+  cd $srcdir/$pkgname-$pkgver
+  apply_patch_with_msg jansson-2.10-msys2.patch
+  autoreconf -fiv
+}
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  ./configure --prefix=/usr --enable-static=yes --enable-shared=yes
+  make
+  # put this here so we can have split packages with a test.
+  make check
+  make DESTDIR="${srcdir}/dest" install
+}
+
+
+package_jansson() {
+  pkgdesc='C library for encoding, decoding and manipulating JSON data (runtime)'
+  groups=('libraries')
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+  install -Dm644 "$srcdir/$pkgname-$pkgver/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
+
+package_jansson-devel() {
+  pkgdesc="jansson headers and libraries"
+  depends=("jansson=${pkgver}")
+  options=('staticlibs')
+  groups=('development')
+
+  mkdir -p ${pkgdir}/usr/lib
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
+
+# vim:set ts=2 sw=2 et:
