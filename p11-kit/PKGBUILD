@@ -1,40 +1,55 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
+# Contributor: Saul Ibarra Corretge <saghul@gmail.com>
 # Contributor: Ray Donnelly <mingw.android@gmail.com>
 
-pkgbase=p11-kit
+_realname=p11-kit
+pkgbase=${_realname}
 pkgname=('p11-kit' 'libp11-kit' 'libp11-kit-devel')
-pkgver=0.23.2
+pkgver=0.23.7
 pkgrel=1
 pkgdesc="Library to work with PKCS#11 modules"
 arch=(i686 x86_64)
-url="https://p11-glue.freedesktop.org"
+url="http://p11-glue.freedesktop.org/p11-kit.html"
 license=('BSD')
-makedepends=('gettext-devel' 'libiconv-devel' 'libtasn1-devel' 'libffi-devel')
-# options=('debug' '!strip')
-source=(${url}/releases/${pkgname}-${pkgver}.tar.gz{,.sig}
-        0.19.1-trust-shrext.patch
-        p11-kit-fix-readlink.patch
-        0.18.7-win8-x64.patch
-        0.18.7-parallel-make.patch
-        p11-kit-0.20.3-msysize.patch)
-sha256sums=('ba726ea8303c97467a33fca50ee79b7b35212964be808ecf9b145e9042fdfaf0'
-            'SKIP'
-            'e07f5f4d447390fe4ec35c42d438392b57b8a937f1af36265303d11a9417fda0'
-            'c46f9bcd83fe28f07a1e692ad6963e6fd37d2b2217472ba7c907185f51fc2fea'
-            'e6895738ceca282b7379caad65668ca1e63b4626ccca5695128c383351ae2e36'
-            '99a442bc0c025446d9bcd1d2632c6d637b90e2be45d8d8b54b65ceacd4b43596'
-            '599c7327eb056511ebc26bb96c4992f4ba149dc4e5da7aa6e2f458112b6313c7')
+makedepends=('gettext-devel' 'libiconv-devel' 'libtasn1-devel' 'libffi-devel' 'gtk-doc')
+options=('!debug' 'strip' 'staticlibs')
+source=(https://github.com/p11-glue/p11-kit/releases/download/${pkgver}/${_realname}-${pkgver}.tar.gz
+        0001-allow-gtkdocize.all.patch
+        0002-fix-includes.patch
+        0004-fix-abspath-check.all.patch
+        0006-p11-kit-relocation.patch
+        0007-mmap-CreateFile-with-FILE_SHARE_READ.patch
+        0008-add-debugging-to-mmap.patch
+        0009-add-debugging-to-path.patch
+        0010-fix-transport-test.patch
+        0011-p11-kit-spawn-external.patch)
+validpgpkeys=('C0F67099B808FB063E2C81117BFB1108D92765AF')
+sha256sums=('988e7c86f2641b36702503481292ef0686e6b1c39d80b215699b6dbf1024be41'
+            '195b2e8695f701caf545e2a468383ad29457febd9b1ee57de1986de04ad3c31c'
+            'aa92f986d3f7dfc119e86f9a8f3987e6ac2562149921820eadbe09218c4df99c'
+            'ea4593324db6d2d193733561f0352c6d679d1fb00aed0a2bae0d28aecbe92721'
+            '9149783efef18db50d15d5bfc796387d18f948080a3710fc66b55a95191f9324'
+            '2b0fc5c54776aca54e306315338323075e7412d8d800f490a31870008c34f8d1'
+            '652e4be637bf77f20d8fde91175286701430e720e4082e8818a50ebddff28460'
+            '8c796ade0ef6356c796d2e87b967c7a9d888783c08e740e35d5686f6deb7f009'
+            '9aae8454b11270c39dba924731fd5555e3a1b97cd4dd6fd61566c737b1adde72'
+            'd5e804ba795aefe0a3938bc527b0e6c8ff8c1d5dfa1c0c1728c20a249504af6b')
 
 prepare() {
-  cd ${pkgname}-${pkgver}
+  cd "${srcdir}"/${_realname}-${pkgver}
+  rm -f common/pathtools.c common/pathtools.h > /dev/null 2>&1 || true
+  patch -p1 -i ${srcdir}/0001-allow-gtkdocize.all.patch
+  patch -p1 -i ${srcdir}/0002-fix-includes.patch
+  patch -p1 -i ${srcdir}/0004-fix-abspath-check.all.patch
+  patch -p1 -i ${srcdir}/0006-p11-kit-relocation.patch
+  patch -p1 -i ${srcdir}/0007-mmap-CreateFile-with-FILE_SHARE_READ.patch
+  # patch -p1 -i ${srcdir}/0007-add-debugging-to-mmap.patch
+  # patch -p1 -i ${srcdir}/0008-add-debugging-to-path.patch
+  patch -p1 -i ${srcdir}/0010-fix-transport-test.patch
+  #patch -p1 -i ${srcdir}/0011-p11-kit-spawn-external.patch
 
-  patch -p2 -i ${srcdir}/0.19.1-trust-shrext.patch
-  patch -p1 -i ${srcdir}/p11-kit-fix-readlink.patch
-  patch -p2 -i ${srcdir}/0.18.7-win8-x64.patch
-  patch -p1 -i ${srcdir}/0.18.7-parallel-make.patch
-  patch -p1 -i ${srcdir}/p11-kit-0.20.3-msysize.patch
-
-  autoreconf -fi
+  autoreconf -vfi
+  gtkdocize
 }
 
 build() {
@@ -46,25 +61,24 @@ build() {
     extra_config+=( --enable-debug=no )
   fi
 
-  cd ${pkgname}-${pkgver}
-  ./configure \
-    --build=${CHOST} \
+  [[ -d ${srcdir}/build ]] && rm -rf ${srcdir}/build
+  mkdir -p "${srcdir}/build"
+  cd "${srcdir}/build"
+
+  PKG_CONFIG_PATH="${PKG_CONFIG_PATH}:/usr/share/pkgconfig" \
+  ../${_realname}-${pkgver}/configure \
     --prefix=/usr \
+    --build=${CHOST} \
     --sysconfdir=/etc \
     --localstatedir=/var \
-    --with-trust-paths=/etc/pki/ca-trust/source:/usr/share/pki/ca-trust-source \
-    --without-libiconv-prefix \
-    --without-libintl-prefix \
+    --with-trust-paths="/etc/pki/ca-trust/source:/usr/share/pki/ca-trust-source" \
+    --disable-silent-rules \
     "${extra_config[@]}"
-  make
 
-  make DESTDIR="${srcdir}/dest" install
-  install -Dm644 COPYING ${srcdir}/dest/usr/share/licenses/${pkgname}/COPYING
-}
-
-check() {
-  cd ${pkgname}-${pkgver}
-  #make check
+    make
+	
+	make DESTDIR="${srcdir}/dest" install
+   #install -Dm644 COPYING ${srcdir}/dest/usr/share/licenses/${pkgname}/COPYING
 }
 
 package_p11-kit() {
@@ -75,10 +89,11 @@ package_p11-kit() {
   cp -f ${srcdir}/dest/usr/bin/*.exe ${pkgdir}/usr/bin/
   mkdir -p ${pkgdir}/usr/lib/pkcs11
   mkdir -p ${pkgdir}/usr/share/p11-kit/modules
-  cp -f ${srcdir}/dest/usr/lib/pkcs11/*trust.so ${pkgdir}/usr/lib/pkcs11/
-  cp -rf ${srcdir}/dest/usr/lib/p11-kit ${pkgdir}/usr/lib/
+  cp -f ${srcdir}/dest/usr/lib/pkcs11/*trust.dll ${pkgdir}/usr/lib/pkcs11/
+  cp -f ${srcdir}/dest/usr/lib/pkcs11/*trust.dll.a ${pkgdir}/usr/lib/pkcs11/
+  #cp -rf ${srcdir}/dest/usr/lib/p11-kit ${pkgdir}/usr/lib/
   cp -f ${srcdir}/dest/usr/share/p11-kit/modules/*trust* ${pkgdir}/usr/share/p11-kit/modules/
-  cp -rf ${srcdir}/dest/usr/share/licenses ${pkgdir}/usr/share/
+  #cp -rf ${srcdir}/dest/usr/share/licenses ${pkgdir}/usr/share/
 }
 
 package_libp11-kit() {
