@@ -31,7 +31,7 @@ prepare() {
 
 build() {
   cd ${srcdir}/${pkgname}/mozilla
-  mkdir -p legacy-{enable,disable}
+  mkdir -p legacy-{default,disable}
   /usr/bin/python2 certdata2pem.py >c2p.log 2>c2p.err
 
   (
@@ -64,32 +64,22 @@ EOF
   local f=
   for f in *.crt
   do
-    echo "processing ${f}"
-    tbits=`sed -n '/^# openssl-trust/{s/^.*=//;p;}' ${f}`
-    distbits=`sed -n '/^# openssl-distrust/{s/^.*=//;p;}' ${f}`
-    alias=`sed -n '/^# alias=/{s/^.*=//;p;q;}' ${f} | sed "s/'//g" | sed 's/"//g'`
+    echo "processing $f"
+    tbits=`sed -n '/^# openssl-trust/{s/^.*=//;p;}' $f`
+    alias=`sed -n '/^# alias=/{s/^.*=//;p;q;}' $f | sed "s/'//g" | sed 's/"//g'`
     targs=""
 
-    if [ -n "${tbits}" ]
-    then
-      for t in ${tbits}
-      do
-        targs="${targs} -addtrust ${t}"
-      done
-    fi
-    if [ -n "${distbits}" ]
-    then
-      for t in ${distbits}
-      do
-        targs="${targs} -addreject ${t}"
-      done
+    if [ -n "$tbits" ]; then
+        for t in $tbits; do
+            targs="${targs} -addtrust $t"
+        done
     fi
     if [ -n "${targs}" ]
     then
       echo "trust flags ${targs} for ${f}" >> info.trust
       openssl x509 -text -in "${f}" -trustout ${targs} -setalias "${alias}" >> ${srcdir}/${pkgname}/ca-bundle.trust.crt
     else
-      echo "no trust flags for ${f}" >> tee -a info.notrust
+      echo "no trust flags for ${f}" >> info.notrust
       # p11-kit-trust defines empty trust lists as "rejected for all purposes".
       # That's why we use the simple file format
       #   (BEGIN CERTIFICATE, no trust information)
