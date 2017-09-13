@@ -1,0 +1,48 @@
+From 19d66febd492f64916126d75d7afd52c5c2870ef Mon Sep 17 00:00:00 2001
+From: Holger Nahrstaedt <holger@nahrstaedt.de>
+Date: Wed, 13 Sep 2017 14:23:09 +0200
+Subject: [PATCH 24/24] fix strnstr for msys2-runtime
+
+---
+ newlib/libc/string/strnstr.c | 26 +++++++++++++++++---------
+ 1 file changed, 17 insertions(+), 9 deletions(-)
+
+diff --git a/newlib/libc/string/strnstr.c b/newlib/libc/string/strnstr.c
+index ce32d0f73..5ac684afd 100644
+--- a/newlib/libc/string/strnstr.c
++++ b/newlib/libc/string/strnstr.c
+@@ -39,14 +39,22 @@ QUICKREF
+  * first slen characters of s.
+  */
+ char *
+-strnstr(const char *haystack, const char *needle, size_t haystack_len)
++strnstr(const char *s, const char *find, size_t slen)
+ {
+-  size_t needle_len = strnlen(needle, haystack_len);
+-
+-  if (needle_len < haystack_len || !needle[needle_len]) {
+-    char *x = memmem(haystack, haystack_len, needle, needle_len);
+-    if (x && !memchr(haystack, 0, x - haystack))
+-      return x;
+-  }
+-  return NULL;
++	char c, sc;
++	size_t len;
++
++	if ((c = *find++) != '\0') {
++		len = strlen(find);
++		do {
++			do {
++				if (slen-- < 1 || (sc = *s++) == '\0')
++					return (NULL);
++			} while (sc != c);
++			if (len > slen)
++				return (NULL);
++		} while (strncmp(s, find, len) != 0);
++		s--;
++	}
++	return ((char *)s);
+ }
+-- 
+2.14.1
+
