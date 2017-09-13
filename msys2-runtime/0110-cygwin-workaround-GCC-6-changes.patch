@@ -1,0 +1,70 @@
+From 05cfd1aed8b262e82f62acc2de2858d2d2b6679c Mon Sep 17 00:00:00 2001
+From: Yaakov Selkowitz <yselkowi@redhat.com>
+Date: Tue, 12 Sep 2017 14:30:34 -0500
+Subject: [PATCH] cygwin: workaround GCC 6 changes
+
+GCC 6 includes a number of new warnings which cause Cygwin to either not
+compile, or not work properly even if said warnings are ignored:
+
+https://cygwin.com/ml/cygwin-developers/2017-09/msg00000.html
+https://gcc.gnu.org/gcc-6/porting_to.html
+
+For now, we use the flags necessary to revert to GCC 5 behaviour until we
+can fix the code properly.
+
+Signed-off-by: Yaakov Selkowitz <yselkowi@redhat.com>
+---
+ winsup/cygwin/Makefile.in | 4 ++--
+ winsup/cygwin/crt0.c      | 2 ++
+ winsup/cygwin/init.cc     | 2 ++
+ 3 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/Makefile.in b/winsup/cygwin/Makefile.in
+index 10e6b1f81..98727c019 100644
+--- a/winsup/cygwin/Makefile.in
++++ b/winsup/cygwin/Makefile.in
+@@ -73,11 +73,11 @@ CRT0:=$(cygwin_build)/crt0.o
+ #
+ MT_SAFE:=@MT_SAFE@
+ CCEXTRA=
+-COMMON_CFLAGS=-MMD ${$(*F)_CFLAGS} -Werror -fmerge-constants -ftracer $(CCEXTRA)
++COMMON_CFLAGS=-MMD ${$(*F)_CFLAGS} -Werror -fno-delete-null-pointer-checks -fmerge-constants -ftracer $(CCEXTRA)
+ ifeq ($(target_cpu),x86_64)
+ COMMON_CFLAGS+=-mcmodel=small
+ endif
+-COMPILE.cc+=${COMMON_CFLAGS}
++COMPILE.cc+=${COMMON_CFLAGS} -std=gnu++98
+ COMPILE.c+=${COMMON_CFLAGS}
+ 
+ AR:=@AR@
+diff --git a/winsup/cygwin/crt0.c b/winsup/cygwin/crt0.c
+index f0103b4ca..271f5b911 100644
+--- a/winsup/cygwin/crt0.c
++++ b/winsup/cygwin/crt0.c
+@@ -20,7 +20,9 @@ void
+ mainCRTStartup ()
+ {
+ #ifdef __i386__
++#pragma GCC diagnostic ignored "-Wframe-address"
+   (void)__builtin_return_address(1);
++#pragma GCC diagnostic pop
+   asm volatile ("andl $-16,%%esp" ::: "%esp");
+ #endif
+ 
+diff --git a/winsup/cygwin/init.cc b/winsup/cygwin/init.cc
+index 5b84b1cc0..2d4299e5b 100644
+--- a/winsup/cygwin/init.cc
++++ b/winsup/cygwin/init.cc
+@@ -23,7 +23,9 @@ static void WINAPI
+ threadfunc_fe (VOID *arg)
+ {
+ #ifndef __x86_64__
++#pragma GCC diagnostic ignored "-Wframe-address"
+   (void)__builtin_return_address(1);
++#pragma GCC diagnostic pop
+   asm volatile ("andl $-16,%%esp" ::: "%esp");
+ #endif
+   _cygtls::call ((DWORD (*)  (void *, void *)) TlsGetValue (_my_oldfunc), arg);
+-- 
+2.14.1
+
