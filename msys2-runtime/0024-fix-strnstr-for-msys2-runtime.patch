@@ -1,48 +1,23 @@
-From 19d66febd492f64916126d75d7afd52c5c2870ef Mon Sep 17 00:00:00 2001
-From: Holger Nahrstaedt <holger@nahrstaedt.de>
-Date: Wed, 13 Sep 2017 14:23:09 +0200
-Subject: [PATCH 24/24] fix strnstr for msys2-runtime
+From e70eb5fdbf98f6cbf92efef4c533c373df77ceaf Mon Sep 13 00:00:00 2017
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Sun, 13 Sep 2017 09:31:51 +0100
+Subject: [PATCH] newlib: Fix possible segmentation fault in strnstr() on 64-bit systems
 
 ---
- newlib/libc/string/strnstr.c | 26 +++++++++++++++++---------
- 1 file changed, 17 insertions(+), 9 deletions(-)
+ newlib/libc/string/strnstr.c | 1 +
+ 1 file changed, 1 insertion(+)
 
 diff --git a/newlib/libc/string/strnstr.c b/newlib/libc/string/strnstr.c
-index ce32d0f73..5ac684afd 100644
+index ce32d0f73e..f6b007813f 100644
 --- a/newlib/libc/string/strnstr.c
 +++ b/newlib/libc/string/strnstr.c
-@@ -39,14 +39,22 @@ QUICKREF
-  * first slen characters of s.
-  */
- char *
--strnstr(const char *haystack, const char *needle, size_t haystack_len)
-+strnstr(const char *s, const char *find, size_t slen)
- {
--  size_t needle_len = strnlen(needle, haystack_len);
--
--  if (needle_len < haystack_len || !needle[needle_len]) {
--    char *x = memmem(haystack, haystack_len, needle, needle_len);
--    if (x && !memchr(haystack, 0, x - haystack))
--      return x;
--  }
--  return NULL;
-+	char c, sc;
-+	size_t len;
-+
-+	if ((c = *find++) != '\0') {
-+		len = strlen(find);
-+		do {
-+			do {
-+				if (slen-- < 1 || (sc = *s++) == '\0')
-+					return (NULL);
-+			} while (sc != c);
-+			if (len > slen)
-+				return (NULL);
-+		} while (strncmp(s, find, len) != 0);
-+		s--;
-+	}
-+	return ((char *)s);
- }
+@@ -31,6 +31,7 @@ QUICKREF
+ */
+ 
+ #undef __STRICT_ANSI__
++#define _GNU_SOURCE
+ #include <_ansi.h>
+ #include <string.h>
+ 
 -- 
 2.14.1
-
