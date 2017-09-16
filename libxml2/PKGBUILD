@@ -1,42 +1,68 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=('libxml2' 'libxml2-devel' 'libxml2-python')
-pkgver=2.9.2
-pkgrel=3
+pkgver=2.9.5
+pkgrel=1
 pkgdesc="XML parsing library, version 2"
 arch=(i686 x86_64)
 license=('MIT')
-makedepends=('python2' 'python3' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel')
+makedepends=('python2' 'python3' 'icu-devel>=59.1' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel')
 url="http://www.xmlsoft.org/"
 source=(http://xmlsoft.org/sources/${pkgname}-${pkgver}.tar.gz
         https://www.w3.org/XML/Test/xmlts20130923.tar.gz
         libxml2-2.9.0-do-not-check-crc.patch
         libxml2-2.7.3-doc-install.patch
         libxml2-2.8.0_rc1-winnt.patch
-        libxml2-2.9.1-msys2.patch
-        libxml2-2.9.2-catalog-revert.patch)
-sha256sums=('5178c30b151d044aefb1b08bf54c3003a0ac55c59c866763997529d60770d5bc'
+        libxml2-2.9.1-msys2.patch)
+sha256sums=('4031c1ecee9ce7ba4f313e91ef6284164885cdb69937a123f6a83bb6a72dcd38'
             '9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f'
             '5a53d640ebce5a96e35fbdf5f644c37642dfa3345a1dc4fc355728897c19b7e7'
             'bff6790eadec6d7b3affd2d3a7385ce7f80cec2cf4abbd2ed83e9cb297a614a9'
             'c18b2c15550b3ff4709a85cd18d16368928319b1b7fd8875dc34acd67076b134'
-            '3eadad15d01594b8b52e561a4ebce3dffe16a42e5ebd211ea50df92a244994ed'
-            'ea2bcb58b4b39835c031aa64433c01f885533a33a1e64069633c43dc4ef8be31')
+            '3eadad15d01594b8b52e561a4ebce3dffe16a42e5ebd211ea50df92a244994ed')
 
 PYTHON_SITELIB=/usr/lib/python2.7/site-packages
 PYTHON_LIB=/usr/lib/python2.7
 
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying $_patch"
+    patch -Nbp1 -i "${srcdir}/$_patch"
+  done
+}
+
+apply_patch_p2_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying $_patch"
+    patch -Nbp2 -i "${srcdir}/$_patch"
+  done
+}
+
+del_file_exists() {
+  for _fname in "$@"
+  do
+    if [ -f $_fname ] || [ -d $_fname ]; then
+      rm -rf $_fname
+    fi
+  done
+}
+# =========================================== #
+
+
 prepare() {
   cd ${srcdir}
+  del_file_exists ${pkgname}-${pkgver}/xmlconf
   mv xmlconf -t ${pkgname}-${pkgver}
 
   cd ${pkgname}-${pkgver}
 
-  patch -p1 -i ${srcdir}/libxml2-2.9.0-do-not-check-crc.patch
-  patch -p1 -i ${srcdir}/libxml2-2.7.3-doc-install.patch
-  patch -p1 -i ${srcdir}/libxml2-2.8.0_rc1-winnt.patch
-  patch -p1 -i ${srcdir}/libxml2-2.9.1-msys2.patch
-  patch -p1 -i ${srcdir}/libxml2-2.9.2-catalog-revert.patch
+  apply_patch_with_msg libxml2-2.9.0-do-not-check-crc.patch \
+    libxml2-2.7.3-doc-install.patch \
+    libxml2-2.8.0_rc1-winnt.patch \
+    libxml2-2.9.1-msys2.patch 
 
   sed -e 's|/usr/bin/python -u|/usr/bin/python2 -u|g' -e 's|/usr/bin/python$|/usr/bin/python2|g' -i python/tests/*.py
 
@@ -54,6 +80,7 @@ build() {
     --target=${CHOST} \
     --enable-ipv6 \
     --with-history \
+    --with-icu \
     --with-python=/usr/bin/python2 \
     --with-html-dir=/usr/share/doc \
     --with-html-subdir=libxml2/html
@@ -70,7 +97,7 @@ check() {
 }
 
 package_libxml2() {
-  depends=('coreutils' 'liblzma' 'libreadline' 'ncurses' 'zlib')
+  depends=('coreutils' 'icu>=59.1' 'liblzma' 'libreadline' 'ncurses' 'zlib')
   groups=('libraries')
   install=libxml2.install
 
@@ -86,7 +113,7 @@ package_libxml2-devel() {
   pkgdesc="Libxml2 headers and libraries"
   groups=('development')
   options=('staticlibs')
-  depends=("libxml2=${pkgver}" 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel')
+  depends=("libxml2=${pkgver}" 'icu-devel>=59.1' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel')
 
   mkdir -p ${pkgdir}/usr/{bin,share}
   cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
