@@ -7,8 +7,8 @@
 
 pkgbase=gcc
 pkgname=('gcc' 'gcc-libs' 'gcc-fortran')
-pkgver=6.3.0
-pkgrel=2
+pkgver=6.4.0
+pkgrel=1
 pkgdesc="The GNU Compiler Collection"
 arch=('i686' 'x86_64')
 groups=('msys2-devel')
@@ -22,7 +22,7 @@ STRIP_OPTION="strip"
 #DEBUG_OPTION="debug"
 DEBUG_OPTION="!debug"
 options=('!emptydirs' "$STRIP_OPTION" "$DEBUG_OPTION")
-source=(https://ftp.gnu.org/gnu/gcc/gcc-${pkgver}/gcc-${pkgver}.tar.bz2
+source=(https://ftp.gnu.org/gnu/gcc/gcc-${pkgver}/gcc-${pkgver}.tar.gz
         0001-share-mingw-fset-stack-executable-with-cygwin.patch
         0002-boehm-gc-for-cygwin.patch
         0003-AWT-Font-fix-for-Cygwin.patch
@@ -51,7 +51,7 @@ source=(https://ftp.gnu.org/gnu/gcc/gcc-${pkgver}/gcc-${pkgver}.tar.bz2
         0951-6.3.0-msys2-spec.patch
         0953-6.3.0-testsuite-msys2.patch
         0955-4.9.2-apply-hack-so-gcc_s-isnt-stripped.patch)
-md5sums=('677a7623c7ef6ab99881bc4e048debb6'
+md5sums=('3124e1563958a24a64210236852f7283'
          '7d49c7e9395ebfe572ec0ea3e88fdf2e'
          '90c20705f3dd2559f90367bcb81c3e65'
          '939c9c0799f52438e33da05b36512632'
@@ -74,57 +74,80 @@ md5sums=('677a7623c7ef6ab99881bc4e048debb6'
          '188e3ad9985b1b6116e25d6ac8aec9e5'
          '448fba3bea5e7c2e5289559315dc4733'
          'f8a397bc46560b09338abab5355f9a97'
-         '6ece7e4cd164180ddffd89173cc258ea'
-         'd0ad8e18f67d16d1702b56c48597ed38'
+         '5074b74c549e11a06717d4999b406383'
+         '0853c463318bb702083980adb08f1c44'
          '77ee53d0d97cff56efc48ba967b576e7'
          '79d1b1d8247097cbd9ac7b2e104ace1e'
          '6defafd4e0bf699c1280878f0224d523'
          '6f9fb2d7fcd0b82d12047d56f1f0898d')
 
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _fname in "$@"
+  do
+    msg2 "Applying ${_fname}"
+    patch -Nbp1 -i "${srcdir}"/${_fname}
+  done
+}
+
+del_file_exists() {
+  for _fname in "$@"
+  do
+    if [ -f $_fname ] || [ -d $_fname ]; then
+      rm -rf $_fname
+    fi
+  done
+}
+# =========================================== #
+
 prepare() {
   cd ${srcdir}/gcc-${pkgver}
   
   # Remove files created by patches
-  rm -f gcc/ada/system-cygwin-x86_64.ads libgcc/config/i386/t-msys \
-        gcc/config/i386/msys.h gcc/config/i386/msys-w64.h \
-        gcc/config/i386/t-msys-w64 \
-          > /dev/null 2>&1 | true
+  rm -f config/mt-cygwin \
+        gcc/ada/system-cygwin-x86_64.ads \
+        libgomp/config/cygwin/plugin-suffix.h \
+        libgcc/config/i386/t-msys \
+        gcc/config/i386/msys.h \
+        gcc/config/i386/msys-w64.h \
+        gcc/config/i386/t-msys-w64 > /dev/null 2>&1 | true
 
   # Cygwin patches
-  patch -p1 -i ${srcdir}/0001-share-mingw-fset-stack-executable-with-cygwin.patch
-  patch -p1 -i ${srcdir}/0002-boehm-gc-for-cygwin.patch
-  patch -p1 -i ${srcdir}/0003-AWT-Font-fix-for-Cygwin.patch
-  patch -p1 -i ${srcdir}/0004-Cygwin-ioctl-may-emit-EINVAL.patch
-  patch -p1 -i ${srcdir}/0005-use-avoid-version-if-not-tracking-SO-version.patch
-  patch -p1 -i ${srcdir}/0006-cygwin-uses-cyg-library-prefix.patch
-  patch -p1 -i ${srcdir}/0007-Avoid-installing-libffi.patch
-  patch -p1 -i ${srcdir}/0009-Cygwin-uses-sysv-ABI-on-x86_64.patch
-  patch -p1 -i ${srcdir}/0010-Do-not-version-lto-plugin-on-cygwin-mingw.patch
-  patch -p1 -i ${srcdir}/0011-add-dummy-pthread-tsaware-and-large-address-aware-fo.patch
-  patch -p1 -i ${srcdir}/0012-handle-dllimport-properly-in-medium-model.patch
-  patch -p1 -i ${srcdir}/0013-skip-test-for-cygwin-mingw.patch
-  patch -p1 -i ${srcdir}/0014-64bit-Cygwin-uses-SEH.patch
-  patch -p1 -i ${srcdir}/0015-define-RTS_CONTROL_ENABLE-and-DTR_CONTROL_ENABLE-for.patch
-  patch -p1 -i ${srcdir}/0016-fix-some-implicit-declaration-warnings.patch
-  patch -p1 -i ${srcdir}/0017-__cxa-atexit-for-Cygwin.patch
-  patch -p1 -i ${srcdir}/0018-prevent-modules-from-being-unloaded-before-their-dto.patch
-  patch -p1 -i ${srcdir}/0019-Cygwin-doesn-t-do-text-mode-translations-for-file-ha.patch
-  patch -p1 -i ${srcdir}/0020-cygwin-uses-cyg-lib-prefix.patch
-  patch -p1 -i ${srcdir}/0022-libgomp-soname-cygwin-mingw.patch
-  patch -p1 -i ${srcdir}/0024-libitm-weak-symbols.patch
-  patch -p1 -i ${srcdir}/0025-enable-libcilkrts.patch
-  patch -p1 -i ${srcdir}/0028-g++-time.patch
+  apply_patch_with_msg \
+     0001-share-mingw-fset-stack-executable-with-cygwin.patch \
+     0002-boehm-gc-for-cygwin.patch \
+     0003-AWT-Font-fix-for-Cygwin.patch \
+     0004-Cygwin-ioctl-may-emit-EINVAL.patch \
+     0005-use-avoid-version-if-not-tracking-SO-version.patch \
+     0006-cygwin-uses-cyg-library-prefix.patch \
+     0007-Avoid-installing-libffi.patch \
+     0009-Cygwin-uses-sysv-ABI-on-x86_64.patch \
+     0010-Do-not-version-lto-plugin-on-cygwin-mingw.patch \
+     0011-add-dummy-pthread-tsaware-and-large-address-aware-fo.patch \
+     0012-handle-dllimport-properly-in-medium-model.patch \
+     0013-skip-test-for-cygwin-mingw.patch \
+     0014-64bit-Cygwin-uses-SEH.patch \
+     0015-define-RTS_CONTROL_ENABLE-and-DTR_CONTROL_ENABLE-for.patch \
+     0016-fix-some-implicit-declaration-warnings.patch \
+     0017-__cxa-atexit-for-Cygwin.patch \
+     0018-prevent-modules-from-being-unloaded-before-their-dto.patch \
+     0019-Cygwin-doesn-t-do-text-mode-translations-for-file-ha.patch \
+     0020-cygwin-uses-cyg-lib-prefix.patch \
+     0022-libgomp-soname-cygwin-mingw.patch \
+     0024-libitm-weak-symbols.patch \
+     0025-enable-libcilkrts.patch 
+  patch -Np2 -i ${srcdir}/0028-g++-time.patch
   
   # MINGW Patches
-  patch -p1 -i ${srcdir}/0130-libstdc++-in-out.patch
+  apply_patch_with_msg 0130-libstdc++-in-out.patch
   
   # MSYS2 Patches
-  patch -p1 -i ${srcdir}/0950-6.3.0-configure-msys2.patch
-  patch -p1 -i ${srcdir}/0951-6.3.0-msys2-spec.patch
-  patch -p1 -i ${srcdir}/0953-6.3.0-testsuite-msys2.patch
-  patch -p1 -i ${srcdir}/0955-4.9.2-apply-hack-so-gcc_s-isnt-stripped.patch
+  apply_patch_with_msg \
+    0950-6.3.0-configure-msys2.patch \
+    0951-6.3.0-msys2-spec.patch \
+    0953-6.3.0-testsuite-msys2.patch \
+    0955-4.9.2-apply-hack-so-gcc_s-isnt-stripped.patch
   
-
   # Do not run fixincludes
   #sed -i 's@\./fixinc\.sh@-c true@' gcc/Makefile.in
   echo ${pkgver} > gcc/BASE-VER
@@ -202,13 +225,13 @@ build() {
   #make doc-man-doxygen
 }
 
-check() {
-  cd ${srcdir}/build-$(arch)
+#check() {
+#  cd ${srcdir}/build-$(arch)
 
-  # do not abort on error as some are "expected"
-  make -k check || true
-  ${srcdir}/gcc-${pkgver}/contrib/test_summary
-}
+#  # do not abort on error as some are "expected"
+#  make -k check || true
+#  ${srcdir}/gcc-${pkgver}/contrib/test_summary
+#}
 
 package_gcc-libs()
 {
