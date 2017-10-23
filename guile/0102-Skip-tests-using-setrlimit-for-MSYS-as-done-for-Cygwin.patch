@@ -1,0 +1,52 @@
+From a64825ffa6be30bcb876557383dbdd106da51c99 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Hannes=20M=C3=BCller?= <h.c.f.mueller@gmx.de>
+Date: Tue, 17 Oct 2017 19:12:41 +0200
+Subject: [PATCH] Skip tests using setrlimit for MSYS as done for Cygwin
+
+MSYS2 behaves like Cygwin. Therefore treat them alike.
+---
+ test-suite/standalone/test-out-of-memory  | 8 ++++++++
+ test-suite/standalone/test-stack-overflow | 8 ++++++++
+ 2 files changed, 16 insertions(+)
+
+diff --git a/test-suite/standalone/test-out-of-memory b/test-suite/standalone/test-out-of-memory
+index 221651270..4e5ecc81f 100755
+--- a/test-suite/standalone/test-out-of-memory
++++ b/test-suite/standalone/test-out-of-memory
+@@ -23,6 +23,14 @@ exec guile -q -s "$0" "$@"
+   ;; test-stack-overflow.
+   (exit 77)) ; unresolved
+ 
++(when (string-contains-ci (vector-ref (uname) 0) "MSYS_NT")
++  ;; attempting to use setrlimit for memory RLIMIT_AS will always
++  ;; produce an invalid argument error on MSYS2 (tested on
++  ;; MSYS_NT-6.1-WOW DLL v2.9.0).  Proceeding with the test would fill
++  ;; all available memory and probably end in a crash.  See also
++  ;; test-stack-overflow.
++  (exit 77)) ; unresolved
++
+ (catch #t
+   ;; Silence GC warnings.
+   (lambda ()
+diff --git a/test-suite/standalone/test-stack-overflow b/test-suite/standalone/test-stack-overflow
+index dd54249d8..83e929159 100755
+--- a/test-suite/standalone/test-stack-overflow
++++ b/test-suite/standalone/test-stack-overflow
+@@ -23,6 +23,14 @@ exec guile -q -s "$0" "$@"
+   ;; test-out-of-memory.
+   (exit 77)) ; unresolved
+ 
++(when (string-contains-ci (vector-ref (uname) 0) "MSYS_NT")
++  ;; attempting to use setrlimit for memory RLIMIT_AS will always
++  ;; produce an invalid argument error on MSYS2 (tested on
++  ;; MSYS_NT-6.1-WOW DLL v2.9.0).  Proceeding with the test would fill
++  ;; all available memory and probably end in a crash.  See also
++  ;; test-out-of-memory.
++  (exit 77)) ; unresolved
++
+ ;; 100 MB.
+ (define *limit* (* 100 1024 1024))
+ 
+-- 
+2.14.2
+
