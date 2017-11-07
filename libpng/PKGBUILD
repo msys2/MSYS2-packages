@@ -1,0 +1,41 @@
+# Maintainer: Andrew Sun <adsun701@gmail.com>
+
+pkgname=libpng
+pkgver=1.6.34
+_apngver=1.6.34
+pkgrel=1
+pkgdesc="A collection of routines used to create PNG format graphics files"
+arch=('i686' 'x86_64')
+url="http://www.libpng.org/pub/png/libpng.html"
+license=('custom')
+makedepends=('gcc')
+depends=('zlib' 'zlib-devel')
+source=("https://downloads.sourceforge.net/sourceforge/${pkgname}/${pkgname}-${pkgver}.tar.xz"
+        "https://downloads.sourceforge.net/sourceforge/libpng-apng/libpng-${_apngver}-apng.patch.gz")
+sha256sums=('2f1e960d92ce3b3abd03d06dfec9637dfbd22febf107a536b44f7a47c60659f6'
+            'e661944e54574a3f26927ac9eb7e2788f3a2675545a19735b83fbb9adcb544c1')
+
+prepare() {
+  cd ${pkgname}-${pkgver}
+
+  # Add animated PNG (apng) support. Required by Firefox
+  # see http://sourceforge.net/projects/libpng-apng/
+  patch -Np1 -i ${srcdir}/libpng-${_apngver}-apng.patch
+  autoreconf -fiv
+}
+
+build() {
+  cd ${pkgname}-${pkgver}
+  ./configure --prefix=/usr
+  make
+}
+
+package() {
+  cd ${pkgname}-${pkgver}
+  make DESTDIR="${pkgdir}" install
+
+  cd contrib/pngminus
+  make PNGLIB="-L${pkgdir}/usr/lib -lpng" -f makefile.std png2pnm pnm2png
+  install -m755 png2pnm pnm2png "${pkgdir}/usr/bin/"
+  install -D -m644 ../../LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
