@@ -1,0 +1,55 @@
+# $Id$
+# Maintainer: Love Sy <shana@zju.edu.cn>
+
+_prgbase=tsocks
+pkgname=tsocks-ipv6
+pkgver=1.8beta6
+pkgrel=1
+pkgdesc='Transparent SOCKS proxying library, with IPv6 support'
+url='https://github.com/Elysion-tcfa/tsocks'
+license=('GPL')
+arch=('i686' 'x86_64')
+GIT_COMMIT=be36c83a7326c75123fa019a4cb53792ecd8f689
+source=("tsocks-${pkgver}.tar.gz"::"https://github.com/Elysion-tcfa/tsocks/archive/${GIT_COMMIT}.tar.gz"
+        "msys2-mingw-fixes.patch"
+        "prognames.patch")
+sha256sums=('76c4ac3cde166b3b84653e6788203bdcea2a313edb13c7aefaf9c69a64c76ea8'
+            '9fd019b825125a2ae10ae2556243a01adada7be89e60dda022fb1a06d673a7d6'
+            '4d28530c9e0a5e2f969326e127229769444dabfb85e1f3317a5f4683e10385c3')
+conflicts=("tsocks")
+provides=("tsocks")
+
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying $_patch"
+    patch -Nbp1 -i "${srcdir}/${_patch}"
+  done
+}
+#========================================= #
+
+prepare() {
+  cd "${srcdir}/${_prgbase}-${GIT_COMMIT}"
+  apply_patch_with_msg msys2-mingw-fixes.patch \
+    prognames.patch 
+  autoreconf -fiv
+}
+
+build() {
+	cd "${srcdir}/${_prgbase}-${GIT_COMMIT}"
+	export CPPFLAGS=
+	./configure --prefix=/usr --sysconfdir=/etc --mandir=/usr/share/man --libdir=/usr/lib  host=msys
+	make
+}
+
+package() {
+	cd "${srcdir}/${_prgbase}-${GIT_COMMIT}"
+	make DESTDIR="${pkgdir}" install
+	install -d "${pkgdir}/usr/share/${pkgname}"
+	install -m644 tsocks.conf.{simple,complex}.example "${pkgdir}/usr/share/${pkgname}"
+
+        install -D saveme.exe "${pkgdir}/usr/bin/tsocks-saveme"
+        install validateconf.exe "${pkgdir}/usr/bin/tsocks-validateconf"
+        install inspectsocks.exe "${pkgdir}/usr/bin"
+}

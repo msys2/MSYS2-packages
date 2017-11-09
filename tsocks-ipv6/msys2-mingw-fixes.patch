@@ -1,0 +1,325 @@
+diff -aurp tsocks-be36c83a7326c75123fa019a4cb53792ecd8f689/config.guess.orig tsocks-be36c83a7326c75123fa019a4cb53792ecd8f689/config.guess
+--- tsocks-be36c83a7326c75123fa019a4cb53792ecd8f689/config.guess.orig	2013-06-28 12:04:10.000000000 -0400
++++ tsocks-be36c83a7326c75123fa019a4cb53792ecd8f689/config.guess	2017-08-29 06:12:47.309531000 -0400
+@@ -804,6 +804,9 @@ EOF
+     i*:CYGWIN*:*)
+ 	echo ${UNAME_MACHINE}-pc-cygwin
+ 	exit ;;
++    i*:MSYS*:*)
++	echo ${UNAME_MACHINE}-pc-msys
++	exit ;;
+     *:MINGW*:*)
+ 	echo ${UNAME_MACHINE}-pc-mingw32
+ 	exit ;;
+@@ -841,12 +844,18 @@ EOF
+     i*:UWIN*:*)
+ 	echo ${UNAME_MACHINE}-pc-uwin
+ 	exit ;;
+-    amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
++    amd64:CYGWIN*:* | x86_64:CYGWIN*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:* | x86_64:MSYS*:*)
++	echo x86_64-unknown-msys
++	exit ;;
++    p*:MSYS*:*)
++	echo powerpcle-unknown-msys
++	exit ;;
+     prep*:SunOS:5.*:*)
+ 	echo powerpcle-unknown-solaris2`echo ${UNAME_RELEASE}|sed -e 's/[^.]*//'`
+ 	exit ;;
+diff -aurp tsocks-be36c83a7326c75123fa019a4cb53792ecd8f689/configure.ac.orig tsocks-be36c83a7326c75123fa019a4cb53792ecd8f689/configure.ac
+--- tsocks-be36c83a7326c75123fa019a4cb53792ecd8f689/configure.ac.orig	2013-06-28 12:04:10.000000000 -0400
++++ tsocks-be36c83a7326c75123fa019a4cb53792ecd8f689/configure.ac	2017-08-29 05:53:07.677599700 -0400
+@@ -109,11 +109,90 @@ dnl -----------------------------------
+ dnl Get hostname and other information.
+ dnl -----------------------------------
+ AC_CANONICAL_HOST
++AC_SUBST(build)
++AC_SUBST(host)
+ 
+ dnl Checks for programs.
+ AC_PROG_CC
+ AC_PROG_INSTALL
+ AC_PROG_LN_S
++AC_PROG_MKDIR_P
++AC_PROG_SED
++
++case $host in
++  *-*-mingw*)
++  EXEEXT=.exe
++  SOPREFIX=lib
++  SOEXT=.dll
++  IMPPREFIX=lib
++  IMPEXT=.dll.a
++  STATICPREFIX=lib
++  STATICEXT=.a
++  IS_WINDOWS=yes
++  LIBCONNECT=
++  LIBC=
++  LIBIMPORT='${IMPPREFIX}${LIB_NAME}${IMPEXT}'
++  SO_CFLAGS=' -Wl,--out-implib=${LIBIMPORT} -Wl,--export-all-symbols'
++  SO_DIR='${bindir}'
++  ;;
++  *-*-cygwin*)
++  EXEEXT=.exe
++  SOPREFIX=cyg
++  SOEXT=.dll
++  IMPPREFIX=lib
++  IMPEXT=.dll.a
++  STATICPREFIX=lib
++  STATICEXT=.a
++  IS_WINDOWS=yes
++  LIBCONNECT=cygwin1.dll
++  LIBC=cygwin1.dll
++  LIBIMPORT='${IMPPREFIX}${LIB_NAME}${IMPEXT}'
++  SO_CFLAGS=' -Wl,--out-implib=${LIBIMPORT} -Wl,--export-all-symbols'
++  SO_DIR='${bindir}'
++  ;;
++  *-*-msys*)
++  EXEEXT=.exe
++  SOPREFIX=msys-
++  SOEXT=.dll
++  IMPPREFIX=lib
++  IMPEXT=.dll.a
++  STATICPREFIX=lib
++  STATICEXT=.a
++  IS_WINDOWS=yes
++  LIBCONNECT=msys-2.0.dll
++  LIBC=msys-2.0.dll
++  LIBIMPORT='${IMPPREFIX}${LIB_NAME}${IMPEXT}'
++  SO_CFLAGS=' -Wl,--out-implib=${LIBIMPORT} -Wl,--export-all-symbols'
++  SO_DIR='${bindir}'
++  ;;
++  *)
++  EXEEXT=
++  SOPREFIX=lib
++  SOEXT=.so
++  IMPPREFIX=
++  IMPEXT=
++  STATICPREFIX=lib
++  STATICEXT=.a
++  LIBIMPORT=
++  IS_WINDOWS=no
++  LIBCONNECT=
++  LIBIMPORT=
++  LIBC=
++  SO_CFLAGS=
++  SO_DIR='${libdir}'
++  ;;
++esac
++AC_SUBST(EXEEXT)
++AC_SUBST(SOPREFIX)
++AC_SUBST(SOEXT)
++AC_SUBST(IMPPREFIX)
++AC_SUBST(IMPEXT)
++AC_SUBST(STATICPREFIX)
++AC_SUBST(STATICEXT)
++AC_SUBST(LIBIMPORT)
++AC_SUBST(SO_CFLAGS)
++AC_SUBST(IS_WINDOWS)
++AC_SUBST(SO_DIR)
+ 
+ dnl Check if the C compiler accepts -Wall
+ AC_MSG_CHECKING([if the C compiler accepts -Wall])
+@@ -297,7 +376,6 @@ if test "${oldmethod}" = "yes"; then
+ 
+   dnl Now find the library we need
+   AC_MSG_CHECKING([location of lib${CONNECTLIB}.so])
+-  LIBCONNECT=
+   for DIR in '/lib' '/usr/lib'; do
+     if test "${LIBCONNECT}" = ""; then
+       LIBCONNECT=`$FIND $DIR -name "lib${CONNECTLIB}.so.?" 2>/dev/null | $TAIL -1`
+@@ -313,7 +391,6 @@ if test "${oldmethod}" = "yes"; then
+ 
+   dnl close() should be in libc, find it
+   AC_MSG_CHECKING([location of libc.so])
+-  LIBC=
+   for DIR in '/lib' '/usr/lib'; do
+     if test "${LIBC}" = ""; then
+       LIBC=`$FIND $DIR -name "libc.so.?" 2>/dev/null | $TAIL -1`
+@@ -351,7 +428,14 @@ AC_DEFINE_UNQUOTED(SELECT_SIGNATURE, [${
+ dnl Find the correct connect prototype on this machine
+ AC_MSG_CHECKING(for correct connect prototype)
+ PROTO=
+-PROTO1='int __fd, const struct sockaddr * __addr, int __len'
++case $host in
++ *-*-msys*)
++  PROTO1='int __fd, const struct sockaddr * __addr, int __len'
++  ;;
++  *) 
++  PROTO1='int __fd, const struct sockaddr * __addr, int __len'
++  ;;
++esac
+ PROTO2='int __fd, const struct sockaddr_in * __addr, socklen_t __len'
+ PROTO3='int __fd, struct sockaddr * __addr, int __len'
+ PROTO4='int __fd, const struct sockaddr * __addr, socklen_t __len'
+@@ -405,15 +489,30 @@ AC_DEFINE_UNQUOTED(CLOSE_SIGNATURE, [${P
+ dnl Find the correct poll prototype on this machine
+ AC_MSG_CHECKING(for correct poll prototype)
+ PROTO=
+-for testproto in 'struct pollfd *ufds, unsigned long nfds, int timeout'
+-do
+-  if test "${PROTO}" = ""; then
+-    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+-      #include <sys/poll.h>
+-      int poll($testproto);
+-    ]], [[]])],[PROTO="$testproto";],[])
+-  fi
+-done
++case $host in
++  *-*-msys*)
++  for testproto in 'struct pollfd *ufds, unsigned int nfds, int timeout' 
++  do
++    if test "${PROTO}" = ""; then
++      AC_TRY_COMPILE([
++        #include <sys/poll.h>
++        int poll($testproto);
++      ],,[PROTO="$testproto";],)
++    fi
++  done
++  ;;
++  *)
++  for testproto in 'struct pollfd *ufds, unsigned long nfds, int timeout'
++  do
++    if test "${PROTO}" = ""; then
++      AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
++        #include <sys/poll.h>
++        int poll($testproto);
++      ]], [[]])],[PROTO="$testproto";],[])
++    fi
++  done
++  ;;
++esac
+ if test "${PROTO}" = ""; then
+   AC_MSG_ERROR([no match found!])
+ fi
+diff -aurp tsocks-be36c83a7326c75123fa019a4cb53792ecd8f689/Makefile.in.orig tsocks-be36c83a7326c75123fa019a4cb53792ecd8f689/Makefile.in
+--- tsocks-be36c83a7326c75123fa019a4cb53792ecd8f689/Makefile.in.orig	2013-06-28 12:04:10.000000000 -0400
++++ tsocks-be36c83a7326c75123fa019a4cb53792ecd8f689/Makefile.in	2017-08-29 05:53:07.681599600 -0400
+@@ -10,32 +10,51 @@ bindir = @bindir@
+ infodir = @infodir@
+ mandir = @mandir@
+ includedir = @includedir@
++IS_WINDOWS= @IS_WINDOWS@
++EXEEXT  = @EXEEXT@
++SOPREFIX = @SOPREFIX@
++SOEXT = @SOEXT@
++IMPPREFIX = @IMPPREFIX@
++IMPEXT = @IMPEXT@
++STATICPREFIX = @STATICPREFIX@
++STATICEXT = @STATICEXT@
++LIBIMPORT= @LIBIMPORT@
++SO_DIR=@SO_DIR@
+ 
+ SHELL = /bin/sh
+ MKINSTALLDIRS = ${SHELL} mkinstalldirs 
+ SHCC = ${CC} -fPIC 
+ INSPECT = inspectsocks
+ SAVE = saveme
+-LIB_NAME = libtsocks
++LIB_NAME = tsocks
+ COMMON = common
+ PARSER = parser
+ VALIDATECONF = validateconf
+ SCRIPT = tsocks
+ SHLIB_MAJOR = 1
+ SHLIB_MINOR = 8
+-SHLIB = ${LIB_NAME}.so.${SHLIB_MAJOR}.${SHLIB_MINOR}
++ifeq ($(IS_WINDOWS),yes)
++SHLIB = ${SOPREFIX}${LIB_NAME}.${SHLIB_MAJOR}.${SHLIB_MINOR}${SOEXT}
++else
++SHLIB = ${SOPREFIX}${LIB_NAME}${SOEXT}.${SHLIB_MAJOR}.${SHLIB_MINOR}
++endif
+ 
+ INSTALL = @INSTALL@
+ INSTALL_DATA = @INSTALL_DATA@
+ CFLAGS = @CFLAGS@
++SO_CFLAGS = @SO_CFLAGS@
+ INCLUDES = -I.
+ LIBS = @LIBS@
+ SPECIALLIBS = @SPECIALLIBS@
+ 
+-SHOBJS = ${OBJS:.o=.so}
++SHOBJS = ${OBJS:.o=${SOEXT}}
+ 
+ OBJS= tsocks.o
+ 
++LN_S    = @LN_S@
++MKDIR_P = @MKDIR_P@
++SED     = @SED@
++
+ TARGETS= ${SHLIB} ${UTIL_LIB} ${SAVE} ${INSPECT} ${VALIDATECONF}
+ 
+ all: ${TARGETS}
+@@ -50,11 +69,15 @@ ${SAVE}: ${SAVE}.c
+ 	${SHCC} ${CFLAGS} ${INCLUDES} -static -o ${SAVE} ${SAVE}.c
+ 
+ ${SHLIB}: ${OBJS} ${COMMON}.o ${PARSER}.o
+-	${SHCC} ${CFLAGS} ${INCLUDES} -nostdlib -shared -o ${SHLIB} ${OBJS} ${COMMON}.o ${PARSER}.o ${DYNLIB_FLAGS} ${SPECIALLIBS} ${LIBS}
+-	ln -sf ${SHLIB} ${LIB_NAME}.so
++ifeq ($(IS_WINDOWS),yes)
++	${SHCC} ${CFLAGS} ${SO_CFLAGS} ${INCLUDES} -shared -o ${SHLIB} ${OBJS} ${COMMON}.o ${PARSER}.o ${DYNLIB_FLAGS} ${SPECIALLIBS} ${LIBS}
++else
++	${SHCC} ${CFLAGS} ${SO_CFLAGS} ${INCLUDES} -nostdlib -shared -o ${SHLIB} ${OBJS} ${COMMON}.o ${PARSER}.o ${DYNLIB_FLAGS} ${SPECIALLIBS} ${LIBS}
++endif
++	${LN_S} ${SHLIB} ${SOPREFIX}${LIB_NAME}${SOEXT}
+ 
+-%.so: %.c
+-	${SHCC} ${CFLAGS} ${INCLUDES} -c ${CC_SWITCHES} $< -o $@
++%${SOEXT}: %.c
++	${SHCC} ${CFLAGS} ${SO_CFLAGS} ${INCLUDES} -c ${CC_SWITCHES} $< -o $@
+ 
+ %.o: %.c
+ 	${SHCC} ${CFLAGS} ${INCLUDES} -c ${CC_SWITCHES} $< -o $@
+@@ -62,22 +85,39 @@ ${SHLIB}: ${OBJS} ${COMMON}.o ${PARSER}.
+ install: ${TARGETS} installscript installlib installman
+ 
+ installscript:
+-	${MKINSTALLDIRS} "${DESTDIR}${bindir}"
++	${MKDIR_P} "${DESTDIR}${bindir}"
+ 	${INSTALL} ${SCRIPT} ${DESTDIR}${bindir}
++ifeq ($(IS_WINDOWS),yes)
++	${SED} -i "s|/usr/lib/libtsocks.so|${SO_DIR}/${SOPREFIX}${LIB_NAME}${SOEXT}|g" ${DESTDIR}${bindir}/${SCRIPT}
++	${SED} -i "s|/usr/lib/libtsocks\\\\.so|${SO_DIR}/${SOPREFIX}${LIB_NAME}\\\\${SOEXT}|g" ${DESTDIR}${bindir}/${SCRIPT}
++endif
+ 
+ installlib:
+-	${MKINSTALLDIRS} "${DESTDIR}${libdir}"
+-	${INSTALL} ${SHLIB} ${DESTDIR}${libdir}
+-	ln -sf ${SHLIB} ${DESTDIR}${libdir}/${LIB_NAME}.so.${SHLIB_MAJOR}
+-	ln -sf ${LIB_NAME}.so.${SHLIB_MAJOR} ${DESTDIR}${libdir}/${LIB_NAME}.so
++	${MKDIR_P} "${DESTDIR}${libdir}"
++	${INSTALL} ${SHLIB} ${DESTDIR}${SO_DIR}
++ifneq ($(LIBIMPORT),)
++	${INSTALL} ${LIBIMPORT} ${DESTDIR}${libdir}
++endif
++ifeq ($(IS_WINDOWS),yes)
++	${LN_S} ${SHLIB} ${DESTDIR}${SO_DIR}/${SOPREFIX}${LIB_NAME}.${SHLIB_MAJOR}${SOEXT}
++	${LN_S} ${DESTDIR}${SO_DIR}/${SOPREFIX}${LIB_NAME}.${SHLIB_MAJOR}${SOEXT} ${DESTDIR}${SO_DIR}/${SOPREFIX}${LIB_NAME}${SOEXT}
++else
++	${LN_S} ${SHLIB} ${DESTDIR}${SO_DIR}/${SOPREFIX}${LIB_NAME}${SOEXT}.${SHLIB_MAJOR}
++	${LN_S} ${SOPREFIX}${LIB_NAME}${SO_DIR}.${SHLIB_MAJOR} ${DESTDIR}${SO_DIR}/${SOPREFIX}${LIB_NAME}${SOEXT}
++endif
+ 
+ installman:
+-	${MKINSTALLDIRS} "${DESTDIR}${mandir}/man1"
++	${MKDIR_P} "${DESTDIR}${mandir}/man1"
+ 	${INSTALL_DATA} tsocks.1 ${DESTDIR}${mandir}/man1/
+-	${MKINSTALLDIRS} "${DESTDIR}${mandir}/man8"
++	${MKDIR_P} "${DESTDIR}${mandir}/man8"
+ 	${INSTALL_DATA} tsocks.8 ${DESTDIR}${mandir}/man8/
+-	${MKINSTALLDIRS} "${DESTDIR}${mandir}/man5"
++	${MKDIR_P} "${DESTDIR}${mandir}/man5"
+ 	${INSTALL_DATA} tsocks.conf.5 ${DESTDIR}${mandir}/man5/
++ifeq ($(IS_WINDOWS),yes)
++	${SED} -i "s|/lib/libtsocks.so|${SO_DIR}/${SOPREFIX}${LIB_NAME}${SOEXT}|g" ${DESTDIR}${mandir}/man1/tsocks.1
++	${SED} -i "s|/lib/libtsocks.so|${SO_DIR}/${SOPREFIX}${LIB_NAME}${SOEXT}|g" ${DESTDIR}${mandir}/man8/tsocks.8
++	${SED} -i "s|/lib/libtsocks.so|${SO_DIR}/${SOPREFIX}${LIB_NAME}${SOEXT}|g" ${DESTDIR}${mandir}/man5/tsocks.conf.5
++endif
+ 	
+ clean:
+ 	-rm -f *.so *.so.* *.o *~ ${TARGETS}
