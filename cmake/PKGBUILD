@@ -2,39 +2,63 @@
 # Contributor: Martell Malone <martellmalone@gmail.com>
 
 pkgname=cmake
-pkgver=3.6.2
-pkgrel=2
+pkgver=3.9.4
+pkgrel=1
 pkgdesc="A cross-platform open-source make system"
 arch=('i686' 'x86_64')
 url="https://www.cmake.org/"
 license=("MIT")
 makedepends=("gcc" "pkg-config"
-             jsoncpp
+             jsoncpp-devel
              libcurl-devel
              libexpat-devel
              libarchive-devel
+             librhash-devel
+             libuv-devel
              ncurses-devel
              zlib-devel)
 depends=("gcc-libs"
+         "jsoncpp"
          "libcurl"
          "libexpat"
          "libarchive"
+         "librhash"
+         "libuv"
          "ncurses"
          "pkg-config"
          "zlib")
 options=('staticlibs' 'strip')
-source=("https://www.cmake.org/files/v3.6/${pkgname}-${pkgver}.tar.gz"
-        "cmake-3.6.0-msys.patch"
+source=("https://www.cmake.org/files/v3.9/${pkgname}-${pkgver}.tar.gz"
+        "cmake-3.9.3-msys.patch"
         "disable-curses-for-msys.patch"
         "disable-response-files-for-msys.patch"
-        "3.6.0-cpuinfo.patch"
-        "3.5.2-cygwin-paths.patch")
-sha256sums=('189ae32a6ac398bb2f523ae77f70d463a6549926cde1544cd9cc7c6609f8b346'
-            'fb2dcd43cdaf994d071a7a6607c3c4972a862d5654ab6782153001a0db474c06'
+        "3.9.3-cpuinfo.patch"
+        "3.9.3-cygwin-paths.patch")
+sha256sums=('b5d86f12ae0072db520fdbdad67405f799eb728b610ed66043c20a92b4906ca1'
+            'fcc21eb6d862cefb8c8e75c95070f8dc5c8e9dab1c2ddab58be7a70f41af9d9c'
             'b7e398e70b97088f88a0688e8a0794d6780d3cdb91075388a30908dc4b405eb7'
             '98dca846de0ca7b71884e26678317f85e78e01862d58a29ce923c835ca7d614f'
-            'd4a48c98919bd35e3f8c7c5c3b0ea1615b41294b26015ecfa3de7fa6db1e5d75'
-            '320a2f88d5a3c1fe0a63b992ce45cf228e9a121406b0ebf7654bc8c25d1ad79d')
+            '6d7c77ec04a8a4176121be23225f194cda6b0579d0eb5a46f3ddc9a7f5602c9b'
+            '52a68770cc1686b857973af1c7835e5d9828426f46abe3768024c7c8cd27eab1')
+
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _fname in "$@"
+  do
+    msg2 "Applying ${_fname}"
+    patch -Nbp1 -i "${srcdir}"/${_fname}
+  done
+}
+
+del_file_exists() {
+  for _fname in "$@"
+  do
+    if [ -f $_fname ] || [ -d $_fname ]; then
+      rm -rf $_fname
+    fi
+  done
+}
+# =========================================== #
 
 prepare() {
   cd ${pkgname}-${pkgver}
@@ -47,29 +71,38 @@ prepare() {
     Modules/Platform/MSYS-GNU-CXX.cmake \
     Modules/Platform/MSYS-GNU-Fortran.cmake \
     Modules/Platform/MSYS-windres.cmake || true
-  patch -p1 -i "${srcdir}/cmake-3.6.0-msys.patch"
-  patch -p1 -i "${srcdir}/disable-curses-for-msys.patch"
-  patch -p1 -i "${srcdir}/disable-response-files-for-msys.patch"
-  patch -p1 -i "${srcdir}/3.6.0-cpuinfo.patch"
-  patch -p1 -i "${srcdir}/3.5.2-cygwin-paths.patch"
+  apply_patch_with_msg "cmake-3.9.3-msys.patch" \
+       "disable-response-files-for-msys.patch" \
+       "3.9.3-cpuinfo.patch" \
+       "3.9.3-cygwin-paths.patch"
+#       "disable-curses-for-msys.patch" \
 }
 
 build() {
   mkdir -p "${srcdir}/build-${CARCH}"
   cd "${srcdir}/build-${CARCH}"
-
   MSYSTEM=MSYS "${srcdir}"/${pkgname}-${pkgver}/configure \
     --prefix=/usr \
     --system-libs \
     --no-qt-gui \
     --parallel=3 \
     --mandir=share \
-    --docdir=share/doc/cmake
-#--no-system-expat
-#--no-system-jsoncpp
+    --docdir=share/doc/cmake \
+    -- -DCURSES_FORM_LIBRARY=/usr/lib/libformw.dll.a \
+      -DCTEST_TEST_CTEST=ON \
+      -DCMAKE_BUILD_TYPE=Release
+  #Fix tests
+  local  _gccver=$(gcc --version | grep ^gcc | sed 's/^.* //g')
+  sed -e "s|4.9.2|${_gccver}|g" -e "s|4.8.2|${_gccver}|g" \
+       -i ${srcdir}/build-${CARCH}/Tests/CMakeTests/ImplicitLinkInfoTest.cmake
   plain "Start building..."
   make
 }
+
+#check() {
+#  cd "${srcdir}/build-${CARCH}"
+#  make test
+#}
 
 package() {
   cd "${srcdir}/build-${CARCH}"
