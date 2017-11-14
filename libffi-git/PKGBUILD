@@ -1,8 +1,9 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
-pkgname=('libffi' 'libffi-devel')
+_realname='libffi'
+pkgname=("${_realname}-git" "${_realname}-devel-git")
 pkgver=v3.2.1.r283.gba2757a
-pkgrel=1
+pkgrel=2
 pkgdesc="Portable, high level programming interface to various calling conventions"
 arch=('i686' 'x86_64')
 url="https://sourceware.org/libffi/"
@@ -22,12 +23,12 @@ sha256sums=('SKIP'
             '03af8e3eccb37048aa59a866bcd5f0b5b156ee28a0f59de1e7013a1d21ba4a18')
 
 pkgver() {
-  cd ${pkgname}
+  cd ${_realname}
   git describe --long | sed 's/\([^-]*-g\)/r\1/;s/-/./g'
 }
 
 prepare() {
-  cd ${pkgname}
+  cd ${_realname}
   cp ${srcdir}/config.sub .
   cp ${srcdir}/config.guess .
   git am ${srcdir}/0001-msys2ize.patch
@@ -36,7 +37,7 @@ prepare() {
 }
 
 build() {
-  cd ${pkgname}
+  cd ${_realname}
   # Perform the build outside of srcdir so that
   # srcdir is not simplified to '.' as relative
   # paths in debug information are not ideal.
@@ -47,9 +48,9 @@ build() {
   if check_option "debug" "y"; then
     extra_config+=("--enable-debug")
   fi
-  ${srcdir}/${pkgname}/configure \
+  ${srcdir}/${_realname}/configure \
     --prefix=/usr \
-    --srcdir=${srcdir}/${pkgname} \
+    --srcdir=${srcdir}/${_realname} \
     --build=${CHOST} \
     --enable-static \
     --enable-shared \
@@ -59,18 +60,21 @@ build() {
 }
 
 check() {
-  cd ${pkgname}/build
+  cd ${_realname}/build
   make check
 }
 
-package_libffi() {
+package_libffi-git() {
+  provides=("libffi=${pkgver}")
+  conflicts=("libffi")
+
   mkdir -p $pkgdir/usr/bin
   cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
   cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
-  install -Dm644 ${srcdir}/${pkgname}/LICENSE "${pkgdir}"/usr/share/licenses/${pkgname}/LICENSE
+  install -Dm644 ${srcdir}/${_realname}/LICENSE "${pkgdir}"/usr/share/licenses/${_realname}/LICENSE
 }
 
-package_libffi-devel() {
+package_libffi-devel-git() {
   pkgdesc="Libffi headers and libraries"
   groups=('development')
   if check_option "debug" "y"; then
@@ -79,6 +83,8 @@ package_libffi-devel() {
     options=('staticlibs' '!strip' 'debug')
   fi
   depends=("libffi=${pkgver}")
+  provides=("libffi-devel=${pkgver}")
+  conflicts=("libffi-devel")
 
   mkdir -p ${pkgdir}/usr
   #cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
