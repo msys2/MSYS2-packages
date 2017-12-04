@@ -159,8 +159,8 @@ echo     -here                            Use current directory as working
 echo                                      directory
 echo     -where DIRECTORY                 Use specified DIRECTORY as working
 echo                                      directory
-echo     -[use-]full-path                 Use full currnent PATH variable
-echo                                      instead of triming to minimal
+echo     -[use-]full-path                 Use full current PATH variable
+echo                                      instead of trimming to minimal
 echo     -no-start                        Do not use "start" command and
 echo                                      return bash resulting errorcode as
 echo                                      this batch file resulting errorcode
