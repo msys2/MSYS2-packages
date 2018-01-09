@@ -1,24 +1,37 @@
+# makepkg -sL --skipchecksums
+
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgbase=guile
 pkgname=("$pkgbase" "lib${pkgbase}" "lib${pkgbase}-devel")
-pkgver=2.0.14
+pkgver=2.2.3
 pkgrel=1
 pkgdesc="a portable, embeddable Scheme implementation written in C"
 url="https://www.gnu.org/software/guile/"
 arch=(i686 x86_64)
 license=('GPL')
 makedepends=('libltdl' 'gmp-devel' 'ncurses-devel' 'libunistring-devel' 'libgc-devel' 'libffi-devel' 'texinfo')
-source=("https://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.gz"
-        guile-2.2.2-msys2.patch)
+source=("https://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz"
+        0002-Remove-version-in-file-name-of-dynamic-library-guile.patch
+        0101-In-tests-add-dynamic-link-to-msys-2.0-for-host-type-msys.patch
+        0102-Skip-tests-using-setrlimit-for-MSYS-as-done-for-Cygwin.patch
+        0103-Activate-test-pthread-create-secondary-for-CYGWIN-MSYS.patch
+        )
 options=('!libtool')
-sha256sums=('8aeb2f353881282fe01694cce76bb72f7ffdd296a12c7a1a39255c27b0dfe5f1'
-            '59f1c5dac06b542e48159e563ff2704b60343346d8f9fcee60538e9cd20ac1e5')
+sha256sums=('8353a8849cd7aa77be66af04bd6bf7a6207440d2f8722e46672232bb9f0a4086'
+            '440d31e6100bf896fcd5d65209da42bfeec43f154fa023fceeae911194ecb15c'
+            '7b06f92cca1b10f1006f53f27b0ed0c653eaa3a1de3732b69364e28b1b36fd1e'
+            '31124d7053454eb082a815b8d15249621dfb92aff50400090854d1f47b174f25'
+            'b66d33a35942c4d4575d169974f91f3e525f6de4fb82e61dc70723e0a43123d6')
 
 prepare() {
   cd "${srcdir}/${pkgbase}-${pkgver}"
 
-  patch -p1 -i ${srcdir}/guile-2.2.2-msys2.patch
+  patch -p1 -i ${srcdir}/0002-Remove-version-in-file-name-of-dynamic-library-guile.patch
+  
+  patch -p1 -i ${srcdir}/0101-In-tests-add-dynamic-link-to-msys-2.0-for-host-type-msys.patch
+  patch -p1 -i ${srcdir}/0102-Skip-tests-using-setrlimit-for-MSYS-as-done-for-Cygwin.patch
+  patch -p1 -i ${srcdir}/0103-Activate-test-pthread-create-secondary-for-CYGWIN-MSYS.patch
 
   cp -rf build-aux/snippet ${srcdir}/snippet
   autoreconf -fi
@@ -39,7 +52,7 @@ build() {
     --enable-nls \
     --enable-posix \
     --enable-regex \
-    --without-threads \
+    --with-threads \
     --with-modules \
     --disable-static
   make
@@ -47,7 +60,7 @@ build() {
 }
 
 package_guile() {
-  depends=('libguile' 'info')
+  depends=("libguile=${pkgver}" 'info')
   install=${pkgbase}.install
 
   mkdir -p ${pkgdir}/usr/bin
@@ -56,7 +69,6 @@ package_guile() {
   rm -f ${pkgdir}/usr/bin/*-config
 
   mkdir -p ${pkgdir}/usr/share
-  #cp -rf ${srcdir}/dest/usr/share/doc $pkgdir/usr/share/
   cp -rf ${srcdir}/dest/usr/share/info ${pkgdir}/usr/share/
   cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
 }
@@ -66,16 +78,11 @@ package_libguile() {
   groups=('libraries')
 
   mkdir -p ${pkgdir}/usr/bin
-  
-  (ls ${srcdir}/dest/usr/bin/*.dll &>/dev/null) && \
   install -Dm755 ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
-  
-  (ls ${srcdir}/dest/usr/lib/*.dll &>/dev/null) && \
-  install -Dm755 ${srcdir}/dest/usr/lib/*.dll ${pkgdir}/usr/bin/
 
-  #cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
   mkdir -p ${pkgdir}/usr/share
-  cp -rf ${srcdir}/dest/usr/share/guile ${pkgdir}/usr/share/  
+  cp -rf ${srcdir}/dest/usr/share/guile ${pkgdir}/usr/share/
+
   mkdir -p ${pkgdir}/usr/lib
   cp -rf ${srcdir}/dest/usr/lib/guile ${pkgdir}/usr/lib/
 }

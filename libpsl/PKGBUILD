@@ -1,0 +1,111 @@
+# Maintainer: J. Peter Mugaas <jpmugaas@suddenlink.net>
+
+pkgbase='libpsl'
+pkgname=("${pkgbase}" "${pkgbase}-devel")
+pkgver=0.18.0
+pkgrel=2
+pkgdesc='Public Suffix List library'
+url='https://github.com/rockdaboot/libpsl'
+arch=('i686' 'x86_64')
+license=('MIT')
+depends=('icu>=59.1')
+makedepends=('libxslt' 'python3' 'icu-devel' 'publicsuffix-list')
+source=(https://github.com/rockdaboot/libpsl/releases/download/${pkgname}-${pkgver}/${pkgname}-${pkgver}.tar.gz
+        0001-win32-fix.patch
+        0.16.0-no-undefined.patch
+        0.16.0-install-dafsa.patch 
+        0.16.1-make-dafsa-setlocale.patch)
+sha512sums=('ff61a6a49411ab6968cff820bccfd25b92790cd503ef2fce8e754a92af5bc9d43d224b36c60f815354022c384635eb47d56231301b36d639e86908e9cafb8cb7'
+            '39a6270ffac2b6061d6ce59f78c78116300b4e4be6336c65aec70f668489062af3251cfba51fa6e4055d246b244d094a252c55748716e277562dabe472a954db'
+            '8837133bf16045fc71cd59999e67d314b906509cbab6343a3135ffcc532f3d473698de5606de6880c10cd7aa63ea3ecd82a7fe311b42998fa69415de259996d1'
+            'c8c7c38c511815738aae293a72f7527926a27a7df28df47aa812deb472cc95ff620403fc9f120b61b10d1bc5a84cc5608fda4acc49337cdd07861ecf1ca76c13'
+            '2218345c6f70b0ff9e052b92e80cf23bf86e02802abab8e640f2250bfceee104f5ea1603fa1cc7dd135c75b9acfe8f10541d0689f4b2d313fb07ef6140969604')
+
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying $_patch"
+    patch -Nbp1 -i "${srcdir}/$_patch"
+  done
+}
+
+apply_patch_p2_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying $_patch"
+    patch -Nbp2 -i "${srcdir}/$_patch"
+  done
+}
+
+del_file_exists() {
+  for _fname in "$@"
+  do
+    if [ -f $_fname ] || [ -d $_fname ]; then
+      rm -rf $_fname
+    fi
+  done
+}
+# =========================================== #
+
+prepare() {
+  cd ${pkgbase}-${pkgver}
+  apply_patch_p2_with_msg 0.16.0-no-undefined.patch \
+    0.16.0-install-dafsa.patch \
+    0.16.1-make-dafsa-setlocale.patch
+  apply_patch_with_msg 0001-win32-fix.patch
+  rm -frv list
+  autoreconf -fiv
+}
+
+build() {
+  cd ${pkgbase}-${pkgver}
+  
+  [[ -d "${srcdir}"/build-${CARCH} ]] && rm -rf "${srcdir}"/build-${CARCH}
+  mkdir -p "${srcdir}"/build-${CARCH} && cd "${srcdir}"/build-${CARCH}
+  PYTHON=/usr/bin/python3.exe ../${pkgname}-${pkgver}/configure \
+    --prefix=/usr \
+    --disable-dependency-tracking \
+    --enable-shared \
+    --enable-static \
+    --enable-man \
+    --enable-builtin=libicu \
+    --enable-runtime=libicu \
+    --with-psl-file=/usr/share/publicsuffix/public_suffix_list.dat \
+    --with-psl-testfile=/usr/share/publicsuffix/test_psl.txt
+  LC_CTYPE=en_US.UTF-8 make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+check() {
+  cd "${srcdir}"/build-${CARCH}
+  make check
+}
+
+package_libpsl() {
+ pkgdesc="Public Suffix List library (runtime)"
+  depends=('libxslt' 'icu>=59.1')
+  groups=('libraries')
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/* ${pkgdir}/usr/bin/
+  mkdir -p ${pkgdir}/usr/share/man
+  cp -rf ${srcdir}/dest/usr/share/man/man1 ${pkgdir}/usr/share/man/
+  install -Dm 644 ${srcdir}/${pkgbase}-${pkgver}/COPYING -t "${pkgdir}/usr/share/licenses/${pkgname}"
+
+}
+
+package_libpsl-devel() {
+  pkgdesc="libpsl headers and libraries"
+  options=('staticlibs')
+  depends=("libpsl=${pkgver}" 'libxslt' 'icu>=59.1')
+  groups=('development')
+
+  mkdir -p ${pkgdir}/usr/share/man/man3
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+  install -Dm 644 ${srcdir}/${pkgbase}-${pkgver}/docs/libpsl/libpsl.3 -t "${pkgdir}/usr/share/man/man3"
+
+}
+
+# vim: ts=2 sw=2 et:
