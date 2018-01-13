@@ -1,0 +1,73 @@
+From 7ac70fa13cc094ea64b920fc9f4b2824193a4e73 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Fri, 12 Jan 2018 20:54:06 +0100
+Subject: [PATCH 60/N] squash! Try to kill Win32 processes gently upon Ctrl+C
+
+Let's redo a bit more of this. We will need to squash this into the
+original Ctrl+C patch during the next merging-rebase.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/include/cygwin/exit_process.h |  3 ++-
+ winsup/utils/kill.cc                        | 31 ++++++++++++-----------------
+ 2 files changed, 15 insertions(+), 19 deletions(-)
+
+diff --git a/winsup/cygwin/include/cygwin/exit_process.h b/winsup/cygwin/include/cygwin/exit_process.h
+index 11d546a..01c0a47 100644
+--- a/winsup/cygwin/include/cygwin/exit_process.h
++++ b/winsup/cygwin/include/cygwin/exit_process.h
+@@ -176,7 +176,8 @@ exit_process(HANDLE process, int exit_code)
+ 
+   if (GetExitCodeProcess (process, &code) && code == STILL_ACTIVE)
+     {
+-      if (process_architecture_matches_current(process) && (exit_code == SIGINT || exit_code == SIGTERM))
++      int signal = exit_code & 0x7f;
++      if (process_architecture_matches_current(process) && (signal == SIGINT || signal == SIGTERM))
+         return terminate_process_tree (process, exit_code, terminate_process_with_remote_thread);
+ 
+       return terminate_process_tree (process, exit_code, terminate_process);
+diff --git a/winsup/utils/kill.cc b/winsup/utils/kill.cc
+index 05a282a..a771df6 100644
+--- a/winsup/utils/kill.cc
++++ b/winsup/utils/kill.cc
+@@ -173,24 +173,19 @@ forcekill (int pid, int sig, int wait)
+     }
+   if (!wait || WaitForSingleObject (h, 200) != WAIT_OBJECT_0)
+     {
+-      if (sig == SIGINT || sig == SIGTERM)
+-        {
+-	  HANDLE cur = GetCurrentProcess (), h2;
+-	  /* duplicate handle with access rights required for exit_process() */
+-	  if (DuplicateHandle (cur, h, cur, &h2, PROCESS_CREATE_THREAD |
+-			       PROCESS_QUERY_INFORMATION |
+-			       PROCESS_VM_OPERATION |
+-			       PROCESS_VM_WRITE | PROCESS_VM_READ |
+-			       PROCESS_TERMINATE, FALSE, 0))
+-	    {
+-	      exit_process (h2, 128 + sig);
+-	      CloseHandle (h2);
+-	    }
+-	  else
+-	    exit_process (h, 128 + sig);
+-	}
+-      else if (sig && !TerminateProcess (h, sig << 8)
+-          && WaitForSingleObject (h, 200) != WAIT_OBJECT_0)
++      HANDLE cur = GetCurrentProcess (), h2;
++      /* duplicate handle with access rights required for exit_process() */
++      if (DuplicateHandle (cur, h, cur, &h2, PROCESS_CREATE_THREAD |
++			      PROCESS_QUERY_INFORMATION |
++			      PROCESS_VM_OPERATION |
++			      PROCESS_VM_WRITE | PROCESS_VM_READ |
++			      PROCESS_TERMINATE, FALSE, 0))
++      {
++        h = h2;
++	CloseHandle (h);
++      }
++      exit_process (h, 128 + sig);
++      if (WaitForSingleObject (h, 200) != WAIT_OBJECT_0)
+         fprintf (stderr, "%s: couldn't kill pid %u, %u\n",
+ 	       prog_name, (unsigned) dwpid, (unsigned int) GetLastError ());
+     }
+-- 
+2.9.0
+
