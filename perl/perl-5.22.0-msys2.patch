@@ -1,21 +1,8 @@
-diff -Naur perl-5.22.0-orig/configpm perl-5.22.0/configpm
---- perl-5.22.0-orig/configpm	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/configpm	2015-06-04 15:43:07.286200000 +0300
-@@ -443,8 +443,8 @@
- 
- my $osname = fetch_string({}, 'osname');
- my $from = $osname eq 'VMS' ? 'PERLSHR image' : 'binary (from libperl)';
--my $env_cygwin = $osname eq 'cygwin'
--    ? 'push @env, "CYGWIN=\"$ENV{CYGWIN}\"" if $ENV{CYGWIN};' . "\n" : "";
-+my $env_cygwin = ($^O eq 'cygwin' || $^O eq 'msys')
-+    ? 'push @env, "MSYS=\"$ENV{MSYS}\"" if $ENV{MSYS};' . "\n" : "";
- 
- $heavy_txt .= sprintf <<'ENDOFBEG', $osname, $osname, $from, $osname, $env_cygwin;
- # This file was created by configpm when Perl was built. Any changes
-diff -Naur perl-5.22.0-orig/Configure perl-5.22.0/Configure
---- perl-5.22.0-orig/Configure	2015-06-04 15:41:48.933200000 +0300
-+++ perl-5.22.0/Configure	2015-06-04 15:43:07.301800000 +0300
-@@ -1417,7 +1417,7 @@
+diff --git a/Configure b/Configure
+index 37abdb6..78c3f3e 100755
+--- a/Configure
++++ b/Configure
+@@ -1436,7 +1436,7 @@ elif test -f /kern/cookiejar; then
  : MiNT
      _exe=""
  elif test -d c:/. -o -n "$is_os2" ; then
@@ -24,7 +11,7 @@ diff -Naur perl-5.22.0-orig/Configure perl-5.22.0/Configure
      _exe=".exe"
  fi
  
-@@ -3426,6 +3426,9 @@
+@@ -3473,6 +3473,9 @@ EOM
  		cygwin*) osname=cygwin
  			osvers="$3"
  			;;
@@ -34,7 +21,7 @@ diff -Naur perl-5.22.0-orig/Configure perl-5.22.0/Configure
  		*dc.osx) osname=dcosx
  			osvers="$3"
  			;;
-@@ -8591,7 +8594,7 @@
+@@ -8742,7 +8745,7 @@ $undef)
  	;;
  *)	case "$useshrplib" in
  	'')	case "$osname" in
@@ -43,7 +30,7 @@ diff -Naur perl-5.22.0-orig/Configure perl-5.22.0/Configure
  			dflt=y
  			also='Building a shared libperl is required for dynamic loading to work on your system.'
  			;;
-@@ -8662,6 +8665,13 @@
+@@ -8813,6 +8816,13 @@ true)
  			majonly=cygperl5.$majonly.$so
  			dflt=$majmin
  			;;
@@ -57,7 +44,7 @@ diff -Naur perl-5.22.0-orig/Configure perl-5.22.0/Configure
  		*)	# Try to guess based on whether libc has major.minor.
  			case "$libc" in
  			*libc.$so.[0-9]*.[0-9]*) dflt=$majmin ;;
-@@ -8753,6 +8763,9 @@
+@@ -8904,6 +8914,9 @@ if "$useshrplib"; then
  	cygwin)
  		# cygwin needs only ldlibpth
  		;;
@@ -67,7 +54,7 @@ diff -Naur perl-5.22.0-orig/Configure perl-5.22.0/Configure
  	*)
  		tmp_shrpenv="env LD_RUN_PATH=$shrpdir"
  		;;
-@@ -22754,7 +22767,7 @@
+@@ -23419,7 +23432,7 @@ BeOS BIG_ENDIAN BIT_MSF BSD bsd bsd43 bsd4_2 BSD4_3 bsd4_3 bsd4_4
  BSDCOMPAT bsdi BSD_4_3 BSD_4_4 BSD_NET2 BSD_TIME BSD_TYPES bull
  byteorder byte_order
  c cadmus clang clipper CMU COFF COMPILER_VERSION concurrent
@@ -76,7 +63,7 @@ diff -Naur perl-5.22.0-orig/Configure perl-5.22.0/Configure
  DECC DGUX DGUX_SOURCE DJGPP dmert DOLPHIN DPX2 DSO Dynix DynixPTX
  ELF encore EPI EXTENSIONS
  FAVOR_BSD FILE_OFFSET_BITS FORTIFY_SOURCE FreeBSD
-@@ -23360,6 +23373,7 @@
+@@ -24035,6 +24048,7 @@ for xxx in $xs_extensions ; do
  	Win32*)
  		case "$osname" in
  		cygwin) avail_ext="$avail_ext $xxx" ;;
@@ -84,10 +71,88 @@ diff -Naur perl-5.22.0-orig/Configure perl-5.22.0/Configure
  		esac
  		;;
  	XS/APItest|xs/apitest)
-diff -Naur perl-5.22.0-orig/cpan/Archive-Tar/t/02_methods.t perl-5.22.0/cpan/Archive-Tar/t/02_methods.t
---- perl-5.22.0-orig/cpan/Archive-Tar/t/02_methods.t	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/Archive-Tar/t/02_methods.t	2015-06-04 15:43:08.393800000 +0300
-@@ -60,7 +60,7 @@
+diff --git a/Cross/Makefile-cross-SH b/Cross/Makefile-cross-SH
+index 90f9f6f..d9ac9ac 100644
+--- a/Cross/Makefile-cross-SH
++++ b/Cross/Makefile-cross-SH
+@@ -61,7 +61,7 @@ true)
+ 				${revision}.${patchlevel}.${subversion} \
+ 			     -install_name \$(shrpdir)/\$@"
+ 		;;
+-	cygwin*)
++	cygwin* | msys*)
+ 		linklibperl="-lperl"
+ 		;;
+ 	sunos*)
+@@ -467,7 +467,7 @@ perlmain.c: miniperlmain.c config.sh $(FIRSTMAKEFILE)
+ 
+ !NO!SUBS!
+ case "$osname" in
+-cygwin)
++cygwin | msys)
+ 	;; # Let cygwin/Makefile.SHs do its work.
+ *)
+ 	$spitshell >>$Makefile <<'!NO!SUBS!'
+@@ -958,7 +958,7 @@ _mopup:
+ 	-rm -f perl.third lib*.so.perl.third perl.3log t/perl.third t/perl.3log
+ 	-rm -f perl.pixie lib*.so.perl.pixie lib*.so.Addrs
+ 	-rm -f perl.Addrs perl.Counts t/perl.Addrs t/perl.Counts *perl.xok
+-	-rm -f cygwin.c libperl*.def libperl*.dll cygperl*.dll *.exe.stackdump
++	-rm -f cygwin.c libperl*.def libperl*.dll msys-perl*.dll *.exe.stackdump
+ 	-rm -f perl$(EXE_EXT) miniperl$(EXE_EXT) $(LIBPERL) libperl.* microperl
+ 	-rm -f config.over
+ 
+diff --git a/Makefile.SH b/Makefile.SH
+index 62e2c2c..f48386e 100755
+--- a/Makefile.SH
++++ b/Makefile.SH
+@@ -70,7 +70,7 @@ true)
+ 				${revision}.${patchlevel}.${subversion} \
+ 			     -install_name \$(shrpdir)/\$@"
+ 		;;
+-	cygwin*)
++	cygwin*|msys*)
+ 		shrpldflags="$shrpldflags -Wl,--out-implib=libperl.dll.a"
+ 		linklibperl="-L. -lperl"
+ 		;;
+@@ -842,7 +842,7 @@ perl5.def: $(MINIPERLEXP) makedef.pl $(CONFIGPM) $(SYM) $(SYMH) miniperl.map
+ 
+ !NO!SUBS!
+ 	;;
+-cygwin)
++cygwin|msys)
+ 	$spitshell >>$Makefile <<'!NO!SUBS!'
+ cygwin.c: cygwin/cygwin.c
+ 	$(LNS) cygwin/cygwin.c
+@@ -1366,7 +1366,7 @@ _mopup:
+ 	-rm -f perl.exp ext.libs $(generated_pods) uni.data opmini.o perlmini.o pod/roffitall
+ 	-rm -f perl.export perl.dll perl.libexp perl.map perl.def
+ 	-rm -f *perl.xok
+-	-rm -f cygwin.c libperl*.def libperl*.dll cygperl*.dll *.exe.stackdump
++	-rm -f cygwin.c libperl*.def libperl*.dll cygperl*.dll msys-perl*.dll *.exe.stackdump
+ 	-rm -f $(PERL_EXE) $(MINIPERL_EXE) $(LIBPERL) libperl.* microperl
+ 	-rm -f config.arch config.over $(DTRACE_H)
+ 
+diff --git a/configpm b/configpm
+index 877bff1..b68a4f2 100755
+--- a/configpm
++++ b/configpm
+@@ -443,8 +443,8 @@ EOT
+ 
+ my $osname = fetch_string({}, 'osname');
+ my $from = $osname eq 'VMS' ? 'PERLSHR image' : 'binary (from libperl)';
+-my $env_cygwin = $osname eq 'cygwin'
+-    ? 'push @env, "CYGWIN=\"$ENV{CYGWIN}\"" if $ENV{CYGWIN};' . "\n" : "";
++my $env_cygwin = ($^O eq 'cygwin' || $^O eq 'msys')
++    ? 'push @env, "MSYS=\"$ENV{MSYS}\"" if $ENV{MSYS};' . "\n" : "";
+ 
+ $heavy_txt .= sprintf <<'ENDOFBEG', $osname, $osname, $from, $osname, $env_cygwin;
+ # This file was created by configpm when Perl was built. Any changes
+diff --git a/cpan/Archive-Tar/t/02_methods.t b/cpan/Archive-Tar/t/02_methods.t
+index b740594..ddb6c90 100644
+--- a/cpan/Archive-Tar/t/02_methods.t
++++ b/cpan/Archive-Tar/t/02_methods.t
+@@ -60,7 +60,7 @@ my @EXPECTX = (
  my $LONG_FILE = qq[directory/really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-really-long-directory-name/myfile];
  
  ### wintendo can't deal with too long paths, so we might have to skip tests ###
@@ -96,10 +161,109 @@ diff -Naur perl-5.22.0-orig/cpan/Archive-Tar/t/02_methods.t perl-5.22.0/cpan/Arc
                      && length( cwd(). $LONG_FILE ) > 247;
  
  if(!$TOO_LONG) {
-diff -Naur perl-5.22.0-orig/cpan/Compress-Raw-Zlib/Makefile.PL perl-5.22.0/cpan/Compress-Raw-Zlib/Makefile.PL
---- perl-5.22.0-orig/cpan/Compress-Raw-Zlib/Makefile.PL	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/Compress-Raw-Zlib/Makefile.PL	2015-06-04 15:43:10.125400000 +0300
-@@ -28,7 +28,7 @@
+diff --git a/cpan/CPAN-Meta/t/data-fail/META-1_4.yml b/cpan/CPAN-Meta/t/data-fail/META-1_4.yml
+index cec4d11..b04c410 100644
+--- a/cpan/CPAN-Meta/t/data-fail/META-1_4.yml
++++ b/cpan/CPAN-Meta/t/data-fail/META-1_4.yml
+@@ -77,6 +77,9 @@ provides:
+   Module::Build::Platform::cygwin:
+     file: lib/Module/Build/Platform/cygwin.pm
+     version: 0.36_08
++  Module::Build::Platform::msys:
++    file: lib/Module/Build/Platform/msys.pm
++    version: 0.36_08
+   Module::Build::Platform::darwin:
+     file: lib/Module/Build/Platform/darwin.pm
+     version: 0.36_08
+diff --git a/cpan/CPAN-Meta/t/data-fixable/META-1_4.yml b/cpan/CPAN-Meta/t/data-fixable/META-1_4.yml
+index 1336f10..7944d8f 100644
+--- a/cpan/CPAN-Meta/t/data-fixable/META-1_4.yml
++++ b/cpan/CPAN-Meta/t/data-fixable/META-1_4.yml
+@@ -76,6 +76,9 @@ provides:
+   Module::Build::Platform::cygwin:
+     file: lib/Module/Build/Platform/cygwin.pm
+     version: 0.36_08
++  Module::Build::Platform::msys:
++    file: lib/Module/Build/Platform/msys.pm
++    version: 0.36_08
+   Module::Build::Platform::darwin:
+     file: lib/Module/Build/Platform/darwin.pm
+     version: 0.36_08
+diff --git a/cpan/CPAN-Meta/t/data-fixable/invalid-meta-spec-version.yml b/cpan/CPAN-Meta/t/data-fixable/invalid-meta-spec-version.yml
+index d74cde6..c360ca1 100644
+--- a/cpan/CPAN-Meta/t/data-fixable/invalid-meta-spec-version.yml
++++ b/cpan/CPAN-Meta/t/data-fixable/invalid-meta-spec-version.yml
+@@ -77,6 +77,9 @@ provides:
+   Module::Build::Platform::cygwin:
+     file: lib/Module/Build/Platform/cygwin.pm
+     version: 0.36_08
++  Module::Build::Platform::msys:
++    file: lib/Module/Build/Platform/msys.pm
++    version: 0.36_08
+   Module::Build::Platform::darwin:
+     file: lib/Module/Build/Platform/darwin.pm
+     version: 0.36_08
+diff --git a/cpan/CPAN-Meta/t/data-fixable/meta-spec-version-trailing-zeros.yml b/cpan/CPAN-Meta/t/data-fixable/meta-spec-version-trailing-zeros.yml
+index 92445cb..94156d0 100644
+--- a/cpan/CPAN-Meta/t/data-fixable/meta-spec-version-trailing-zeros.yml
++++ b/cpan/CPAN-Meta/t/data-fixable/meta-spec-version-trailing-zeros.yml
+@@ -77,6 +77,9 @@ provides:
+   Module::Build::Platform::cygwin:
+     file: lib/Module/Build/Platform/cygwin.pm
+     version: 0.36_08
++  Module::Build::Platform::msys:
++    file: lib/Module/Build/Platform/msys.pm
++    version: 0.36_08
+   Module::Build::Platform::darwin:
+     file: lib/Module/Build/Platform/darwin.pm
+     version: 0.36_08
+diff --git a/cpan/CPAN-Meta/t/data-test/META-1_4.yml b/cpan/CPAN-Meta/t/data-test/META-1_4.yml
+index 801f579..60f598f 100644
+--- a/cpan/CPAN-Meta/t/data-test/META-1_4.yml
++++ b/cpan/CPAN-Meta/t/data-test/META-1_4.yml
+@@ -77,6 +77,9 @@ provides:
+   Module::Build::Platform::cygwin:
+     file: lib/Module/Build/Platform/cygwin.pm
+     version: 0.36_08
++  Module::Build::Platform::msys:
++    file: lib/Module/Build/Platform/msys.pm
++    version: 0.36_08
+   Module::Build::Platform::darwin:
+     file: lib/Module/Build/Platform/darwin.pm
+     version: 0.36_08
+diff --git a/cpan/CPAN-Meta/t/data-test/restrictive-1_4.yml b/cpan/CPAN-Meta/t/data-test/restrictive-1_4.yml
+index b780016..ee2ceac 100644
+--- a/cpan/CPAN-Meta/t/data-test/restrictive-1_4.yml
++++ b/cpan/CPAN-Meta/t/data-test/restrictive-1_4.yml
+@@ -77,6 +77,9 @@ provides:
+   Module::Build::Platform::cygwin:
+     file: lib/Module/Build/Platform/cygwin.pm
+     version: 0.36_08
++  Module::Build::Platform::msys:
++    file: lib/Module/Build/Platform/msys.pm
++    version: 0.36_08
+   Module::Build::Platform::darwin:
+     file: lib/Module/Build/Platform/darwin.pm
+     version: 0.36_08
+diff --git a/cpan/CPAN-Meta/t/data-test/unicode.yml b/cpan/CPAN-Meta/t/data-test/unicode.yml
+index 8aa5bca..b902e0b 100644
+--- a/cpan/CPAN-Meta/t/data-test/unicode.yml
++++ b/cpan/CPAN-Meta/t/data-test/unicode.yml
+@@ -77,6 +77,9 @@ provides:
+   Module::Build::Platform::cygwin:
+     file: lib/Module/Build/Platform/cygwin.pm
+     version: 0.36_08
++  Module::Build::Platform::msys:
++    file: lib/Module/Build/Platform/msys.pm
++    version: 0.36_08
+   Module::Build::Platform::darwin:
+     file: lib/Module/Build/Platform/darwin.pm
+     version: 0.36_08
+diff --git a/cpan/Compress-Raw-Zlib/Makefile.PL b/cpan/Compress-Raw-Zlib/Makefile.PL
+index 028f550..b893ea0 100644
+--- a/cpan/Compress-Raw-Zlib/Makefile.PL
++++ b/cpan/Compress-Raw-Zlib/Makefile.PL
+@@ -29,7 +29,7 @@ if ($Config{'gccversion'} and $OPTIMIZE =~ /-g (gdb)? 3/x) {
  # ExtUtils::Install.
  
  # Don't ask if MM_USE_DEFAULT is set -- enables perl core building on cygwin
@@ -108,101 +272,11 @@ diff -Naur perl-5.22.0-orig/cpan/Compress-Raw-Zlib/Makefile.PL perl-5.22.0/cpan/
          and not ($ENV{PERL_MM_USE_DEFAULT} or $ENV{PERL_CORE}))
  {
      print <<EOM ;
-diff -Naur perl-5.22.0-orig/cpan/CPAN-Meta/t/data-fail/META-1_4.yml perl-5.22.0/cpan/CPAN-Meta/t/data-fail/META-1_4.yml
---- perl-5.22.0-orig/cpan/CPAN-Meta/t/data-fail/META-1_4.yml	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/CPAN-Meta/t/data-fail/META-1_4.yml	2015-06-04 15:43:10.125400000 +0300
-@@ -77,6 +77,9 @@
-   Module::Build::Platform::cygwin:
-     file: lib/Module/Build/Platform/cygwin.pm
-     version: 0.36_08
-+  Module::Build::Platform::msys:
-+    file: lib/Module/Build/Platform/msys.pm
-+    version: 0.36_08
-   Module::Build::Platform::darwin:
-     file: lib/Module/Build/Platform/darwin.pm
-     version: 0.36_08
-diff -Naur perl-5.22.0-orig/cpan/CPAN-Meta/t/data-fixable/invalid-meta-spec-version.yml perl-5.22.0/cpan/CPAN-Meta/t/data-fixable/invalid-meta-spec-version.yml
---- perl-5.22.0-orig/cpan/CPAN-Meta/t/data-fixable/invalid-meta-spec-version.yml	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/CPAN-Meta/t/data-fixable/invalid-meta-spec-version.yml	2015-06-04 15:43:10.141000000 +0300
-@@ -77,6 +77,9 @@
-   Module::Build::Platform::cygwin:
-     file: lib/Module/Build/Platform/cygwin.pm
-     version: 0.36_08
-+  Module::Build::Platform::msys:
-+    file: lib/Module/Build/Platform/msys.pm
-+    version: 0.36_08
-   Module::Build::Platform::darwin:
-     file: lib/Module/Build/Platform/darwin.pm
-     version: 0.36_08
-diff -Naur perl-5.22.0-orig/cpan/CPAN-Meta/t/data-fixable/META-1_4.yml perl-5.22.0/cpan/CPAN-Meta/t/data-fixable/META-1_4.yml
---- perl-5.22.0-orig/cpan/CPAN-Meta/t/data-fixable/META-1_4.yml	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/CPAN-Meta/t/data-fixable/META-1_4.yml	2015-06-04 15:43:10.141000000 +0300
-@@ -76,6 +76,9 @@
-   Module::Build::Platform::cygwin:
-     file: lib/Module/Build/Platform/cygwin.pm
-     version: 0.36_08
-+  Module::Build::Platform::msys:
-+    file: lib/Module/Build/Platform/msys.pm
-+    version: 0.36_08
-   Module::Build::Platform::darwin:
-     file: lib/Module/Build/Platform/darwin.pm
-     version: 0.36_08
-diff -Naur perl-5.22.0-orig/cpan/CPAN-Meta/t/data-fixable/meta-spec-version-trailing-zeros.yml perl-5.22.0/cpan/CPAN-Meta/t/data-fixable/meta-spec-version-trailing-zeros.yml
---- perl-5.22.0-orig/cpan/CPAN-Meta/t/data-fixable/meta-spec-version-trailing-zeros.yml	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/CPAN-Meta/t/data-fixable/meta-spec-version-trailing-zeros.yml	2015-06-04 15:43:10.141000000 +0300
-@@ -77,6 +77,9 @@
-   Module::Build::Platform::cygwin:
-     file: lib/Module/Build/Platform/cygwin.pm
-     version: 0.36_08
-+  Module::Build::Platform::msys:
-+    file: lib/Module/Build/Platform/msys.pm
-+    version: 0.36_08
-   Module::Build::Platform::darwin:
-     file: lib/Module/Build/Platform/darwin.pm
-     version: 0.36_08
-diff -Naur perl-5.22.0-orig/cpan/CPAN-Meta/t/data-test/META-1_4.yml perl-5.22.0/cpan/CPAN-Meta/t/data-test/META-1_4.yml
---- perl-5.22.0-orig/cpan/CPAN-Meta/t/data-test/META-1_4.yml	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/CPAN-Meta/t/data-test/META-1_4.yml	2015-06-04 15:43:10.141000000 +0300
-@@ -77,6 +77,9 @@
-   Module::Build::Platform::cygwin:
-     file: lib/Module/Build/Platform/cygwin.pm
-     version: 0.36_08
-+  Module::Build::Platform::msys:
-+    file: lib/Module/Build/Platform/msys.pm
-+    version: 0.36_08
-   Module::Build::Platform::darwin:
-     file: lib/Module/Build/Platform/darwin.pm
-     version: 0.36_08
-diff -Naur perl-5.22.0-orig/cpan/CPAN-Meta/t/data-test/restrictive-1_4.yml perl-5.22.0/cpan/CPAN-Meta/t/data-test/restrictive-1_4.yml
---- perl-5.22.0-orig/cpan/CPAN-Meta/t/data-test/restrictive-1_4.yml	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/CPAN-Meta/t/data-test/restrictive-1_4.yml	2015-06-04 15:43:10.141000000 +0300
-@@ -77,6 +77,9 @@
-   Module::Build::Platform::cygwin:
-     file: lib/Module/Build/Platform/cygwin.pm
-     version: 0.36_08
-+  Module::Build::Platform::msys:
-+    file: lib/Module/Build/Platform/msys.pm
-+    version: 0.36_08
-   Module::Build::Platform::darwin:
-     file: lib/Module/Build/Platform/darwin.pm
-     version: 0.36_08
-diff -Naur perl-5.22.0-orig/cpan/CPAN-Meta/t/data-test/unicode.yml perl-5.22.0/cpan/CPAN-Meta/t/data-test/unicode.yml
---- perl-5.22.0-orig/cpan/CPAN-Meta/t/data-test/unicode.yml	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/CPAN-Meta/t/data-test/unicode.yml	2015-06-04 15:43:10.141000000 +0300
-@@ -77,6 +77,9 @@
-   Module::Build::Platform::cygwin:
-     file: lib/Module/Build/Platform/cygwin.pm
-     version: 0.36_08
-+  Module::Build::Platform::msys:
-+    file: lib/Module/Build/Platform/msys.pm
-+    version: 0.36_08
-   Module::Build::Platform::darwin:
-     file: lib/Module/Build/Platform/darwin.pm
-     version: 0.36_08
-diff -Naur perl-5.22.0-orig/cpan/DB_File/t/db-btree.t perl-5.22.0/cpan/DB_File/t/db-btree.t
---- perl-5.22.0-orig/cpan/DB_File/t/db-btree.t	2015-06-01 19:47:29.000000000 +0300
-+++ perl-5.22.0/cpan/DB_File/t/db-btree.t	2015-06-04 15:43:10.156600000 +0300
-@@ -105,7 +105,7 @@
+diff --git a/cpan/DB_File/t/db-btree.t b/cpan/DB_File/t/db-btree.t
+index 4e2968e..19ae0ab 100644
+--- a/cpan/DB_File/t/db-btree.t
++++ b/cpan/DB_File/t/db-btree.t
+@@ -105,7 +105,7 @@ sub normalise
  {
      my $data = shift ;
      $data =~ s#\r\n#\n#g 
@@ -211,7 +285,7 @@ diff -Naur perl-5.22.0-orig/cpan/DB_File/t/db-btree.t perl-5.22.0/cpan/DB_File/t
  
      return $data ;
  }
-@@ -175,7 +175,7 @@
+@@ -175,7 +175,7 @@ die "Could not tie: $!" unless $X;
  my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime,$ctime,
     $blksize,$blocks) = stat($Dfile);
  
@@ -220,10 +294,11 @@ diff -Naur perl-5.22.0-orig/cpan/DB_File/t/db-btree.t perl-5.22.0/cpan/DB_File/t
  
  ok(18, ($mode & 0777) == (($^O eq 'os2' || $^O eq 'MacOS') ? 0666 : 0640)
     || $noMode{$^O} );
-diff -Naur perl-5.22.0-orig/cpan/DB_File/t/db-hash.t perl-5.22.0/cpan/DB_File/t/db-hash.t
---- perl-5.22.0-orig/cpan/DB_File/t/db-hash.t	2015-06-01 19:47:29.000000000 +0300
-+++ perl-5.22.0/cpan/DB_File/t/db-hash.t	2015-06-04 15:43:11.045800000 +0300
-@@ -69,7 +69,7 @@
+diff --git a/cpan/DB_File/t/db-hash.t b/cpan/DB_File/t/db-hash.t
+index f4c8f95..796d1a5 100644
+--- a/cpan/DB_File/t/db-hash.t
++++ b/cpan/DB_File/t/db-hash.t
+@@ -69,7 +69,7 @@ sub normalise
  {
      my $data = shift ;
      $data =~ s#\r\n#\n#g 
@@ -232,7 +307,7 @@ diff -Naur perl-5.22.0-orig/cpan/DB_File/t/db-hash.t perl-5.22.0/cpan/DB_File/t/
      return $data ;
  }
  
-@@ -137,7 +137,7 @@
+@@ -137,7 +137,7 @@ die "Could not tie: $!" unless $X;
  my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime,$ctime,
     $blksize,$blocks) = stat($Dfile);
  
@@ -241,10 +316,11 @@ diff -Naur perl-5.22.0-orig/cpan/DB_File/t/db-hash.t perl-5.22.0/cpan/DB_File/t/
  
  ok(16, ($mode & 0777) == (($^O eq 'os2' || $^O eq 'MacOS') ? 0666 : 0640) ||
     $noMode{$^O} );
-diff -Naur perl-5.22.0-orig/cpan/DB_File/t/db-recno.t perl-5.22.0/cpan/DB_File/t/db-recno.t
---- perl-5.22.0-orig/cpan/DB_File/t/db-recno.t	2015-06-01 19:47:29.000000000 +0300
-+++ perl-5.22.0/cpan/DB_File/t/db-recno.t	2015-06-04 15:43:11.045800000 +0300
-@@ -125,7 +125,7 @@
+diff --git a/cpan/DB_File/t/db-recno.t b/cpan/DB_File/t/db-recno.t
+index bd198dc..ed3be71 100644
+--- a/cpan/DB_File/t/db-recno.t
++++ b/cpan/DB_File/t/db-recno.t
+@@ -125,7 +125,7 @@ EOM
  
  sub normalise
  {
@@ -253,7 +329,7 @@ diff -Naur perl-5.22.0-orig/cpan/DB_File/t/db-recno.t perl-5.22.0/cpan/DB_File/t
      foreach (@_)
        { s#\r\n#\n#g }     
  }
-@@ -197,7 +197,7 @@
+@@ -197,7 +197,7 @@ my $X  ;
  my @h ;
  ok(17, $X = tie @h, 'DB_File', $Dfile, O_RDWR|O_CREAT, 0640, $DB_RECNO ) ;
  
@@ -262,10 +338,11 @@ diff -Naur perl-5.22.0-orig/cpan/DB_File/t/db-recno.t perl-5.22.0/cpan/DB_File/t
  
  ok(18, ((stat($Dfile))[2] & 0777) == (($^O eq 'os2' || $^O eq 'MacOS') ? 0666 : 0640)
  	||  $noMode{$^O} );
-diff -Naur perl-5.22.0-orig/cpan/Digest-SHA/shasum perl-5.22.0/cpan/Digest-SHA/shasum
---- perl-5.22.0-orig/cpan/Digest-SHA/shasum	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/Digest-SHA/shasum	2015-06-04 15:43:11.061400000 +0300
-@@ -206,7 +206,7 @@
+diff --git a/cpan/Digest-SHA/shasum b/cpan/Digest-SHA/shasum
+index 2721117..ecc1f85 100644
+--- a/cpan/Digest-SHA/shasum
++++ b/cpan/Digest-SHA/shasum
+@@ -208,7 +208,7 @@ if ($versions) {
  	## explicitly overridden by command line "--text" or
  	## "--UNIVERSAL" or "--portable" options.
  
@@ -274,10 +351,11 @@ diff -Naur perl-5.22.0-orig/cpan/Digest-SHA/shasum perl-5.22.0/cpan/Digest-SHA/s
  if ($isDOSish) { $binary = 1 unless $text || $UNIVERSAL || $portable }
  
  my $modesym = $binary ? '*' : ($UNIVERSAL ? 'U' :
-diff -Naur perl-5.22.0-orig/cpan/ExtUtils-Install/lib/ExtUtils/Install.pm perl-5.22.0/cpan/ExtUtils-Install/lib/ExtUtils/Install.pm
---- perl-5.22.0-orig/cpan/ExtUtils-Install/lib/ExtUtils/Install.pm	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/ExtUtils-Install/lib/ExtUtils/Install.pm	2015-06-04 15:43:11.357800000 +0300
-@@ -98,7 +98,7 @@
+diff --git a/cpan/ExtUtils-Install/lib/ExtUtils/Install.pm b/cpan/ExtUtils-Install/lib/ExtUtils/Install.pm
+index 1e8ac4c..09b05d5 100644
+--- a/cpan/ExtUtils-Install/lib/ExtUtils/Install.pm
++++ b/cpan/ExtUtils-Install/lib/ExtUtils/Install.pm
+@@ -98,7 +98,7 @@ Dies with a special message.
  my $Is_VMS     = $^O eq 'VMS';
  my $Is_MacPerl = $^O eq 'MacOS';
  my $Is_Win32   = $^O eq 'MSWin32';
@@ -286,10 +364,11 @@ diff -Naur perl-5.22.0-orig/cpan/ExtUtils-Install/lib/ExtUtils/Install.pm perl-5
  my $CanMoveAtBoot = ($Is_Win32 || $Is_cygwin);
  
  # *note* CanMoveAtBoot is only incidentally the same condition as below
-diff -Naur perl-5.22.0-orig/cpan/ExtUtils-MakeMaker/lib/ExtUtils/Liblist/Kid.pm perl-5.22.0/cpan/ExtUtils-MakeMaker/lib/ExtUtils/Liblist/Kid.pm
---- perl-5.22.0-orig/cpan/ExtUtils-MakeMaker/lib/ExtUtils/Liblist/Kid.pm	2015-05-16 15:23:24.000000000 +0300
-+++ perl-5.22.0/cpan/ExtUtils-MakeMaker/lib/ExtUtils/Liblist/Kid.pm	2015-06-04 15:43:11.061400000 +0300
-@@ -170,6 +170,8 @@
+diff --git a/cpan/ExtUtils-MakeMaker/lib/ExtUtils/Liblist/Kid.pm b/cpan/ExtUtils-MakeMaker/lib/ExtUtils/Liblist/Kid.pm
+index a7fae86..dfde511 100644
+--- a/cpan/ExtUtils-MakeMaker/lib/ExtUtils/Liblist/Kid.pm
++++ b/cpan/ExtUtils-MakeMaker/lib/ExtUtils/Liblist/Kid.pm
+@@ -171,6 +171,8 @@ sub _unix_os2_ext {
              }
              elsif ( $^O eq 'cygwin' && -f ( $fullname = "$thispth/$thislib.dll" ) ) {
              }
@@ -298,10 +377,11 @@ diff -Naur perl-5.22.0-orig/cpan/ExtUtils-MakeMaker/lib/ExtUtils/Liblist/Kid.pm 
              elsif ( -f ( $fullname = "$thispth/Slib$thislib$Config_libext" ) ) {
              }
              elsif ($^O eq 'dgux'
-diff -Naur perl-5.22.0-orig/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM.pm perl-5.22.0/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM.pm
---- perl-5.22.0-orig/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM.pm	2015-05-16 15:23:24.000000000 +0300
-+++ perl-5.22.0/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM.pm	2015-06-04 15:43:11.061400000 +0300
-@@ -57,7 +57,7 @@
+diff --git a/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM.pm b/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM.pm
+index b327932..6b2e3c7 100644
+--- a/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM.pm
++++ b/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM.pm
+@@ -58,7 +58,7 @@ if( $^O eq 'MSWin32' ) {
      _is_win95() ? $Is{Win95} = 1 : $Is{Win32} = 1;
  }
  $Is{UWIN}   = $^O =~ /^uwin(-nt)?$/;
@@ -310,31 +390,11 @@ diff -Naur perl-5.22.0-orig/cpan/ExtUtils-MakeMaker/lib/ExtUtils/MM.pm perl-5.22
  $Is{NW5}    = $Config{osname} eq 'NetWare';  # intentional
  $Is{BeOS}   = ($^O =~ /beos/i or $^O eq 'haiku');
  $Is{DOS}    = $^O eq 'dos';
-diff -Naur perl-5.24.1-orig/cpan/ExtUtils-MakeMaker/t/eu_command.t perl-5.24.1/cpan/ExtUtils-MakeMaker/t/eu_command.t
---- perl-5.24.1-orig/cpan/ExtUtils-MakeMaker/t/eu_command.t	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.24.1/cpan/ExtUtils-MakeMaker/t/eu_command.t	2015-06-04 15:43:11.077000000 +0300
-@@ -95,7 +95,7 @@
-     SKIP: {
-         if ($^O eq 'amigaos' || $^O eq 'os2' || $^O eq 'MSWin32' ||
-             $^O eq 'NetWare' || $^O eq 'dos' || $^O eq 'cygwin'  ||
--            $^O eq 'MacOS'
-+            $^O eq 'msys'    || $^O eq 'MacOS'
-            ) {
-             skip( "different file permission semantics on $^O", 3);
-         }
-@@ -135,7 +135,7 @@
-     SKIP: {
-         if ($^O eq 'amigaos' || $^O eq 'os2' || $^O eq 'MSWin32' ||
-             $^O eq 'NetWare' || $^O eq 'dos' || $^O eq 'cygwin'  ||
--            $^O eq 'MacOS'   || $^O eq 'haiku'
-+            $^O eq 'msys'    || $^O eq 'MacOS'   || $^O eq 'haiku'
-            ) {
-             skip( "different file permission semantics on $^O", 5);
-         }
-diff -Naur perl-5.22.0-orig/cpan/ExtUtils-MakeMaker/t/MM_Cygwin.t perl-5.22.0/cpan/ExtUtils-MakeMaker/t/MM_Cygwin.t
---- perl-5.22.0-orig/cpan/ExtUtils-MakeMaker/t/MM_Cygwin.t	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/ExtUtils-MakeMaker/t/MM_Cygwin.t	2015-06-04 15:43:11.077000000 +0300
-@@ -9,7 +9,7 @@
+diff --git a/cpan/ExtUtils-MakeMaker/t/MM_Cygwin.t b/cpan/ExtUtils-MakeMaker/t/MM_Cygwin.t
+index 4e7336c..7c1518e 100644
+--- a/cpan/ExtUtils-MakeMaker/t/MM_Cygwin.t
++++ b/cpan/ExtUtils-MakeMaker/t/MM_Cygwin.t
+@@ -9,7 +9,7 @@ use strict;
  use Test::More;
  
  BEGIN {
@@ -343,10 +403,11 @@ diff -Naur perl-5.22.0-orig/cpan/ExtUtils-MakeMaker/t/MM_Cygwin.t perl-5.22.0/cp
  		plan tests => 14;
  	} else {
  		plan skip_all => "This is not cygwin";
-diff -Naur perl-5.22.0-orig/cpan/ExtUtils-MakeMaker/t/MM_Unix.t perl-5.22.0/cpan/ExtUtils-MakeMaker/t/MM_Unix.t
---- perl-5.22.0-orig/cpan/ExtUtils-MakeMaker/t/MM_Unix.t	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/ExtUtils-MakeMaker/t/MM_Unix.t	2015-06-04 15:43:11.077000000 +0300
-@@ -8,7 +8,7 @@
+diff --git a/cpan/ExtUtils-MakeMaker/t/MM_Unix.t b/cpan/ExtUtils-MakeMaker/t/MM_Unix.t
+index 9a8d18f..9e71e77 100644
+--- a/cpan/ExtUtils-MakeMaker/t/MM_Unix.t
++++ b/cpan/ExtUtils-MakeMaker/t/MM_Unix.t
+@@ -8,7 +8,7 @@ chdir 't';
  BEGIN {
      use Test::More;
  
@@ -355,10 +416,33 @@ diff -Naur perl-5.22.0-orig/cpan/ExtUtils-MakeMaker/t/MM_Unix.t perl-5.22.0/cpan
          plan skip_all => 'Non-Unix platform';
      }
      else {
-diff -Naur perl-5.22.0-orig/cpan/ExtUtils-Manifest/t/Manifest.t perl-5.22.0/cpan/ExtUtils-Manifest/t/Manifest.t
---- perl-5.22.0-orig/cpan/ExtUtils-Manifest/t/Manifest.t	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/ExtUtils-Manifest/t/Manifest.t	2015-06-04 15:43:11.357800000 +0300
-@@ -456,7 +456,7 @@
+diff --git a/cpan/ExtUtils-MakeMaker/t/eu_command.t b/cpan/ExtUtils-MakeMaker/t/eu_command.t
+index 269aa5c..9f43e97 100644
+--- a/cpan/ExtUtils-MakeMaker/t/eu_command.t
++++ b/cpan/ExtUtils-MakeMaker/t/eu_command.t
+@@ -95,7 +95,7 @@ BEGIN {
+     SKIP: {
+         if ($^O eq 'amigaos' || $^O eq 'os2' || $^O eq 'MSWin32' ||
+             $^O eq 'NetWare' || $^O eq 'dos' || $^O eq 'cygwin'  ||
+-            $^O eq 'MacOS'
++            $^O eq 'msys'    || $^O eq 'MacOS'
+            ) {
+             skip( "different file permission semantics on $^O", 3);
+         }
+@@ -135,7 +135,7 @@ BEGIN {
+     SKIP: {
+         if ($^O eq 'amigaos' || $^O eq 'os2' || $^O eq 'MSWin32' ||
+             $^O eq 'NetWare' || $^O eq 'dos' || $^O eq 'cygwin'  ||
+-            $^O eq 'MacOS'   || $^O eq 'haiku'
++            $^O eq 'msys'    || $^O eq 'MacOS'   || $^O eq 'haiku'
+            ) {
+             skip( "different file permission semantics on $^O", 5);
+         }
+diff --git a/cpan/ExtUtils-Manifest/t/Manifest.t b/cpan/ExtUtils-Manifest/t/Manifest.t
+index 830a786..35759c5 100644
+--- a/cpan/ExtUtils-Manifest/t/Manifest.t
++++ b/cpan/ExtUtils-Manifest/t/Manifest.t
+@@ -456,7 +456,7 @@ is_deeply( $files, \%expect, 'maniadd() vs MANIFEST without trailing newline');
  
  SKIP: {
      chmod( 0400, 'MANIFEST' );
@@ -367,10 +451,11 @@ diff -Naur perl-5.22.0-orig/cpan/ExtUtils-Manifest/t/Manifest.t perl-5.22.0/cpan
  
      eval {
          maniadd({ 'foo' => 'bar' });
-diff -Naur perl-5.22.0-orig/cpan/File-Temp/lib/File/Temp.pm perl-5.22.0/cpan/File-Temp/lib/File/Temp.pm
---- perl-5.22.0-orig/cpan/File-Temp/lib/File/Temp.pm	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/cpan/File-Temp/lib/File/Temp.pm	2015-06-04 15:43:11.077000000 +0300
-@@ -691,7 +691,7 @@
+diff --git a/cpan/File-Temp/lib/File/Temp.pm b/cpan/File-Temp/lib/File/Temp.pm
+index 817c6d9..de42e91 100644
+--- a/cpan/File-Temp/lib/File/Temp.pm
++++ b/cpan/File-Temp/lib/File/Temp.pm
+@@ -691,7 +691,7 @@ sub _can_do_level {
    return 1 if $level == STANDARD;
  
    # Currently, the systems that can do HIGH or MEDIUM are identical
@@ -379,7 +464,7 @@ diff -Naur perl-5.22.0-orig/cpan/File-Temp/lib/File/Temp.pm perl-5.22.0/cpan/Fil
      return 0;
    } else {
      return 1;
-@@ -1425,7 +1425,7 @@
+@@ -1425,7 +1425,7 @@ sub unlink0 {
      # On NFS the link count may still be 1 but we can't know that
      # we are on NFS.  Since we can't be sure, we'll defer it
  
@@ -388,10 +473,11 @@ diff -Naur perl-5.22.0-orig/cpan/File-Temp/lib/File/Temp.pm perl-5.22.0/cpan/Fil
    }
    # fall-through if we can't unlink now
    _deferred_unlink($fh, $path, 0);
-diff -Naur perl-5.22.0-orig/cpan/IO-Compress/t/cz-14gzopen.t perl-5.22.0/cpan/IO-Compress/t/cz-14gzopen.t
---- perl-5.22.0-orig/cpan/IO-Compress/t/cz-14gzopen.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/IO-Compress/t/cz-14gzopen.t	2015-06-04 15:43:11.092600000 +0300
-@@ -490,7 +490,7 @@
+diff --git a/cpan/IO-Compress/t/cz-14gzopen.t b/cpan/IO-Compress/t/cz-14gzopen.t
+index 01d2d65..998ce86 100644
+--- a/cpan/IO-Compress/t/cz-14gzopen.t
++++ b/cpan/IO-Compress/t/cz-14gzopen.t
+@@ -490,7 +490,7 @@ foreach my $stdio ( ['-', '-'], [*STDIN, *STDOUT])
      SKIP:
      {
          skip "Cannot create non-writable file", 3 
@@ -400,7 +486,7 @@ diff -Naur perl-5.22.0-orig/cpan/IO-Compress/t/cz-14gzopen.t perl-5.22.0/cpan/IO
  
          my $lex = new LexFile my $name ;
          writeFile($name, "abc");
-@@ -514,7 +514,7 @@
+@@ -514,7 +514,7 @@ foreach my $stdio ( ['-', '-'], [*STDIN, *STDOUT])
      {
          my $lex = new LexFile my $name ;
          skip "Cannot create non-readable file", 3 
@@ -409,10 +495,11 @@ diff -Naur perl-5.22.0-orig/cpan/IO-Compress/t/cz-14gzopen.t perl-5.22.0/cpan/IO
  
          writeFile($name, "abc");
          chmod 0222, $name ;
-diff -Naur perl-5.22.0-orig/cpan/IO-Socket-IP/t/11sockopts.t perl-5.22.0/cpan/IO-Socket-IP/t/11sockopts.t
---- perl-5.22.0-orig/cpan/IO-Socket-IP/t/11sockopts.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/IO-Socket-IP/t/11sockopts.t	2015-06-04 15:43:11.108200000 +0300
-@@ -11,7 +11,7 @@
+diff --git a/cpan/IO-Socket-IP/t/11sockopts.t b/cpan/IO-Socket-IP/t/11sockopts.t
+index 5b85092..28f427d 100644
+--- a/cpan/IO-Socket-IP/t/11sockopts.t
++++ b/cpan/IO-Socket-IP/t/11sockopts.t
+@@ -11,7 +11,7 @@ use Errno qw( EACCES );
  use Socket qw( SOL_SOCKET SO_REUSEADDR SO_REUSEPORT SO_BROADCAST );
  
  TODO: {
@@ -421,10 +508,11 @@ diff -Naur perl-5.22.0-orig/cpan/IO-Socket-IP/t/11sockopts.t perl-5.22.0/cpan/IO
     # I honestly have no idea why this fails, and people don't seem to be able
     # to reproduce it on a development box. I'll mark it TODO for now until we
     # can gain any more insight into it.
-diff -Naur perl-5.22.0-orig/cpan/IPC-Cmd/t/03_run-forked.t perl-5.22.0/cpan/IPC-Cmd/t/03_run-forked.t
---- perl-5.22.0-orig/cpan/IPC-Cmd/t/03_run-forked.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/IPC-Cmd/t/03_run-forked.t	2015-06-04 15:43:11.108200000 +0300
-@@ -44,7 +44,7 @@
+diff --git a/cpan/IPC-Cmd/t/03_run-forked.t b/cpan/IPC-Cmd/t/03_run-forked.t
+index 5425334..f9724e4 100644
+--- a/cpan/IPC-Cmd/t/03_run-forked.t
++++ b/cpan/IPC-Cmd/t/03_run-forked.t
+@@ -44,7 +44,7 @@ $r = run_forked("$sleep 5", {'timeout' => 2});
  ok($r->{'timeout'}, "[$sleep 5] runs longer than 2 seconds");
  
  SKIP: {
@@ -433,10 +521,11 @@ diff -Naur perl-5.22.0-orig/cpan/IPC-Cmd/t/03_run-forked.t perl-5.22.0/cpan/IPC-
    # https://rt.cpan.org/Ticket/Display.html?id=85912
    sub runSub {
         my $blah = "blahblah";
-diff -Naur perl-5.22.0-orig/cpan/IPC-SysV/t/ipcsysv.t perl-5.22.0/cpan/IPC-SysV/t/ipcsysv.t
---- perl-5.22.0-orig/cpan/IPC-SysV/t/ipcsysv.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/IPC-SysV/t/ipcsysv.t	2015-06-04 15:43:11.108200000 +0300
-@@ -39,18 +39,18 @@
+diff --git a/cpan/IPC-SysV/t/ipcsysv.t b/cpan/IPC-SysV/t/ipcsysv.t
+index 68d2a05..c378e4c 100644
+--- a/cpan/IPC-SysV/t/ipcsysv.t
++++ b/cpan/IPC-SysV/t/ipcsysv.t
+@@ -39,18 +39,18 @@ use strict;
    {
      return if $did_diag++;
  
@@ -458,56 +547,11 @@ diff -Naur perl-5.22.0-orig/cpan/IPC-SysV/t/ipcsysv.t perl-5.22.0/cpan/IPC-SysV/
  
  EOM
      }
-diff -Naur perl-5.22.0-orig/cpan/libnet/lib/Net/Domain.pm perl-5.22.0/cpan/libnet/lib/Net/Domain.pm
---- perl-5.22.0-orig/cpan/libnet/lib/Net/Domain.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/libnet/lib/Net/Domain.pm	2015-06-04 15:43:11.357800000 +0300
-@@ -172,7 +172,7 @@
-     }
- 
-     chop($dom = `domainname 2>/dev/null`)
--      unless (defined $dom || $^O =~ /^(?:cygwin|MSWin32|android)/);
-+      unless (defined $dom || $^O =~ /^(?:cygwin|msys|MSWin32|android)/);
- 
-     if (defined $dom) {
-       my @h = ();
-diff -Naur perl-5.22.0-orig/cpan/libnet/lib/Net/Netrc.pm perl-5.22.0/cpan/libnet/lib/Net/Netrc.pm
---- perl-5.22.0-orig/cpan/libnet/lib/Net/Netrc.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/libnet/lib/Net/Netrc.pm	2015-06-04 15:43:11.373400000 +0300
-@@ -58,6 +58,7 @@
-   unless ($^O eq 'os2'
-     || $^O eq 'MSWin32'
-     || $^O eq 'MacOS'
-+    || $^O =~ /^msys/
-     || $^O =~ /^cygwin/)
-   {
-     my @stat = stat($file);
-diff -Naur perl-5.22.0-orig/cpan/libnet/t/netrc.t perl-5.22.0/cpan/libnet/t/netrc.t
---- perl-5.22.0-orig/cpan/libnet/t/netrc.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/libnet/t/netrc.t	2015-06-04 15:43:11.373400000 +0300
-@@ -47,7 +47,7 @@
- 
- SKIP: {
-         skip('incompatible stat() handling for OS', 4), next SKIP 
--                if $^O =~ /os2|win32|macos|cygwin/i;
-+                if $^O =~ /os2|win32|macos|cygwin|msys/i;
- 
-         my $warn;
-         local $SIG{__WARN__} = sub {
-diff -Naur perl-5.22.0-orig/cpan/Perl-OSType/lib/Perl/OSType.pm perl-5.22.0/cpan/Perl-OSType/lib/Perl/OSType.pm
---- perl-5.22.0-orig/cpan/Perl-OSType/lib/Perl/OSType.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Perl-OSType/lib/Perl/OSType.pm	2015-06-04 15:43:11.108200000 +0300
-@@ -46,6 +46,7 @@
-   solaris     Unix
-   sunos       Unix
-   cygwin      Unix
-+  msys        Unix
-   os2         Unix
-   interix     Unix
-   gnu         Unix
-diff -Naur perl-5.22.0-orig/cpan/Pod-Parser/lib/Pod/Find.pm perl-5.22.0/cpan/Pod-Parser/lib/Pod/Find.pm
---- perl-5.22.0-orig/cpan/Pod-Parser/lib/Pod/Find.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Pod-Parser/lib/Pod/Find.pm	2015-06-04 15:43:11.123800000 +0300
-@@ -482,7 +482,7 @@
+diff --git a/cpan/Pod-Parser/lib/Pod/Find.pm b/cpan/Pod-Parser/lib/Pod/Find.pm
+index f258f26..50b33cb 100644
+--- a/cpan/Pod-Parser/lib/Pod/Find.pm
++++ b/cpan/Pod-Parser/lib/Pod/Find.pm
+@@ -482,7 +482,7 @@ sub pod_where {
      # have a case-tolerant file system, but File::Spec
      # does not recognize 'darwin' yet. And cygwin also has "pods",
      # but is not case tolerant. Oh well...
@@ -516,10 +560,24 @@ diff -Naur perl-5.22.0-orig/cpan/Pod-Parser/lib/Pod/Find.pm perl-5.22.0/cpan/Pod
       && -d File::Spec->catdir($dir,'pods')) {
        $dir = File::Spec->catdir($dir,'pods');
        redo Dir;
-diff -Naur perl-5.22.0-orig/cpan/Pod-Perldoc/lib/Pod/Perldoc/BaseTo.pm perl-5.22.0/cpan/Pod-Perldoc/lib/Pod/Perldoc/BaseTo.pm
---- perl-5.22.0-orig/cpan/Pod-Perldoc/lib/Pod/Perldoc/BaseTo.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Pod-Perldoc/lib/Pod/Perldoc/BaseTo.pm	2015-06-04 15:43:11.123800000 +0300
-@@ -29,7 +29,7 @@
+diff --git a/cpan/Pod-Perldoc/lib/Pod/Perldoc.pm b/cpan/Pod-Perldoc/lib/Pod/Perldoc.pm
+index 8d695b2..3840675 100644
+--- a/cpan/Pod-Perldoc/lib/Pod/Perldoc.pm
++++ b/cpan/Pod-Perldoc/lib/Pod/Perldoc.pm
+@@ -66,7 +66,7 @@ BEGIN {
+  *is_mswin32 = $^O eq 'MSWin32' ? \&TRUE : \&FALSE unless defined &is_mswin32;
+  *is_dos     = $^O eq 'dos'     ? \&TRUE : \&FALSE unless defined &is_dos;
+  *is_os2     = $^O eq 'os2'     ? \&TRUE : \&FALSE unless defined &is_os2;
+- *is_cygwin  = $^O eq 'cygwin'  ? \&TRUE : \&FALSE unless defined &is_cygwin;
++ *is_cygwin  = ($^O eq 'cygwin' || $^O eq 'msys')  ? \&TRUE : \&FALSE unless defined &is_cygwin;
+  *is_linux   = $^O eq 'linux'   ? \&TRUE : \&FALSE unless defined &is_linux;
+  *is_hpux    = $^O =~ m/hpux/   ? \&TRUE : \&FALSE unless defined &is_hpux;
+  *is_amigaos = $^O eq 'amigaos' ? \&TRUE : \&FALSE unless defined &is_amigaos;
+diff --git a/cpan/Pod-Perldoc/lib/Pod/Perldoc/BaseTo.pm b/cpan/Pod-Perldoc/lib/Pod/Perldoc/BaseTo.pm
+index 37f6510..7ae4af5 100644
+--- a/cpan/Pod-Perldoc/lib/Pod/Perldoc/BaseTo.pm
++++ b/cpan/Pod-Perldoc/lib/Pod/Perldoc/BaseTo.pm
+@@ -29,7 +29,7 @@ BEGIN {
   *is_mswin32 = $^O eq 'MSWin32'  ? \&TRUE : \&FALSE unless defined &is_mswin32;
   *is_dos     = $^O eq 'dos'      ? \&TRUE : \&FALSE unless defined &is_dos;
   *is_os2     = $^O eq 'os2'      ? \&TRUE : \&FALSE unless defined &is_os2;
@@ -528,22 +586,11 @@ diff -Naur perl-5.22.0-orig/cpan/Pod-Perldoc/lib/Pod/Perldoc/BaseTo.pm perl-5.22
   *is_linux   = $^O eq 'linux'    ? \&TRUE : \&FALSE unless defined &is_linux;
   *is_hpux    = $^O =~ m/hpux/    ? \&TRUE : \&FALSE unless defined &is_hpux;
   *is_openbsd = $^O =~ m/openbsd/ ? \&TRUE : \&FALSE unless defined &is_openbsd;
-diff -Naur perl-5.22.0-orig/cpan/Pod-Perldoc/lib/Pod/Perldoc.pm perl-5.22.0/cpan/Pod-Perldoc/lib/Pod/Perldoc.pm
---- perl-5.22.0-orig/cpan/Pod-Perldoc/lib/Pod/Perldoc.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Pod-Perldoc/lib/Pod/Perldoc.pm	2015-06-04 15:43:11.139400000 +0300
-@@ -66,7 +66,7 @@
-  *is_mswin32 = $^O eq 'MSWin32' ? \&TRUE : \&FALSE unless defined &is_mswin32;
-  *is_dos     = $^O eq 'dos'     ? \&TRUE : \&FALSE unless defined &is_dos;
-  *is_os2     = $^O eq 'os2'     ? \&TRUE : \&FALSE unless defined &is_os2;
-- *is_cygwin  = $^O eq 'cygwin'  ? \&TRUE : \&FALSE unless defined &is_cygwin;
-+ *is_cygwin  = ($^O eq 'cygwin' || $^O eq 'msys')  ? \&TRUE : \&FALSE unless defined &is_cygwin;
-  *is_linux   = $^O eq 'linux'   ? \&TRUE : \&FALSE unless defined &is_linux;
-  *is_hpux    = $^O =~ m/hpux/   ? \&TRUE : \&FALSE unless defined &is_hpux;
- }
-diff -Naur perl-5.22.0-orig/cpan/Socket/t/socketpair.t perl-5.22.0/cpan/Socket/t/socketpair.t
---- perl-5.22.0-orig/cpan/Socket/t/socketpair.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Socket/t/socketpair.t	2015-06-04 15:43:11.373400000 +0300
-@@ -35,7 +35,7 @@
+diff --git a/cpan/Socket/t/socketpair.t b/cpan/Socket/t/socketpair.t
+index 823306e..62e1b09 100644
+--- a/cpan/Socket/t/socketpair.t
++++ b/cpan/Socket/t/socketpair.t
+@@ -35,7 +35,7 @@ BEGIN {
  	    }
  	    warn "Something unexpectedly hung during testing";
  	    kill "INT", $parent or die "Kill failed: $!";
@@ -552,10 +599,11 @@ diff -Naur perl-5.22.0-orig/cpan/Socket/t/socketpair.t perl-5.22.0/cpan/Socket/t
  		# sometimes the above isn't enough on cygwin
  		sleep 1; # wait a little, it might have worked after all
  		system( "/bin/kill -f $parent; echo die $parent" );
-diff -Naur perl-5.22.0-orig/cpan/Sys-Syslog/t/syslog.t perl-5.22.0/cpan/Sys-Syslog/t/syslog.t
---- perl-5.22.0-orig/cpan/Sys-Syslog/t/syslog.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Sys-Syslog/t/syslog.t	2015-06-04 15:43:11.139400000 +0300
-@@ -17,7 +17,7 @@
+diff --git a/cpan/Sys-Syslog/t/syslog.t b/cpan/Sys-Syslog/t/syslog.t
+index 92af0c7..63d3324 100644
+--- a/cpan/Sys-Syslog/t/syslog.t
++++ b/cpan/Sys-Syslog/t/syslog.t
+@@ -18,7 +18,7 @@ use warnings qw(closure deprecated exiting glob io misc numeric once overflow
  $^W = 0 if $] < 5.006;
  
  my $is_Win32  = $^O =~ /win32/i;
@@ -564,10 +612,11 @@ diff -Naur perl-5.22.0-orig/cpan/Sys-Syslog/t/syslog.t perl-5.22.0/cpan/Sys-Sysl
  
  # if testing in core, check that the module is at least available
  if ($ENV{PERL_CORE}) {
-diff -Naur perl-5.22.0-orig/cpan/Sys-Syslog/win32/compile.pl perl-5.22.0/cpan/Sys-Syslog/win32/compile.pl
---- perl-5.22.0-orig/cpan/Sys-Syslog/win32/compile.pl	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Sys-Syslog/win32/compile.pl	2015-06-04 15:43:11.139400000 +0300
-@@ -127,7 +127,7 @@
+diff --git a/cpan/Sys-Syslog/win32/Win32.pm b/cpan/Sys-Syslog/win32/Win32.pm
+index 70caf33..d589aa1 100644
+--- a/cpan/Sys-Syslog/win32/Win32.pm
++++ b/cpan/Sys-Syslog/win32/Win32.pm
+@@ -39,7 +39,7 @@ use Win32::TieRegistry 0.20 (
      ),
  );    
  
@@ -576,10 +625,11 @@ diff -Naur perl-5.22.0-orig/cpan/Sys-Syslog/win32/compile.pl perl-5.22.0/cpan/Sy
  my $is_Win32  = $^O =~ /Win32/i;
  
  my %const = (
-diff -Naur perl-5.22.0-orig/cpan/Sys-Syslog/win32/Win32.pm perl-5.22.0/cpan/Sys-Syslog/win32/Win32.pm
---- perl-5.22.0-orig/cpan/Sys-Syslog/win32/Win32.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Sys-Syslog/win32/Win32.pm	2015-06-04 15:43:11.139400000 +0300
-@@ -39,7 +39,7 @@
+diff --git a/cpan/Sys-Syslog/win32/compile.pl b/cpan/Sys-Syslog/win32/compile.pl
+index 3a8cf4f..8e9cd52 100644
+--- a/cpan/Sys-Syslog/win32/compile.pl
++++ b/cpan/Sys-Syslog/win32/compile.pl
+@@ -127,7 +127,7 @@ use Win32::TieRegistry 0.20 (
      ),
  );    
  
@@ -588,10 +638,11 @@ diff -Naur perl-5.22.0-orig/cpan/Sys-Syslog/win32/Win32.pm perl-5.22.0/cpan/Sys-
  my $is_Win32  = $^O =~ /Win32/i;
  
  my %const = (
-diff -Naur perl-5.22.0-orig/cpan/Win32/Makefile.PL perl-5.22.0/cpan/Win32/Makefile.PL
---- perl-5.22.0-orig/cpan/Win32/Makefile.PL	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Win32/Makefile.PL	2015-06-04 15:43:11.155000000 +0300
-@@ -3,7 +3,7 @@
+diff --git a/cpan/Win32/Makefile.PL b/cpan/Win32/Makefile.PL
+index 0f16594..10e2e05 100644
+--- a/cpan/Win32/Makefile.PL
++++ b/cpan/Win32/Makefile.PL
+@@ -3,7 +3,7 @@ use strict;
  use warnings;
  use ExtUtils::MakeMaker;
  
@@ -600,7 +651,7 @@ diff -Naur perl-5.22.0-orig/cpan/Win32/Makefile.PL perl-5.22.0/cpan/Win32/Makefi
      die "OS unsupported\n";
  }
  
-@@ -13,6 +13,6 @@
+@@ -13,6 +13,6 @@ my %param = (
      INSTALLDIRS   => ($] >= 5.008004 && $] < 5.012 ? 'perl' : 'site'),
  );
  $param{NO_META} = 1 if eval "$ExtUtils::MakeMaker::VERSION" >= 6.10_03;
@@ -608,10 +659,11 @@ diff -Naur perl-5.22.0-orig/cpan/Win32/Makefile.PL perl-5.22.0/cpan/Win32/Makefi
 +$param{LIBS} = ['-L/usr/lib/w32api -lole32 -lversion'] if ($^O eq "cygwin" or $^O eq "msys");
  
  WriteMakefile(%param);
-diff -Naur perl-5.22.0-orig/cpan/Win32/t/GetCurrentThreadId.t perl-5.22.0/cpan/Win32/t/GetCurrentThreadId.t
---- perl-5.22.0-orig/cpan/Win32/t/GetCurrentThreadId.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Win32/t/GetCurrentThreadId.t	2015-06-04 15:43:11.155000000 +0300
-@@ -10,7 +10,7 @@
+diff --git a/cpan/Win32/t/GetCurrentThreadId.t b/cpan/Win32/t/GetCurrentThreadId.t
+index ce98f3e..aa0720c 100644
+--- a/cpan/Win32/t/GetCurrentThreadId.t
++++ b/cpan/Win32/t/GetCurrentThreadId.t
+@@ -10,7 +10,7 @@ plan tests => $tests;
  
  my $pid = $$+0; # make sure we don't copy any magic to $pid
  
@@ -620,10 +672,11 @@ diff -Naur perl-5.22.0-orig/cpan/Win32/t/GetCurrentThreadId.t perl-5.22.0/cpan/W
      skip(!defined &Cygwin::pid_to_winpid,
  	 Cygwin::pid_to_winpid($pid),
  	 Win32::GetCurrentProcessId());
-diff -Naur perl-5.22.0-orig/cpan/Win32/t/Unicode.t perl-5.22.0/cpan/Win32/t/Unicode.t
---- perl-5.22.0-orig/cpan/Win32/t/Unicode.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Win32/t/Unicode.t	2015-06-04 15:43:11.170600000 +0300
-@@ -52,7 +52,7 @@
+diff --git a/cpan/Win32/t/Unicode.t b/cpan/Win32/t/Unicode.t
+index 2d03fd6..cf4019b 100644
+--- a/cpan/Win32/t/Unicode.t
++++ b/cpan/Win32/t/Unicode.t
+@@ -52,7 +52,7 @@ while ($_ = readdir($dh)) {
      next if /^\./;
      # On Cygwin 1.7 readdir() returns the utf8 representation of the
      # filename but doesn't turn on the SvUTF8 bit
@@ -632,7 +685,7 @@ diff -Naur perl-5.22.0-orig/cpan/Win32/t/Unicode.t perl-5.22.0/cpan/Win32/t/Unic
      ok($file, Win32::GetLongPathName("$dir\\$_"));
  }
  closedir($dh);
-@@ -79,7 +79,7 @@
+@@ -79,7 +79,7 @@ ok(Win32::GetLongPathName($w32dir), $long);
  
  # cwd() on Cygwin returns a mapped path that we need to translate
  # back to a Windows path. Invoking `cygpath` on $subdir doesn't work.
@@ -641,10 +694,11 @@ diff -Naur perl-5.22.0-orig/cpan/Win32/t/Unicode.t perl-5.22.0/cpan/Win32/t/Unic
      $subdir = Cygwin::posix_to_win_path($subdir, 1);
  }
  $subdir =~ s,/,\\,g;
-diff -Naur perl-5.22.0-orig/cpan/Win32API-File/File.pm perl-5.22.0/cpan/Win32API-File/File.pm
---- perl-5.22.0-orig/cpan/Win32API-File/File.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Win32API-File/File.pm	2015-06-04 15:43:11.170600000 +0300
-@@ -738,7 +738,7 @@
+diff --git a/cpan/Win32API-File/File.pm b/cpan/Win32API-File/File.pm
+index 10c5d2f..0b9b14a 100644
+--- a/cpan/Win32API-File/File.pm
++++ b/cpan/Win32API-File/File.pm
+@@ -738,7 +738,7 @@ sub FILENO {
  
  	return $self->_fileno() if defined $self->_fileno();
  
@@ -653,10 +707,11 @@ diff -Naur perl-5.22.0-orig/cpan/Win32API-File/File.pm perl-5.22.0/cpan/Win32API
  
  # FIXME: We don't always open the handle, better to query the handle or to set
  # the right access info at TIEHANDLE time.
-diff -Naur perl-5.22.0-orig/cpan/Win32API-File/Makefile.PL perl-5.22.0/cpan/Win32API-File/Makefile.PL
---- perl-5.22.0-orig/cpan/Win32API-File/Makefile.PL	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Win32API-File/Makefile.PL	2015-06-04 15:43:11.170600000 +0300
-@@ -5,7 +5,7 @@
+diff --git a/cpan/Win32API-File/Makefile.PL b/cpan/Win32API-File/Makefile.PL
+index 0150968..c3af0b1 100644
+--- a/cpan/Win32API-File/Makefile.PL
++++ b/cpan/Win32API-File/Makefile.PL
+@@ -5,7 +5,7 @@ use Config;
  use strict;
  # See lib/ExtUtils/MakeMaker.pm for details of how to influence
  # the contents of the Makefile that is written.
@@ -665,10 +720,11 @@ diff -Naur perl-5.22.0-orig/cpan/Win32API-File/Makefile.PL perl-5.22.0/cpan/Win3
      die "OS unsupported\n";
  }
  
-diff -Naur perl-5.22.0-orig/cpan/Win32API-File/t/file.t perl-5.22.0/cpan/Win32API-File/t/file.t
---- perl-5.22.0-orig/cpan/Win32API-File/t/file.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/cpan/Win32API-File/t/file.t	2015-06-04 15:43:11.170600000 +0300
-@@ -151,7 +151,7 @@
+diff --git a/cpan/Win32API-File/t/file.t b/cpan/Win32API-File/t/file.t
+index cbc808c..b1b642d 100644
+--- a/cpan/Win32API-File/t/file.t
++++ b/cpan/Win32API-File/t/file.t
+@@ -151,7 +151,7 @@ $ok= print APP "is enough\n";
  $ok or print "# ",fileLastError(),"\n";
  print $ok ? "" : "not ", "ok ", ++$test, "\n";	# ok 19
  
@@ -677,7 +733,7 @@ diff -Naur perl-5.22.0-orig/cpan/Win32API-File/t/file.t perl-5.22.0/cpan/Win32AP
  
  $ok= ReadFile( $h1, $text, 0, [], [] );
  $ok or print "# ",fileLastError(),"\n";
-@@ -166,7 +166,7 @@
+@@ -166,7 +166,7 @@ if( !$ok ) {
  print $ok ? "" : "not ", "ok ", ++$test, "\n";	# ok 21
  
  $skip = "";
@@ -686,7 +742,7 @@ diff -Naur perl-5.22.0-orig/cpan/Win32API-File/t/file.t perl-5.22.0/cpan/Win32AP
      $ok = 1;
      $skip = " # skip cygwin can delete open files";
  }
-@@ -247,7 +247,7 @@
+@@ -247,7 +247,7 @@ $ok= ! DeleteFile( "Moved.cp" )
  $ok or print "# ",fileLastError(),"\n";
  print $ok ? "" : "not ", "ok ", ++$test, "\n";	# ok 35
  
@@ -695,7 +751,7 @@ diff -Naur perl-5.22.0-orig/cpan/Win32API-File/t/file.t perl-5.22.0/cpan/Win32AP
      chmod( 0200 | 07777 & (stat("Moved.cp"))[2], "Moved.cp" );
  }
  else {
-@@ -343,7 +343,7 @@
+@@ -343,7 +343,7 @@ if( !$ok  ) {
  print $ok ? "" : "not ", "ok ", ++$test, "\n";	# ok 49
  
  my $path = $ENV{WINDIR};
@@ -704,40 +760,87 @@ diff -Naur perl-5.22.0-orig/cpan/Win32API-File/t/file.t perl-5.22.0/cpan/Win32AP
  $ok or print "# ",$let.substr($path,3)."/win.ini ",fileLastError(),"\n";
  print $ok ? "" : "not ", "ok ", ++$test, "\n";	# ok 50
  
-diff -Naur perl-5.22.0-orig/Cross/Makefile-cross-SH perl-5.22.0/Cross/Makefile-cross-SH
---- perl-5.22.0-orig/Cross/Makefile-cross-SH	2015-05-13 23:19:28.000000000 +0300
-+++ perl-5.22.0/Cross/Makefile-cross-SH	2015-06-04 15:43:11.186200000 +0300
-@@ -61,7 +61,7 @@
- 				${revision}.${patchlevel}.${subversion} \
- 			     -install_name \$(shrpdir)/\$@"
- 		;;
--	cygwin*)
-+	cygwin* | msys*)
- 		linklibperl="-lperl"
- 		;;
- 	sunos*)
-@@ -467,7 +467,7 @@
+diff --git a/cpan/libnet/lib/Net/Domain.pm b/cpan/libnet/lib/Net/Domain.pm
+index 796bbaf..1a2d224 100644
+--- a/cpan/libnet/lib/Net/Domain.pm
++++ b/cpan/libnet/lib/Net/Domain.pm
+@@ -173,7 +173,7 @@ sub _hostdomain {
+     }
  
- !NO!SUBS!
- case "$osname" in
--cygwin)
-+cygwin | msys)
- 	;; # Let cygwin/Makefile.SHs do its work.
- *)
- 	$spitshell >>$Makefile <<'!NO!SUBS!'
-@@ -958,7 +958,7 @@
- 	-rm -f perl.third lib*.so.perl.third perl.3log t/perl.third t/perl.3log
- 	-rm -f perl.pixie lib*.so.perl.pixie lib*.so.Addrs
- 	-rm -f perl.Addrs perl.Counts t/perl.Addrs t/perl.Counts *perl.xok
--	-rm -f cygwin.c libperl*.def libperl*.dll cygperl*.dll *.exe.stackdump
-+	-rm -f cygwin.c libperl*.def libperl*.dll msys-perl*.dll *.exe.stackdump
- 	-rm -f perl$(EXE_EXT) miniperl$(EXE_EXT) $(LIBPERL) libperl.* microperl
- 	-rm -f config.over
+     chop($dom = `domainname 2>/dev/null`)
+-      unless (defined $dom || $^O =~ /^(?:cygwin|MSWin32|android)/);
++      unless (defined $dom || $^O =~ /^(?:cygwin|msys|MSWin32|android)/);
  
-diff -Naur perl-5.22.0-orig/dist/IO/t/io_xs.t perl-5.22.0/dist/IO/t/io_xs.t
---- perl-5.22.0-orig/dist/IO/t/io_xs.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/dist/IO/t/io_xs.t	2015-06-04 15:43:11.186200000 +0300
-@@ -43,6 +43,8 @@
+     if (defined $dom) {
+       my @h = ();
+diff --git a/cpan/libnet/lib/Net/Netrc.pm b/cpan/libnet/lib/Net/Netrc.pm
+index c075e14..6578dc6 100644
+--- a/cpan/libnet/lib/Net/Netrc.pm
++++ b/cpan/libnet/lib/Net/Netrc.pm
+@@ -59,6 +59,7 @@ sub _readrc {
+   unless ($^O eq 'os2'
+     || $^O eq 'MSWin32'
+     || $^O eq 'MacOS'
++    || $^O =~ /^msys/
+     || $^O =~ /^cygwin/)
+   {
+     my @stat = stat($file);
+diff --git a/cpan/libnet/t/netrc.t b/cpan/libnet/t/netrc.t
+index e270b36..b1bdfa0 100644
+--- a/cpan/libnet/t/netrc.t
++++ b/cpan/libnet/t/netrc.t
+@@ -47,7 +47,7 @@ $Net::Netrc::TESTING=$Net::Netrc::TESTING=1;
+ 
+ SKIP: {
+         skip('incompatible stat() handling for OS', 4), next SKIP 
+-                if $^O =~ /os2|win32|macos|cygwin/i;
++                if $^O =~ /os2|win32|macos|cygwin|msys/i;
+ 
+         my $warn;
+         local $SIG{__WARN__} = sub {
+diff --git a/dist/ExtUtils-CBuilder/lib/ExtUtils/CBuilder/Platform/msys.pm b/dist/ExtUtils-CBuilder/lib/ExtUtils/CBuilder/Platform/msys.pm
+new file mode 100644
+index 0000000..0985a1d
+--- /dev/null
++++ b/dist/ExtUtils-CBuilder/lib/ExtUtils/CBuilder/Platform/msys.pm
+@@ -0,0 +1,32 @@
++package ExtUtils::CBuilder::Platform::msys;
++$ExtUtils::CBuilder::Platform::msys::VERSION = '0.280221';
++use strict;
++use File::Spec;
++use ExtUtils::CBuilder::Platform::Unix;
++
++use vars qw(@ISA);
++@ISA = qw(ExtUtils::CBuilder::Platform::Unix);
++
++# TODO: If a specific exe_file name is requested, if the exe created
++# doesn't have that name, we might want to rename it.  Apparently asking
++# for an exe of "foo" might result in "foo.exe".  Alternatively, we should
++# make sure the return value is correctly "foo.exe".
++# C.f http://rt.cpan.org/Public/Bug/Display.html?id=41003
++sub link_executable {
++  my $self = shift;
++  return $self->SUPER::link_executable(@_);
++}
++
++sub link {
++  my ($self, %args) = @_;
++
++  my $lib = $self->{config}{useshrplib} ? 'libperl.dll.a' : 'libperl.a';
++  $args{extra_linker_flags} = [
++    File::Spec->catfile($self->perl_inc(), $lib),
++    $self->split_like_shell($args{extra_linker_flags})
++  ];
++
++  return $self->SUPER::link(%args);
++}
++
++1;
+diff --git a/dist/IO/t/io_xs.t b/dist/IO/t/io_xs.t
+index f7d7258..1dd1e50 100644
+--- a/dist/IO/t/io_xs.t
++++ b/dist/IO/t/io_xs.t
+@@ -43,6 +43,8 @@ SKIP:
        and skip "fsync() documented to fail on non-writable handles on $^O", 1;
      $^O eq 'cygwin'
        and skip "fsync() on cygwin uses FlushFileBuffers which requires a writable handle", 1;
@@ -746,86 +849,44 @@ diff -Naur perl-5.22.0-orig/dist/IO/t/io_xs.t perl-5.22.0/dist/IO/t/io_xs.t
      $^O eq 'VMS'
        and skip "fsync() not allowed on a read-only handle on $^O", 1;
      open my $fh, "<", "t/io_xs.t"
-diff -Naur perl-5.22.0-orig/dist/Net-Ping/lib/Net/Ping.pm perl-5.22.0/dist/Net-Ping/lib/Net/Ping.pm
---- perl-5.22.0-orig/dist/Net-Ping/lib/Net/Ping.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/dist/Net-Ping/lib/Net/Ping.pm	2015-06-04 15:43:11.186200000 +0300
-@@ -154,7 +154,7 @@
-   }
-   elsif ($self->{"proto"} eq "icmp")
-   {
--    croak("icmp ping requires root privilege") if ($> and $^O ne 'VMS' and $^O ne 'cygwin');
-+    croak("icmp ping requires root privilege") if ($> and $^O ne 'VMS' and $^O ne 'cygwin' and $^O ne 'msys');
-     $self->{"proto_num"} = eval { (getprotobyname('icmp'))[2] } ||
-       croak("Can't get icmp protocol by name");
-     $self->{"pid"} = $$ & 0xffff;           # Save lower 16 bits of pid
-@@ -660,7 +660,7 @@
+diff --git a/dist/Net-Ping/lib/Net/Ping.pm b/dist/Net-Ping/lib/Net/Ping.pm
+index 13cbe81..2bf1ed0 100644
+--- a/dist/Net-Ping/lib/Net/Ping.pm
++++ b/dist/Net-Ping/lib/Net/Ping.pm
+@@ -412,8 +412,8 @@ sub _IsAdminUser {
+ }
+ 
+ sub _isroot {
+-  if (($> and $^O ne 'VMS' and $^O ne 'cygwin')
+-    or (($^O eq 'MSWin32' or $^O eq 'cygwin')
++  if (($> and $^O ne 'VMS' and $^O ne 'cygwin' and $^O ne 'msys')
++    or (($^O eq 'MSWin32' or $^O eq 'cygwin' or $^O eq 'msys')
+         and !_IsAdminUser())
+     or ($^O eq 'VMS'
+         and (`write sys\$output f\$privilege("SYSPRV")` =~ m/FALSE/))) {
+@@ -908,7 +908,7 @@ sub tcp_connect
              # This should set $! to the correct error.
              my $char;
-             sysread($self->{"fh"},$char,1);
+             sysread($self->{fh},$char,1);
 -            $! = ECONNREFUSED if ($! == EAGAIN && $^O =~ /cygwin/i);
 +            $! = ECONNREFUSED if ($! == EAGAIN && $^O =~ /cygwin|msys/i);
  
-             $ret = 1 if (!$self->{"econnrefused"}
+             $ret = 1 if (!$self->{econnrefused}
                           && $! == ECONNREFUSED);
-@@ -1250,7 +1250,7 @@
-             $self->{"bad"}->{$entry->[0]} = $!;
-             if (!$self->{"econnrefused"} &&
+@@ -1548,7 +1548,7 @@ sub ack
+             $self->{bad}->{$entry->[0]} = $!;
+             if (!$self->{econnrefused} &&
                  (($! == ECONNREFUSED) ||
 -                 ($! == EAGAIN && $^O =~ /cygwin/i))) {
 +                 ($! == EAGAIN && $^O =~ /cygwin|msys/i))) {
                # "Connection refused" means reachable
                # Good, continue
              } else {
-diff -Naur perl-5.22.0-orig/dist/Net-Ping/t/110_icmp_inst.t perl-5.22.0/dist/Net-Ping/t/110_icmp_inst.t
---- perl-5.22.0-orig/dist/Net-Ping/t/110_icmp_inst.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/dist/Net-Ping/t/110_icmp_inst.t	2015-06-04 15:43:11.186200000 +0300
-@@ -20,8 +20,8 @@
- 
- SKIP: {
-   skip "icmp ping requires root privileges.", 1
--    if ($> and $^O ne 'VMS' and $^O ne 'cygwin')
--      or (($^O eq 'MSWin32' or $^O eq 'cygwin')
-+    if ($> and $^O ne 'VMS' and $^O ne 'cygwin' and $^O ne 'msys')
-+      or (($^O eq 'MSWin32' or $^O eq 'cygwin' or $^O eq 'msys')
- 	  and !IsAdminUser())
- 	or ($^O eq 'VMS'
- 	    and (`write sys\$output f\$privilege("SYSPRV")` =~ m/FALSE/));
-@@ -30,7 +30,7 @@
- }
- 
- sub IsAdminUser {
--  return unless $^O eq 'MSWin32' or $^O eq 'cygwin';
-+  return unless $^O eq 'MSWin32' or $^O eq 'cygwin' or $^O eq 'msys';
-   return unless eval { require Win32 };
-   return unless defined &Win32::IsAdminUser;
-   return Win32::IsAdminUser();
-diff -Naur perl-5.22.0-orig/dist/Net-Ping/t/500_ping_icmp.t perl-5.22.0/dist/Net-Ping/t/500_ping_icmp.t
---- perl-5.22.0-orig/dist/Net-Ping/t/500_ping_icmp.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/dist/Net-Ping/t/500_ping_icmp.t	2015-06-04 15:43:11.201800000 +0300
-@@ -20,8 +20,8 @@
- 
- SKIP: {
-   skip "icmp ping requires root privileges.", 1
--    if ($> and $^O ne 'VMS' and $^O ne 'cygwin')
--      or (($^O eq 'MSWin32' or $^O eq 'cygwin')
-+    if ($> and $^O ne 'VMS' and $^O ne 'cygwin' and $^O ne 'msys')
-+      or (($^O eq 'MSWin32' or $^O eq 'cygwin' or $^O eq 'msys')
- 	  and !IsAdminUser())
- 	or ($^O eq 'VMS'
- 	    and (`write sys\$output f\$privilege("SYSPRV")` =~ m/FALSE/));
-@@ -30,7 +30,7 @@
- }
- 
- sub IsAdminUser {
--  return unless $^O eq 'MSWin32' or $^O eq "cygwin";
-+  return unless $^O eq 'MSWin32' or $^O eq "cygwin" or $^O ne "msys";
-   return unless eval { require Win32 };
-   return unless defined &Win32::IsAdminUser;
-   return Win32::IsAdminUser();
-diff -Naur perl-5.22.0-orig/dist/Net-Ping/t/510_ping_udp.t perl-5.22.0/dist/Net-Ping/t/510_ping_udp.t
---- perl-5.22.0-orig/dist/Net-Ping/t/510_ping_udp.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/dist/Net-Ping/t/510_ping_udp.t	2015-06-04 15:43:11.201800000 +0300
-@@ -4,7 +4,7 @@
+diff --git a/dist/Net-Ping/t/510_ping_udp.t b/dist/Net-Ping/t/510_ping_udp.t
+index 025e980..6fe3a6d 100644
+--- a/dist/Net-Ping/t/510_ping_udp.t
++++ b/dist/Net-Ping/t/510_ping_udp.t
+@@ -4,7 +4,7 @@ use strict;
  use Config;
  
  sub isWindowsVista {
@@ -834,33 +895,11 @@ diff -Naur perl-5.22.0-orig/dist/Net-Ping/t/510_ping_udp.t perl-5.22.0/dist/Net-
     return unless eval { require Win32 };
     return unless defined &Win32::GetOSVersion();
  
-diff -Naur perl-5.22.0-orig/dist/Net-Ping/t/520_icmp_ttl.t perl-5.22.0/dist/Net-Ping/t/520_icmp_ttl.t
---- perl-5.22.0-orig/dist/Net-Ping/t/520_icmp_ttl.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/dist/Net-Ping/t/520_icmp_ttl.t	2015-06-04 15:43:11.201800000 +0300
-@@ -19,8 +19,8 @@
- 
- SKIP: {
-   skip "icmp ping requires root privileges.", 1
--    if ($> and $^O ne 'VMS' and $^O ne 'cygwin')
--      or (($^O eq 'MSWin32' or $^O eq 'cygwin')
-+    if ($> and $^O ne 'VMS' and $^O ne 'cygwin' and $^O ne 'msys')
-+      or (($^O eq 'MSWin32' or $^O eq 'cygwin' or $^O eq 'msys')
-     and !IsAdminUser())
-   or ($^O eq 'VMS'
-       and (`write sys\$output f\$privilege("SYSPRV")` =~ m/FALSE/));
-@@ -46,7 +46,7 @@
- }
- 
- sub IsAdminUser {
--  return unless $^O eq 'MSWin32' or $^O eq "cygwin";
-+  return unless $^O eq 'MSWin32' or $^O eq "cygwin" or $^O eq "msys";;
-   return unless eval { require Win32 };
-   return unless defined &Win32::IsAdminUser;
-   return Win32::IsAdminUser();
-diff -Naur perl-5.22.0-orig/dist/PathTools/Cwd.pm perl-5.22.0/dist/PathTools/Cwd.pm
---- perl-5.22.0-orig/dist/PathTools/Cwd.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/dist/PathTools/Cwd.pm	2015-06-04 15:43:11.373400000 +0300
-@@ -142,6 +142,15 @@
+diff --git a/dist/PathTools/Cwd.pm b/dist/PathTools/Cwd.pm
+index ce142cf..fdf5169 100644
+--- a/dist/PathTools/Cwd.pm
++++ b/dist/PathTools/Cwd.pm
+@@ -145,6 +145,15 @@ my %METHOD_MAP =
      realpath		=> 'fast_abs_path',
     },
  
@@ -876,7 +915,7 @@ diff -Naur perl-5.22.0-orig/dist/PathTools/Cwd.pm perl-5.22.0/dist/PathTools/Cwd
     epoc =>
     {
      cwd			=> '_epoc_cwd',
-@@ -250,7 +259,7 @@
+@@ -264,7 +273,7 @@ unless ($METHOD_MAP{$^O}{cwd} or defined &cwd) {
      }
  }
  
@@ -885,7 +924,7 @@ diff -Naur perl-5.22.0-orig/dist/PathTools/Cwd.pm perl-5.22.0/dist/PathTools/Cwd
    # We need to make sure cwd() is called with no args, because it's
    # got an arg-less prototype and will die if args are present.
    local $^W = 0;
-@@ -351,7 +360,7 @@
+@@ -365,7 +374,7 @@ sub chdir_init {
  
  sub chdir {
      my $newdir = @_ ? shift : '';	# allow for no arg (chdir to HOME dir)
@@ -894,10 +933,23 @@ diff -Naur perl-5.22.0-orig/dist/PathTools/Cwd.pm perl-5.22.0/dist/PathTools/Cwd
        $newdir =~ s|\A///+|//|;
        $newdir =~ s|(?<=[^/])//+|/|g;
      }
-diff -Naur perl-5.22.0-orig/dist/PathTools/lib/File/Spec/Cygwin.pm perl-5.22.0/dist/PathTools/lib/File/Spec/Cygwin.pm
---- perl-5.22.0-orig/dist/PathTools/lib/File/Spec/Cygwin.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/dist/PathTools/lib/File/Spec/Cygwin.pm	2015-06-04 15:43:11.201800000 +0300
-@@ -118,7 +118,7 @@
+diff --git a/dist/PathTools/lib/File/Spec.pm b/dist/PathTools/lib/File/Spec.pm
+index a9a7619..c326b66 100644
+--- a/dist/PathTools/lib/File/Spec.pm
++++ b/dist/PathTools/lib/File/Spec.pm
+@@ -15,6 +15,7 @@ my %module = (MacOS   => 'Mac',
+ 	      symbian => 'Win32', # Yes, File::Spec::Win32 works on symbian.
+ 	      dos     => 'OS2',   # Yes, File::Spec::OS2 works on DJGPP.
+ 	      cygwin  => 'Cygwin',
++	      msys    => 'Cygwin',
+ 	      amigaos => 'AmigaOS');
+ 
+ 
+diff --git a/dist/PathTools/lib/File/Spec/Cygwin.pm b/dist/PathTools/lib/File/Spec/Cygwin.pm
+index 745df86..aa99be2 100644
+--- a/dist/PathTools/lib/File/Spec/Cygwin.pm
++++ b/dist/PathTools/lib/File/Spec/Cygwin.pm
+@@ -118,7 +118,7 @@ Default: 1
  =cut
  
  sub case_tolerant {
@@ -906,10 +958,11 @@ diff -Naur perl-5.22.0-orig/dist/PathTools/lib/File/Spec/Cygwin.pm perl-5.22.0/d
      and defined &Cygwin::mount_flags;
  
    my $drive = shift;
-diff -Naur perl-5.22.0-orig/dist/PathTools/lib/File/Spec/Unix.pm perl-5.22.0/dist/PathTools/lib/File/Spec/Unix.pm
---- perl-5.22.0-orig/dist/PathTools/lib/File/Spec/Unix.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/dist/PathTools/lib/File/Spec/Unix.pm	2015-06-04 15:43:11.217400000 +0300
-@@ -72,7 +72,7 @@
+diff --git a/dist/PathTools/lib/File/Spec/Unix.pm b/dist/PathTools/lib/File/Spec/Unix.pm
+index ff3599a..8a5857a 100644
+--- a/dist/PathTools/lib/File/Spec/Unix.pm
++++ b/dist/PathTools/lib/File/Spec/Unix.pm
+@@ -72,7 +72,7 @@ sub _pp_canonpath {
        $node = $1;
      }
      # This used to be
@@ -918,21 +971,11 @@ diff -Naur perl-5.22.0-orig/dist/PathTools/lib/File/Spec/Unix.pm perl-5.22.0/dis
      # but that made tests 29, 30, 35, 46, and 213 (as of #13272) to fail
      # (Mainly because trailing "" directories didn't get stripped).
      # Why would cygwin avoid collapsing multiple slashes into one? --jhi
-diff -Naur perl-5.22.0-orig/dist/PathTools/lib/File/Spec.pm perl-5.22.0/dist/PathTools/lib/File/Spec.pm
---- perl-5.22.0-orig/dist/PathTools/lib/File/Spec.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/dist/PathTools/lib/File/Spec.pm	2015-06-04 15:43:11.217400000 +0300
-@@ -14,6 +14,7 @@
- 	      symbian => 'Win32', # Yes, File::Spec::Win32 works on symbian.
- 	      dos     => 'OS2',   # Yes, File::Spec::OS2 works on DJGPP.
- 	      cygwin  => 'Cygwin',
-+	      msys    => 'Cygwin',
- 	      amigaos => 'AmigaOS');
- 
- 
-diff -Naur perl-5.22.0-orig/dist/PathTools/t/crossplatform.t perl-5.22.0/dist/PathTools/t/crossplatform.t
---- perl-5.22.0-orig/dist/PathTools/t/crossplatform.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/dist/PathTools/t/crossplatform.t	2015-06-04 15:43:11.217400000 +0300
-@@ -6,7 +6,7 @@
+diff --git a/dist/PathTools/t/crossplatform.t b/dist/PathTools/t/crossplatform.t
+index b7c76fc..6a42af3 100644
+--- a/dist/PathTools/t/crossplatform.t
++++ b/dist/PathTools/t/crossplatform.t
+@@ -6,7 +6,7 @@ use lib File::Spec->catfile('t', 'lib');
  use Test::More;
  local $|=1;
  
@@ -941,10 +984,11 @@ diff -Naur perl-5.22.0-orig/dist/PathTools/t/crossplatform.t perl-5.22.0/dist/Pa
  my $tests_per_platform = 10;
  
  my $vms_unix_rpt = 0;
-diff -Naur perl-5.22.0-orig/dist/PathTools/t/cwd.t perl-5.22.0/dist/PathTools/t/cwd.t
---- perl-5.22.0-orig/dist/PathTools/t/cwd.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/dist/PathTools/t/cwd.t	2015-06-04 15:43:11.217400000 +0300
-@@ -40,7 +40,7 @@
+diff --git a/dist/PathTools/t/cwd.t b/dist/PathTools/t/cwd.t
+index 57fd866..1a0e382 100644
+--- a/dist/PathTools/t/cwd.t
++++ b/dist/PathTools/t/cwd.t
+@@ -40,7 +40,7 @@ if ($IsVMS) {
  my $tests = 31;
  # _perl_abs_path() currently only works when the directory separator
  # is '/', so don't test it when it won't work.
@@ -953,10 +997,11 @@ diff -Naur perl-5.22.0-orig/dist/PathTools/t/cwd.t perl-5.22.0/dist/PathTools/t/
  $tests += 4 if $EXTRA_ABSPATH_TESTS;
  plan tests => $tests;
  
-diff -Naur perl-5.24.1-orig/dist/Time-HiRes/Makefile.PL perl-5.24.1/dist/Time-HiRes/Makefile.PL
---- perl-5.24.1-orig/dist/Time-HiRes/Makefile.PL	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.24.1/dist/Time-HiRes/Makefile.PL	2015-06-04 15:43:11.155000000 +0300
-@@ -21,7 +21,7 @@
+diff --git a/dist/Time-HiRes/Makefile.PL b/dist/Time-HiRes/Makefile.PL
+index 66691fd..ce3f956 100644
+--- a/dist/Time-HiRes/Makefile.PL
++++ b/dist/Time-HiRes/Makefile.PL
+@@ -21,7 +21,7 @@ our $self; # Used in 'sourcing' the hints.
  
  # TBD: Can we just use $Config(exe_ext) here instead of this complex
  #      expression?
@@ -965,7 +1010,7 @@ diff -Naur perl-5.24.1-orig/dist/Time-HiRes/Makefile.PL perl-5.24.1/dist/Time-Hi
                   $^O eq 'os2' && $Config{ldflags} =~ /-Zexe\b/) ? '.exe' :
                  (($^O eq 'vos') ? $Config{exe_ext} : '');
  
-@@ -717,7 +717,7 @@
+@@ -849,7 +849,7 @@ EOM
  
      my $has_w32api_windows_h;
  
@@ -974,10 +1019,11 @@ diff -Naur perl-5.24.1-orig/dist/Time-HiRes/Makefile.PL perl-5.24.1/dist/Time-Hi
          print "Looking for <w32api/windows.h>... ";
          if (has_include('w32api/windows.h')) {
  	    $has_w32api_windows_h++;
-diff -Naur perl-5.24.1-orig/dist/Time-HiRes/t/stat.t perl-5.24.1/dist/Time-HiRes/t/stat.t
---- perl-5.24.1-orig/dist/Time-HiRes/t/stat.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.24.1/dist/Time-HiRes/t/stat.t	2015-06-04 15:43:11.155000000 +0300
-@@ -6,7 +6,7 @@
+diff --git a/dist/Time-HiRes/t/stat.t b/dist/Time-HiRes/t/stat.t
+index d5e22ac..2932740 100644
+--- a/dist/Time-HiRes/t/stat.t
++++ b/dist/Time-HiRes/t/stat.t
+@@ -6,7 +6,7 @@ BEGIN {
  	require Test::More;
  	Test::More::plan(skip_all => "no hi-res stat");
      }
@@ -986,10 +1032,11 @@ diff -Naur perl-5.24.1-orig/dist/Time-HiRes/t/stat.t perl-5.24.1/dist/Time-HiRes
  	require Test::More;
  	Test::More::plan(skip_all =>
  		"$^O file timestamps not reliable enough for stat test");
-diff -Naur perl-5.22.0-orig/ext/DynaLoader/DynaLoader_pm.PL perl-5.22.0/ext/DynaLoader/DynaLoader_pm.PL
---- perl-5.22.0-orig/ext/DynaLoader/DynaLoader_pm.PL	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/ext/DynaLoader/DynaLoader_pm.PL	2015-06-04 15:43:11.217400000 +0300
-@@ -472,6 +472,9 @@
+diff --git a/ext/DynaLoader/DynaLoader_pm.PL b/ext/DynaLoader/DynaLoader_pm.PL
+index bd95625..53ec87f 100644
+--- a/ext/DynaLoader/DynaLoader_pm.PL
++++ b/ext/DynaLoader/DynaLoader_pm.PL
+@@ -479,6 +479,9 @@ sub dl_findfile {
  	    <<$^O-eq-cygwin>>
              push(@names,"cyg$_.$dl_so")  unless m:/:;
  	    <</$^O-eq-cygwin>>
@@ -997,12 +1044,13 @@ diff -Naur perl-5.22.0-orig/ext/DynaLoader/DynaLoader_pm.PL perl-5.22.0/ext/Dyna
 +            push(@names,"msys-$_.$dl_so")  unless m:/:;
 +	    <</$^O-eq-msys>>
              push(@names,"lib$_.$dl_so")  unless m:/:;
-             push(@names,"$_.a")          if !m/\.a$/ and $dlsrc eq "dl_dld.xs";
              push(@names, $_);
-diff -Naur perl-5.22.0-orig/ext/DynaLoader/t/DynaLoader.t perl-5.22.0/ext/DynaLoader/t/DynaLoader.t
---- perl-5.22.0-orig/ext/DynaLoader/t/DynaLoader.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/ext/DynaLoader/t/DynaLoader.t	2015-06-04 15:43:11.217400000 +0300
-@@ -112,7 +112,7 @@
+         }
+diff --git a/ext/DynaLoader/t/DynaLoader.t b/ext/DynaLoader/t/DynaLoader.t
+index 7fe30b3..fe33afc 100644
+--- a/ext/DynaLoader/t/DynaLoader.t
++++ b/ext/DynaLoader/t/DynaLoader.t
+@@ -117,7 +117,7 @@ SKIP: {
      # (not at least by that name) that the dl_findfile()
      # could find.
      skip( "dl_findfile test not appropriate on $^O", 1 )
@@ -1011,10 +1059,11 @@ diff -Naur perl-5.22.0-orig/ext/DynaLoader/t/DynaLoader.t perl-5.22.0/ext/DynaLo
      # Play safe and only try this test if this system
      # looks pretty much Unix-like.
      skip( "dl_findfile test not appropriate on $^O", 1 )
-diff -Naur perl-5.22.0-orig/ext/File-Find/lib/File/Find.pm perl-5.22.0/ext/File-Find/lib/File/Find.pm
---- perl-5.22.0-orig/ext/File-Find/lib/File/Find.pm	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/ext/File-Find/lib/File/Find.pm	2015-06-04 15:43:11.233000000 +0300
-@@ -784,7 +784,7 @@
+diff --git a/ext/File-Find/lib/File/Find.pm b/ext/File-Find/lib/File/Find.pm
+index 03dac9f..95017c6 100644
+--- a/ext/File-Find/lib/File/Find.pm
++++ b/ext/File-Find/lib/File/Find.pm
+@@ -785,7 +785,7 @@ $File::Find::current_dir = File::Spec->curdir || '.';
  
  $File::Find::dont_use_nlink = 1
      if $^O eq 'os2' || $^O eq 'dos' || $^O eq 'amigaos' || $Is_Win32 ||
@@ -1023,10 +1072,11 @@ diff -Naur perl-5.22.0-orig/ext/File-Find/lib/File/Find.pm perl-5.22.0/ext/File-
  
  # Set dont_use_nlink in your hint file if your system's stat doesn't
  # report the number of links in a directory as an indication
-diff -Naur perl-5.22.0-orig/ext/File-Find/t/find.t perl-5.22.0/ext/File-Find/t/find.t
---- perl-5.22.0-orig/ext/File-Find/t/find.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/ext/File-Find/t/find.t	2015-06-04 15:43:11.233000000 +0300
-@@ -12,7 +12,7 @@
+diff --git a/ext/File-Find/t/find.t b/ext/File-Find/t/find.t
+index b532752..7d179f6 100644
+--- a/ext/File-Find/t/find.t
++++ b/ext/File-Find/t/find.t
+@@ -12,7 +12,7 @@ BEGIN {
      }
      $SIG{'__WARN__'} = sub { $warn_msg = $_[0]; warn "# $_[0]"; };
  
@@ -1035,10 +1085,11 @@ diff -Naur perl-5.22.0-orig/ext/File-Find/t/find.t perl-5.22.0/ext/File-Find/t/f
          # This is a hack - at present File::Find does not produce native names
          # on Win32 or VMS, so force File::Spec to use Unix names.
          # must be set *before* importing File::Find
-diff -Naur perl-5.22.0-orig/ext/File-Glob/t/basic.t perl-5.22.0/ext/File-Glob/t/basic.t
---- perl-5.22.0-orig/ext/File-Glob/t/basic.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/ext/File-Glob/t/basic.t	2015-06-04 15:43:11.233000000 +0300
-@@ -137,7 +137,7 @@
+diff --git a/ext/File-Glob/t/basic.t b/ext/File-Glob/t/basic.t
+index f0363cd..6a6a975 100644
+--- a/ext/File-Glob/t/basic.t
++++ b/ext/File-Glob/t/basic.t
+@@ -137,7 +137,7 @@ SKIP: {
  # should return an empty list, and set ERROR
  SKIP: {
      skip $^O, 2 if $^O eq 'MSWin32' or $^O eq 'NetWare'
@@ -1047,9 +1098,10 @@ diff -Naur perl-5.22.0-orig/ext/File-Glob/t/basic.t perl-5.22.0/ext/File-Glob/t/
      skip "AFS", 2 if Cwd::cwd() =~ m#^$Config{'afsroot'}#s;
      skip "running as root", 2 if not $>;
  
-diff -Naur perl-5.22.0-orig/ext/NDBM_File/Makefile.PL perl-5.22.0/ext/NDBM_File/Makefile.PL
---- perl-5.22.0-orig/ext/NDBM_File/Makefile.PL	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/ext/NDBM_File/Makefile.PL	2015-06-04 15:43:11.233000000 +0300
+diff --git a/ext/NDBM_File/Makefile.PL b/ext/NDBM_File/Makefile.PL
+index a8adbf0..b78ce8f 100644
+--- a/ext/NDBM_File/Makefile.PL
++++ b/ext/NDBM_File/Makefile.PL
 @@ -1,7 +1,7 @@
  use ExtUtils::MakeMaker;
  WriteMakefile(
@@ -1059,9 +1111,10 @@ diff -Naur perl-5.22.0-orig/ext/NDBM_File/Makefile.PL perl-5.22.0/ext/NDBM_File/
      XSPROTOARG => '-noprototypes', 		# XXX remove later?
      VERSION_FROM => 'NDBM_File.pm',
      INC => ($^O eq "MacOS" ? "-i ::::db:include" : "")
-diff -Naur perl-5.22.0-orig/ext/ODBM_File/Makefile.PL perl-5.22.0/ext/ODBM_File/Makefile.PL
---- perl-5.22.0-orig/ext/ODBM_File/Makefile.PL	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/ext/ODBM_File/Makefile.PL	2015-06-04 15:43:11.233000000 +0300
+diff --git a/ext/ODBM_File/Makefile.PL b/ext/ODBM_File/Makefile.PL
+index 0ae31f9..76f8f4f 100644
+--- a/ext/ODBM_File/Makefile.PL
++++ b/ext/ODBM_File/Makefile.PL
 @@ -1,7 +1,7 @@
  use ExtUtils::MakeMaker;
  WriteMakefile(
@@ -1071,10 +1124,11 @@ diff -Naur perl-5.22.0-orig/ext/ODBM_File/Makefile.PL perl-5.22.0/ext/ODBM_File/
      XSPROTOARG => '-noprototypes', 		# XXX remove later?
      VERSION_FROM => 'ODBM_File.pm', 
  );
-diff -Naur perl-5.22.0-orig/ext/POSIX/t/sysconf.t perl-5.22.0/ext/POSIX/t/sysconf.t
---- perl-5.22.0-orig/ext/POSIX/t/sysconf.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/ext/POSIX/t/sysconf.t	2015-06-04 15:43:11.233000000 +0300
-@@ -161,7 +161,7 @@
+diff --git a/ext/POSIX/t/sysconf.t b/ext/POSIX/t/sysconf.t
+index 29cf20f..9723637 100644
+--- a/ext/POSIX/t/sysconf.t
++++ b/ext/POSIX/t/sysconf.t
+@@ -161,7 +161,7 @@ END {
  }
  
  SKIP: {
@@ -1083,10 +1137,11 @@ diff -Naur perl-5.22.0-orig/ext/POSIX/t/sysconf.t perl-5.22.0/ext/POSIX/t/syscon
          pop @sys_consts;
          skip("No _SC_TZNAME_MAX on Cygwin", 1);
      }
-diff -Naur perl-5.22.0-orig/ext/POSIX/t/time.t perl-5.22.0/ext/POSIX/t/time.t
---- perl-5.22.0-orig/ext/POSIX/t/time.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/ext/POSIX/t/time.t	2015-06-04 15:43:11.233000000 +0300
-@@ -17,7 +17,7 @@
+diff --git a/ext/POSIX/t/time.t b/ext/POSIX/t/time.t
+index 6a906e0..3881c6e 100644
+--- a/ext/POSIX/t/time.t
++++ b/ext/POSIX/t/time.t
+@@ -22,7 +22,7 @@ SKIP: {
      # actually do anything.  Cygwin works in some places, but not others.  The
      # other Win32's below are guesses.
      skip "No tzset()", 2
@@ -1095,10 +1150,11 @@ diff -Naur perl-5.22.0-orig/ext/POSIX/t/time.t perl-5.22.0/ext/POSIX/t/time.t
            $^O eq "MSWin32" || $^O eq "dos" || $^O eq "interix";
      tzset();
      my @tzname = tzname();
-diff -Naur perl-5.22.0-orig/ext/Win32CORE/t/win32core.t perl-5.22.0/ext/Win32CORE/t/win32core.t
---- perl-5.22.0-orig/ext/Win32CORE/t/win32core.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/ext/Win32CORE/t/win32core.t	2015-06-04 15:43:11.248600000 +0300
-@@ -24,8 +24,8 @@
+diff --git a/ext/Win32CORE/t/win32core.t b/ext/Win32CORE/t/win32core.t
+index 8ef8cd0..ad0d7f0 100644
+--- a/ext/Win32CORE/t/win32core.t
++++ b/ext/Win32CORE/t/win32core.t
+@@ -24,8 +24,8 @@ ok(eval { Win32::GetLastError(); 1 }, 'GetLastError() works on the first call');
  my $errno = 0 + $!;
  my $sys_errno = 0 + $^E;
  SKIP: {
@@ -1109,10 +1165,11 @@ diff -Naur perl-5.22.0-orig/ext/Win32CORE/t/win32core.t perl-5.22.0/ext/Win32COR
      # [perl #42925] - Loading Win32::GetLastError() via the forwarder function
      # should not affect the last error being retrieved
      is($sys_errno, 42, '$^E is preserved across Win32 autoload');
-diff -Naur perl-5.22.0-orig/ext/XS-APItest/t/call_checker.t perl-5.22.0/ext/XS-APItest/t/call_checker.t
---- perl-5.22.0-orig/ext/XS-APItest/t/call_checker.t	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/ext/XS-APItest/t/call_checker.t	2015-06-04 15:43:11.373400000 +0300
-@@ -5,7 +5,7 @@
+diff --git a/ext/XS-APItest/t/call_checker.t b/ext/XS-APItest/t/call_checker.t
+index 9367096..5c85eae 100644
+--- a/ext/XS-APItest/t/call_checker.t
++++ b/ext/XS-APItest/t/call_checker.t
+@@ -5,7 +5,7 @@ use Test::More tests => 78;
  use XS::APItest;
  
  {
@@ -1121,10 +1178,11 @@ diff -Naur perl-5.22.0-orig/ext/XS-APItest/t/call_checker.t perl-5.22.0/ext/XS-A
      ok( eval { XS::APItest::test_cv_getset_call_checker(); 1 })
        or diag $@;
  }
-diff -Naur perl-5.22.0-orig/haiku/Haiku/Makefile.PL perl-5.22.0/haiku/Haiku/Makefile.PL
---- perl-5.22.0-orig/haiku/Haiku/Makefile.PL	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/haiku/Haiku/Makefile.PL	2015-06-04 15:43:11.248600000 +0300
-@@ -6,7 +6,7 @@
+diff --git a/haiku/Haiku/Makefile.PL b/haiku/Haiku/Makefile.PL
+index dacf230..fa335a0 100644
+--- a/haiku/Haiku/Makefile.PL
++++ b/haiku/Haiku/Makefile.PL
+@@ -6,7 +6,7 @@ unless ($^O eq "haiku") {
  }
  
  #my @libs;
@@ -1133,9 +1191,11 @@ diff -Naur perl-5.22.0-orig/haiku/Haiku/Makefile.PL perl-5.22.0/haiku/Haiku/Make
  
  WriteMakefile(
      NAME          => 'Haiku',
-diff -Naur perl-5.22.0-orig/hints/msys.sh perl-5.22.0/hints/msys.sh
---- perl-5.22.0-orig/hints/msys.sh	1970-01-01 03:00:00.000000000 +0300
-+++ perl-5.22.0/hints/msys.sh	2015-06-04 15:43:11.248600000 +0300
+diff --git a/hints/msys.sh b/hints/msys.sh
+new file mode 100644
+index 0000000..68d4043
+--- /dev/null
++++ b/hints/msys.sh
 @@ -0,0 +1,99 @@
 +#! /bin/sh
 +# msys.sh - hints for building perl using the MSYS environment for Win32
@@ -1236,10 +1296,11 @@ diff -Naur perl-5.22.0-orig/hints/msys.sh perl-5.22.0/hints/msys.sh
 +#ldflags="$ldflags -s"
 +#ccdlflags="$ccdlflags -s"
 +#lddlflags="$lddlflags -s"
-diff -Naur perl-5.22.0-orig/install_lib.pl perl-5.22.0/install_lib.pl
---- perl-5.22.0-orig/install_lib.pl	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/install_lib.pl	2015-06-04 15:43:11.248600000 +0300
-@@ -46,7 +46,7 @@
+diff --git a/install_lib.pl b/install_lib.pl
+index ac17bd8..c39eef3 100644
+--- a/install_lib.pl
++++ b/install_lib.pl
+@@ -46,7 +46,7 @@ if ($Config{d_umask}) {
  $Is_VMS = $^O eq 'VMS';
  $Is_W32 = $^O eq 'MSWin32';
  $Is_OS2 = $^O eq 'os2';
@@ -1247,11 +1308,12 @@ diff -Naur perl-5.22.0-orig/install_lib.pl perl-5.22.0/install_lib.pl
 +$Is_Cygwin = ($^O eq 'cygwin' || $^O eq 'msys');
  $Is_Darwin = $^O eq 'darwin';
  $Is_NetWare = $Config{osname} eq 'NetWare';
- 
-diff -Naur perl-5.22.0-orig/installman perl-5.22.0/installman
---- perl-5.22.0-orig/installman	2015-05-13 23:19:29.000000000 +0300
-+++ perl-5.22.0/installman	2015-06-04 15:43:11.248600000 +0300
-@@ -146,7 +146,7 @@
+ $Is_AmigaOS = $^O eq 'amigaos';
+diff --git a/installman b/installman
+index 53117ab..4c24903 100755
+--- a/installman
++++ b/installman
+@@ -146,7 +146,7 @@ sub pod2man {
  	    next;
  	}
  
@@ -1260,10 +1322,11 @@ diff -Naur perl-5.22.0-orig/installman perl-5.22.0/installman
              $manpage =~ s#::#.#g;
  	}
          my $tmp = "${mandir}/${manpage}.tmp";
-diff -Naur perl-5.22.0-orig/lib/AnyDBM_File.t perl-5.22.0/lib/AnyDBM_File.t
---- perl-5.22.0-orig/lib/AnyDBM_File.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/lib/AnyDBM_File.t	2015-06-04 15:43:11.264200000 +0300
-@@ -15,7 +15,8 @@
+diff --git a/lib/AnyDBM_File.t b/lib/AnyDBM_File.t
+index d061aba..eeaa121 100644
+--- a/lib/AnyDBM_File.t
++++ b/lib/AnyDBM_File.t
+@@ -15,7 +15,8 @@ use Fcntl;
  $Is_Dosish = ($^O eq 'amigaos' || $^O eq 'MSWin32' ||
  	      $^O eq 'NetWare' || $^O eq 'dos' ||
  	      $^O eq 'os2' ||
@@ -1273,22 +1336,11 @@ diff -Naur perl-5.22.0-orig/lib/AnyDBM_File.t perl-5.22.0/lib/AnyDBM_File.t
  
  my $filename = "Any_dbmx$$";
  unlink <"$filename*">;
-diff -Naur perl-5.24.1-orig/lib/locale.t perl-5.24.1/lib/locale.t
---- perl-5.24.1-orig/lib/locale.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.24.1/lib/locale.t	2015-06-04 15:43:11.264200000 +0300
-@@ -55,7 +55,7 @@
- 
- # cygwin isn't returning proper radix length in this locale, but supposedly to
- # be fixed in later versions.
--if ($^O eq 'cygwin' && version->new(($Config{osvers} =~ /^(\d+(?:\.\d+)+)/)[0]) le v2.4.1) {
-+if (($^O eq 'cygwin' or $^O eq 'msys') && version->new(($Config{osvers} =~ /^(\d+(?:\.\d+)+)/)[0]) le v2.4.1) {
-     $known_bad_locales{'cygwin'} = qr/ ^ ps_AF /ix;
- }
- 
-diff -Naur perl-5.22.0-orig/lib/ExtUtils/t/Embed.t perl-5.22.0/lib/ExtUtils/t/Embed.t
---- perl-5.22.0-orig/lib/ExtUtils/t/Embed.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/lib/ExtUtils/t/Embed.t	2015-06-04 15:43:11.264200000 +0300
-@@ -112,7 +112,7 @@
+diff --git a/lib/ExtUtils/t/Embed.t b/lib/ExtUtils/t/Embed.t
+index 59d7921..151cd1e 100644
+--- a/lib/ExtUtils/t/Embed.t
++++ b/lib/ExtUtils/t/Embed.t
+@@ -112,7 +112,7 @@ if ($^O eq 'VMS') {
          s!-bE:(\S+)!-bE:$perl_exp!;
      }
     }
@@ -1297,7 +1349,7 @@ diff -Naur perl-5.22.0-orig/lib/ExtUtils/t/Embed.t perl-5.22.0/lib/ExtUtils/t/Em
         ;
     }
     elsif ($Config{'libperl'} !~ /\Alibperl\./) {
-@@ -155,7 +155,7 @@
+@@ -155,7 +155,7 @@ unlink($exe,"embed_test.c",$obj);
  unlink("$exe.manifest") if $cl and $Config{'ccversion'} =~ /^(\d+)/ and $1 >= 14;
  unlink("$exe$Config{exe_ext}") if $skip_exe;
  unlink("embed_test.map","embed_test.lis") if $^O eq 'VMS';
@@ -1306,10 +1358,11 @@ diff -Naur perl-5.22.0-orig/lib/ExtUtils/t/Embed.t perl-5.22.0/lib/ExtUtils/t/Em
  unlink($testlib)	       if $libperl_copied;
  
  # gcc -g -I.. -L../ -o perl_test perl_test.c -lperl `../perl -I../lib -MExtUtils::Embed -I../ -e ccflags -e ldopts`
-diff -Naur perl-5.22.0-orig/lib/File/Compare.t perl-5.22.0/lib/File/Compare.t
---- perl-5.22.0-orig/lib/File/Compare.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/lib/File/Compare.t	2015-06-04 15:43:11.264200000 +0300
-@@ -105,7 +105,7 @@
+diff --git a/lib/File/Compare.t b/lib/File/Compare.t
+index b7c9d9f..5af4d05 100644
+--- a/lib/File/Compare.t
++++ b/lib/File/Compare.t
+@@ -105,7 +105,7 @@ SKIP: {
      TODO: {
          my $why = "spaces after filename silently truncated";
          my $how_many = 1;
@@ -1318,22 +1371,24 @@ diff -Naur perl-5.22.0-orig/lib/File/Compare.t perl-5.22.0/lib/File/Compare.t
          todo_skip $why, $how_many if $condition;
          is($donetests[2], 0, "file/fileCR [$donetests[2]]");
      }
-diff -Naur perl-5.22.0-orig/lib/File/Copy.t perl-5.22.0/lib/File/Copy.t
---- perl-5.22.0-orig/lib/File/Copy.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/lib/File/Copy.t	2015-06-04 15:43:11.264200000 +0300
-@@ -173,7 +173,7 @@
+diff --git a/lib/File/Copy.t b/lib/File/Copy.t
+index 05590b2..71901c9 100644
+--- a/lib/File/Copy.t
++++ b/lib/File/Copy.t
+@@ -173,7 +173,7 @@ for my $cross_partition_test (0..1) {
  
    SKIP: {
      skip "Testing hard links", 3 
 -         if !$Config{d_link} or $^O eq 'MSWin32' or $^O eq 'cygwin';
 +         if !$Config{d_link} or $^O eq 'MSWin32' or $^O eq 'cygwin' or $^O eq 'msys';
  
-     open(F, ">file-$$") or die $!;
+     open(F, ">", "file-$$") or die $!;
      print F "dummy content\n";
-diff -Naur perl-5.22.0-orig/lib/Net/hostent.t perl-5.22.0/lib/Net/hostent.t
---- perl-5.22.0-orig/lib/Net/hostent.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/lib/Net/hostent.t	2015-06-04 15:43:11.264200000 +0300
-@@ -57,7 +57,7 @@
+diff --git a/lib/Net/hostent.t b/lib/Net/hostent.t
+index 573136c..7fe2e38 100644
+--- a/lib/Net/hostent.t
++++ b/lib/Net/hostent.t
+@@ -57,7 +57,7 @@ is( inet_ntoa($i->addr), "127.0.0.1",   'addr from gethostbyaddr' );
  
  SKIP: {
      skip "Windows will return the machine name instead of 'localhost'", 2
@@ -1342,22 +1397,11 @@ diff -Naur perl-5.22.0-orig/lib/Net/hostent.t perl-5.22.0/lib/Net/hostent.t
  
      print "# name = " . $h->name . ", aliases = " . join (",", @{$h->aliases}) . "\n";
  
-diff -Naur perl-5.22.0-orig/lib/perl5db.pl perl-5.22.0/lib/perl5db.pl
---- perl-5.22.0-orig/lib/perl5db.pl	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/lib/perl5db.pl	2015-06-04 15:43:11.279800000 +0300
-@@ -1526,7 +1526,7 @@
- 
- =cut
- 
--    if ( $^O eq 'cygwin' ) {
-+    if ( $^O eq 'cygwin' or $^O eq 'msys' ) {
- 
-         # /dev/tty is binary. use stdin for textmode
-         undef $console;
-diff -Naur perl-5.22.0-orig/lib/User/grent.t perl-5.22.0/lib/User/grent.t
---- perl-5.22.0-orig/lib/User/grent.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/lib/User/grent.t	2015-06-04 15:43:11.295400000 +0300
-@@ -18,7 +18,7 @@
+diff --git a/lib/User/grent.t b/lib/User/grent.t
+index 3002b6e..05df71e 100644
+--- a/lib/User/grent.t
++++ b/lib/User/grent.t
+@@ -18,7 +18,7 @@ BEGIN {
  }
  
  BEGIN {
@@ -1366,10 +1410,11 @@ diff -Naur perl-5.22.0-orig/lib/User/grent.t perl-5.22.0/lib/User/grent.t
      our @grent = getgrgid $gid; # This is the function getgrgid.
      unless (@grent) { plan skip_all => "no gid 0"; }
  }
-diff -Naur perl-5.22.0-orig/lib/User/pwent.t perl-5.22.0/lib/User/pwent.t
---- perl-5.22.0-orig/lib/User/pwent.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/lib/User/pwent.t	2015-06-04 15:43:11.295400000 +0300
-@@ -21,7 +21,7 @@
+diff --git a/lib/User/pwent.t b/lib/User/pwent.t
+index f93836f..369ce60 100644
+--- a/lib/User/pwent.t
++++ b/lib/User/pwent.t
+@@ -21,7 +21,7 @@ BEGIN {
      # On VMS getpwuid(0) may return [$gid,0] UIC info (which may not exist).
      # It is better to use the $< uid for testing on VMS instead.
      if ( $^O eq 'VMS' ) { $uid = $< ; }
@@ -1378,7 +1423,7 @@ diff -Naur perl-5.22.0-orig/lib/User/pwent.t perl-5.22.0/lib/User/pwent.t
      our @pwent = getpwuid $uid; # This is the function getpwuid.
      unless (@pwent) { print "1..0 # Skip: no uid $uid\n"; exit 0 }
  }
-@@ -35,7 +35,7 @@
+@@ -35,7 +35,7 @@ print "ok 1\n";
  my $pwent = getpwuid $uid; # This is the OO getpwuid.
  
  my $uid_expect = $uid;
@@ -1387,10 +1432,37 @@ diff -Naur perl-5.22.0-orig/lib/User/pwent.t perl-5.22.0/lib/User/pwent.t
      print "not " unless (   $pwent->uid == $uid_expect
                           || $pwent->uid == 500         );  # go figure
  }
-diff -Naur perl-5.22.0-orig/makedepend.SH perl-5.22.0/makedepend.SH
---- perl-5.22.0-orig/makedepend.SH	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/makedepend.SH	2015-06-04 15:43:11.295400000 +0300
-@@ -118,6 +118,7 @@
+diff --git a/lib/locale.t b/lib/locale.t
+index da8d10e..53119ac 100644
+--- a/lib/locale.t
++++ b/lib/locale.t
+@@ -59,7 +59,7 @@ my %known_bad_locales = (
+ 
+ # cygwin isn't returning proper radix length in this locale, but supposedly to
+ # be fixed in later versions.
+-if ($^O eq 'cygwin' && version->new(($Config{osvers} =~ /^(\d+(?:\.\d+)+)/)[0]) le v2.4.1) {
++if (($^O eq 'cygwin' or $^O eq 'msys') && version->new(($Config{osvers} =~ /^(\d+(?:\.\d+)+)/)[0]) le v2.4.1) {
+     $known_bad_locales{'cygwin'} = qr/ ^ ps_AF /ix;
+ }
+ 
+diff --git a/lib/perl5db.pl b/lib/perl5db.pl
+index 265b444..07fe243 100644
+--- a/lib/perl5db.pl
++++ b/lib/perl5db.pl
+@@ -1527,7 +1527,7 @@ We then determine what the console should be on various systems:
+ 
+ =cut
+ 
+-    if ( $^O eq 'cygwin' ) {
++    if ( $^O eq 'cygwin' or $^O eq 'msys' ) {
+ 
+         # /dev/tty is binary. use stdin for textmode
+         undef $console;
+diff --git a/makedepend.SH b/makedepend.SH
+index 600288f..03e7e77 100755
+--- a/makedepend.SH
++++ b/makedepend.SH
+@@ -118,6 +118,7 @@ for file in `$cat .clist`; do
      uwin)     uwinfix="-e s,\\\\\\\\,/,g -e s,\\([a-zA-Z]\\):/,/\\1/,g" ;;
      os2)      uwinfix="-e s,\\\\\\\\,/,g" ;;
      cygwin)   uwinfix="-e s,\\\\\\\\,/,g" ;;
@@ -1398,40 +1470,11 @@ diff -Naur perl-5.22.0-orig/makedepend.SH perl-5.22.0/makedepend.SH
      posix-bc) uwinfix="-e s/\\*POSIX(\\(.*\\))/\\1/" ;;
      vos)      uwinfix="-e s/\#/\\\#/" ;;
      *)        uwinfix="" ;;
-diff -Naur perl-5.24.1-orig/Makefile.SH perl-5.24.1/Makefile.SH
---- perl-5.24.1-orig/Makefile.SH	2015-06-04 15:41:48.964400000 +0300
-+++ perl-5.24.1/Makefile.SH	2015-06-04 15:43:11.295400000 +0300
-@@ -61,7 +61,7 @@
- 				${revision}.${patchlevel}.${subversion} \
- 			     -install_name \$(shrpdir)/\$@"
- 		;;
--	cygwin*)
-+	cygwin*|msys*)
- 		shrpldflags="$shrpldflags -Wl,--out-implib=libperl.dll.a"
- 		linklibperl="-L. -lperl"
- 		;;
-@@ -774,7 +774,7 @@
- 
- !NO!SUBS!
- 	;;
--cygwin)
-+cygwin|msys)
- 	$spitshell >>$Makefile <<'!NO!SUBS!'
- cygwin.c: cygwin/cygwin.c
- 	$(LNS) cygwin/cygwin.c
-@@ -1266,7 +1266,7 @@
- 	-rm -f perl.exp ext.libs $(generated_pods) uni.data opmini.o perlmini.o pod/roffitall
- 	-rm -f perl.export perl.dll perl.libexp perl.map perl.def
- 	-rm -f *perl.xok
--	-rm -f cygwin.c libperl*.def libperl*.dll cygperl*.dll *.exe.stackdump
-+	-rm -f cygwin.c libperl*.def libperl*.dll cygperl*.dll msys-perl*.dll *.exe.stackdump
- 	-rm -f $(PERL_EXE) $(MINIPERL_EXE) $(LIBPERL) libperl.* microperl
- 	-rm -f config.arch config.over $(DTRACE_H)
- 
-diff -Naur perl-5.22.0-orig/regen/regen_lib.pl perl-5.22.0/regen/regen_lib.pl
---- perl-5.22.0-orig/regen/regen_lib.pl	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/regen/regen_lib.pl	2015-06-04 15:43:11.311000000 +0300
-@@ -7,7 +7,7 @@
+diff --git a/regen/regen_lib.pl b/regen/regen_lib.pl
+index 571f519..1c3f82b 100644
+--- a/regen/regen_lib.pl
++++ b/regen/regen_lib.pl
+@@ -7,7 +7,7 @@ use Text::Wrap();
  
  # Common functions needed by the regen scripts
  
@@ -1440,10 +1483,11 @@ diff -Naur perl-5.22.0-orig/regen/regen_lib.pl perl-5.22.0/regen/regen_lib.pl
  
  $Verbose = 0;
  @ARGV = grep { not($_ eq '-q' and $Verbose = -1) }
-diff -Naur perl-5.22.0-orig/symbian/sanity.pl perl-5.22.0/symbian/sanity.pl
---- perl-5.22.0-orig/symbian/sanity.pl	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/symbian/sanity.pl	2015-06-04 15:43:11.311000000 +0300
-@@ -2,7 +2,7 @@
+diff --git a/symbian/sanity.pl b/symbian/sanity.pl
+index 6487c57..3296ec5 100644
+--- a/symbian/sanity.pl
++++ b/symbian/sanity.pl
+@@ -2,7 +2,7 @@ use strict;
  
  if (exists $ENV{'!C:'}) {
    print "You are running this under Cygwin, aren't you? (found '!C' in %ENV)\n";
@@ -1452,10 +1496,11 @@ diff -Naur perl-5.22.0-orig/symbian/sanity.pl perl-5.22.0/symbian/sanity.pl
    print "I'm sorry but only cmd.exe with e.g. the ActivePerl will work.\n";
    exit(1);
  }
-diff -Naur perl-5.22.0-orig/t/io/eintr.t perl-5.22.0/t/io/eintr.t
---- perl-5.22.0-orig/t/io/eintr.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/io/eintr.t	2015-06-04 15:43:11.311000000 +0300
-@@ -52,7 +52,7 @@
+diff --git a/t/io/eintr.t b/t/io/eintr.t
+index 1ec80a3..1e0b2cb 100644
+--- a/t/io/eintr.t
++++ b/t/io/eintr.t
+@@ -50,7 +50,7 @@ if (exists $ENV{PERLIO} && $ENV{PERLIO} =~ /stdio/  ) {
  # platforms
  
  my ($osmajmin) = $Config{osvers} =~ /^(\d+\.\d+)/;
@@ -1464,10 +1509,11 @@ diff -Naur perl-5.22.0-orig/t/io/eintr.t perl-5.22.0/t/io/eintr.t
       ($^O eq 'solaris' && $Config{osvers} eq '2.8') || $^O eq 'nto' ||
       ($^O eq 'darwin' && $osmajmin < 9) ||
      ((int($]*1000) & 1) == 0)
-diff -Naur perl-5.22.0-orig/t/io/fs.t perl-5.22.0/t/io/fs.t
---- perl-5.22.0-orig/t/io/fs.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/io/fs.t	2015-06-04 15:43:11.311000000 +0300
-@@ -39,7 +39,7 @@
+diff --git a/t/io/fs.t b/t/io/fs.t
+index b6754d6..761b704 100644
+--- a/t/io/fs.t
++++ b/t/io/fs.t
+@@ -39,7 +39,7 @@ my $accurate_timestamps =
      !($^O eq 'MSWin32' || $^O eq 'NetWare' ||
        $^O eq 'dos'     || $^O eq 'os2'     ||
        $^O eq 'cygwin'  || $^O eq 'amigaos' ||
@@ -1476,7 +1522,7 @@ diff -Naur perl-5.22.0-orig/t/io/fs.t perl-5.22.0/t/io/fs.t
       );
  
  if (defined &Win32::IsWinNT && Win32::IsWinNT()) {
-@@ -60,7 +60,7 @@
+@@ -60,7 +60,7 @@ my $needs_fh_reopen =
  $needs_fh_reopen = 1 if (defined &Win32::IsWin95 && Win32::IsWin95());
  
  my $skip_mode_checks =
@@ -1485,7 +1531,7 @@ diff -Naur perl-5.22.0-orig/t/io/fs.t perl-5.22.0/t/io/fs.t
  
  plan tests => 61;
  
-@@ -122,7 +122,7 @@
+@@ -122,7 +122,7 @@ SKIP: {
          skip "hard links not that hard in $^O", 1 if $^O eq 'amigaos';
  	skip "no mode checks", 1 if $skip_mode_checks;
  
@@ -1494,7 +1540,7 @@ diff -Naur perl-5.22.0-orig/t/io/fs.t perl-5.22.0/t/io/fs.t
  #          is($mode & 0777, 0777, "mode of triply-linked file");
  #      } else {
              is(sprintf("0%o", $mode & 0777), 
-@@ -454,7 +454,7 @@
+@@ -454,7 +454,7 @@ SKIP: {
  # check if rename() can be used to just change case of filename
  SKIP: {
      skip "Works in Cygwin only if check_case is set to relaxed", 1
@@ -1503,10 +1549,11 @@ diff -Naur perl-5.22.0-orig/t/io/fs.t perl-5.22.0/t/io/fs.t
  
      chdir "./$tmpdir";
      open(FH,'>x') || die "Can't create x";
-diff -Naur perl-5.22.0-orig/t/io/inplace.t perl-5.22.0/t/io/inplace.t
---- perl-5.22.0-orig/t/io/inplace.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/io/inplace.t	2015-06-04 15:43:11.311000000 +0300
-@@ -38,7 +38,7 @@
+diff --git a/t/io/inplace.t b/t/io/inplace.t
+index 98159e0..7fcbc6b 100644
+--- a/t/io/inplace.t
++++ b/t/io/inplace.t
+@@ -38,7 +38,7 @@ SKIP:
  {
      # based on code, dosish systems can't do no-backup inplace
      # edits
@@ -1515,10 +1562,11 @@ diff -Naur perl-5.22.0-orig/t/io/inplace.t perl-5.22.0/t/io/inplace.t
  	and skip("Can't inplace edit without backups on $^O", 4);
      
      our @ifiles = ( tempfile(), tempfile(), tempfile() );
-diff -Naur perl-5.22.0-orig/t/io/tell.t perl-5.22.0/t/io/tell.t
---- perl-5.22.0-orig/t/io/tell.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/io/tell.t	2015-06-04 15:43:11.326600000 +0300
-@@ -11,7 +11,7 @@
+diff --git a/t/io/tell.t b/t/io/tell.t
+index 5474499..c7cb269 100644
+--- a/t/io/tell.t
++++ b/t/io/tell.t
+@@ -11,7 +11,7 @@ print "1..35\n";
  $TST = 'TST';
  
  $Is_Dosish = ($^O eq 'MSWin32' or $^O eq 'NetWare' or $^O eq 'dos' or
@@ -1527,7 +1575,7 @@ diff -Naur perl-5.22.0-orig/t/io/tell.t perl-5.22.0/t/io/tell.t
                $^O =~ /^uwin/);
  
  open($TST, 'harness') || (die "Can't open harness");
-@@ -159,7 +159,7 @@
+@@ -159,7 +159,7 @@ if (tell ($tst) == 6) {
    print "ok 28\n";
  }
  else {
@@ -1536,10 +1584,11 @@ diff -Naur perl-5.22.0-orig/t/io/tell.t perl-5.22.0/t/io/tell.t
      print "not ok 28 # TODO: file pointer not at eof\n";
    }
    elsif ($^O eq "vos") {
-diff -Naur perl-5.22.0-orig/t/lib/cygwin.t perl-5.22.0/t/lib/cygwin.t
---- perl-5.22.0-orig/t/lib/cygwin.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/lib/cygwin.t	2015-06-04 15:43:11.326600000 +0300
-@@ -4,7 +4,7 @@
+diff --git a/t/lib/cygwin.t b/t/lib/cygwin.t
+index ba86170..19bee3d 100644
+--- a/t/lib/cygwin.t
++++ b/t/lib/cygwin.t
+@@ -4,7 +4,7 @@ BEGIN {
      chdir 't' if -d 't';
      @INC = ('../lib');
      require './test.pl';
@@ -1548,10 +1597,11 @@ diff -Naur perl-5.22.0-orig/t/lib/cygwin.t perl-5.22.0/t/lib/cygwin.t
  }
  
  plan(tests => 16);
-diff -Naur perl-5.22.0-orig/t/lib/dbmt_common.pl perl-5.22.0/t/lib/dbmt_common.pl
---- perl-5.22.0-orig/t/lib/dbmt_common.pl	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/lib/dbmt_common.pl	2015-06-04 15:43:11.326600000 +0300
-@@ -43,7 +43,7 @@
+diff --git a/t/lib/dbmt_common.pl b/t/lib/dbmt_common.pl
+index 40590f3..206a8be 100644
+--- a/t/lib/dbmt_common.pl
++++ b/t/lib/dbmt_common.pl
+@@ -43,7 +43,7 @@ if (! -e $Dfile) {
  }
  SKIP: {
      skip "different file permission semantics on $^O", 1
@@ -1560,10 +1610,11 @@ diff -Naur perl-5.22.0-orig/t/lib/dbmt_common.pl perl-5.22.0/t/lib/dbmt_common.p
      my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime,$ctime,
  	$blksize,$blocks) = stat($Dfile);
      is($mode & 0777, 0640);
-diff -Naur perl-5.22.0-orig/t/op/groups.t perl-5.22.0/t/op/groups.t
---- perl-5.22.0-orig/t/op/groups.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/op/groups.t	2015-06-04 15:43:11.326600000 +0300
-@@ -284,7 +284,7 @@
+diff --git a/t/op/groups.t b/t/op/groups.t
+index e50c50a..97f9549 100644
+--- a/t/op/groups.t
++++ b/t/op/groups.t
+@@ -276,7 +276,7 @@ sub darwin {
  
  # Test if this is Cygwin
  sub cygwin_nt {
@@ -1572,10 +1623,11 @@ diff -Naur perl-5.22.0-orig/t/op/groups.t perl-5.22.0/t/op/groups.t
  }
  
  # Get perl's supplementary groups and the number of times each gid
-diff -Naur perl-5.22.0-orig/t/op/magic.t perl-5.22.0/t/op/magic.t
---- perl-5.22.0-orig/t/op/magic.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/op/magic.t	2015-06-04 15:43:11.326600000 +0300
-@@ -54,7 +54,7 @@
+diff --git a/t/op/magic.t b/t/op/magic.t
+index 3f71f8e..068d156 100644
+--- a/t/op/magic.t
++++ b/t/op/magic.t
+@@ -54,7 +54,7 @@ $Is_NetWare  = $^O eq 'NetWare';
  $Is_VMS      = $^O eq 'VMS';
  $Is_Dos      = $^O eq 'dos';
  $Is_os2      = $^O eq 'os2';
@@ -1584,10 +1636,11 @@ diff -Naur perl-5.22.0-orig/t/op/magic.t perl-5.22.0/t/op/magic.t
  
  $PERL =
     ($Is_NetWare ? 'perl'   :
-diff -Naur perl-5.22.0-orig/t/op/require_errors.t perl-5.22.0/t/op/require_errors.t
---- perl-5.22.0-orig/t/op/require_errors.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/op/require_errors.t	2015-06-04 15:43:11.326600000 +0300
-@@ -73,7 +73,7 @@
+diff --git a/t/op/require_errors.t b/t/op/require_errors.t
+index 2226c97..a9fc325 100644
+--- a/t/op/require_errors.t
++++ b/t/op/require_errors.t
+@@ -171,7 +171,7 @@ SKIP: {
      push @INC, '../lib';
      require Cwd;
      require File::Spec::Functions;
@@ -1596,7 +1649,7 @@ diff -Naur perl-5.22.0-orig/t/op/require_errors.t perl-5.22.0/t/op/require_error
          require Win32;
      }
  
-@@ -82,7 +82,7 @@
+@@ -180,7 +180,7 @@ SKIP: {
      my $olduid = $>;
      eval { $> = 1; };
      skip "Can't test permissions meaningfully if you're superuser", 2
@@ -1605,10 +1658,11 @@ diff -Naur perl-5.22.0-orig/t/op/require_errors.t perl-5.22.0/t/op/require_error
  
      local @INC = ".";
      eval "use $module";
-diff -Naur perl-5.22.1-orig/t/op/sigdispatch.t perl-5.22.1/t/op/sigdispatch.t
---- perl-5.22.1-orig/t/op/sigdispatch.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.1/t/op/sigdispatch.t	2015-06-04 15:43:11.326600000 +0300
-@@ -44,7 +44,7 @@
+diff --git a/t/op/sigdispatch.t b/t/op/sigdispatch.t
+index 242fb8e..f725fe6 100644
+--- a/t/op/sigdispatch.t
++++ b/t/op/sigdispatch.t
+@@ -44,7 +44,7 @@ SKIP: {
      skip('We can\'t test blocking without sigprocmask', 17)
  	if is_miniperl() || !$Config{d_sigprocmask};
      skip("This doesn\'t work on $^O threaded builds RT#88814", 17)
@@ -1617,7 +1671,7 @@ diff -Naur perl-5.22.1-orig/t/op/sigdispatch.t perl-5.22.1/t/op/sigdispatch.t
      skip("This doesn\'t work on $^O version $Config{osvers} RT#88814", 17)
          if ($^O eq "openbsd" && $Config{osvers} < 5.2);
  
-@@ -59,7 +59,7 @@
+@@ -60,7 +60,7 @@ SKIP: {
      kill 'SIGUSR1', $$;
      is $gotit, 0, 'Haven\'t received third signal yet';
  
@@ -1626,7 +1680,7 @@ diff -Naur perl-5.22.1-orig/t/op/sigdispatch.t perl-5.22.1/t/op/sigdispatch.t
      is POSIX::sigpending($pending), '0 but true', 'sigpending';
      is $pending->ismember(&POSIX::SIGUSR1), 1, 'SIGUSR1 is pending';
      
-@@ -117,7 +117,7 @@
+@@ -118,7 +118,7 @@ TODO:
  
  SKIP: {
      skip("alarm cannot interrupt blocking system calls on $^O", 2)
@@ -1635,10 +1689,11 @@ diff -Naur perl-5.22.1-orig/t/op/sigdispatch.t perl-5.22.1/t/op/sigdispatch.t
      # RT #88774
      # make sure the signal handler's called in an eval block *before*
      # the eval is popped
-diff -Naur perl-5.22.0-orig/t/op/stat.t perl-5.22.0/t/op/stat.t
---- perl-5.22.0-orig/t/op/stat.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/op/stat.t	2015-06-04 15:43:11.342200000 +0300
-@@ -33,7 +33,7 @@
+diff --git a/t/op/stat.t b/t/op/stat.t
+index 323c498..017252a 100644
+--- a/t/op/stat.t
++++ b/t/op/stat.t
+@@ -33,7 +33,7 @@ $ENV{LC_ALL}   = 'C';		# Forge English error messages.
  $ENV{LANGUAGE} = 'C';		# Ditto in GNU.
  
  $Is_Amiga   = $^O eq 'amigaos';
@@ -1647,7 +1702,7 @@ diff -Naur perl-5.22.0-orig/t/op/stat.t perl-5.22.0/t/op/stat.t
  $Is_Darwin  = $^O eq 'darwin';
  $Is_Dos     = $^O eq 'dos';
  $Is_MSWin32 = $^O eq 'MSWin32';
-@@ -122,7 +122,7 @@
+@@ -123,7 +123,7 @@ SKIP: {
      SKIP: {
          skip "No link count", 1 if $Config{dont_use_nlink};
          skip "Cygwin9X fakes hard links by copying", 1
@@ -1656,10 +1711,11 @@ diff -Naur perl-5.22.0-orig/t/op/stat.t perl-5.22.0/t/op/stat.t
  
          is($nlink, 2,     'Link count on hard linked file' );
      }
-diff -Naur perl-5.22.0-orig/t/op/taint.t perl-5.22.0/t/op/taint.t
---- perl-5.22.0-orig/t/op/taint.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/op/taint.t	2015-06-04 15:43:11.342200000 +0300
-@@ -46,7 +46,7 @@
+diff --git a/t/op/taint.t b/t/op/taint.t
+index c13eaf6..a007e8e 100644
+--- a/t/op/taint.t
++++ b/t/op/taint.t
+@@ -46,7 +46,7 @@ my $Is_VMS      = $^O eq 'VMS';
  my $Is_MSWin32  = $^O eq 'MSWin32';
  my $Is_NetWare  = $^O eq 'NetWare';
  my $Is_Dos      = $^O eq 'dos';
@@ -1668,10 +1724,11 @@ diff -Naur perl-5.22.0-orig/t/op/taint.t perl-5.22.0/t/op/taint.t
  my $Is_OpenBSD  = $^O eq 'openbsd';
  my $Is_MirBSD   = $^O eq 'mirbsd';
  my $Invoke_Perl = $Is_VMS      ? 'MCR Sys$Disk:[]Perl.exe' :
-diff -Naur perl-5.22.0-orig/t/op/time.t perl-5.22.0/t/op/time.t
---- perl-5.22.0-orig/t/op/time.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/op/time.t	2015-06-04 15:43:11.342200000 +0300
-@@ -50,7 +50,7 @@
+diff --git a/t/op/time.t b/t/op/time.t
+index e0197da..ddb183b 100644
+--- a/t/op/time.t
++++ b/t/op/time.t
+@@ -50,7 +50,7 @@ ok(localtime() =~ /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)[ ]
  SKIP: {
      # This conditional of "No tzset()" is stolen from ext/POSIX/t/time.t
      skip "No tzset()", 1
@@ -1680,10 +1737,11 @@ diff -Naur perl-5.22.0-orig/t/op/time.t perl-5.22.0/t/op/time.t
             $^O eq "djgpp" || $^O eq "MSWin32" || $^O eq "dos" ||
             $^O eq "interix";
  
-diff -Naur perl-5.22.0-orig/t/porting/extrefs.t perl-5.22.0/t/porting/extrefs.t
---- perl-5.22.0-orig/t/porting/extrefs.t	2015-05-13 23:19:30.000000000 +0300
-+++ perl-5.22.0/t/porting/extrefs.t	2015-06-04 15:43:11.342200000 +0300
-@@ -48,7 +48,7 @@
+diff --git a/t/porting/extrefs.t b/t/porting/extrefs.t
+index 2e911e7..cb030e4 100644
+--- a/t/porting/extrefs.t
++++ b/t/porting/extrefs.t
+@@ -48,7 +48,7 @@ CODE
  sub try_compile_and_link {
      my ($c, %args) = @_;
  
@@ -1692,10 +1750,11 @@ diff -Naur perl-5.22.0-orig/t/porting/extrefs.t perl-5.22.0/t/porting/extrefs.t
                   $^O eq 'os2' && $Config{ldflags} =~ /-Zexe\b/) ? '.exe' :
                  (($^O eq 'vos') ? $Config{exe_ext} : '');
  
-diff -Naur perl-5.22.0-orig/t/test.pl perl-5.22.0/t/test.pl
---- perl-5.22.0-orig/t/test.pl	2015-05-19 15:07:30.000000000 +0300
-+++ perl-5.22.0/t/test.pl	2015-06-04 15:43:11.342200000 +0300
-@@ -616,7 +616,7 @@
+diff --git a/t/test.pl b/t/test.pl
+index d86f633..749843c 100644
+--- a/t/test.pl
++++ b/t/test.pl
+@@ -627,7 +627,7 @@ USE_OK
  my $is_mswin    = $^O eq 'MSWin32';
  my $is_netware  = $^O eq 'NetWare';
  my $is_vms      = $^O eq 'VMS';
@@ -1704,10 +1763,11 @@ diff -Naur perl-5.22.0-orig/t/test.pl perl-5.22.0/t/test.pl
  
  sub _quote_args {
      my ($runperl, $args) = @_;
-diff -Naur perl-5.22.0-orig/utils/perlbug.PL perl-5.22.0/utils/perlbug.PL
---- perl-5.22.0-orig/utils/perlbug.PL	2015-05-13 23:19:31.000000000 +0300
-+++ perl-5.22.0/utils/perlbug.PL	2015-06-04 15:43:11.357800000 +0300
-@@ -723,7 +723,7 @@
+diff --git a/utils/perlbug.PL b/utils/perlbug.PL
+index 2a440cd..f0f8864 100644
+--- a/utils/perlbug.PL
++++ b/utils/perlbug.PL
+@@ -728,7 +728,7 @@ EOF
      my @env =
          qw(PATH LD_LIBRARY_PATH LANG PERL_BADLANG SHELL HOME LOGDIR LANGUAGE);
      push @env, $Config{ldlibpthname} if $Config{ldlibpthname} ne '';
@@ -1716,50 +1776,16 @@ diff -Naur perl-5.22.0-orig/utils/perlbug.PL perl-5.22.0/utils/perlbug.PL
      my %env;
      @env{@env} = @env;
      for my $env (sort keys %env) {
-diff -Naur perl-5.22.0-orig/win32/FindExt.pm perl-5.22.0/win32/FindExt.pm
---- perl-5.22.0-orig/win32/FindExt.pm	2015-05-13 23:19:31.000000000 +0300
-+++ perl-5.22.0/win32/FindExt.pm	2015-06-04 15:43:11.357800000 +0300
-@@ -24,7 +24,7 @@
-     push @no, "ODBM_File"
+diff --git a/win32/FindExt.pm b/win32/FindExt.pm
+index 5f45a73..397a9e7 100644
+--- a/win32/FindExt.pm
++++ b/win32/FindExt.pm
+@@ -25,7 +25,7 @@ sub apply_config {
        unless ($config->{i_dbm} || $config->{i_rpcsvcdbm}) && !$config->{d_cplusplus};
+     push @no, "Amiga.*" unless $^O eq "amigaos";
      push @no, "VMS.*" unless $^O eq "VMS";
 -    push @no, "Win32.*" unless $^O eq "MSWin32" || $^O eq "cygwin";
 +    push @no, "Win32.*" unless $^O eq "MSWin32" || $^O eq "cygwin" || $^O eq "msys";
  
      $no = join('|', @no);
      $no = qr/^(?:$no)$/i;
---- perl-5.22.1/dist/ExtUtils-CBuilder/lib/ExtUtils/CBuilder/Platform/msys.pm.orig	1970-01-01 03:00:00.000000000 +0300
-+++ perl-5.22.1/dist/ExtUtils-CBuilder/lib/ExtUtils/CBuilder/Platform/msys.pm	2016-03-11 09:10:48.442888400 +0300
-@@ -0,0 +1,32 @@
-+package ExtUtils::CBuilder::Platform::msys;
-+$ExtUtils::CBuilder::Platform::msys::VERSION = '0.280221';
-+use strict;
-+use File::Spec;
-+use ExtUtils::CBuilder::Platform::Unix;
-+
-+use vars qw(@ISA);
-+@ISA = qw(ExtUtils::CBuilder::Platform::Unix);
-+
-+# TODO: If a specific exe_file name is requested, if the exe created
-+# doesn't have that name, we might want to rename it.  Apparently asking
-+# for an exe of "foo" might result in "foo.exe".  Alternatively, we should
-+# make sure the return value is correctly "foo.exe".
-+# C.f http://rt.cpan.org/Public/Bug/Display.html?id=41003
-+sub link_executable {
-+  my $self = shift;
-+  return $self->SUPER::link_executable(@_);
-+}
-+
-+sub link {
-+  my ($self, %args) = @_;
-+
-+  my $lib = $self->{config}{useshrplib} ? 'libperl.dll.a' : 'libperl.a';
-+  $args{extra_linker_flags} = [
-+    File::Spec->catfile($self->perl_inc(), $lib),
-+    $self->split_like_shell($args{extra_linker_flags})
-+  ];
-+
-+  return $self->SUPER::link(%args);
-+}
-+
-+1;
