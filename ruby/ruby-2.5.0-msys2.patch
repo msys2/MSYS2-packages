@@ -1,7 +1,7 @@
-diff -Naur ruby-2.4.0/configure.in.orig ruby-2.4.0/configure.in
---- ruby-2.4.0/configure.in.orig	2017-03-08 04:26:49.357858900 -0500
-+++ ruby-2.4.0/configure.in	2017-03-08 04:26:49.490375400 -0500
-@@ -60,7 +60,7 @@ AC_SUBST(HAVE_BASERUBY)
+diff -Naur ruby-2.5.0/configure.ac.orig ruby-2.5.0/configure.ac
+--- ruby-2.5.0/configure.ac.orig	2018-02-08 23:08:37.078986400 -0500
++++ ruby-2.5.0/configure.ac	2018-02-08 23:41:16.820693300 -0500
+@@ -68,7 +68,7 @@ AC_SUBST(HAVE_GIT)
  
  AC_DEFUN([RUBY_MINGW32],
  [AS_CASE(["$host_os"],
@@ -10,16 +10,7 @@ diff -Naur ruby-2.4.0/configure.in.orig ruby-2.4.0/configure.in
  AC_CACHE_CHECK(for mingw32 environment, rb_cv_mingw32,
  [AC_TRY_CPP([
  #ifndef __MINGW32__
-@@ -114,7 +114,7 @@ AC_DEFUN([RUBY_NACL],
-   AS_CASE(["$build_os"],
-           [linux*], [nacl_cv_os_nick=linux],
-           [darwin*], [nacl_cv_os_nick=mac],
--          [cygwin*|mingw*], [nacl_cv_os_nick=win],
-+          [cygwin*|msys*|mingw*], [nacl_cv_os_nick=win],
-           [nacl_cv_os_nick=$build_os])
- 
-   host="$host_cpu-chromium-$host_os-"
-@@ -585,14 +585,14 @@ AC_CHECK_TOOL(AS, as)
+@@ -487,14 +487,14 @@ AC_CHECK_TOOL(AS, as)
  ASFLAGS=$ASFLAGS
  AC_SUBST(ASFLAGS)
  
@@ -36,16 +27,16 @@ diff -Naur ruby-2.4.0/configure.in.orig ruby-2.4.0/configure.in
      AC_CHECK_TOOL(WINDRES, windres)
      AC_CHECK_TOOL(DLLWRAP, dllwrap)
      target=`echo $target | sed "s/^$target_cpu-/-/"`
-@@ -941,7 +941,7 @@ if test "$GCC" = yes; then
-       # comments.   We  bypass  ANSI   C  mode  for  them.   Otherwise
-       # extension libs cannot include those headers.
+@@ -891,7 +891,7 @@ AS_IF([test "$GCC" = yes], [
+ 	AC_DEFINE(RUBY_MINGW64_BROKEN_FREXP_MODF)
+       ])
      ],
--    [cygwin*|darwin*|netbsd*|nacl], [
-+    [cygwin*|msys*|darwin*|netbsd*|nacl], [
+-    [cygwin*|darwin*|netbsd*], [
++    [cygwin*|msys*|darwin*|netbsd*], [
        # need lgamma_r(), finite()
      ],
      [
-@@ -1206,7 +1206,7 @@ main()
+@@ -1167,7 +1167,7 @@ main()
  [haiku*], [
  		LIBS="$LIBS" # m lib is include in root
  		],
@@ -54,7 +45,7 @@ diff -Naur ruby-2.4.0/configure.in.orig ruby-2.4.0/configure.in
  		RUBY_APPEND_OPTIONS(CPPFLAGS, -D_XOPEN_SOURCE -D_GNU_SOURCE)
  		AC_CHECK_FUNCS(cygwin_conv_path)
  		AC_LIBOBJ([langinfo])
-@@ -2469,7 +2469,7 @@ main(int argc, char **argv)
+@@ -2429,7 +2429,7 @@ main(int argc, char **argv)
  	    rb_cv_getcwd_malloc=yes,
  	    rb_cv_getcwd_malloc=no,
  	    AS_CASE($target_os,
@@ -63,16 +54,16 @@ diff -Naur ruby-2.4.0/configure.in.orig ruby-2.4.0/configure.in
  		[rb_cv_getcwd_malloc=yes],
  		[rb_cv_getcwd_malloc=no]))])
      AS_IF([test "$rb_cv_getcwd_malloc" = no], [AC_DEFINE(NO_GETCWD_MALLOC, 1)])
-@@ -2711,7 +2711,7 @@ elif test "$ac_cv_func__setjmp" = yes; t
+@@ -2636,7 +2636,7 @@ AS_IF([test ${setjmp_prefix+set}], [
      setjmp_prefix=_
      setjmp_suffix=
- elif test "$ac_cv_func_sigsetjmp" = yes; then
+ ], [test "$ac_cv_func_sigsetjmp" = yes], [
 -    AS_CASE([$target_os],[solaris*|cygwin*],[setjmp_prefix=],[setjmp_prefix=sig])
 +    AS_CASE([$target_os],[solaris*|cygwin*|msys*],[setjmp_prefix=],[setjmp_prefix=sig])
      setjmp_suffix=
- else
+ ], [
      setjmp_prefix=
-@@ -3299,7 +3299,7 @@ if test "$with_dln_a_out" != yes; then
+@@ -3175,7 +3175,7 @@ AS_IF([test "$with_dln_a_out" != yes], [
        # mkmf.rb's have_header() to fail if the desired resource happens to be
        # installed in the /usr/local tree.
        RUBY_APPEND_OPTION(CCDLFLAGS, -fno-common)],
@@ -80,20 +71,17 @@ diff -Naur ruby-2.4.0/configure.in.orig ruby-2.4.0/configure.in
 +    [bsdi*|cygwin*|msys*|mingw*|aix*|interix*], [ ],
      [
        RUBY_APPEND_OPTION(CCDLFLAGS, -fPIC)])
-   else
-@@ -3401,9 +3401,9 @@ if test "$with_dln_a_out" != yes; then
+   ], [
+@@ -3273,7 +3273,7 @@ AS_IF([test "$with_dln_a_out" != yes], [
  			: ${LDSHARED='$(LD) -Bshareable -x'}
  			LDFLAGS="$LDFLAGS -L/lib -L/usr/lib -L/usr/local/lib"
  			rb_cv_dlopen=yes],
 -	[cygwin*|mingw*], [
 +	[cygwin*|msys*|mingw*], [
- 			: ${LDSHARED='$(CC) -shared $(if $(filter-out -g -g0,$(debugflags)),,-s)'}
--			XLDFLAGS="$XLDFLAGS -Wl,--stack,0x00200000,--enable-auto-import"
-+			XLDFLAGS="$XLDFLAGS -Xlinker --stack -Xlinker 0x00200000,0x00040000 -Xlinker --enable-auto-import"
+ 			: ${LDSHARED='$(CC) -shared'}
+ 			XLDFLAGS="$XLDFLAGS -Wl,--stack,0x00200000,--enable-auto-import"
  			DLDFLAGS="${DLDFLAGS} -Wl,--enable-auto-image-base,--enable-auto-import"
- 			: ${LIBPATHENV=""}
- 			: ${PRELOADENV=""}
-@@ -3775,7 +3775,7 @@ LIBRUBYARG='$(LIBRUBYARG_STATIC)'
+@@ -3625,7 +3625,7 @@ LIBRUBYARG='$(LIBRUBYARG_STATIC)'
  SOLIBS=
  
  AS_CASE(["$target_os"],
@@ -102,18 +90,27 @@ diff -Naur ruby-2.4.0/configure.in.orig ruby-2.4.0/configure.in
      : ${DLDLIBS=""}
      ],
    [
-@@ -4127,7 +4127,7 @@ AS_CASE(["$target_os"],
+@@ -3652,7 +3652,7 @@ AC_ARG_WITH(soname,
+ 	    [darwin*], [
+ 	        RUBY_SO_NAME='$(RUBY_BASE_NAME).$(RUBY_PROGRAM_VERSION)'
+ 	    ],
+-	    [cygwin*], [
++	    [cygwin*|msys*], [
+ 	        RUBY_SO_NAME='$(RUBY_BASE_NAME)$(MAJOR)$(MINOR)0'
+ 	    ],
+ 	    [mingw*], [
+@@ -3999,7 +3999,7 @@ AS_CASE(["$target_os"],
  	  CFLAGS="$CFLAGS -std"
- 	fi
+ 	])
  	],
 -    [cygwin*|mingw*], [
-+    [cygwin*|msys*|mingw*], [
- 	RUBY_SO_NAME="${RUBY_SO_NAME}"'$(MAJOR)$(MINOR)0'
++    [cygwin*|mingw*|msys*], [
  	LIBRUBY_DLDFLAGS="${DLDFLAGS}"' -Wl,--out-implib=$(LIBRUBY)'
  	AS_CASE(["$target_os"],
-@@ -4137,6 +4137,12 @@ AS_CASE(["$target_os"],
+ 	[cygwin*], [
+@@ -4008,6 +4008,12 @@ AS_CASE(["$target_os"],
  		LIBRUBY_DLDFLAGS="${LIBRUBY_DLDFLAGS}"' $(RUBYDEF)'
- 	    fi
+ 	    ])
  	    ],
 +	[msys*], [
 +	    if test x"$enable_shared" = xyes; then
@@ -122,8 +119,8 @@ diff -Naur ruby-2.4.0/configure.in.orig ruby-2.4.0/configure.in
 +	    fi
 +	    ],
  	[mingw*], [
- 	    RUBY_SO_NAME="${rb_cv_msvcrt}-${RUBY_SO_NAME}"
- 	    if test x"${target_cpu}" != xi386; then
+ 	    AS_IF([test x"$enable_shared" = xyes], [
+ 		LIBRUBY_SO='$(RUBY_SO_NAME)'.dll
 diff -Naur ruby-2.4.0/cygwin/GNUmakefile.in.orig ruby-2.4.0/cygwin/GNUmakefile.in
 --- ruby-2.4.0/cygwin/GNUmakefile.in.orig	2016-08-19 22:20:34.000000000 -0400
 +++ ruby-2.4.0/cygwin/GNUmakefile.in	2017-03-07 11:41:43.416174500 -0500
@@ -224,9 +221,9 @@ diff -Naurp ruby-2.4.0/ext/win32ole/extconf.rb.orig ruby-2.4.0/ext/win32ole/extc
    inc = nil
    lib = '/usr/lib/w32api'
  end
-diff -Naurp ruby-2.4.0/gems/rake-12.0.0/lib/rake/application.rb.orig ruby-2.4.0/gems/rake-12.0.0/lib/rake/application.rb
---- ruby-2.4.0/gems/rake-12.0.0/lib/rake/application.rb.orig	2016-12-23 11:07:31.000000000 -0500
-+++ ruby-2.4.0/gems/rake-12.0.0/lib/rake/application.rb	2017-03-08 01:45:30.861274200 -0500
+diff -Naurp ruby-2.4.0/gems/rake-12.3.0/lib/rake/application.rb.orig ruby-2.4.0/gems/rake-12.3.0/lib/rake/application.rb
+--- ruby-2.4.0/gems/rake-12.3.0/lib/rake/application.rb.orig	2016-12-23 11:07:31.000000000 -0500
++++ ruby-2.4.0/gems/rake-12.3.0/lib/rake/application.rb	2017-03-08 01:45:30.861274200 -0500
 @@ -343,7 +343,7 @@ module Rake
  
      def unix? # :nodoc:
@@ -321,9 +318,9 @@ diff -Naurp ruby-2.4.0/test/dbm/test_dbm.rb.rej.orig ruby-2.4.0/test/dbm/test_db
 +       else
 +         RbConfig::CONFIG['target_os']
 +       end
-diff -Naurp ruby-2.4.0/test/fiddle/helper.rb.orig ruby-2.4.0/test/fiddle/helper.rb
---- ruby-2.4.0/test/fiddle/helper.rb.orig	2015-12-16 00:07:31.000000000 -0500
-+++ ruby-2.4.0/test/fiddle/helper.rb	2017-03-08 03:18:35.293437700 -0500
+diff -Naurp ruby-2.5.0/test/fiddle/helper.rb.orig ruby-2.5.0/test/fiddle/helper.rb
+--- ruby-2.5.0/test/fiddle/helper.rb.orig	2018-02-09 00:46:19.183651600 -0500
++++ ruby-2.5.0/test/fiddle/helper.rb	2018-02-09 00:49:25.109074100 -0500
 @@ -10,6 +10,9 @@ case RUBY_PLATFORM
  when /cygwin/
    libc_so = "cygwin1.dll"
@@ -331,9 +328,9 @@ diff -Naurp ruby-2.4.0/test/fiddle/helper.rb.orig ruby-2.4.0/test/fiddle/helper.
 +when /msys/
 +  libc_so = "msys-2.0.dll"
 +  libm_so = "msys-2.0.dll"
- when /x86_64-linux/
-   libc_so = "/lib64/libc.so.6"
-   libm_so = "/lib64/libm.so.6"
+ when /linux/
+   libdir = '/lib'
+   case [0].pack('L!').size
 diff -aurp ruby-2.4.0/test/fiddle/test_handle.rb.orig ruby-2.4.0/test/fiddle/test_handle.rb
 --- ruby-2.4.0/test/fiddle/test_handle.rb.orig	2017-03-08 04:10:40.121172400 -0500
 +++ ruby-2.4.0/test/fiddle/test_handle.rb	2017-03-08 04:11:42.390459800 -0500
@@ -383,10 +380,10 @@ diff -aurp ruby-2.4.0/test/dbm/test_dbm.rb.orig ruby-2.4.0/test/dbm/test_dbm.rb
  	require 'etc'
  	Etc.uname[:sysname]
        else
-diff -aurp ruby-2.4.0/test/ruby/test_dir_m17n.rb.orig ruby-2.4.0/test/ruby/test_dir_m17n.rb
---- ruby-2.4.0/test/ruby/test_dir_m17n.rb.orig	2017-03-08 02:34:32.459828200 -0500
-+++ ruby-2.4.0/test/ruby/test_dir_m17n.rb	2017-03-08 02:38:27.737235800 -0500
-@@ -21,7 +21,7 @@ class TestDir_M17N < Test::Unit::TestCas
+diff -aurp ruby-2.5.0/test/ruby/test_dir_m17n.rb.orig ruby-2.5.0/test/ruby/test_dir_m17n.rb
+--- ruby-2.5.0/test/ruby/test_dir_m17n.rb.orig	2017-08-15 17:33:43.000000000 -0400
++++ ruby-2.5.0/test/ruby/test_dir_m17n.rb	2018-02-09 00:08:39.245410100 -0500
+@@ -22,7 +22,7 @@ class TestDir_M17N < Test::Unit::TestCas
          assert_include(ents, filename)
        EOS
  
@@ -395,16 +392,16 @@ diff -aurp ruby-2.4.0/test/ruby/test_dir_m17n.rb.orig ruby-2.4.0/test/ruby/test_
        assert_separately(%w[-EASCII-8BIT], <<-EOS, :chdir=>dir)
          filename = #{code}.chr('UTF-8').force_encoding("ASCII-8BIT")
          opts = {:encoding => Encoding.default_external} if /mswin|mingw/ =~ RUBY_PLATFORM
-@@ -58,7 +58,7 @@ class TestDir_M17N < Test::Unit::TestCas
+@@ -59,7 +59,7 @@ class TestDir_M17N < Test::Unit::TestCas
    end
  
    def test_filename_extutf8_invalid
 -    return if /cygwin/ =~ RUBY_PLATFORM
 +    return if /cygwin|msys/ =~ RUBY_PLATFORM
+     # High Sierra's APFS cannot use invalid filenames
+     return if Bug::File::Fs.fsname(Dir.tmpdir) == "apfs"
      with_tmpdir {|d|
-       assert_separately(%w[-EASCII-8BIT], <<-'EOS', :chdir=>d)
-         filename = "\xff".force_encoding("ASCII-8BIT") # invalid byte sequence as UTF-8
-@@ -174,7 +174,7 @@ class TestDir_M17N < Test::Unit::TestCas
+@@ -177,7 +177,7 @@ class TestDir_M17N < Test::Unit::TestCas
    ## others
  
    def test_filename_bytes_euc_jp
@@ -413,7 +410,7 @@ diff -aurp ruby-2.4.0/test/ruby/test_dir_m17n.rb.orig ruby-2.4.0/test/ruby/test_
      with_tmpdir {|d|
        assert_separately(%w[-EEUC-JP], <<-'EOS', :chdir=>d)
          filename = "\xA4\xA2".force_encoding("euc-jp")
-@@ -191,7 +191,7 @@ class TestDir_M17N < Test::Unit::TestCas
+@@ -194,7 +194,7 @@ class TestDir_M17N < Test::Unit::TestCas
    end
  
    def test_filename_euc_jp
@@ -422,7 +419,7 @@ diff -aurp ruby-2.4.0/test/ruby/test_dir_m17n.rb.orig ruby-2.4.0/test/ruby/test_
      with_tmpdir {|d|
        assert_separately(%w[-EEUC-JP], <<-'EOS', :chdir=>d)
          filename = "\xA4\xA2".force_encoding("euc-jp")
-@@ -237,7 +237,7 @@ class TestDir_M17N < Test::Unit::TestCas
+@@ -240,7 +240,7 @@ class TestDir_M17N < Test::Unit::TestCas
    end
  
    def test_filename_ext_euc_jp_and_int_utf_8
