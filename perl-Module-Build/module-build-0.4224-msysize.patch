@@ -1,0 +1,113 @@
+diff -Naur Module-Build-0.4224/inc/Perl/OSType.pm Module-Build-0.4224-msys/inc/Perl/OSType.pm
+--- Module-Build-0.4224/inc/Perl/OSType.pm	2017-05-30 21:03:05.000000000 +0300
++++ Module-Build-0.4224-msys/inc/Perl/OSType.pm	2018-02-14 12:07:45.377789700 +0300
+@@ -54,6 +54,7 @@
+   solaris     Unix
+   sunos       Unix
+   cygwin      Unix
++  msys        Unix
+   os2         Unix
+   interix     Unix
+   gnu         Unix
+diff -Naur Module-Build-0.4224/lib/Module/Build/Platform/msys.pm Module-Build-0.4224-msys/lib/Module/Build/Platform/msys.pm
+--- Module-Build-0.4224/lib/Module/Build/Platform/msys.pm	1970-01-01 03:00:00.000000000 +0300
++++ Module-Build-0.4224-msys/lib/Module/Build/Platform/msys.pm	2018-02-14 12:41:13.498755300 +0300
+@@ -0,0 +1,54 @@
++package Module::Build::Platform::msys;
++
++use strict;
++use warnings;
++our $VERSION = '0.4224';
++$VERSION = eval $VERSION;
++use Module::Build::Platform::Unix;
++
++our @ISA = qw(Module::Build::Platform::Unix);
++
++sub manpage_separator {
++   '.'
++}
++
++# Copied from ExtUtils::MM_Cygwin::maybe_command()
++# If our path begins with F</cygdrive/> then we use the Windows version
++# to determine if it may be a command.  Otherwise we use the tests
++# from C<ExtUtils::MM_Unix>.
++
++sub _maybe_command {
++    my ($self, $file) = @_;
++
++    if ($file =~ m{^/cygdrive/}i) {
++        require Module::Build::Platform::Windows;
++        return Module::Build::Platform::Windows->_maybe_command($file);
++    }
++
++    return $self->SUPER::_maybe_command($file);
++}
++
++1;
++__END__
++
++
++=head1 NAME
++
++Module::Build::Platform::msys - Builder class for MSYS2 platform
++
++=head1 DESCRIPTION
++
++This module provides some routines very specific to the msys2
++platform.
++
++Please see the L<Module::Build> for the general docs.
++
++=head1 AUTHOR
++
++Initial stub by Yitzchak Scott-Thoennes <sthoenna@efn.org>
++
++=head1 SEE ALSO
++
++perl(1), Module::Build(3), ExtUtils::MakeMaker(3)
++
++=cut
+diff -Naur Module-Build-0.4224/META.json Module-Build-0.4224-msys/META.json
+--- Module-Build-0.4224/META.json	2018-02-14 12:41:52.972323600 +0300
++++ Module-Build-0.4224-msys/META.json	2018-02-14 13:01:45.253677800 +0300
+@@ -129,6 +129,10 @@
+          "file" : "lib/Module/Build/Platform/cygwin.pm",
+          "version" : "0.4224"
+       },
++      "Module::Build::Platform::msys" : {
++         "file" : "lib/Module/Build/Platform/msys.pm",
++         "version" : "0.4224"
++      },
+       "Module::Build::Platform::darwin" : {
+          "file" : "lib/Module/Build/Platform/darwin.pm",
+          "version" : "0.4224"
+diff -Naur Module-Build-0.4224/META.yml Module-Build-0.4224-msys/META.yml
+--- Module-Build-0.4224/META.yml	2017-05-30 21:03:05.000000000 +0300
++++ Module-Build-0.4224-msys/META.yml	2018-02-14 13:02:13.315584000 +0300
+@@ -70,6 +70,9 @@
+   Module::Build::Platform::cygwin:
+     file: lib/Module/Build/Platform/cygwin.pm
+     version: '0.4224'
++  Module::Build::Platform::msys:
++    file: lib/Module/Build/Platform/msys.pm
++    version: '0.4224'
+   Module::Build::Platform::darwin:
+     file: lib/Module/Build/Platform/darwin.pm
+     version: '0.4224'
+diff -Naur Module-Build-0.4224/t/destinations.t Module-Build-0.4224-msys/t/destinations.t
+--- Module-Build-0.4224/t/destinations.t	2017-05-30 21:03:05.000000000 +0300
++++ Module-Build-0.4224-msys/t/destinations.t	2018-02-14 12:07:45.377789700 +0300
+@@ -300,11 +300,11 @@
+ sub have_same_ending {
+   my ($dir1, $dir2, $message) = @_;
+ 
+-  $dir1 =~ s{/$}{} if $^O eq 'cygwin'; # remove any trailing slash
++  $dir1 =~ s{/$}{} if $^O eq 'cygwin' || $^O eq 'msys'; # remove any trailing slash
+   my (undef, $dirs1, undef) = splitpath $dir1;
+   my @dir1 = splitdir $dirs1;
+ 
+-  $dir2 =~ s{/$}{} if $^O eq 'cygwin'; # remove any trailing slash
++  $dir2 =~ s{/$}{} if $^O eq 'cygwin' || $^O eq 'msys'; # remove any trailing slash
+   my (undef, $dirs2, undef) = splitpath $dir2;
+   my @dir2 = splitdir $dirs2;
+ 
