@@ -68,8 +68,6 @@ if "%MSYSTEM%" == "MINGW32" (
   set "CONTITLE=MSYS2 MSYS"
 )
 
-set CD_HOME=yes
-
 if "x%MSYSCON%" == "xmintty.exe" goto startmintty
 if "x%MSYSCON%" == "xconemu" goto startconemu
 if "x%MSYSCON%" == "xdefterm" goto startsh
