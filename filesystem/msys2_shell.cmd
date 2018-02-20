@@ -3,6 +3,7 @@ setlocal
 
 set "WD=%__CD__%"
 if NOT EXIST "%WD%msys-2.0.dll" set "WD=%~dp0usr\bin\"
+set "LOGINSHELL=bash"
 
 rem To activate windows native symlinks uncomment next line
 rem set MSYS=winsymlinks:nativestrict
@@ -58,6 +59,13 @@ if "x%~1" == "x-where" (
   set CHERE_INVOKING=enabled_from_arguments
 )& shift& shift& goto :checkparams
 if "x%~1" == "x-no-start" shift& set MSYS2_NOSTART=yes& goto :checkparams
+if "x%~1" == "x-shell" (
+  if "x%~2" == "x" (
+    echo Shell not specified for -shell parameter. 1>&2
+    exit /b 2
+  )
+  set LOGINSHELL="%~2"
+)& shift& shift& goto :checkparams
 
 rem Setup proper title
 if "%MSYSTEM%" == "MINGW32" (
@@ -76,9 +84,9 @@ if NOT EXIST "%WD%mintty.exe" goto startsh
 set MSYSCON=mintty.exe
 :startmintty
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" /usr/bin/bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+  start "%CONTITLE%" "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 ) else (
-  "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" /usr/bin/bash --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+  "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 )
 exit /b %ERRORLEVEL%
 
@@ -88,18 +96,18 @@ call :conemudetect || (
   exit /b 1
 )
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%bash" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+  start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%\%LOGINSHELL%" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 ) else (
-  "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%bash" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+  "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%\%LOGINSHELL%" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 )
 exit /b %ERRORLEVEL%
 
 :startsh
 set MSYSCON=
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%WD%bash" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+  start "%CONTITLE%" "%WD%\%LOGINSHELL%" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 ) else (
-  "%WD%bash" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+  "%WD%\%LOGINSHELL%" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
 )
 exit /b %ERRORLEVEL%
 
@@ -150,7 +158,7 @@ exit /b 0
 
 :printhelp
 echo Usage:
-echo     %~1 [options] [bash parameters]
+echo     %~1 [options] [login shell parameters]
 echo.
 echo Options:
 echo     -mingw32 ^| -mingw64 ^| -msys[2]   Set shell type
@@ -162,11 +170,13 @@ echo                                      directory
 echo     -[use-]full-path                 Use full current PATH variable
 echo                                      instead of trimming to minimal
 echo     -no-start                        Do not use "start" command and
-echo                                      return bash resulting errorcode as
-echo                                      this batch file resulting errorcode
+echo                                      return login shell resulting 
+echo                                      errorcode as this batch file 
+echo                                      resulting errorcode
+echo     -shell SHELL                     Set login shell
 echo     -help ^| --help ^| -? ^| /?         Display this help and exit
 echo.
 echo Any parameter that cannot be treated as valid option and all
-echo following parameters are passed as bash command parameters.
+echo following parameters are passed as login shell command parameters.
 echo.
 exit /b 0
