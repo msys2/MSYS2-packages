@@ -1,0 +1,362 @@
+From 31d26854a1af278de774aca20926c41a031fe8d2 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Mon, 16 Apr 2018 14:59:39 +0200
+Subject: [PATCH 52/N] Add a helper to obtain a function's address in
+ kernel32.dll
+
+In particular, we are interested in the address of the CtrlRoutine
+and the ExitProcess functions. Since kernel32.dll is loaded first thing,
+the addresses will be the same for all processes (matching the
+CPU architecture, of course).
+
+This will help us with emulating SIGINT properly (by not sending signals
+to *all* processes attached to the same Console).
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/utils/Makefile.in   |  22 +++++-
+ winsup/utils/configure     |  89 ++++++++++++++++++++++
+ winsup/utils/configure.ac  |   5 ++
+ winsup/utils/getprocaddr.c | 146 +++++++++++++++++++++++++++++++++++++
+ 4 files changed, 261 insertions(+), 1 deletion(-)
+ create mode 100644 winsup/utils/getprocaddr.c
+
+diff --git a/winsup/utils/Makefile.in b/winsup/utils/Makefile.in
+index b9cc985..73b16ed 100644
+--- a/winsup/utils/Makefile.in
++++ b/winsup/utils/Makefile.in
+@@ -35,6 +35,7 @@ prefix:=@prefix@
+ exec_prefix:=@exec_prefix@
+ 
+ bindir:=@bindir@
++libexecdir = @libexecdir@
+ program_transform_name:=@program_transform_name@
+ 
+ override INSTALL:=@INSTALL@
+@@ -51,6 +52,8 @@ CYGWIN_LDFLAGS := -static -Wl,--enable-auto-import -L${WINDOWS_LIBDIR} $(LDLIBS)
+ DEP_LDLIBS := $(cygwin_build)/libmsys-2.0.a
+ 
+ MINGW_CXX      := @MINGW_CXX@
++MINGW32_CC     := @MINGW32_CC@
++MINGW64_CC     := @MINGW64_CC@
+ 
+ # List all binaries to be linked in Cygwin mode.  Each binary on this list
+ # must have a corresponding .o of the same name.
+@@ -121,7 +124,7 @@ else
+ all: warn_dumper
+ endif
+ 
+-all: Makefile $(CYGWIN_BINS) $(MINGW_BINS)
++all: Makefile $(CYGWIN_BINS) $(MINGW_BINS) getprocaddr32.exe getprocaddr64.exe
+ 
+ # test harness support (note: the "MINGW_BINS +=" should come after the
+ # "all:" above so that the testsuite is not run for "make" but only
+@@ -160,6 +163,19 @@ $(CYGWIN_BINS): %.exe: %.o
+ $(MINGW_BINS): $(DEP_LDLIBS)
+ $(CYGWIN_BINS): $(DEP_LDLIBS)
+ 
++# Must *not* use -O2 here, as it screws up the stack backtrace
++getprocaddr32.o: %32.o: %.c
++	$(MINGW32_CC) -c -o $@ $<
++
++getprocaddr32.exe: %.exe: %.o
++	$(MINGW32_CC) -o $@ $^ -static -ldbghelp
++
++getprocaddr64.o: %64.o: %.c
++	$(MINGW64_CC) -c -o $@ $<
++
++getprocaddr64.exe: %.exe: %.o
++	$(MINGW64_CC) -o $@ $^ -static -ldbghelp
++
+ cygcheck.o cygpath.o module_info.o path.o ps.o regtool.o strace.o: loadlib.h
+ 
+ .PHONY: clean
+@@ -177,6 +193,10 @@ install: all
+ 	  n=`echo $$i | sed '$(program_transform_name)'`; \
+ 	  $(INSTALL_PROGRAM) $$i $(DESTDIR)$(bindir)/$$n; \
+ 	done
++	/bin/mkdir -p ${DESTDIR}${libexecdir}
++	for n in getprocaddr32 getprocaddr64; do \
++	  $(INSTALL_PROGRAM) $$n $(DESTDIR)$(libexecdir)/$$n; \
++	done
+ 
+ $(cygwin_build)/libmsys-2.0.a: $(cygwin_build)/Makefile
+ 	@$(MAKE) -C $(@D) $(@F)
+diff --git a/winsup/utils/configure b/winsup/utils/configure
+index 32f75d6..7ee4ee4 100755
+--- a/winsup/utils/configure
++++ b/winsup/utils/configure
+@@ -589,6 +589,8 @@ ac_no_link=no
+ ac_subst_vars='LTLIBOBJS
+ LIBOBJS
+ configure_args
++MINGW64_CC
++MINGW32_CC
+ MINGW_CXX
+ INSTALL_DATA
+ INSTALL_SCRIPT
+@@ -3303,6 +3305,93 @@ done
+ 
+ test -n "$MINGW_CXX" || as_fn_error $? "no acceptable mingw g++ found in \$PATH" "$LINENO" 5
+ 
++for ac_prog in i686-w64-mingw32-gcc
++do
++  # Extract the first word of "$ac_prog", so it can be a program name with args.
++set dummy $ac_prog; ac_word=$2
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
++$as_echo_n "checking for $ac_word... " >&6; }
++if ${ac_cv_prog_MINGW32_CC+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  if test -n "$MINGW32_CC"; then
++  ac_cv_prog_MINGW32_CC="$MINGW32_CC" # Let the user override the test.
++else
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    for ac_exec_ext in '' $ac_executable_extensions; do
++  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
++    ac_cv_prog_MINGW32_CC="$ac_prog"
++    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
++    break 2
++  fi
++done
++  done
++IFS=$as_save_IFS
++
++fi
++fi
++MINGW32_CC=$ac_cv_prog_MINGW32_CC
++if test -n "$MINGW32_CC"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $MINGW32_CC" >&5
++$as_echo "$MINGW32_CC" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++fi
++
++
++  test -n "$MINGW32_CC" && break
++done
++
++test -n "$MINGW32_CC" || as_fn_error $? "no acceptable mingw32 gcc found in \$PATH" "$LINENO" 5
++for ac_prog in x86_64-w64-mingw32-gcc
++do
++  # Extract the first word of "$ac_prog", so it can be a program name with args.
++set dummy $ac_prog; ac_word=$2
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
++$as_echo_n "checking for $ac_word... " >&6; }
++if ${ac_cv_prog_MINGW64_CC+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  if test -n "$MINGW64_CC"; then
++  ac_cv_prog_MINGW64_CC="$MINGW64_CC" # Let the user override the test.
++else
++as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
++for as_dir in $PATH
++do
++  IFS=$as_save_IFS
++  test -z "$as_dir" && as_dir=.
++    for ac_exec_ext in '' $ac_executable_extensions; do
++  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
++    ac_cv_prog_MINGW64_CC="$ac_prog"
++    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
++    break 2
++  fi
++done
++  done
++IFS=$as_save_IFS
++
++fi
++fi
++MINGW64_CC=$ac_cv_prog_MINGW64_CC
++if test -n "$MINGW64_CC"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $MINGW64_CC" >&5
++$as_echo "$MINGW64_CC" >&6; }
++else
++  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++fi
++
++
++  test -n "$MINGW64_CC" && break
++done
++
++test -n "$MINGW64_CC" || as_fn_error $? "no acceptable mingw64 gcc found in \$PATH" "$LINENO" 5
++
+ 
+ 
+ configure_args=X
+diff --git a/winsup/utils/configure.ac b/winsup/utils/configure.ac
+index 63fc55e..1cad2b9 100644
+--- a/winsup/utils/configure.ac
++++ b/winsup/utils/configure.ac
+@@ -35,6 +35,11 @@ AC_PROG_INSTALL
+ AC_CHECK_PROGS(MINGW_CXX, ${target_cpu}-w64-mingw32-g++)
+ test -n "$MINGW_CXX" || AC_MSG_ERROR([no acceptable mingw g++ found in \$PATH])
+ 
++AC_CHECK_PROGS(MINGW32_CC, i686-w64-mingw32-gcc)
++test -n "$MINGW32_CC" || AC_MSG_ERROR([no acceptable mingw32 gcc found in \$PATH])
++AC_CHECK_PROGS(MINGW64_CC, x86_64-w64-mingw32-gcc)
++test -n "$MINGW64_CC" || AC_MSG_ERROR([no acceptable mingw64 gcc found in \$PATH])
++
+ AC_EXEEXT
+ AC_CONFIGURE_ARGS
+ AC_CONFIG_FILES([Makefile])
+diff --git a/winsup/utils/getprocaddr.c b/winsup/utils/getprocaddr.c
+new file mode 100644
+index 0000000..54f8e27
+--- /dev/null
++++ b/winsup/utils/getprocaddr.c
+@@ -0,0 +1,146 @@
++#include <stdio.h>
++#include <windows.h>
++
++/**
++ * To determine the address of kernel32!CtrlRoutine, we need to use
++ * dbghelp.dll. But we want to avoid linking statically to that library because
++ * the normal operation of cygwin-console-helper.exe (i.e. to allocate a hidden
++ * Console) does not need it.
++ *
++ * Therefore, we declare the SYMBOL_INFOW structure here, load the dbghelp
++ * library via LoadLibraryExA() and obtain the SymInitialize(), SymFromAddrW()
++ * and SymCleanup() functions via GetProcAddr().
++ */
++
++#include <dbghelp.h>
++
++/* Avoid fprintf(), as it would try to reference '__getreent' */
++static void
++output (BOOL error, const char *fmt, ...)
++{
++  va_list ap;
++  char buffer[1024];
++
++  va_start (ap, fmt);
++  vsnprintf (buffer, sizeof(buffer) - 1, fmt, ap);
++  buffer[sizeof(buffer) - 1] = '\0';
++  va_end (ap);
++  WriteFile (GetStdHandle(error ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE),
++	     buffer, strlen (buffer), NULL, NULL);
++}
++
++static WINAPI BOOL
++ctrl_handler(DWORD ctrl_type)
++{
++  unsigned short count;
++  void *address;
++  HANDLE process;
++  PSYMBOL_INFOW info;
++  DWORD64 displacement;
++
++  count = CaptureStackBackTrace (1l /* skip this function */,
++			         1l /* return only one trace item */,
++				 &address, NULL);
++  if (count != 1)
++    {
++      output (1, "Could not capture backtrace\n");
++      return FALSE;
++    }
++
++  process = GetCurrentProcess ();
++  if (!SymInitialize (process, NULL, TRUE))
++    {
++      output (1, "Could not initialize symbols\n");
++      return FALSE;
++    }
++
++  info = (PSYMBOL_INFOW)
++    malloc (sizeof(*info) + MAX_SYM_NAME * sizeof(wchar_t));
++  if (!info)
++    {
++      output (1, "Could not allocate symbol info structure\n");
++      return FALSE;
++    }
++  info->SizeOfStruct = sizeof(*info);
++  info->MaxNameLen = MAX_SYM_NAME;
++
++  if (!SymFromAddrW (process, (DWORD64)(intptr_t)address, &displacement, info))
++    {
++      output (1, "Could not get symbol info\n");
++      SymCleanup(process);
++      return FALSE;
++    }
++  output (0, "%p\n", (void *)(intptr_t)info->Address);
++  CloseHandle(GetStdHandle(STD_OUTPUT_HANDLE));
++  SymCleanup(process);
++
++  exit(0);
++}
++
++int
++main (int argc, char **argv)
++{
++  char *end;
++
++  if (argc < 2)
++    {
++      output (1, "Need a function name\n");
++      return 1;
++    }
++
++  if (strcmp(argv[1], "CtrlRoutine"))
++    {
++      if (argc > 2)
++        {
++          output (1, "Unhandled option: %s\n", argv[2]);
++          return 1;
++        }
++
++      HINSTANCE kernel32 = GetModuleHandle ("kernel32");
++      if (!kernel32)
++        return 1;
++      void *address = (void *) GetProcAddress (kernel32, argv[1]);
++      if (!address)
++        return 1;
++      output (0, "%p\n", address);
++      return 0;
++    }
++
++  /* Special-case kernel32!CtrlRoutine */
++  if (argc == 3 && !strcmp ("--alloc-console", argv[2]))
++    {
++      if (!FreeConsole () && GetLastError () != ERROR_INVALID_PARAMETER)
++        {
++	  output (1, "Could not detach from current Console: %d\n",
++		  (int)GetLastError());
++	  return 1;
++	}
++      if (!AllocConsole ())
++        {
++	  output (1, "Could not allocate a new Console\n");
++	  return 1;
++	}
++    }
++  else if (argc > 2)
++    {
++      output (1, "Unhandled option: %s\n", argv[2]);
++      return 1;
++    }
++
++  if (!SetConsoleCtrlHandler (ctrl_handler, TRUE))
++    {
++      output (1, "Could not register Ctrl handler\n");
++      return 1;
++    }
++
++  if (!GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, 0))
++    {
++      output (1, "Could not simulate Ctrl+Break\n");
++      return 1;
++    }
++
++  /* Give the event 1sec time to print out the address */
++  Sleep(1000);
++  return 1;
++}
++
+-- 
+2.9.0
+
