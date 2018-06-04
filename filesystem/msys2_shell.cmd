@@ -67,6 +67,11 @@ if "x%~1" == "x-shell" (
   set LOGINSHELL="%~2"
 )& shift& shift& goto :checkparams
 
+rem Collect remaining command line arguments to be passed to shell
+set SHELL_ARGS=
+:collectparams
+if not "x%~1" == "x" set SHELL_ARGS=%SHELL_ARGS% %1& shift& goto :collectparams
+
 rem Setup proper title
 if "%MSYSTEM%" == "MINGW32" (
   set "CONTITLE=MinGW x32"
@@ -84,9 +89,9 @@ if NOT EXIST "%WD%mintty.exe" goto startsh
 set MSYSCON=mintty.exe
 :startmintty
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+  start "%CONTITLE%" "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" --login %SHELL_ARGS%
 ) else (
-  "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+  "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" --login %SHELL_ARGS%
 )
 exit /b %ERRORLEVEL%
 
@@ -96,18 +101,18 @@ call :conemudetect || (
   exit /b 1
 )
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%\%LOGINSHELL%" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+  start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%\%LOGINSHELL%" --login %SHELL_ARGS%
 ) else (
-  "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%\%LOGINSHELL%" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+  "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%\%LOGINSHELL%" --login %SHELL_ARGS%
 )
 exit /b %ERRORLEVEL%
 
 :startsh
 set MSYSCON=
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%WD%\%LOGINSHELL%" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+  start "%CONTITLE%" "%WD%\%LOGINSHELL%" --login %SHELL_ARGS%
 ) else (
-  "%WD%\%LOGINSHELL%" --login %1 %2 %3 %4 %5 %6 %7 %8 %9
+  "%WD%\%LOGINSHELL%" --login %SHELL_ARGS%
 )
 exit /b %ERRORLEVEL%
 
