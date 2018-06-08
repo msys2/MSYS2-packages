@@ -5,8 +5,8 @@ MSYS2-packages
 
 Package scripts for MSYS2.
 
-To build these, run msys2_shell.cmd then from the bash prompt. Packages frmo
-the msys2-devel and base-devel and groups are implicit build time dependencies.
+To build these, run msys2_shell.cmd then from the bash prompt. Packages from
+the msys2-devel and base-devel groups are implicit build time dependencies.
 Make sure both are installed before attempting to build any package:
 
     pacman -S --needed base-devel msys2-devel
