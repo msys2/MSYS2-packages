@@ -1,7 +1,6 @@
 #!/bin/sh
-# Copyright 1999-2015 Gentoo Foundation
+# Copyright 1999-2018 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Header: /var/cvsroot/gentoo-x86/sys-devel/automake-wrapper/files/am-wrapper-10.sh,v 1.1 2015/01/07 21:24:41 polynomial-c Exp $
 
 # Executes the correct automake version.
 #
@@ -71,7 +70,7 @@ fi
 # Set up bindings between actual version and WANT_AUTOMAKE;
 # Start with last known versions to speed up lookup process.
 #
-LAST_KNOWN_AUTOMAKE_VER="15"
+LAST_KNOWN_AUTOMAKE_VER="16"
 vers=$(printf '1.%s ' `seq ${LAST_KNOWN_AUTOMAKE_VER} -1 4`)
 
 #
