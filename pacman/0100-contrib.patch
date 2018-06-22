@@ -1,0 +1,145 @@
+diff -Naur pacman-contrib-1.0.0-orig/src/checkupdates.sh.in pacman-contrib-1.0.0/src/checkupdates.sh.in
+--- pacman-contrib-1.0.0-orig/src/checkupdates.sh.in	2015-10-18 08:38:28.000000000 +0300
++++ pacman-contrib-1.0.0/src/checkupdates.sh.in	2016-07-15 09:42:18.779037400 +0300
+@@ -35,11 +35,6 @@
+ 	exit 0
+ fi
+ 
+-if ! type -P fakeroot >/dev/null; then
+-	error 'Cannot find the fakeroot binary.'
+-	exit 1
+-fi
+-
+ if [[ -z $CHECKUPDATES_DB ]]; then
+ 	CHECKUPDATES_DB="${TMPDIR:-/tmp}/checkup-db-${USER}/"
+ fi
+@@ -48,7 +48,7 @@
+ 
+ mkdir -p "$CHECKUPDATES_DB"
+ ln -s "${DBPath}/local" "$CHECKUPDATES_DB" &> /dev/null
+-if ! fakeroot -- pacman -Sy --dbpath "$CHECKUPDATES_DB" --logfile /dev/null &> /dev/null; then
++if ! pacman -Sy --dbpath "$CHECKUPDATES_DB" --logfile /dev/null &> /dev/null; then
+        error 'Cannot fetch updates'
+        exit 1
+ fi
+diff -Naur pacman-contrib-1.0.0-orig/src/paccache.sh.in pacman-contrib-1.0.0/src/paccache.sh.in
+--- pacman-contrib-1.0.0-orig/src/paccache.sh.in	2015-03-26 07:43:10.000000000 +0300
++++ pacman-contrib-1.0.0/src/paccache.sh.in	2016-07-15 09:42:18.787037400 +0300
+@@ -24,7 +24,7 @@
+ declare -r myver='@PACKAGE_VERSION@'
+ 
+ declare -a cachedirs=() candidates=() cmdopts=() whitelist=() blacklist=()
+-declare -i delete=0 dryrun=0 filecount=0 move=0 needsroot=0 totalsaved=0 verbose=0
++declare -i delete=0 dryrun=0 filecount=0 move=0 totalsaved=0 verbose=0
+ declare    delim=$'\n' keep=3 movedir= scanarch=
+ 
+ QUIET=0
+@@ -123,16 +123,7 @@
+ m4_include(../scripts/library/size_to_human.sh)
+ 
+ runcmd() {
+-	if (( needsroot && EUID != 0 )); then
+-		msg "Privilege escalation required"
+-		if sudo -v &>/dev/null && sudo -l &>/dev/null; then
+-			sudo "$@"
+-		else
+-			die 'Unable to escalate privileges using sudo'
+-		fi
+-	else
+-		"$@"
+-	fi
++	"$@"
+ }
+ 
+ summarize() {
+@@ -306,17 +297,12 @@
+ if (( move || delete )); then
+ 	# make it an absolute path since we're about to chdir
+ 	[[ $movedir && ${movedir:0:1} != '/' ]] && movedir=$PWD/$movedir
+-	[[ $movedir && ! -w $movedir ]] && needsroot=1
+ fi
+ 
+ for cachedir in "${cachedirs[@]}"; do
+ 	[[ -d $cachedir ]] ||
+ 		die "cachedir '%s' does not exist or is not a directory" "$cachedir"
+ 
+-	if (( move || delete )); then
+-		[[ ! -w $cachedir ]] && needsroot=1
+-	fi
+-
+ 	# unlikely that this will fail, but better make sure
+ 	pushd "$cachedir" &>/dev/null || die "failed to chdir to '%s'" "$cachedir"
+ 
+diff -Naur pacman-contrib-1.0.0-orig/src/paclist.sh.in pacman-contrib-1.0.0/src/paclist.sh.in
+--- pacman-contrib-1.0.0-orig/src/paclist.sh.in	2014-12-24 04:16:59.000000000 +0300
++++ pacman-contrib-1.0.0/src/paclist.sh.in	2016-07-15 09:42:18.796037400 +0300
+@@ -59,7 +59,7 @@
+ 	exit 0
+ fi
+ 
+-printf -v installed '[%s]' "$(gettext installed)"
++printf -v installed '[%s]' "$(/usr/bin/gettext installed)"
+ pacman -Sl $1 | awk -v i="$installed" '$NF == i { print $2,$3 }'
+ 
+ # exit with pacman's return value, not awk's
+diff -Naur pacman-contrib-1.0.0-orig/src/pacscripts.sh.in pacman-contrib-1.0.0/src/pacscripts.sh.in
+--- pacman-contrib-1.0.0-orig/src/pacscripts.sh.in	2016-01-04 06:27:45.000000000 +0300
++++ pacman-contrib-1.0.0/src/pacscripts.sh.in	2016-07-15 09:42:18.804037400 +0300
+@@ -42,7 +42,7 @@
+ 
+ error() {
+ 	local mesg=$1; shift
+-	printf "==> $(gettext "ERROR:") ${mesg}\n" "$@" >&2
++	printf "==> $(/usr/bin/gettext "ERROR:") ${mesg}\n" "$@" >&2
+ }
+ 
+ usage() {
+@@ -67,17 +67,7 @@
+ }
+ 
+ spacman() {
+-	if [ $EUID -eq 0 ]; then
+-		pacman "$@"
+-	else
+-		if ! type -p sudo; then
+-			error "Cannot find the sudo binary!"
+-			error "${myname} requires root privileges. Either install \"sudo\" or run as root."
+-			exit 1
+-		else
+-			sudo pacman "$@"
+-		fi
+-	fi
++	pacman "$@"
+ }
+ 
+ print_db() {
+@@ -94,7 +84,7 @@
+ }
+ 
+ print_pkg() {
+-	if ! bsdtar -xqOf "$1" .INSTALL 2>/dev/null; then
++	if ! /usr/bin/bsdtar -xqOf "$1" .INSTALL 2>/dev/null; then
+ 		error "Package $1 does not include any .INSTALL script"
+ 		return 1
+ 	fi
+@@ -103,7 +93,7 @@
+ 
+ print_scriptlet() {
+ 	if [ -f "$1" ]; then
+-		if bsdtar tf "$1" .PKGINFO &>/dev/null; then
++		if /usr/bin/bsdtar tf "$1" .PKGINFO &>/dev/null; then
+ 			print_pkg "$1"
+ 			return
+ 		fi
+diff -Naur pacman-contrib-1.0.0-orig/src/updpkgsums.sh.in pacman-contrib-1.0.0/src/updpkgsums.sh.in
+--- pacman-contrib-1.0.0-orig/src/updpkgsums.sh.in	2016-01-04 06:27:45.000000000 +0300
++++ pacman-contrib-1.0.0/src/updpkgsums.sh.in	2016-07-15 09:42:18.816037400 +0300
+@@ -83,7 +83,7 @@
+ newbuildfile=$(mktemp "${TMPDIR:-/tmp}/updpkgsums.XXXXXX")
+ 
+ trap "rm -rf '$BUILDDIR' '$newbuildfile'" EXIT
+-newsums=$(makepkg -g -p "$buildfile" "${MAKEPKG_OPTS[@]}") || die 'Failed to generate new checksums'
++newsums=$(MINGW_PACKAGE_PREFIX=mingw-w64-i686 makepkg -g -p "$buildfile" "${MAKEPKG_OPTS[@]}") || die 'Failed to generate new checksums'
+ awk -v newsums="$newsums" '
+ 	/^[[:blank:]]*(md|sha)[[:digit:]]+sums(_[^=]+)?=/,/\)[[:blank:]]*(#.*)?$/ {
+ 		if (!w) {

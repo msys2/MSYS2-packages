@@ -1,0 +1,65 @@
+--- pacman-5.1.0/lib/libalpm/util.c.orig	2018-06-22 07:29:01.599597700 +0300
++++ pacman-5.1.0/lib/libalpm/util.c	2018-06-22 07:33:21.219961100 +0300
+@@ -30,7 +30,9 @@
+ #include <errno.h>
+ #include <limits.h>
+ #include <sys/wait.h>
++#ifndef __MSYS__
+ #include <sys/socket.h>
++#endif
+ #include <fnmatch.h>
+ #include <poll.h>
+ 
+@@ -483,6 +483,9 @@
+ 		_alpm_cb_io out_cb, void *cb_ctx)
+ {
+ 	ssize_t nwrite;
++#ifdef __MSYS__
++	struct sigaction newaction, oldaction;
++#endif
+ 
+ 	if(*buf_size == 0) {
+ 		/* empty buffer, ask the callback for more */
+@@ -490,7 +492,20 @@
+ 		}
+ 	}
+ 
++#ifdef __MSYS__
++	/* ignore SIGPIPE in case the pipe has been closed */
++	newaction.sa_handler = SIG_IGN;
++	sigemptyset(&newaction.sa_mask);
++	newaction.sa_flags = 0;
++	sigaction(SIGPIPE, &newaction, &oldaction);
++
++	nwrite = write(fd, buf, *buf_size);
++
++	/* restore previous SIGPIPE handler */
++	sigaction(SIGPIPE, &oldaction, NULL);
++#else
+ 	nwrite = send(fd, buf, *buf_size, MSG_NOSIGNAL);
++#endif
+ 
+ 	if(nwrite != -1) {
+ 		/* write was successful, remove the written data from the buffer */
+@@ -603,13 +618,21 @@
+ 	/* Flush open fds before fork() to avoid cloning buffers */
+ 	fflush(NULL);
+ 
++#ifdef __MSYS__
++	if(pipe(child2parent_pipefd) == -1) {
++#else
+ 	if(socketpair(AF_UNIX, SOCK_STREAM, 0, child2parent_pipefd) == -1) {
++#endif
+ 		_alpm_log(handle, ALPM_LOG_ERROR, _("could not create pipe (%s)\n"), strerror(errno));
+ 		retval = 1;
+ 		goto cleanup;
+ 	}
+ 
++#ifdef __MSYS__
++	if(pipe(parent2child_pipefd) == -1) {
++#else
+ 	if(socketpair(AF_UNIX, SOCK_STREAM, 0, parent2child_pipefd) == -1) {
++#endif
+ 		_alpm_log(handle, ALPM_LOG_ERROR, _("could not create pipe (%s)\n"), strerror(errno));
+ 		retval = 1;
+ 		goto cleanup;
