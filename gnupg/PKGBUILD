@@ -1,56 +1,64 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=gnupg
-pkgver=1.4.23
+pkgver=2.2.8
 pkgrel=1
 pkgdesc='Complete and free implementation of the OpenPGP standard'
+provides=('dirmngr' "gnupg2=${pkgver}")
 url='https://gnupg.org/'
 license=('GPL')
 arch=('i686' 'x86_64')
 makedepends=('gettext-devel'
-             #'libassuan-devel'
+             'libassuan-devel'
              'libbz2-devel'
-             #'libksba-devel'
              'libbz2-devel'
              'libcurl-devel'
-             #'libgcrypt-devel'
-             #'libgnutls-devel'
+             'libgcrypt-devel'
+             'libgnutls-devel'
+             'libgpg-error-devel'
              'libiconv-devel'
-             #'libnpth-devel'
+             'libksba-devel'
+             'libnettle-devel'
+             'libnpth-devel'
+             'libp11-kit-devel'
              'libreadline-devel'
+             'libtasn1-devel'
+             'libunistring-devel'
+             'nettle'
              'tar'
              'zlib-devel')
 optdepends=('curl: gpg2keys_curl')
 depends=('bzip2'
-         #'libassuan'
+         'libassuan'
          'libbz2'
          'libcurl'
-         #'libgcrypt'
-         #'libgnutls'
+         'libgcrypt'
+         'libgnutls'
          'libiconv'
          'libintl'
-         #'libksba'
-         #'libnpth'
+         'libksba'
+         'libnpth'
          'libreadline'
-         #'pinentry'
+         'nettle'
+         'pinentry'
          'zlib'
         )
 source=("https://gnupg.org/ftp/gcrypt/${pkgname}/${pkgname}-${pkgver}.tar.bz2"{,.sig}
-        'gnupg-1.4.20-msys2.patch'
-	'0001-Introduce-GPG_ASKPASS-support.patch')
-sha256sums=('c9462f17e651b6507848c08c430c791287cd75491f8b5a8b50c6ed46b12678ba'
+        'gnupg-2.2.8-msys2.patch')
+sha256sums=('777b4cb8ced21965a5053d4fa20fe11484f0a478f3d011cef508a1a49db50dcd'
             'SKIP'
-            '37dc00f02d5cb04880e8dc286e80ea2a000b7357002a44cdbebe495d43fa5980'
-            '3e6cfc7916aa2057374f0b455ce59ba82d08fafc34e3ab06688acf52f927acf0')
-
+            'cb23f1a61fd213c25e85b6ba8afb190b7da14a8cfa59cc56ce82df941db8c3c9')
+validpgpkeys=('031EC2536E580D8EA286A9F22071B08A33BD3F06')
 install=${pkgname}.install
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  patch -p1 -i ${srcdir}/gnupg-1.4.20-msys2.patch
-  patch -p1 -i ${srcdir}/0001-Introduce-GPG_ASKPASS-support.patch
+  sed '/noinst_SCRIPTS = gpg-zip/c sbin_SCRIPTS += gpg-zip' -i tools/Makefile.in
+  patch -p1 -i ${srcdir}/gnupg-2.2.8-msys2.patch
 
-  ./autogen.sh
+  ./autogen.sh --force
+
+  sed 's/development_version=yes/development_version=no/' -i configure
 }
 
 build() {
@@ -62,6 +70,7 @@ build() {
     --localstatedir=/var \
     --sbindir=/usr/bin \
     --libexecdir=/usr/lib/gnupg \
+    --disable-libdns \
     --enable-maintainer-mode
 
   make
@@ -75,10 +84,4 @@ check() {
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"
   make DESTDIR="${pkgdir}" install
-
-  # For gnupg 2.x
-  # ln -s "${pkgdir}"/usr/bin/gpg{2,}
-  # #ln -s "${pkgdir}"/usr/bin/gpgv{2,}
-  # ln -s "${pkgdir}"/usr/share/man/man1/gpg{2,}.1
-  # rm "${pkgdir}/usr/share/gnupg/com-certs.pem" # FS#33059
 }
