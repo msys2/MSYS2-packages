@@ -200,6 +200,13 @@ check_recipe_quality() {
     saneman --format='\t%l:%c %p:%c %m' --verbose --no-terminal "${packages[@]}"
 }
 
+# List DDL dependencies
+list_dll_deps(){
+    local target="${1}"
+    echo "$(tput setaf 2)MSYS2 DLL dependencies:$(tput sgr0)"
+    ldd $(find $target -regex ".*\.\(exe\|dll\)") | grep --color "msys-.*\|"
+}
+
 # Status functions
 failure() { local status="${1}"; local items=("${@:2}"); _status failure "${status}." "${items[@]}"; exit 1; }
 success() { local status="${1}"; local items=("${@:2}"); _status success "${status}." "${items[@]}"; exit 0; }
