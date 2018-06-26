@@ -1,0 +1,108 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgbase=pcre2
+pkgname=('pcre2' 'libpcre2_8' 'libpcre2_16' 'libpcre2_32' 'libpcre2posix' 'pcre2-devel')
+pkgver=10.31
+pkgrel=1
+pkgdesc="A library that implements Perl 5-style regular expressions"
+arch=('i686' 'x86_64')
+url="https://www.pcre.org/"
+license=('BSD')
+makedepends=('libreadline-devel' 'libbz2-devel' 'zlib-devel')
+source=(ftp://ftp.csx.cam.ac.uk/pub/software/programming/pcre/${pkgname}-${pkgver}.tar.bz2{,.sig}
+        pcre2-10.31-msys2.patch
+        cygwin-not-win32.patch)
+sha256sums=('e07d538704aa65e477b6a392b32ff9fc5edf75ab9a40ddfc876186c4ff4d68ac'
+            'SKIP'
+            '5cce2b122c50837930abb7ddc54fc6af14399f8ba7e017e098a5eef9fc89d4a6'
+            '466f35da9c46e82e1d4d8462bec27e758ec10e5e7294cac4724635655909f09c')
+
+prepare() {
+  cd "${srcdir}"/${pkgname}-${pkgver}
+
+  # MSYS2 patches
+  patch -p1 -i ${srcdir}/pcre2-10.31-msys2.patch
+  patch -p1 -i ${srcdir}/cygwin-not-win32.patch
+
+  autoreconf -fi
+}
+
+build() {
+  cd "${srcdir}"/${pkgname}-${pkgver}
+  ./configure \
+      --build=${CHOST} \
+      --prefix=/usr \
+      --disable-jit \
+      --enable-pcre2-8 \
+      --enable-pcre2-16 \
+      --enable-pcre2-32 \
+      --enable-newline-is-anycrlf \
+      --enable-unicode \
+      --disable-pcre2grep-jit \
+      --enable-pcre2grep-libbz2 \
+      --enable-pcre2grep-libz \
+      --disable-pcre2test-libedit \
+      --enable-pcre2test-libreadline \
+      ac_cv_header_windows_h=no
+
+  make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+check() {
+  cd "${srcdir}"/${pkgname}-${pkgver}
+  make -j1 check
+}
+
+package_pcre2() {
+  depends=('libreadline' 'libbz2' 'zlib' "libpcre2_8=${pkgver}" "libpcre2_16=${pkgver}" "libpcre2_32=${pkgver}" "libpcre2posix=${pkgver}")
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.exe ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/LICENCE "${pkgdir}"/usr/share/licenses/${pkgname}/LICENSE
+}
+
+package_libpcre2_8() {
+  groups=('libraries')
+  depends=('gcc-libs')
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*pcre2-8-0.dll ${pkgdir}/usr/bin/
+}
+
+package_libpcre2_16() {
+  groups=('libraries')
+  depends=('gcc-libs')
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*pcre2-16-0.dll ${pkgdir}/usr/bin/
+}
+
+package_libpcre2_32() {
+  groups=('libraries')
+  depends=('gcc-libs')
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*pcre2-32-0.dll ${pkgdir}/usr/bin/
+}
+
+package_libpcre2posix() {
+  depends=("libpcre2_8=${pkgver}")
+  groups=('libraries')
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*pcre2-posix-2.dll ${pkgdir}/usr/bin/
+}
+
+package_pcre2-devel() {
+  pkgdesc="PCRE headers and libraries"
+  options=('staticlibs')
+  groups=('development')
+  depends=("libpcre2_8=${pkgver}" "libpcre2_16=${pkgver}" "libpcre2_32=${pkgver}" "libpcre2posix=${pkgver}")
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
