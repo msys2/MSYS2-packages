@@ -4,11 +4,11 @@ From: David Rothenberger <daveroth@acm.org>
 
 
 ---
- subversion/libsvn_subr/io.c |   25 +++++++++++++++++++++----
- 1 file changed, 21 insertions(+), 4 deletions(-)
+ subversion/libsvn_subr/io.c |   22 ++++++++++++++++++++--
+ 1 file changed, 20 insertions(+), 2 deletions(-)
 
 diff --git a/subversion/libsvn_subr/io.c b/subversion/libsvn_subr/io.c
-index 75e8564..f47c4c2 100644
+index 8c4f267..8d1d74c 100644
 --- a/subversion/libsvn_subr/io.c
 +++ b/subversion/libsvn_subr/io.c
 @@ -29,6 +29,10 @@
@@ -35,7 +35,7 @@ index 75e8564..f47c4c2 100644
  #else
  #define WIN32_RETRY_LOOP(err, expr) ((void)0)
  #endif
-@@ -2631,6 +2641,7 @@ svn_io_remove_file2(const char *path,
+@@ -2642,6 +2652,7 @@ svn_io_remove_file2(const char *path,
  
    apr_err = apr_file_remove(path_apr, scratch_pool);
  
@@ -43,9 +43,9 @@ index 75e8564..f47c4c2 100644
  #ifdef WIN32
    /* If the target is read only NTFS reports EACCESS and FAT/FAT32
       reports EEXIST */
-@@ -2644,10 +2655,14 @@ svn_io_remove_file2(const char *path,
-       if (!apr_err)
-         return SVN_NO_ERROR;
+@@ -2652,10 +2663,14 @@ svn_io_remove_file2(const char *path,
+       SVN_ERR(svn_io_set_file_read_write(path, ignore_enoent, scratch_pool));
+       apr_err = apr_file_remove(path_apr, scratch_pool);
      }
 -
 +#endif
@@ -59,32 +59,17 @@ index 75e8564..f47c4c2 100644
      {
        apr_finfo_t finfo;
  
-@@ -4172,20 +4187,22 @@ svn_io_file_rename(const char *from_path, const char *to_path,
- 
-   status = apr_file_rename(from_path_apr, to_path_apr, pool);
- 
--#if defined(WIN32) || defined(__OS2__)
-+#if defined(WIN32) || defined(__OS2__) || defined(__CYGWIN__)
-   /* If the target file is read only NTFS reports EACCESS and
-      FAT/FAT32 reports EEXIST */
-   if (APR_STATUS_IS_EACCES(status) || APR_STATUS_IS_EEXIST(status))
-     {
-+#ifndef __CYGWIN__
-       /* Set the destination file writable because Windows will not
-          allow us to rename when to_path is read-only, but will
-          allow renaming when from_path is read only. */
-       SVN_ERR(svn_io_set_file_read_write(to_path, TRUE, pool));
-+#endif
- 
-       status = apr_file_rename(from_path_apr, to_path_apr, pool);
+@@ -4280,6 +4295,9 @@ svn_io_file_rename2(const char *from_path, const char *to_path,
      }
-   WIN32_RETRY_LOOP(status, apr_file_rename(from_path_apr, to_path_apr, pool));
--#endif /* WIN32 || __OS2__ */
-+#endif /* WIN32 || __OS2__ || __CYGWIN__ */
+ #else
+   status = apr_file_rename(from_path_apr, to_path_apr, pool);
++#ifdef __CYGWIN__
++  WIN32_RETRY_LOOP(status, apr_file_rename(from_path_apr, to_path_apr, pool));
++#endif
+ #endif /* WIN32 || __OS2__ */
  
    if (status)
-     return svn_error_wrap_apr(status, _("Can't move '%s' to '%s'"),
-@@ -4310,7 +4327,7 @@ dir_make(const char *path, apr_fileperms_t perm,
+@@ -4412,7 +4430,7 @@ dir_make(const char *path, apr_fileperms_t perm,
  /* Windows does not implement sgid. Skip here because retrieving
     the file permissions via APR_FINFO_PROT | APR_FINFO_OWNER is documented
     to be 'incredibly expensive'. */

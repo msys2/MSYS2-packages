@@ -10,7 +10,7 @@ From: David Rothenberger <daveroth@acm.org>
  3 files changed, 181 insertions(+), 42 deletions(-)
 
 diff --git a/subversion/libsvn_subr/dirent_uri.c b/subversion/libsvn_subr/dirent_uri.c
-index a009145..9b83a7e 100644
+index b53f350..e7fc389 100644
 --- a/subversion/libsvn_subr/dirent_uri.c
 +++ b/subversion/libsvn_subr/dirent_uri.c
 @@ -55,7 +55,7 @@
@@ -26,7 +26,7 @@ index a009145..9b83a7e 100644
  static apr_size_t
  dirent_root_length(const char *dirent, apr_size_t len)
  {
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
  #ifdef SVN_USE_DOS_PATHS
    if (len >= 2 && dirent[1] == ':' &&
        ((dirent[0] >= 'A' && dirent[0] <= 'Z') ||
@@ -52,38 +52,38 @@ index a009145..9b83a7e 100644
            *(dst++) = *(src++);
  
 -#ifdef SVN_USE_DOS_PATHS
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
            /* On Windows permit two leading separator characters which means an
             * UNC path. */
            if ((type == type_dirent) && *src == '/')
-@@ -534,7 +536,7 @@ canonicalize(path_type_t type, const char *path, apr_pool_t *pool)
+@@ -540,7 +542,7 @@ canonicalize(path_type_t type, const char *path, apr_pool_t *pool)
  
    *dst = '\0';
  
 -#ifdef SVN_USE_DOS_PATHS
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
    /* Skip leading double slashes when there are less than 2
     * canon segments. UNC paths *MUST* have two segments. */
    if ((type == type_dirent) && canon[0] == '/' && canon[1] == '/')
-@@ -668,7 +670,7 @@ get_longest_ancestor_length(path_type_t types,
+@@ -674,7 +676,7 @@ get_longest_ancestor_length(path_type_t types,
    apr_size_t path1_len, path2_len;
    apr_size_t i = 0;
    apr_size_t last_dirsep = 0;
 -#ifdef SVN_USE_DOS_PATHS
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
    svn_boolean_t unc = FALSE;
  #endif
  
-@@ -701,7 +703,7 @@ get_longest_ancestor_length(path_type_t types,
+@@ -707,7 +709,7 @@ get_longest_ancestor_length(path_type_t types,
      return 0;
  
    /* Handle some windows specific cases */
 -#ifdef SVN_USE_DOS_PATHS
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
    if (types == type_dirent)
      {
        /* don't count the '//' from UNC paths */
-@@ -711,6 +713,7 @@ get_longest_ancestor_length(path_type_t types,
+@@ -717,6 +719,7 @@ get_longest_ancestor_length(path_type_t types,
            unc = TRUE;
          }
  
@@ -91,23 +91,23 @@ index a009145..9b83a7e 100644
        /* X:/ and X:/foo */
        if (i == 3 && path1[2] == '/' && path1[1] == ':')
          return i;
-@@ -728,8 +731,9 @@ get_longest_ancestor_length(path_type_t types,
+@@ -734,8 +737,9 @@ get_longest_ancestor_length(path_type_t types,
        /* X: and X:foo */
        if (path1[i - 1] == ':' || path2[i - 1] == ':')
            return i;
 -    }
  #endif /* SVN_USE_DOS_PATHS */
 +    }
-+#endif /* defined(SVN_USE_DOS_PATHS) || defined(CYGWIN) */
++#endif /* defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__) */
  
    /* last_dirsep is now the offset of the last directory separator we
       crossed before reaching a non-matching byte.  i is the offset of
-@@ -744,18 +748,20 @@ get_longest_ancestor_length(path_type_t types,
+@@ -750,18 +754,20 @@ get_longest_ancestor_length(path_type_t types,
      {
        /* Nothing in common but the root folder '/' or 'X:/' for Windows
           dirents. */
 -#ifdef SVN_USE_DOS_PATHS
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
        if (! unc)
          {
 +#ifdef SVN_USE_DOS_PATHS
@@ -117,15 +117,15 @@ index a009145..9b83a7e 100644
                                 && path2[1] == ':' && path2[2] == '/')
              return 3;
  #endif /* SVN_USE_DOS_PATHS */
-+#endif /* defined(SVN_USE_DOS_PATHS) || defined(CYGWIN) */
++#endif /* defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__) */
            if (last_dirsep == 0 && path1[0] == '/' && path2[0] == '/')
              return 1;
 -#ifdef SVN_USE_DOS_PATHS
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
          }
  #endif
      }
-@@ -913,7 +919,8 @@ svn_relpath__internal_style(const char *relpath,
+@@ -919,7 +925,8 @@ svn_relpath__internal_style(const char *relpath,
  svn_boolean_t
  svn_dirent_is_root(const char *dirent, apr_size_t len)
  {
@@ -135,7 +135,7 @@ index a009145..9b83a7e 100644
    /* On Windows and Cygwin, 'H:' or 'H:/' (where 'H' is any letter)
       are also root directories */
    if ((len == 2 || ((len == 3) && (dirent[2] == '/'))) &&
-@@ -921,9 +928,9 @@ svn_dirent_is_root(const char *dirent, apr_size_t len)
+@@ -927,9 +934,9 @@ svn_dirent_is_root(const char *dirent, apr_size_t len)
        ((dirent[0] >= 'A' && dirent[0] <= 'Z') ||
         (dirent[0] >= 'a' && dirent[0] <= 'z')))
      return TRUE;
@@ -147,7 +147,7 @@ index a009145..9b83a7e 100644
    if (len >= 2 && dirent[0] == '/' && dirent[1] == '/'
        && dirent[len - 1] != '/')
      {
-@@ -938,11 +945,7 @@ svn_dirent_is_root(const char *dirent, apr_size_t len)
+@@ -944,11 +951,7 @@ svn_dirent_is_root(const char *dirent, apr_size_t len)
                  return FALSE;
              }
          }
@@ -159,25 +159,25 @@ index a009145..9b83a7e 100644
      }
  #endif
  
-@@ -1679,7 +1682,7 @@ svn_dirent_is_canonical(const char *dirent, apr_pool_t *scratch_pool)
+@@ -1685,7 +1688,7 @@ svn_dirent_is_canonical(const char *dirent, apr_pool_t *scratch_pool)
    if (*ptr == '/')
      {
        ptr++;
 -#ifdef SVN_USE_DOS_PATHS
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
        /* Check for UNC paths */
        if (*ptr == '/')
          {
-@@ -2366,7 +2369,7 @@ svn_uri_get_dirent_from_file_url(const char **dirent,
+@@ -2372,7 +2375,7 @@ svn_uri_get_dirent_from_file_url(const char **dirent,
  
    /* Duplicate the URL, starting at the top of the path.
       At the same time, we URI-decode the path. */
 -#ifdef SVN_USE_DOS_PATHS
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
    /* On Windows, we'll typically have to skip the leading / if the
       path starts with a drive letter.  Like most Web browsers, We
       support two variants of this scheme:
-@@ -2383,10 +2386,11 @@ svn_uri_get_dirent_from_file_url(const char **dirent,
+@@ -2389,10 +2392,11 @@ svn_uri_get_dirent_from_file_url(const char **dirent,
      even if the path looks like it starts with a drive letter.
    */
    {
@@ -191,28 +191,28 @@ index a009145..9b83a7e 100644
  
      /* This check assumes ':' and '|' are already decoded! */
      if (!hostname && dup_path[1] && strchr(valid_drive_letters, dup_path[1])
-@@ -2414,6 +2418,7 @@ svn_uri_get_dirent_from_file_url(const char **dirent,
-               }
+@@ -2425,6 +2429,7 @@ svn_uri_get_dirent_from_file_url(const char **dirent,
+               dup_path[2] = '/'; /* Ensure not relative for '\' after drive! */
            }
        }
-+#endif
++#endif    
      if (hostname)
        {
          if (dup_path[0] == '/' && dup_path[1] == '\0')
-@@ -2427,7 +2432,7 @@ svn_uri_get_dirent_from_file_url(const char **dirent,
+@@ -2438,7 +2443,7 @@ svn_uri_get_dirent_from_file_url(const char **dirent,
      else
        *dirent = dup_path;
    }
 -#else /* !SVN_USE_DOS_PATHS */
-+#else /* !(defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)) */
++#else /* !(defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)) */
    /* Currently, the only hostnames we are allowing on non-Win32 platforms
       are the empty string and 'localhost'. */
    if (hostname)
-@@ -2455,7 +2460,15 @@ svn_uri_get_file_url_from_dirent(const char **url,
+@@ -2466,7 +2471,15 @@ svn_uri_get_file_url_from_dirent(const char **url,
    if (dirent[0] == '/' && dirent[1] == '\0')
      dirent = NULL; /* "file://" is the canonical form of "file:///" */
  
-+#ifdef CYGWIN
++#ifdef __CYGWIN__
 +  if (dirent != NULL && dirent[0] == '/' && dirent[1] == '/')
 +      /* Handle UNC paths //server/share -> file://server/share */
 +      *url = apr_pstrcat(pool, "file:", dirent, NULL);
@@ -225,7 +225,7 @@ index a009145..9b83a7e 100644
    if (dirent[0] == '/')
      {
 diff --git a/subversion/tests/libsvn_subr/dirent_uri-test.c b/subversion/tests/libsvn_subr/dirent_uri-test.c
-index 61d9e24..5de91c3 100644
+index 086cdbc..9d59dc5 100644
 --- a/subversion/tests/libsvn_subr/dirent_uri-test.c
 +++ b/subversion/tests/libsvn_subr/dirent_uri-test.c
 @@ -44,7 +44,7 @@
@@ -250,7 +250,7 @@ index 61d9e24..5de91c3 100644
      { "//srv/shr/fld", FALSE },
      { "//srv/s r",     TRUE },
      { "//srv/s r/fld", FALSE },
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +    { "/",             TRUE },
 +    { "/X:foo",        FALSE },
 +    { "/X:",           FALSE },
@@ -274,7 +274,7 @@ index 61d9e24..5de91c3 100644
      { "//srv/shr/fld", TRUE },
      { "//srv/s r",     TRUE },
      { "//srv/s r/fld", TRUE },
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +    { "/foo/bar",      TRUE },
 +    { "/foo",          TRUE },
 +    { "/",             TRUE },
@@ -302,7 +302,7 @@ index 61d9e24..5de91c3 100644
      { "aa", "A:", "A:" },
      { "aa", "A:file", "A:file"},
      { "A:", "/", "A:/" },
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +    { "X:abc", "X:/def", "X:abc/X:/def" },
 +    { "X:","abc", "X:/abc" },
 +    { "X:/abc", "X:/def", "X:/abc/X:/def" },
@@ -326,7 +326,7 @@ index 61d9e24..5de91c3 100644
    TEST_MANY((pool, "abcd", "/dir", "A:", "file", SVN_VA_NULL), "A:file");
    TEST_MANY((pool, "abcd", "A:", "/dir", "file", SVN_VA_NULL), "A:/dir/file");
  
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +  TEST_MANY((pool, "X:", "def", "ghi", SVN_VA_NULL), "X:/def/ghi");
 +  TEST_MANY((pool, "X:", SVN_EMPTY_PATH, "ghi", SVN_VA_NULL), "X:/ghi");
 +  TEST_MANY((pool, "X:", "def", SVN_EMPTY_PATH, SVN_VA_NULL), "X:/def");
@@ -353,7 +353,7 @@ index 61d9e24..5de91c3 100644
      { "//srv/shr/fld", "fld" },
      { "//srv/shr/fld/subfld", "subfld" },
      { "//srv/s r/fld", "fld" },
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +    { "X:", "X:" },
 +    { "X:abc", "X:abc" },
 +    { "//srv/shr", "" },
@@ -376,7 +376,7 @@ index 61d9e24..5de91c3 100644
      { "//srv/shr/fld",  "//srv/shr" },
      { "//srv/shr/fld/subfld", "//srv/shr/fld" },
      { "//srv/s r/fld",  "//srv/s r" },
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +    /* on non-Windows platforms, ':' is allowed in pathnames */
 +    { "X:", "" },
 +    { "X:abc", "" },
@@ -393,7 +393,7 @@ index 61d9e24..5de91c3 100644
      { "x:AAAAA",              "X:AAAAA" },
 -    /* We permit UNC dirents on Windows.  By definition UNC
 +#endif /* SVN_USE_DOS_PATHS */
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
 +    /* We permit UNC dirents on Windows and Cygwin.  By definition UNC
       * dirents must have two components so we should remove the
       * double slash if there is only one component. */
@@ -403,11 +403,11 @@ index 61d9e24..5de91c3 100644
      { "//srv/s r",            "//srv/s r" },
      { "//srv/s r/qq",         "//srv/s r/qq" },
 -#endif /* SVN_USE_DOS_PATHS */
-+#endif /* defined(SVN_USE_DOS_PATHS) || defined(CYGWIN) */
++#endif /* defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__) */
    };
  
    for (t = tests; t < tests + COUNT_OF(tests); t++)
-@@ -1049,7 +1105,7 @@ test_dirent_is_canonical(apr_pool_t *pool)
+@@ -1076,7 +1132,7 @@ test_dirent_is_canonical(apr_pool_t *pool)
      { "X:foo",                 TRUE },
      { "X:foo/",                FALSE },
      { "file with spaces",      TRUE },
@@ -416,11 +416,11 @@ index 61d9e24..5de91c3 100644
      { "X:/",                   TRUE },
      { "X:/foo",                TRUE },
      { "X:",                    TRUE },
-@@ -1068,6 +1124,22 @@ test_dirent_is_canonical(apr_pool_t *pool)
+@@ -1095,6 +1151,22 @@ test_dirent_is_canonical(apr_pool_t *pool)
      { "//server/SHare",        TRUE },
      { "//SERVER/SHare",        FALSE },
      { "//srv/SH RE",           TRUE },
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +    { "X:/",                   FALSE },
 +    /* Some people use colons in their filenames. */
 +    { ":", TRUE },
@@ -439,7 +439,7 @@ index 61d9e24..5de91c3 100644
  #else /* !SVN_USE_DOS_PATHS */
      { "X:/",                   FALSE },
      /* Some people use colons in their filenames. */
-@@ -1245,13 +1317,18 @@ test_dirent_split(apr_pool_t *pool)
+@@ -1278,13 +1350,18 @@ test_dirent_split(apr_pool_t *pool)
      { "/",               "/",             "" },
      { "X:/foo/bar",      "X:/foo",        "bar" },
      { "X:foo/bar",       "X:foo",         "bar" },
@@ -451,7 +451,7 @@ index 61d9e24..5de91c3 100644
      { "//srv/shr",       "//srv/shr",     "" },
      { "//srv/shr/fld",   "//srv/shr",     "fld" },
      { "//srv/s r",       "//srv/s r",     "" },
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +    { "X:foo",           SVN_EMPTY_PATH,  "X:foo" },
 +    { "//srv/shr",       "//srv/shr",     "" },
 +    { "//srv/shr/fld",   "//srv/shr",     "fld" },
@@ -459,7 +459,7 @@ index 61d9e24..5de91c3 100644
  #else /* !SVN_USE_DOS_PATHS */
      { "X:foo",           SVN_EMPTY_PATH,  "X:foo" },
  #endif /* SVN_USE_DOS_PATHS */
-@@ -1391,7 +1468,7 @@ static const testcase_ancestor_t dirent_ancestor_tests[] =
+@@ -1424,7 +1501,7 @@ static const testcase_ancestor_t dirent_ancestor_tests[] =
      { "/foo/bar/zig",   "/foo",             NULL },
      { "/foo/bar/zig",   "/foo/ba",          NULL },
      { "/foo/bar/zig",   "/foo/bar/zi",      NULL },
@@ -468,11 +468,11 @@ index 61d9e24..5de91c3 100644
      { "",               "C:",               NULL },
      { "",               "C:foo",            NULL },
      { "",               "C:/",              NULL },
-@@ -1425,6 +1502,21 @@ static const testcase_ancestor_t dirent_ancestor_tests[] =
+@@ -1458,6 +1535,21 @@ static const testcase_ancestor_t dirent_ancestor_tests[] =
      { "//srv/shr/fld",  "//srv2/shr/fld",   NULL },
      { "//srv/shr/fld",  "//srv/shr/f",      NULL },
      { "/",              "//srv/share",      NULL },
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +    { "",               "C:",               "C:" },
 +    { "",               "C:/foo",           "C:/foo" },
 +    { "X:",             "X:foo",            NULL },
@@ -490,7 +490,7 @@ index 61d9e24..5de91c3 100644
  #else /* !SVN_USE_DOS_PATHS */
      { "",               "C:",               "C:" },
      { "",               "C:/foo",           "C:/foo" },
-@@ -1612,7 +1704,7 @@ test_dirent_get_longest_ancestor(apr_pool_t *pool)
+@@ -1645,7 +1737,7 @@ test_dirent_get_longest_ancestor(apr_pool_t *pool)
      { "/",              "/",               "/"},
      { "X:foo",          "Y:foo",           SVN_EMPTY_PATH},
      { "X:/folder1",     "Y:/folder2",      SVN_EMPTY_PATH},
@@ -499,11 +499,11 @@ index 61d9e24..5de91c3 100644
      { "X:/",            "X:/",             "X:/"},
      { "X:/foo/bar/A/D/H/psi", "X:/foo/bar/A/B", "X:/foo/bar/A" },
      { "X:/foo/bar/boo", "X:/foo/bar/baz/boz", "X:/foo/bar"},
-@@ -1626,6 +1718,14 @@ test_dirent_get_longest_ancestor(apr_pool_t *pool)
+@@ -1659,6 +1751,14 @@ test_dirent_get_longest_ancestor(apr_pool_t *pool)
      { "X:",             "X:foo",           "X:"},
      { "X:",             "X:/",             SVN_EMPTY_PATH},
      { "X:foo",          "X:bar",           "X:"},
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +    { "X:/foo",         "X:",              "X:"},
 +    { "X:/folder1",     "X:/folder2",      "X:"},
 +    { "X:",             "X:foo",           SVN_EMPTY_PATH},
@@ -514,12 +514,12 @@ index 61d9e24..5de91c3 100644
  #else /* !SVN_USE_DOS_PATHS */
      { "X:/foo",         "X:",              "X:"},
      { "X:/folder1",     "X:/folder2",      "X:"},
-@@ -1771,11 +1871,13 @@ test_dirent_is_child(apr_pool_t *pool)
+@@ -1804,11 +1904,13 @@ test_dirent_is_child(apr_pool_t *pool)
      ".foo",
      "/",
      "foo2",
 -#ifdef SVN_USE_DOS_PATHS
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
      "//srv",
      "//srv2",
      "//srv/shr",
@@ -529,16 +529,16 @@ index 61d9e24..5de91c3 100644
      "H:/foo/bar",
      "H:/foo/baz",
      "H:/foo/bar/baz",
-@@ -1817,7 +1919,7 @@ test_dirent_is_child(apr_pool_t *pool)
+@@ -1850,7 +1952,7 @@ test_dirent_is_child(apr_pool_t *pool)
        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
      { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 -#ifdef SVN_USE_DOS_PATHS
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
      /* //srv paths */
      { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
        0, 0, "shr", "shr/fld", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-@@ -1827,6 +1929,8 @@ test_dirent_is_child(apr_pool_t *pool)
+@@ -1860,6 +1962,8 @@ test_dirent_is_child(apr_pool_t *pool)
        0, 0, 0, "fld", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
      { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
@@ -547,7 +547,7 @@ index 61d9e24..5de91c3 100644
      /* H:/ paths */
      { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
        0, 0, 0, 0, 0, 0, "baz", 0, "baz/bing/boom", 0, 0, 0, 0, 0 },
-@@ -2195,13 +2299,19 @@ test_dirent_local_style(apr_pool_t *pool)
+@@ -2228,13 +2332,19 @@ test_dirent_local_style(apr_pool_t *pool)
    } tests[] = {
      { "",                     "." },
      { ".",                    "." },
@@ -559,7 +559,7 @@ index 61d9e24..5de91c3 100644
      { "/",                   "\\" },
      { "//server/share/dir",  "\\\\server\\share\\dir" },
      { "//server/sh re/dir",  "\\\\server\\sh re\\dir" },
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +    { "a:/file",             "a:/file" },
 +    { "dir/file",            "dir/file" },
 +    { "/",                   "/" },
@@ -568,7 +568,7 @@ index 61d9e24..5de91c3 100644
  #else
      { "a:/file",             "a:/file" },
      { "dir/file",            "dir/file" },
-@@ -2237,7 +2347,7 @@ test_dirent_internal_style(apr_pool_t *pool)
+@@ -2270,7 +2380,7 @@ test_dirent_internal_style(apr_pool_t *pool)
      { "file",                "file" },
      { "dir/file",            "dir/file" },
      { "dir/file/./.",        "dir/file" },
@@ -577,11 +577,11 @@ index 61d9e24..5de91c3 100644
      { "A:\\",                "A:/" },
      { "A:\\file",            "A:/file" },
      { "A:file",              "A:file" },
-@@ -2252,6 +2362,14 @@ test_dirent_internal_style(apr_pool_t *pool)
+@@ -2285,6 +2395,14 @@ test_dirent_internal_style(apr_pool_t *pool)
      { "//srv/shr",           "//srv/shr" },
      { "//srv/s r",           "//srv/s r" },
      { "//srv/s r",           "//srv/s r" },
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +    { "a:/",                 "a:" }, /* Wrong but expected for svn_path_*() */
 +    { "a:/file",             "a:/file" },
 +    { "dir/file",            "dir/file" },
@@ -592,12 +592,12 @@ index 61d9e24..5de91c3 100644
  #else
      { "a:/",                 "a:" }, /* Wrong but expected for svn_path_*() */
      { "a:/file",             "a:/file" },
-@@ -2323,9 +2441,11 @@ test_dirent_from_file_url(apr_pool_t *pool)
+@@ -2356,9 +2474,11 @@ test_dirent_from_file_url(apr_pool_t *pool)
      { "file://localhost",          "/" },
      { "file://localhost/dir",      "/dir" },
      { "file://localhost/dir/path", "/dir/path" },
 -#ifdef SVN_USE_DOS_PATHS
-+#if defined(SVN_USE_DOS_PATHS) || defined(CYGWIN)
++#if defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__)
      { "file://server/share",       "//server/share" },
      { "file://server/share/dir",   "//server/share/dir" },
 +#endif
@@ -605,17 +605,17 @@ index 61d9e24..5de91c3 100644
      { "file:///A:",                "A:/" },
      { "file:///A:/dir",            "A:/dir" },
      { "file:///A:dir",             "A:dir" },
-@@ -2359,7 +2479,7 @@ test_dirent_from_file_url_errors(apr_pool_t *pool)
+@@ -2416,7 +2536,7 @@ test_dirent_from_file_url_errors(apr_pool_t *pool)
      /* error if scheme is not "file" */
      "http://localhost/dir",
      "file+ssh://localhost/dir",
 -#ifndef SVN_USE_DOS_PATHS
-+#if !(defined(SVN_USE_DOS_PATHS) || defined(CYGWIN))
++#if !(defined(SVN_USE_DOS_PATHS) || defined(__CYGWIN__))
      "file://localhostwrongname/dir",  /* error if host name not "localhost" */
  #endif
    };
 diff --git a/subversion/tests/libsvn_subr/path-test.c b/subversion/tests/libsvn_subr/path-test.c
-index 6f0a996..91850cb 100644
+index 6f0a996..3a8e2fb 100644
 --- a/subversion/tests/libsvn_subr/path-test.c
 +++ b/subversion/tests/libsvn_subr/path-test.c
 @@ -53,7 +53,7 @@
@@ -638,7 +638,7 @@ index 6f0a996..91850cb 100644
      { "dir\\file",            "dir/file" },
      { "\\",                   "/" },
      { "\\\\server/share/dir",  "//server/share/dir" },
-+#elif defined(CYGWIN)
++#elif defined(__CYGWIN__)
 +    { "a:/",                 "a:" },
 +    { "a:/file",             "a:/file" },
 +    { "dir/file",            "dir/file" },
