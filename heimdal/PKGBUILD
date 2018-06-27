@@ -2,36 +2,36 @@
 
 pkgbase=heimdal
 pkgname=('heimdal' 'heimdal-libs' 'heimdal-devel')
-pkgver=1.5.3
-pkgrel=9
+pkgver=7.5.0
+pkgrel=1
 pkgdesc="Implementation of Kerberos V5 libraries"
 arch=('i686' 'x86_64')
 url="https://www.h5l.org/"
 license=('custom')
-makedepends=('libdb-devel' 'libcrypt-devel' 'libedit-devel' 'libsqlite-devel' 'openssl-devel') #libldap-devel
+makedepends=('libdb-devel' 'libcrypt-devel' 'libedit-devel' 'libsqlite-devel' 'openssl-devel' 'perl-JSON' 'python2') #libldap-devel
 options=('!libtool' '!emptydirs' 'staticlibs')
 groups=('net-utils')
-source=(https://www.h5l.org/dist/src/heimdal-${pkgver}.tar.gz
+source=(https://github.com/heimdal/heimdal/archive/heimdal-${pkgver}.tar.gz
         1.2.1-test-modules.patch
         1.5.2-hdbdir.patch
         1.5.2-install-catman.patch
         1.5.2-roken-signal.patch
         1.5.3-missing-libs-pkg-config.patch
         1.5.3-fix-detect-libedit.patch
-        heimdal-1.5.2-msys2.patch
-        1.5.3-base64-avoid-name-clash.patch)
-sha256sums=('aac27bedb33c341b6aed202af07ccc816146a893148721f8123abbbf93bbfea5'
+        7.5.0-use-python2.patch
+        7.5.0-hcrypto-build-fix.patch)
+sha256sums=('ad67fef994dc2268fb0b1a8164b39330d184f425057867485a178e9785a7f35a'
             'b18c9ca3f2db08cea0a4b7d7f07e8656360af848b3a30a5fa8d748240989da49'
-            '2d3a5ee7d69b1dedfd8783c0a535b9138f69d8f89c4f18ef32106adec5b2e3f6'
+            'a99f0f5b69d32524399b1343a4f08b2de43351828b5b45a938f72bacb0eb9085'
             'd68bb0f8f01cc748a6ef63c74a4a15c75553c2322e9bd2649c54cb23077d521b'
             'bf19c5d7326a0cf58a5b4922a9c96fb78807226bc40c2248417024b961dd559e'
-            '35be945792c4f16072cece32bf4fe2afbdf5f600a69f7a4776965e9012a1e95d'
-            'c31738a5386eb4b478bfff81258bddbe98413d68c121b62722e0cde848126e24'
-            '03542c3d76ab05778baece7bf280e005192a4f1c00040bd055f9d93a46c4751e'
-            '0cfed266e16bd8ad599354d7ce2bff3c62cd43fbf8606858fb028c84121fdf6e')
+            'eecd77ec817f88406f315c1b21559d888f1e0b3182aad317031f7ebc62f69b5b'
+            'bb96587539084c2ea9e06da8d2b4c768edd8dd422587a045ea60d1aa3eeb6a8a'
+            '59186e1a69c927e7c4c88423a726ed2592b39ec98f57ecd84ec96f12330f4743'
+            'f387721cc311a82ce2d4793187957d5323aa773538ea3268175741712534f8d4')
 
 prepare() {
-  cd ${srcdir}/heimdal-${pkgver}
+  cd ${srcdir}/heimdal-heimdal-${pkgver}
 
   patch -p2 -i "${srcdir}"/1.2.1-test-modules.patch
   patch -p2 -i "${srcdir}"/1.5.2-hdbdir.patch
@@ -39,16 +39,19 @@ prepare() {
   patch -p2 -i "${srcdir}"/1.5.2-roken-signal.patch
   patch -p1 -i "${srcdir}"/1.5.3-missing-libs-pkg-config.patch
   patch -p1 -i "${srcdir}"/1.5.3-fix-detect-libedit.patch
-  patch -p1 -i "${srcdir}"/heimdal-1.5.2-msys2.patch
-  patch -p1 -i "${srcdir}"/1.5.3-base64-avoid-name-clash.patch
+  patch -p1 -i "${srcdir}"/7.5.0-use-python2.patch
+  patch -p1 -i "${srcdir}"/7.5.0-hcrypto-build-fix.patch
 
-  autoreconf -fi
+  ./autogen.sh
 }
 
 build() {
-  cd ${srcdir}/heimdal-${pkgver}
+  cd ${srcdir}/heimdal-heimdal-${pkgver}
 
-  ./configure --build=${CHOST} \
+  ./configure \
+    --build=${CHOST} \
+    --host=${CHOST} \
+    --target=${CHOST} \
     --prefix=/usr \
     --libexecdir=/usr/libexec \
     --sbindir=/usr/bin \
@@ -64,7 +67,9 @@ build() {
     --without-x \
     --disable-kcm \
     --disable-ndbm-db \
-    --disable-heimdal-documentation
+    --disable-heimdal-documentation \
+    ac_cv_header_winsock2_h=no \
+    ac_cv_header_ws2tcpip_h=no
   
   make LDFLAGS="${LDFLAGS} -no-undefined"
   setup
@@ -72,13 +77,17 @@ build() {
 
 setup() {
   local destdir=${srcdir}/dest
-  cd ${srcdir}/heimdal-${pkgver}
+  cd ${srcdir}/heimdal-heimdal-${pkgver}
   make DESTDIR=${destdir} install
 
   # Remove daemons and their manpages
   for i in telnetd ftpd rshd; do
-    rm ${destdir}/usr/share/man/man8/${i}.8
-    rm ${destdir}/usr/libexec/${i}
+    if [ -f ${destdir}/usr/share/man/man8/${i}.8 ]; then
+      rm ${destdir}/usr/share/man/man8/${i}.8
+    fi
+    if [ -f ${destdir}/usr/libexec/${i} ]; then
+      rm ${destdir}/usr/libexec/${i}
+    fi
   done
 
   # Rename clients and their manpages
@@ -86,21 +95,17 @@ setup() {
     if [ -f ${destdir}/usr/share/man/man1/${i}.1 ]; then
       mv ${destdir}/usr/share/man/man1/{,k}${i}.1
     fi
-    mv ${destdir}/usr/bin/{,k}${i}
+    if [ -f ${destdir}/usr/bin/${i} ]; then
+      mv ${destdir}/usr/bin/{,k}${i}
+    fi
   done
-  rm -rf ${destdir}/usr/share/man/cat{1,3,5,8}
 
   # install config
   # Do not install the config as this will conflict with krb5
-  install -D -m644 ${srcdir}/heimdal-${pkgver}/krb5.conf ${destdir}/etc/krb5/krb5.conf
-
-  # Remove conflicts
-  rm -rf ${destdir}/usr/share/man/man5/ftpusers.5*                     # man-pages
-  rm -rf ${destdir}/usr/share/man/man3/{DES,DH,EVP,OpenSSL,RAND,RSA}*  # openssl
-  rm -rf ${destdir}/usr/share/man/man3/os.3*                           # erlang
+  install -D -m644 ${srcdir}/heimdal-heimdal-${pkgver}/krb5.conf ${destdir}/etc/krb5/krb5.conf
 
   # Install the license
-  install -Dm644 ${srcdir}/heimdal-${pkgver}/LICENSE \
+  install -Dm644 ${srcdir}/heimdal-heimdal-${pkgver}/LICENSE \
     ${destdir}/usr/share/licenses/${pkgname}/LICENSE
 }
 
