@@ -19,8 +19,11 @@ die "Clean worktree required"
 git rm 0*.patch ||
 die "Could not remove previous patches"
 
+merging_rebase_start="$(git -C src/msys2-runtime \
+    rev-parse --verify --quiet HEAD^{/Start.the.merging.rebase})"
+
 git -c core.abbrev=7 -C src/msys2-runtime format-patch -o ../.. --signature=2.9.0 \
-	$base_tag.. ^HEAD^{/Start.the.merging.rebase} ||
+	$base_tag.. ${merging_rebase_start:+^$merging_rebase_start} ||
 die "Could not generate new patch set"
 
 patches="$(ls 0*.patch)" &&
