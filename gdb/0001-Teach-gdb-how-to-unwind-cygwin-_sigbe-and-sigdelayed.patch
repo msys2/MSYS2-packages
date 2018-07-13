@@ -1,7 +1,7 @@
-From 3b165f5d903053172dfb2182eea98595b73fd8d1 Mon Sep 17 00:00:00 2001
+From 555f6ed2b933288a8c61417792ba407be667d502 Mon Sep 17 00:00:00 2001
 From: Jon Turney <jon.turney@dronecode.org.uk>
 Date: Tue, 12 Jan 2016 22:49:09 +0000
-Subject: [PATCH 1/3] Teach gdb how to unwind cygwin _sigbe and sigdelayed
+Subject: [PATCH 1/5] Teach gdb how to unwind cygwin _sigbe and sigdelayed
  frames
 
 The majority of functions in the cygwin DLL are wrapped by routines which use an
@@ -47,10 +47,10 @@ as we unwind the stack.
  4 files changed, 343 insertions(+)
 
 diff --git a/gdb/amd64-windows-tdep.c b/gdb/amd64-windows-tdep.c
-index a092298..c9b9d20 100644
+index 1a033365a9..6c6a66b9ca 100644
 --- a/gdb/amd64-windows-tdep.c
 +++ b/gdb/amd64-windows-tdep.c
-@@ -1218,11 +1218,68 @@ amd64_windows_auto_wide_charset (void)
+@@ -1206,9 +1206,66 @@ amd64_windows_auto_wide_charset (void)
    return "UTF-16";
  }
  
@@ -110,17 +110,15 @@ index a092298..c9b9d20 100644
  static void
  amd64_windows_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
  {
-   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
- 
++
 +  cygwin_sigwrapper_frame_unwind_set_sigbe_pattern (&amd64_sigbe);
 +  cygwin_sigwrapper_frame_unwind_set_sigdelayed_pattern (&amd64_sigdelayed);
 +  frame_unwind_append_unwinder (gdbarch, &cygwin_sigwrapper_frame_unwind);
-+
    /* The dwarf2 unwinder (appended very early by i386_gdbarch_init) is
       preferred over the SEH one.  The reasons are:
       - binaries without SEH but with dwarf2 debug info are correcly handled
 diff --git a/gdb/i386-cygwin-tdep.c b/gdb/i386-cygwin-tdep.c
-index 79ff478..4fc4686 100644
+index f200d39f2d..9ccec6556f 100644
 --- a/gdb/i386-cygwin-tdep.c
 +++ b/gdb/i386-cygwin-tdep.c
 @@ -26,6 +26,7 @@
@@ -171,7 +169,7 @@ index 79ff478..4fc4686 100644
  
    set_gdbarch_skip_trampoline_code (gdbarch, i386_cygwin_skip_trampoline_code);
 diff --git a/gdb/windows-tdep.c b/gdb/windows-tdep.c
-index dc4e2e4..352df90 100644
+index e77996f797..3e035ec765 100644
 --- a/gdb/windows-tdep.c
 +++ b/gdb/windows-tdep.c
 @@ -33,6 +33,7 @@
@@ -182,7 +180,7 @@ index dc4e2e4..352df90 100644
  #include "gdbcore.h"
  
  struct cmd_list_element *info_w32_cmdlist;
-@@ -540,3 +541,239 @@ even if their meaning is unknown."),
+@@ -518,3 +519,239 @@ even if their meaning is unknown."),
       isn't another convenience variable of the same name.  */
    create_internalvar_type_lazy ("_tlb", &tlb_funcs, NULL);
  }
@@ -293,7 +291,7 @@ index dc4e2e4..352df90 100644
 +{
 +  struct gdbarch *gdbarch = get_frame_arch (this_frame);
 +  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
-+  struct cygwin_sigwrapper_frame_cache *cache = *this_cache;
++  struct cygwin_sigwrapper_frame_cache *cache = (struct cygwin_sigwrapper_frame_cache *)*this_cache;
 +  ptid_t ptid;
 +  CORE_ADDR thread_local_base;
 +  CORE_ADDR stacktop;
@@ -423,7 +421,7 @@ index dc4e2e4..352df90 100644
 +  &cygwin_sigwrapper_frame_sniffer
 +};
 diff --git a/gdb/windows-tdep.h b/gdb/windows-tdep.h
-index e1c34c2..b16a64a 100644
+index 38242cfd22..51ed98bbcf 100644
 --- a/gdb/windows-tdep.h
 +++ b/gdb/windows-tdep.h
 @@ -32,4 +32,25 @@ extern void windows_xfer_shared_library (const char* so_name,
@@ -453,5 +451,5 @@ index e1c34c2..b16a64a 100644
 +
  #endif
 -- 
-2.6.2
+2.14.2
 
