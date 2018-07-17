@@ -8,8 +8,6 @@ die () {
 cd "$(dirname "$0")" ||
 die "Could not cd to msys2-runtime/"
 
-base_tag=refs/tags/cygwin-"$(sed -ne 'y/./_/' -e 's/^pkgver=//p' <PKGBUILD)"-release
-
 git rev-parse --verify HEAD >/dev/null &&
 git update-index -q --ignore-submodules --refresh &&
 git diff-files --quiet --ignore-submodules &&
@@ -18,6 +16,11 @@ die "Clean worktree required"
 
 git rm 0*.patch ||
 die "Could not remove previous patches"
+
+base_tag=refs/tags/cygwin-"$(sed -ne 'y/./_/' -e 's/^pkgver=//p' <PKGBUILD)"-release
+source_url=$(sed -ne 's/^source=\([^:]\+::\)\?["'\'']\?\([^"'\''#?=&,;[:space:]]\+[^)"'\''#?=&,;[:space:]]\).*/\2/p' <PKGBUILD)
+
+git -C src/msys2-runtime fetch --no-tags "$source_url" "$base_tag:$base_tag"
 
 merging_rebase_start="$(git -C src/msys2-runtime \
     rev-parse --verify --quiet HEAD^{/Start.the.merging.rebase})"
