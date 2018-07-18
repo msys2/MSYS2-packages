@@ -25,8 +25,23 @@ git -C src/msys2-runtime fetch --no-tags "$source_url" "$base_tag:$base_tag"
 merging_rebase_start="$(git -C src/msys2-runtime \
     rev-parse --verify --quiet HEAD^{/Start.the.merging.rebase})"
 
-git -c core.abbrev=7 -C src/msys2-runtime format-patch -o ../.. --signature=2.9.0 \
-	$base_tag.. ${merging_rebase_start:+^$merging_rebase_start} ||
+git -c core.abbrev=7 \
+	-c diff.renames=true \
+	-c format.from=false \
+	-c format.numbered=auto \
+	-c format.useAutoBase=false \
+	-C src/msys2-runtime \
+	format-patch \
+		--diff-algorithm=default \
+		--no-attach \
+		--no-add-header \
+		--no-cover-letter \
+		--no-thread \
+		--suffix=.patch \
+		--subject-prefix=PATCH \
+		--signature=2.9.0 \
+		--output-directory ../.. \
+			$base_tag.. ${merging_rebase_start:+^$merging_rebase_start} ||
 die "Could not generate new patch set"
 
 patches="$(ls 0*.patch)" &&
