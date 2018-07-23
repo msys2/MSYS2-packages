@@ -204,7 +204,8 @@ check_recipe_quality() {
 list_dll_deps(){
     local target="${1}"
     echo "$(tput setaf 2)MSYS2 DLL dependencies:$(tput sgr0)"
-    ldd $(find $target -regex ".*\.\(exe\|dll\)") | grep --color "msys-.*\|"
+    exes=$(find $target -regex ".*\.\(exe\|dll\)")
+    [[ -n $exes ]] && ldd $exes | GREP_COLOR="1;35" grep --color=always "msys-.*\|"
 }
 
 # Status functions
