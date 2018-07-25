@@ -1,0 +1,59 @@
+From 079350d03e90d3b910cab6d6521e65904927ed6b Mon Sep 17 00:00:00 2001
+From: Dakota Hawkins <dakotahawkins@gmail.com>
+Date: Sun, 22 Jul 2018 11:25:48 -0400
+Subject: [PATCH 58/N] fixup! Generate a .pdb file instead of a .dbg file
+
+Revert "Generate a .pdb file instead of a .dbg file"
+
+This reverts commit 36aa0d34eef28b063ad70813f2b5fcb862ab6b18.
+
+Signed-off-by: Dakota Hawkins <dakotahawkins@gmail.com>
+---
+ winsup/cygwin/Makefile.in | 10 ++++------
+ 1 file changed, 4 insertions(+), 6 deletions(-)
+
+diff --git a/winsup/cygwin/Makefile.in b/winsup/cygwin/Makefile.in
+index 315ef7c..ebb92e6 100644
+--- a/winsup/cygwin/Makefile.in
++++ b/winsup/cygwin/Makefile.in
+@@ -592,7 +592,7 @@ install-libs: $(TARGET_LIBS)
+ 	for i in $^; do \
+ 	    $(INSTALL_DATA) $$i $(DESTDIR)$(tooldir)/lib/`basename $$i` ; \
+ 	done
+-	$(INSTALL_DATA) msys-2.0.pdb $(DESTDIR)$(bindir)/msys-2.0.pdb
++	$(INSTALL_DATA) msys-2.0.dbg $(DESTDIR)$(bindir)/msys-2.0.dbg
+ 	cd $(DESTDIR)$(tooldir)/lib && ln -sf libmsys-2.0.a libg.a
+ 
+ install-headers:
+@@ -658,7 +658,7 @@ uninstall-man:
+ 	done
+ 
+ clean distclean realclean:
+-	-rm -f *.o *.dll *.pdb *.a *.exp junk *.base version.cc *.exe *.d *stamp* *_magic.h sigfe.s msys.def globals.h
++	-rm -f *.o *.dll *.dbg *.a *.exp junk *.base version.cc *.exe *.d *stamp* *_magic.h sigfe.s msys.def globals.h
+ 	-@$(MAKE) -C ${cygserver_blddir} libclean
+ 
+ maintainer-clean: clean
+@@ -672,7 +672,7 @@ $(LDSCRIPT): $(LDSCRIPT).in
+ 	$(CC) -E - -P < $^ -o $@
+ 
+ # Rule to build msys-2.0.dll
+-$(TEST_DLL_NAME): $(LDSCRIPT) $(DLL_OFILES) $(LIBSERVER) $(LIBC) $(LIBM) $(API_VER) Makefile $(VERSION_OFILES)
++$(TEST_DLL_NAME): $(LDSCRIPT) dllfixdbg $(DLL_OFILES) $(LIBSERVER) $(LIBC) $(LIBM) $(API_VER) Makefile $(VERSION_OFILES)
+ 	$(CXX) $(CXXFLAGS) \
+ 	-mno-use-libstdc-wrappers -L${WINDOWS_LIBDIR} \
+ 	-Wl,--gc-sections $(nostdlib) -Wl,-T$(firstword $^) -static \
+@@ -680,9 +680,7 @@ $(TEST_DLL_NAME): $(LDSCRIPT) $(DLL_OFILES) $(LIBSERVER) $(LIBC) $(LIBM) $(API_V
+ 	-e $(DLL_ENTRY) $(DEF_FILE) $(DLL_OFILES) $(VERSION_OFILES) \
+ 	$(MALLOC_OBJ) $(LIBSERVER) $(LIBM) $(LIBC) \
+ 	-lgcc $(DLL_IMPORTS) -Wl,-Map,msys.map
+-	MINGW_PREFIX=/mingw32 && \
+-	case "$$(uname -m)" in x86_64) MINGW_PREFIX=/mingw64;; esac && \
+-	$$MINGW_PREFIX/bin/cv2pdb "$@" "$@" ${patsubst %0.dll,%-2.0.pdb,$@}
++	@$(word 2,$^) $(OBJDUMP) $(OBJCOPY) $@ ${patsubst %0.dll,%-2.0.dbg,$@}
+ 	@ln -f $@ new-$(DLL_NAME)
+ 
+ # Rule to build libmsys-2.0.a
+-- 
+2.9.0
+
