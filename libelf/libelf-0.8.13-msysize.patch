@@ -1,0 +1,95 @@
+diff -Naur libelf-0.8.13-orig/config.guess libelf-0.8.13/config.guess
+--- libelf-0.8.13-orig/config.guess	2005-05-21 19:28:37.000000000 +0400
++++ libelf-0.8.13/config.guess	2018-07-27 13:39:34.958102800 +0300
+@@ -806,6 +806,9 @@
+     i*:CYGWIN*:*)
+ 	echo ${UNAME_MACHINE}-pc-cygwin
+ 	exit 0 ;;
++    i*:MSYS*:*)
++	echo ${UNAME_MACHINE}-pc-msys
++	exit 0 ;;
+     i*:MINGW*:*)
+ 	echo ${UNAME_MACHINE}-pc-mingw32
+ 	exit 0 ;;
+diff -Naur libelf-0.8.13-orig/config.sub libelf-0.8.13/config.sub
+--- libelf-0.8.13-orig/config.sub	2005-05-21 19:28:37.000000000 +0400
++++ libelf-0.8.13/config.sub	2018-07-27 13:40:04.629355000 +0300
+@@ -1160,7 +1160,7 @@
+ 	      | -ptx* | -coff* | -ecoff* | -winnt* | -domain* | -vsta* \
+ 	      | -udi* | -eabi* | -lites* | -ieee* | -go32* | -aux* \
+ 	      | -chorusos* | -chorusrdb* \
+-	      | -cygwin* | -pe* | -psos* | -moss* | -proelf* | -rtems* \
++	      | -cygwin* | -msys* | -pe* | -psos* | -moss* | -proelf* | -rtems* \
+ 	      | -mingw32* | -linux-gnu* | -linux-uclibc* | -uxpv* | -beos* | -mpeix* | -udk* \
+ 	      | -interix* | -uwin* | -mks* | -rhapsody* | -darwin* | -opened* \
+ 	      | -openstep* | -oskit* | -conix* | -pw32* | -nonstopux* \
+diff -Naur libelf-0.8.13-orig/aclocal.m4 libelf-0.8.13/aclocal.m4
+--- libelf-0.8.13/aclocal.m4	2018-07-27 13:48:24.449361500 +0300
++++ libelf-0.8.13/aclocal.m4	2018-07-27 13:55:38.130123200 +0300
+@@ -288,6 +288,16 @@
+ 	  mr_enable_shared=no
+ 	fi
+ 	;;
++      *-*-msys)
++	  PICFLAGS='-DPIC'
++	  SHLINK_SFX='-$(MAJOR).dll'
++	  SONAME_SFX='-$(MAJOR).dll'
++	  DEPSHLIBS='$(LIBS)' \
++	  SHLIB_SFX='-$(MAJOR).dll'
++	  LINK_SHLIB='$(CC) -shared -Wl,--out-implib,libelf.dll.a'
++	  INSTALL_SHLIB='$(INSTALL_PROGRAM)'
++	  DEPSHLIBS='$(LIBS)'
++	;;
+       sparc-sun-solaris2*)
+ 	if test "$GCC" = yes; then
+ 	  PICFLAGS='-fPIC -DPIC'
+--- libelf-0.8.13/lib/Makefile.in.orig	2018-07-27 14:11:09.970160200 +0300
++++ libelf-0.8.13/lib/Makefile.in	2018-07-27 14:19:46.427667500 +0300
+@@ -21,9 +21,10 @@
+ 
+ prefix = @prefix@
+ exec_prefix = @exec_prefix@
++bindir = $(exec_prefix)/bin
+ libdir = @libdir@
+ includedir = @includedir@
+-installdirs = $(libdir) $(includedir) $(includedir)/libelf
++installdirs = $(bindir) $(libdir) $(includedir) $(includedir)/libelf
+ 
+ CC = @CC@
+ LD = @LD@
+@@ -51,9 +52,9 @@
+ LINK_SHLIB = @LINK_SHLIB@
+ INSTALL_SHLIB = @INSTALL_SHLIB@
+ 
+-SHLIB = libelf$(SHLIB_SFX)
+-SHLINK = libelf$(SHLINK_SFX)
+-SONAME = libelf$(SONAME_SFX)
++SHLIB = msys-elf$(SHLIB_SFX)
++SHLINK = msys-elf$(SHLINK_SFX)
++SONAME = msys-elf$(SONAME_SFX)
+ 
+ # install includes in includedir?
+ DO_COMPAT = @DO_COMPAT@
+@@ -195,7 +196,8 @@
+ install-shared-yes: install-shared
+ install-shared-no:
+ install-shared: installdirs $(SHLIB)
+-	$(INSTALL_SHLIB) $(SHLIB) $(instroot)$(libdir)
++	$(INSTALL_SHLIB) $(SHLIB) $(instroot)$(bindir)
++	$(INSTALL_DATA) libelf.dll.a $(instroot)$(libdir)
+ 	if test "$(SONAME)" = "$(SHLIB)"; then true; else \
+ 	  cd $(instroot)$(libdir) && $(RM) $(SONAME) && $(LN_S) $(SHLIB) $(SONAME); \
+ 	fi
+--- libelf-0.8.13/po/Makefile.in.orig	2018-07-27 14:31:02.958421400 +0300
++++ libelf-0.8.13/po/Makefile.in	2018-07-27 14:31:40.116086500 +0300
+@@ -21,7 +21,9 @@
+ 
+ prefix = @prefix@
+ exec_prefix = @exec_prefix@
+-localedir = @localedir@
++datadir = @datadir@
++datarootdir = @datarootdir@
++localedir = $(datarootdir)/locale
+ 
+ CC = @CC@
+ RM = rm -f

@@ -1,27 +1,53 @@
 # Maintainer: Martell Malone <martellmalone@gmail.com>
 
-pkgname="libelf"
+pkgbase=libelf
+pkgname=('libelf' 'libelf-devel')
 pkgver=0.8.13
-pkgrel=1
+pkgrel=2
 pkgdesc="ELF object file access library (mingw-w64)"
 arch=('i686' 'x86_64')
 license=('LGPL')
 url="http://www.mr511.de/software/english.html"
 options=('staticlibs')
-source=("http://www.mr511.de/software/${pkgname}-${pkgver}.tar.gz")
-sha256sums=('591a9b4ec81c1f2042a97aa60564e0cb79d041c52faa7416acb38bc95bd2c76d')
+source=("http://www.mr511.de/software/${pkgname}-${pkgver}.tar.gz"
+        libelf-0.8.13-msysize.patch)
+sha256sums=('591a9b4ec81c1f2042a97aa60564e0cb79d041c52faa7416acb38bc95bd2c76d'
+            'cd8c749067b7f63518f9b29bebe36511c7330220dcd3ae51e7e96d96c4ef6df4')
+
+prepare() {
+  cd ${srcdir}/${pkgname}-${pkgver}
+  patch -p1 -i ${srcdir}/libelf-0.8.13-msysize.patch
+  autoreconf -fiv
+}
 
 build() {
   cd ${srcdir}/${pkgname}-${pkgver}
 
   ./configure \
     --prefix=/usr \
+    --build=${CHOST} \
     --host=${CHOST}
 
-  make -j1 all
+  make all
+  make install instroot="${srcdir}/dest"
 }
 
-package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make install instroot="${pkgdir}"
+package_libelf() {
+  depends=('gcc-libs')
+
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+}
+
+package_libelf-devel() {
+  pkgdesc="libelf headers and libraries"
+  options=('staticlibs')
+  groups=('development')
+  depends=("libelf=${pkgver}")
+
+  mkdir -p ${pkgdir}/usr
+
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
 }
