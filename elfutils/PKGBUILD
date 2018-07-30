@@ -2,7 +2,7 @@
 # Contributor: Martell Malone <martellmalone@gmail.com>
 
 pkgname=elfutils
-pkgver=0.160
+pkgver=0.173
 pkgrel=1
 pkgdesc="Libraries and utilities to handle ELF object files and DWARF debugging information"
 arch=('i686' 'x86_64')
@@ -12,14 +12,20 @@ depends=('gcc-libs' 'bzip2')
 provides=('libelf')
 replaces=('libelf')
 conflicts=('libelf')
-source=(https://fedorahosted.org/releases/e/l/elfutils/${pkgver}/elfutils-${pkgver}.tar.bz2)
+source=(https://fedorahosted.org/releases/e/l/elfutils/${pkgver}/elfutils-${pkgver}.tar.bz2
+        001-libintl-linking.patch
+        002-disable-new-dtags-flag.patch)
 options=('staticlibs')
-sha256sums=('SKIP')
+sha256sums=('b76d8c133f68dad46250f5c223482c8299d454a69430d9aa5c19123345a000ff'
+            '5078201680c7626f3d60c882d3088a5bf4d74c61101f90d54f882bb998f7c47e'
+            '8e0745d32f85b1cc2bb6b117bce1fdb9d4a4a22a76a16aaf9803ccd33270e45b')
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  rm -f config.guess config.sub
-  automake -a || true
+  patch -p1 -i ${srcdir}/001-libintl-linking.patch
+  patch -p1 -i ${srcdir}/002-disable-new-dtags-flag.patch
+  #rm -f config.guess config.sub
+  #automake -a || true
   autoreconf -fi
 }
 
@@ -27,12 +33,17 @@ build() {
   cd ${srcdir}/${pkgname}-${pkgver}
 
   CFLAGS+=" -g"  # required for test-suite success
-  ./configure --prefix=/usr --program-prefix="eu-"
+  ./configure \
+    --prefix=/usr \
+    --build=${CHOST} \
+    --enable-shared \
+    --disable-symbol-versioning \
+    --program-prefix="eu-"
 
   make
 }
 
 package() {
   cd ${srcdir}/${_realname}-${pkgver}
-  make install instroot="${pkgdir}"
+  make DESTDIR="${pkgdir}" install
 }
