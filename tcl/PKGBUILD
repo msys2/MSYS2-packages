@@ -2,8 +2,7 @@
 # Maintainer (ArchLinux): Eric Bélanger <eric@archlinux.org>
 
 pkgname=tcl
-#pkgver=8.6.4
-pkgver=8.5.18
+pkgver=8.6.8
 pkgrel=1
 pkgdesc="The Tcl scripting language"
 arch=('i686' 'x86_64')
@@ -12,19 +11,27 @@ license=('custom')
 depends=('zlib')
 options=('staticlibs')
 source=(https://downloads.sourceforge.net/sourceforge/tcl/tcl${pkgver}-src.tar.gz
-        8.5.18-cygwin-unix.patch
-        tcl-8.5.18-msysize.patch)
-sha256sums=('032be57a607bdf252135b52fac9e3a7016e526242374ac7637b083ecc4c5d3c9'
-            '5326d5fbc668f40a7ad99fa2c08afab2f7e33c5fa2eb3c5cba4a17328bb57310'
-            'c690f41ae5a16ce62ade62d46016387b2d326c5ad4a3888e02f94f1aaf78083d')
+        8.6.6-cygwin-unix.patch
+        tcl-8.5.18-msysize.patch
+        tcl.m4)
+sha256sums=('c43cb0c1518ce42b00e7c8f6eaddd5195c53a98f94adc717234a65cbcfd3f96a'
+            '422b579a001246e433caeca94c861d8635c1b1f15858a4e69bdd3f56cd5a322f'
+            'c690f41ae5a16ce62ade62d46016387b2d326c5ad4a3888e02f94f1aaf78083d'
+            '13ed3f28738ceb7a68f494c6414d02cd5ca0f12b650b90fec1dbc36bc21c6c51')
 
 prepare() {
   cd tcl${pkgver}
   # we build the tcl sqlite interface in sqlite-tcl package
   rm -rf pkgs/sqlite3*
-  patch -p2 -i ${srcdir}/8.5.18-cygwin-unix.patch
+  patch -p2 -i ${srcdir}/8.6.6-cygwin-unix.patch
   patch -p1 -i ${srcdir}/tcl-8.5.18-msysize.patch
 
+  for _dd in itcl4.1.1 tdbc1.0.6 tdbcmysql1.0.6 tdbcodbc1.0.6 tdbcpostgres1.0.6 tdbcsqlite3-1.0.6 thread2.8.2; do
+    pushd pkgs/${_dd}
+      cp -f ${srcdir}/tcl.m4 tclconfig/tcl.m4
+      autoreconf -fiv
+    popd
+  done
   cd unix
   autoreconf -fiv
 }
@@ -59,7 +66,7 @@ package() {
 
   # install build system macros
   install -Dm644 tcl.m4 "${pkgdir}"/usr/share/aclocal/tcl-sc.m4
-  install -Dm644 tcl.m4 "${pkgdir}"/usr/share/aclocal/tcl-tea.m4
+  install -Dm644 ${srcdir}/tcl.m4 "${pkgdir}"/usr/share/aclocal/tcl-tea.m4
 
   sed -i \
     -e "s|^\(TCL_BUILD_LIB_SPEC\)='.*|\1='-Wl,/usr/lib/libtcl${pkgver%.*}.dll.a'|" \

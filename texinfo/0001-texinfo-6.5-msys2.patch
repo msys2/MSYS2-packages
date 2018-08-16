@@ -1,0 +1,330 @@
+diff -Naur texinfo-6.5-orig/build-aux/compile texinfo-6.5/build-aux/compile
+--- texinfo-6.5-orig/build-aux/compile	2015-11-09 22:36:15.000000000 +0300
++++ texinfo-6.5/build-aux/compile	2018-08-03 07:57:23.078068800 +0300
+@@ -53,7 +53,7 @@
+ 	  MINGW*)
+ 	    file_conv=mingw
+ 	    ;;
+-	  CYGWIN*)
++	  CYGWIN* | MSYS*)
+ 	    file_conv=cygwin
+ 	    ;;
+ 	  *)
+@@ -67,7 +67,7 @@
+ 	mingw/*)
+ 	  file=`cmd //C echo "$file " | sed -e 's/"\(.*\) " *$/\1/'`
+ 	  ;;
+-	cygwin/*)
++	cygwin/* | msys/*)
+ 	  file=`cygpath -m "$file" || echo "$file"`
+ 	  ;;
+ 	wine/*)
+diff -Naur texinfo-6.5-orig/build-aux/config.guess texinfo-6.5/build-aux/config.guess
+--- texinfo-6.5-orig/build-aux/config.guess	2015-11-09 22:36:15.000000000 +0300
++++ texinfo-6.5/build-aux/config.guess	2018-08-03 07:57:23.078068800 +0300
+@@ -881,6 +881,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur texinfo-6.5-orig/build-aux/config.rpath texinfo-6.5/build-aux/config.rpath
+--- texinfo-6.5-orig/build-aux/config.rpath	2017-07-16 21:50:49.000000000 +0300
++++ texinfo-6.5/build-aux/config.rpath	2018-08-03 07:57:23.093668900 +0300
+@@ -57,7 +57,7 @@
+     aix*)
+       wl='-Wl,'
+       ;;
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       ;;
+     hpux9* | hpux10* | hpux11*)
+       wl='-Wl,'
+@@ -149,7 +149,7 @@
+ hardcode_minus_L=no
+ 
+ case "$host_os" in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -198,7 +198,7 @@
+         ld_shlibs=no
+       fi
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+       # no search path for DLLs.
+       hardcode_libdir_flag_spec='-L$libdir'
+@@ -348,7 +348,7 @@
+       ;;
+     bsdi[45]*)
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -533,7 +533,7 @@
+   bsdi[45]*)
+     library_names_spec='$libname$shrext'
+     ;;
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     shrext=.dll
+     library_names_spec='$libname.dll.a $libname.lib'
+     ;;
+diff -Naur texinfo-6.5-orig/gnulib/lib/Makefile.am texinfo-6.5/gnulib/lib/Makefile.am
+--- texinfo-6.5-orig/gnulib/lib/Makefile.am	2017-07-10 21:33:59.000000000 +0300
++++ texinfo-6.5/gnulib/lib/Makefile.am	2018-08-03 07:57:23.093668900 +0300
+@@ -429,7 +429,7 @@
+ 	  case '$(host_os)' in \
+ 	    darwin[56]*) \
+ 	      need_charset_alias=true ;; \
+-	    darwin* | cygwin* | mingw* | pw32* | cegcc*) \
++	    darwin* | cygwin* | msys* | mingw* | pw32* | cegcc*) \
+ 	      need_charset_alias=false ;; \
+ 	    *) \
+ 	      need_charset_alias=true ;; \
+diff -Naur texinfo-6.5-orig/gnulib/m4/argz.m4 texinfo-6.5/gnulib/m4/argz.m4
+--- texinfo-6.5-orig/gnulib/m4/argz.m4	2017-07-10 21:33:49.000000000 +0300
++++ texinfo-6.5/gnulib/m4/argz.m4	2018-08-03 07:57:23.093668900 +0300
+@@ -44,7 +44,7 @@
+         [if argz actually works],
+         [lt_cv_sys_argz_works],
+         [[case $host_os in #(
+-         *cygwin*)
++         *cygwin* | *msys*)
+            lt_cv_sys_argz_works=no
+            if test "$cross_compiling" != no; then
+              lt_cv_sys_argz_works="guessing no"
+diff -Naur texinfo-6.5-orig/gnulib/m4/btowc.m4 texinfo-6.5/gnulib/m4/btowc.m4
+--- texinfo-6.5-orig/gnulib/m4/btowc.m4	2017-07-15 11:50:31.000000000 +0300
++++ texinfo-6.5/gnulib/m4/btowc.m4	2018-08-03 07:57:23.109268900 +0300
+@@ -49,7 +49,7 @@
+ changequote(,)dnl
+            case "$host_os" in
+                       # Guess no on Cygwin.
+-             cygwin*) gl_cv_func_btowc_nul="guessing no" ;;
++             cygwin* | msys*) gl_cv_func_btowc_nul="guessing no" ;;
+                       # Guess yes otherwise.
+              *)       gl_cv_func_btowc_nul="guessing yes" ;;
+            esac
+diff -Naur texinfo-6.5-orig/gnulib/m4/double-slash-root.m4 texinfo-6.5/gnulib/m4/double-slash-root.m4
+--- texinfo-6.5-orig/gnulib/m4/double-slash-root.m4	2017-04-15 10:19:47.000000000 +0300
++++ texinfo-6.5/gnulib/m4/double-slash-root.m4	2018-08-03 07:59:16.522468100 +0300
+@@ -16,7 +16,7 @@
+         # special semantics and is distinct from /, please report it to
+         # <bug-gnulib@gnu.org>.
+         case $host in
+-          *-cygwin | i370-ibm-openedition)
++          *-cygwin | *-msys | i370-ibm-openedition)
+             gl_cv_double_slash_root=yes ;;
+           *)
+             # Be optimistic and assume that / and // are the same when we
+diff -Naur texinfo-6.5-orig/gnulib/m4/malloc.m4 texinfo-6.5/gnulib/m4/malloc.m4
+--- texinfo-6.5-orig/gnulib/m4/malloc.m4	2017-04-15 10:19:48.000000000 +0300
++++ texinfo-6.5/gnulib/m4/malloc.m4	2018-08-03 07:57:23.109268900 +0300
+@@ -33,7 +33,7 @@
+        [case "$host_os" in
+           # Guess yes on platforms where we know the result.
+           *-gnu* | freebsd* | netbsd* | openbsd* \
+-          | hpux* | solaris* | cygwin* | mingw*)
++          | hpux* | solaris* | cygwin* | msys* | mingw*)
+             ac_cv_func_malloc_0_nonnull=yes ;;
+           # If we don't know, assume the worst.
+           *) ac_cv_func_malloc_0_nonnull=no ;;
+diff -Naur texinfo-6.5-orig/gnulib/m4/printf.m4 texinfo-6.5/gnulib/m4/printf.m4
+--- texinfo-6.5-orig/gnulib/m4/printf.m4	2017-07-15 11:50:31.000000000 +0300
++++ texinfo-6.5/gnulib/m4/printf.m4	2018-08-03 08:01:21.837488200 +0300
+@@ -807,6 +807,7 @@
+ changequote(,)dnl
+          case "$host_os" in
+            cygwin*)      gl_cv_func_printf_flag_grouping="guessing no";;
++           msys*)        gl_cv_func_printf_flag_grouping="guessing no";;
+            netbsd*)      gl_cv_func_printf_flag_grouping="guessing no";;
+            mingw* | pw*) gl_cv_func_printf_flag_grouping="guessing no";;
+            *)            gl_cv_func_printf_flag_grouping="guessing yes";;
+diff -Naur texinfo-6.5-orig/gnulib/m4/threadlib.m4 texinfo-6.5/gnulib/m4/threadlib.m4
+--- texinfo-6.5-orig/gnulib/m4/threadlib.m4	2017-04-15 10:19:48.000000000 +0300
++++ texinfo-6.5/gnulib/m4/threadlib.m4	2018-08-03 08:01:43.412326100 +0300
+@@ -68,7 +68,7 @@
+          dnl bugs that lead to endless loops or crashes. See
+          dnl <http://cygwin.com/ml/cygwin/2009-08/msg00283.html>.
+          osf*) gl_use_threads=no ;;
+-         cygwin*)
++         cygwin* | msys*)
+                case `uname -r` in
+                  1.[0-5].*) gl_use_threads=no ;;
+                  *)         gl_use_threads=yes ;;
+diff -Naur texinfo-6.5-orig/install-info/tests/defs.in texinfo-6.5/install-info/tests/defs.in
+--- texinfo-6.5-orig/install-info/tests/defs.in	2015-12-23 16:16:56.000000000 +0300
++++ texinfo-6.5/install-info/tests/defs.in	2018-08-03 07:57:23.124868900 +0300
+@@ -68,7 +68,7 @@
+ # directories in TEXINPUTS -- except for Cygwin et al., where COMSPEC
+ # might be inherited, but : is used.
+ if test -n "$COMSPEC$ComSpec" \
+-   && uname | $EGREP -iv 'cygwin|mingw|djgpp' >/dev/null; then
++   && uname | $EGREP -iv 'cygwin|msys|mingw|djgpp' >/dev/null; then
+   path_sep=";"
+ else
+   path_sep=":"
+diff -Naur texinfo-6.5-orig/tp/Texinfo/Convert/XSParagraph/ar-lib texinfo-6.5/tp/Texinfo/Convert/XSParagraph/ar-lib
+--- texinfo-6.5-orig/tp/Texinfo/Convert/XSParagraph/ar-lib	2016-01-03 00:55:48.000000000 +0300
++++ texinfo-6.5/tp/Texinfo/Convert/XSParagraph/ar-lib	2018-08-03 08:02:47.185238200 +0300
+@@ -56,6 +56,9 @@
+ 	  CYGWIN*)
+ 	    file_conv=cygwin
+ 	    ;;
++	  MSYS*)
++	    file_conv=cygwin
++	    ;;
+ 	  *)
+ 	    file_conv=wine
+ 	    ;;
+@@ -68,6 +71,9 @@
+ 	cygwin)
+ 	  file=`cygpath -m "$file" || echo "$file"`
+ 	  ;;
++	msys)
++	  file=`cygpath -m "$file" || echo "$file"`
++	  ;;
+ 	wine)
+ 	  file=`winepath -w "$file" || echo "$file"`
+ 	  ;;
+diff -Naur texinfo-6.5-orig/tp/Texinfo/Convert/XSParagraph/compile texinfo-6.5/tp/Texinfo/Convert/XSParagraph/compile
+--- texinfo-6.5-orig/tp/Texinfo/Convert/XSParagraph/compile	2015-12-15 20:18:49.000000000 +0300
++++ texinfo-6.5/tp/Texinfo/Convert/XSParagraph/compile	2018-08-03 08:03:47.588544200 +0300
+@@ -56,6 +56,9 @@
+ 	  CYGWIN*)
+ 	    file_conv=cygwin
+ 	    ;;
++	  MSYS*)
++	    file_conv=cygwin
++	    ;;
+ 	  *)
+ 	    file_conv=wine
+ 	    ;;
+@@ -70,6 +73,9 @@
+ 	cygwin/*)
+ 	  file=`cygpath -m "$file" || echo "$file"`
+ 	  ;;
++	msys/*)
++	  file=`cygpath -m "$file" || echo "$file"`
++	  ;;
+ 	wine/*)
+ 	  file=`winepath -w "$file" || echo "$file"`
+ 	  ;;
+diff -Naur texinfo-6.5-orig/tp/Texinfo/Convert/XSParagraph/config.guess texinfo-6.5/tp/Texinfo/Convert/XSParagraph/config.guess
+--- texinfo-6.5-orig/tp/Texinfo/Convert/XSParagraph/config.guess	2015-12-15 20:18:49.000000000 +0300
++++ texinfo-6.5/tp/Texinfo/Convert/XSParagraph/config.guess	2018-08-03 08:03:18.120092500 +0300
+@@ -867,6 +867,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur texinfo-6.5-orig/tp/Texinfo/Convert/XSParagraph/m4/ltoptions.m4 texinfo-6.5/tp/Texinfo/Convert/XSParagraph/m4/ltoptions.m4
+--- texinfo-6.5-orig/tp/Texinfo/Convert/XSParagraph/m4/ltoptions.m4	2015-12-15 20:18:40.000000000 +0300
++++ texinfo-6.5/tp/Texinfo/Convert/XSParagraph/m4/ltoptions.m4	2018-08-03 08:05:02.593476000 +0300
+@@ -128,7 +128,7 @@
+ [enable_win32_dll=yes
+ 
+ case $host in
+-*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-cegcc*)
++*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-cegcc*)
+   AC_CHECK_TOOL(AS, as, false)
+   AC_CHECK_TOOL(DLLTOOL, dlltool, false)
+   AC_CHECK_TOOL(OBJDUMP, objdump, false)
+diff -Naur texinfo-6.5-orig/tp/Texinfo/Convert/XSParagraph/m4/printf.m4 texinfo-6.5/tp/Texinfo/Convert/XSParagraph/m4/printf.m4
+--- texinfo-6.5-orig/tp/Texinfo/Convert/XSParagraph/m4/printf.m4	2017-07-10 21:35:19.000000000 +0300
++++ texinfo-6.5/tp/Texinfo/Convert/XSParagraph/m4/printf.m4	2018-08-03 08:05:33.138329600 +0300
+@@ -730,6 +730,7 @@
+            irix*)           gl_cv_func_printf_directive_ls="guessing no";;
+            solaris*)        gl_cv_func_printf_directive_ls="guessing no";;
+            cygwin*)         gl_cv_func_printf_directive_ls="guessing no";;
++           msys*)           gl_cv_func_printf_directive_ls="guessing no";;
+            beos* | haiku*)  gl_cv_func_printf_directive_ls="guessing no";;
+            *)               gl_cv_func_printf_directive_ls="guessing yes";;
+          esac
+diff -Naur texinfo-6.5-orig/tp/Texinfo/MiscXS/ar-lib texinfo-6.5/tp/Texinfo/MiscXS/ar-lib
+--- texinfo-6.5-orig/tp/Texinfo/MiscXS/ar-lib	2016-01-03 00:55:48.000000000 +0300
++++ texinfo-6.5/tp/Texinfo/MiscXS/ar-lib	2018-08-03 08:06:40.171647400 +0300
+@@ -56,6 +56,9 @@
+ 	  CYGWIN*)
+ 	    file_conv=cygwin
+ 	    ;;
++	  MSYS*)
++	    file_conv=cygwin
++	    ;;
+ 	  *)
+ 	    file_conv=wine
+ 	    ;;
+@@ -68,6 +71,9 @@
+ 	cygwin)
+ 	  file=`cygpath -m "$file" || echo "$file"`
+ 	  ;;
++	msys)
++	  file=`cygpath -m "$file" || echo "$file"`
++	  ;;
+ 	wine)
+ 	  file=`winepath -w "$file" || echo "$file"`
+ 	  ;;
+diff -Naur texinfo-6.5-orig/tp/Texinfo/MiscXS/compile texinfo-6.5/tp/Texinfo/MiscXS/compile
+--- texinfo-6.5-orig/tp/Texinfo/MiscXS/compile	2016-12-24 14:52:43.000000000 +0300
++++ texinfo-6.5/tp/Texinfo/MiscXS/compile	2018-08-03 08:06:19.252010600 +0300
+@@ -56,6 +56,9 @@
+ 	  CYGWIN*)
+ 	    file_conv=cygwin
+ 	    ;;
++	  MSYS*)
++	    file_conv=cygwin
++	    ;;
+ 	  *)
+ 	    file_conv=wine
+ 	    ;;
+@@ -70,6 +73,9 @@
+ 	cygwin/*)
+ 	  file=`cygpath -m "$file" || echo "$file"`
+ 	  ;;
++	msys/*)
++	  file=`cygpath -m "$file" || echo "$file"`
++	  ;;
+ 	wine/*)
+ 	  file=`winepath -w "$file" || echo "$file"`
+ 	  ;;
+diff -Naur texinfo-6.5-orig/tp/Texinfo/MiscXS/config.guess texinfo-6.5/tp/Texinfo/MiscXS/config.guess
+--- texinfo-6.5-orig/tp/Texinfo/MiscXS/config.guess	2016-12-24 14:52:43.000000000 +0300
++++ texinfo-6.5/tp/Texinfo/MiscXS/config.guess	2018-08-03 08:07:04.538890200 +0300
+@@ -867,6 +867,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur texinfo-6.5-orig/tp/Texinfo/MiscXS/m4/ltoptions.m4 texinfo-6.5/tp/Texinfo/MiscXS/m4/ltoptions.m4
+--- texinfo-6.5-orig/tp/Texinfo/MiscXS/m4/ltoptions.m4	2017-01-13 22:49:20.000000000 +0300
++++ texinfo-6.5/tp/Texinfo/MiscXS/m4/ltoptions.m4	2018-08-03 08:07:32.478539200 +0300
+@@ -128,7 +128,7 @@
+ [enable_win32_dll=yes
+ 
+ case $host in
+-*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-cegcc*)
++*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-cegcc*)
+   AC_CHECK_TOOL(AS, as, false)
+   AC_CHECK_TOOL(DLLTOOL, dlltool, false)
+   AC_CHECK_TOOL(OBJDUMP, objdump, false)
