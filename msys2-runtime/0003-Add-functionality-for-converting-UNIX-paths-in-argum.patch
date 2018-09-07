@@ -1,4 +1,4 @@
-From 0b7ec9ae687bb74123c567c1676a141d8832dfdb Mon Sep 17 00:00:00 2001
+From a43140231840fceeb9d0263e808214f1f8d4edaf Mon Sep 17 00:00:00 2001
 From: Alexpux <alexey.pawlow@gmail.com>
 Date: Thu, 12 Mar 2015 13:58:27 +0300
 Subject: [PATCH 03/23] Add functionality for converting UNIX paths in
@@ -11,9 +11,9 @@ Subject: [PATCH 03/23] Add functionality for converting UNIX paths in
  winsup/cygwin/environ.h            |   2 +-
  winsup/cygwin/external.cc          |   2 +-
  winsup/cygwin/include/sys/cygwin.h |   6 +
- winsup/cygwin/msys2_path_conv.cc   | 619 +++++++++++++++++++++++++++++++++++++
- winsup/cygwin/msys2_path_conv.h    | 146 +++++++++
- winsup/cygwin/path.cc              |  64 ++++
+ winsup/cygwin/msys2_path_conv.cc   | 619 +++++++++++++++++++++++++++++
+ winsup/cygwin/msys2_path_conv.h    | 146 +++++++
+ winsup/cygwin/path.cc              |  64 +++
  winsup/cygwin/spawn.cc             |  48 ++-
  winsup/cygwin/winf.h               |   4 +
  10 files changed, 899 insertions(+), 9 deletions(-)
@@ -21,10 +21,10 @@ Subject: [PATCH 03/23] Add functionality for converting UNIX paths in
  create mode 100644 winsup/cygwin/msys2_path_conv.h
 
 diff --git a/winsup/cygwin/Makefile.in b/winsup/cygwin/Makefile.in
-index 88d5c4936..ebb92e674 100644
+index beedc7c5e..b7ef34b3a 100644
 --- a/winsup/cygwin/Makefile.in
 +++ b/winsup/cygwin/Makefile.in
-@@ -335,6 +335,7 @@ DLL_OFILES:= \
+@@ -338,6 +338,7 @@ DLL_OFILES:= \
  	mmap.o \
  	msg.o \
  	msgcat.o \
@@ -33,10 +33,10 @@ index 88d5c4936..ebb92e674 100644
  	net.o \
  	netdb.o \
 diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
-index 43225341c..e26812d2e 100644
+index 67ead1dde..851922d37 100644
 --- a/winsup/cygwin/environ.cc
 +++ b/winsup/cygwin/environ.cc
-@@ -1012,7 +1012,7 @@ env_compare (const void *key, const void *memb)
+@@ -1043,7 +1043,7 @@ env_compare (const void *key, const void *memb)
     to the child. */
  char ** __reg3
  build_env (const char * const *envp, PWCHAR &envblock, int &envc,
@@ -45,7 +45,7 @@ index 43225341c..e26812d2e 100644
  {
    PWCHAR cwinenv = NULL;
    size_t winnum = 0;
-@@ -1100,6 +1100,11 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+@@ -1136,6 +1136,11 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
    for (srcp = envp, dstp = newenv, pass_dstp = pass_env; *srcp; srcp++)
      {
        bool calc_tl = !no_envblock;
@@ -57,7 +57,7 @@ index 43225341c..e26812d2e 100644
        /* Look for entries that require special attention */
        for (unsigned i = 0; i < SPENVS_SIZE; i++)
  	if (!saw_spenv[i] && (*dstp = spenvs[i].retrieve (no_envblock, *srcp)))
-@@ -1220,6 +1225,15 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+@@ -1256,6 +1261,15 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
  		  saw_PATH = true;
  		}
  	    }
@@ -894,18 +894,18 @@ index 000000000..e1e5e8781
 +#endif /* end of include guard: PATH_CONV_H_DB4IQBH3 */
 +
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index cf6422341..2113bb27e 100644
+index 6d8f76db5..cd544e0d8 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
-@@ -68,6 +68,7 @@
- #include "cygtls.h"
+@@ -66,6 +66,7 @@
+ #include "shared_info.h"
  #include "tls_pbuf.h"
  #include "environ.h"
 +#include "msys2_path_conv.h"
- #include <assert.h>
- #include <ntdll.h>
- #include <wchar.h>
-@@ -3333,6 +3334,69 @@ fchdir (int fd)
+ #undef basename
+ 
+ suffix_info stat_suffixes[] =
+@@ -3357,6 +3358,69 @@ fchdir (int fd)
    return res;
  }
  
@@ -1065,5 +1065,5 @@ index e3a65f8cc..1aeec8d9c 100644
    {
      for (int i = calloced; i < argc; i++)
 -- 
-2.16.1
+2.18.0
 
