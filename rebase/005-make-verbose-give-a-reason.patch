@@ -1,0 +1,101 @@
+X-Git-Url: https://cygwin.com/git/gitweb.cgi?p=cygwin-apps%2Frebase.git;a=blobdiff_plain;f=rebase.c;h=0cf66451cc62ebe6f96ccd5d9ab51aacf16e315f;hp=6f98d37f5dc8caaf4e2c1e920308edb2da054e10;hb=f2091d130b7bc09f90fa63494e72da5d50f957f0;hpb=2b306dafb760311b04633e611e9931ed638ad15b
+
+diff --git a/rebase.c b/rebase.c
+index 6f98d37..0cf6645 100644
+--- a/rebase.c
++++ b/rebase.c
+@@ -649,7 +649,14 @@ merge_image_info ()
+ 		{
+ 		  /* Reuse the old address if possible. */
+ 		  if (match->slot_size < img_info_list[i].slot_size)
+-		    match->base = 0;
++		    {
++		      match->base = 0;
++		      if (verbose)
++		        fprintf (stderr, "rebasing %s because it won't fit in it's old slot size\n", img_info_list[i].name);
++		    }
++		  else if (verbose)
++		    fprintf (stderr, "rebasing %s because it's not located at it's old slot\n", img_info_list[i].name);
++
+ 		  match->flag.needs_rebasing = 1;
+ 		}
+ 	      /* Unconditionally overwrite old with new size. */
+@@ -668,8 +675,12 @@ merge_image_info ()
+ 	      img_info_list[i--] = img_info_list[--img_info_size];
+ 	    }
+ 	  else if (!img_info_list[i].flag.cannot_rebase)
+-	    /* Not in database yet.  Set base to 0 to choose a new one. */
+-	    img_info_list[i].base = 0;
++	    {
++	      /* Not in database yet.  Set base to 0 to choose a new one. */
++	      img_info_list[i].base = 0;
++	      if (verbose)
++		fprintf (stderr, "rebasing %s because not in database yet\n", img_info_list[i].name);
++	    }
+ 	}
+     }
+   if (!img_info_rebase_start || force_rebase_flag)
+@@ -682,7 +693,11 @@ merge_image_info ()
+ 	  if (i < img_info_rebase_start)
+ 	    set_cannot_rebase (&img_info_list[i]);
+ 	  if (!img_info_list[i].flag.cannot_rebase)
+-	    img_info_list[i].base = 0;
++	    {
++	      img_info_list[i].base = 0;
++	      if (verbose)
++		fprintf (stderr, "rebasing %s because forced or database missing\n", img_info_list[i].name);
++	    }
+ 	}
+       img_info_rebase_start = 0;
+     }
+@@ -726,6 +741,8 @@ merge_image_info ()
+ 	  if (cur_base != img_info_list[i].base)
+ 	    {
+ 	      img_info_list[i].flag.needs_rebasing = 1;
++	      if (verbose)
++		fprintf (stderr, "rebasing %s because it's base has changed (due to being reinstalled?)\n", img_info_list[i].name);
+ 	      /* Set cur_base to the old base to simplify subsequent tests. */
+ 	      cur_base = img_info_list[i].base;
+ 	    }
+@@ -733,17 +750,29 @@ merge_image_info ()
+ 	     anymore, rebase this DLL from scratch. */
+ 	  if (i + 1 < img_info_rebase_start
+ 	      && cur_base + slot_size + offset >= img_info_list[i + 1].base)
+-	    img_info_list[i].base = 0;
++	    {
++	      img_info_list[i].base = 0;
++	      if (verbose)
++		fprintf (stderr, "rebasing %s because it won't fit in it's old slot without overlapping next DLL\n", img_info_list[i].name);
++	    }
+ 	  /* Does the previous DLL reach into the address space of this
+ 	     DLL?  This happens if the previous DLL is not rebaseable. */
+ 	  else if (i > 0 && cur_base < img_info_list[i - 1].base
+ 				       + img_info_list[i + 1].slot_size)
+-	    img_info_list[i].base = 0;
++	    {
++	      img_info_list[i].base = 0;
++	      if (verbose)
++		fprintf (stderr, "rebasing %s because previous DLL now overlaps\n", img_info_list[i].name);
++	    }
+ 	  /* Does the file match the base address requirements?  If not,
+ 	     rebase from scratch. */
+ 	  else if ((down_flag && cur_base + slot_size + offset >= image_base)
+ 		   || (!down_flag && cur_base < image_base))
+-	    img_info_list[i].base = 0;
++	    {
++	      img_info_list[i].base = 0;
++	      if (verbose)
++		fprintf (stderr, "rebasing %s because it's base address is outside the expected area\n", img_info_list[i].name);
++	    }
+ 	}
+       /* Unconditionally overwrite old with new size. */
+       img_info_list[i].size = cur_size;
+@@ -940,6 +969,8 @@ collect_image_info (const char *pathname)
+     img_info_list[img_info_size].name_size = strlen (full_path) + 1;
+   }
+ #endif
++  if (verbose)
++    fprintf (stderr, "rebasing %s because filename given on command line\n", img_info_list[img_info_size].name);
+   ++img_info_size;
+   return TRUE;
+ }

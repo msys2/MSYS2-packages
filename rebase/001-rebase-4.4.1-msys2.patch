@@ -1,0 +1,312 @@
+diff -urN rebase-4.4.1.orig/build.sh rebase-4.4.1/build.sh
+--- rebase-4.4.1.orig/build.sh	2014-06-13 22:24:51.315930500 +0100
++++ rebase-4.4.1/build.sh	2014-06-13 22:25:12.462140000 +0100
+@@ -30,7 +30,9 @@
+ 	   Prefix=/mingw
+            confargs="--with-dash --prefix=`cd $Prefix && pwd -W`"
+   ;;
+-  MSYS*)   confargs="--with-dash --prefix=$Prefix"
++  MSYS*)   CXXFLAGS="-static -static-libgcc -static-libstdc++"
++           CFLAGS="-static -static-libgcc"
++	   confargs="--prefix=$Prefix"
+   ;;
+ esac
+ 
+diff -urN rebase-4.4.1.orig/build-aux/config.guess rebase-4.4.1/build-aux/config.guess
+--- rebase-4.4.1.orig/build-aux/config.guess	2014-06-13 22:24:51.313930400 +0100
++++ rebase-4.4.1/build-aux/config.guess	2014-06-13 22:25:12.465140200 +0100
+@@ -843,6 +843,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -urN rebase-4.4.1.orig/configure.ac rebase-4.4.1/configure.ac
+--- rebase-4.4.1.orig/configure.ac	2014-06-13 22:24:51.317930600 +0100
++++ rebase-4.4.1/configure.ac	2014-06-13 22:25:32.231270700 +0100
+@@ -2,7 +2,7 @@
+ # configure.ac for rebase
+ 
+ AC_PREREQ([2.64])
+-AC_INIT([rebase], [4.4.4], [cygwin@cygwin.com])
++AC_INIT([rebase], [4.4.4], [msys2-users@lists.sourceforge.net])
+ AC_CONFIG_AUX_DIR([build-aux])
+ AC_CONFIG_SRCDIR([peflags.c])
+ AC_PREFIX_DEFAULT([/usr])
+@@ -28,19 +28,12 @@
+ 
+ AC_CHECK_DECLS([cygwin_conv_path], [],[
+   case "$host" in
+-  *cygwin* ) AC_MSG_ERROR([At least cygwin-1.7 is required]) ;;
++  *cygwin* | *msys* ) AC_MSG_ERROR([At least cygwin-1.7 is required]) ;;
+   esac],dnl
+   [[#include <sys/cygwin.h>]])
+ 
+-LIBOBJS=
+ case "$host" in
+-  *msys* ) AC_LIBOBJ([getopt_long])
+-           AC_LIBOBJ([strtoll]) ;;
+-esac
+-AC_SUBST([LIBOBJS])
+-
+-case "$host" in
+- *mingw* | *msys* )	DEFAULT_OFFSET_VALUE=0x10000 ;;
++ *mingw* )	DEFAULT_OFFSET_VALUE=0x10000 ;;
+  *)			DEFAULT_OFFSET_VALUE=0 ;;
+ esac
+ AC_SUBST(DEFAULT_OFFSET_VALUE)
+@@ -48,7 +41,7 @@
+ case "$host" in
+  *msys*   )	EXTRA_CFLAG_OVERRIDES=
+ 		EXTRA_LDFLAG_OVERRIDES="-static-libgcc"
+-		EXTRA_CXX_LDFLAG_OVERRIDES=
++		EXTRA_CXX_LDFLAG_OVERRIDES="-static-libstdc++"
+    ;;
+  *cygwin* )	EXTRA_CFLAG_OVERRIDES=
+ 		EXTRA_LDFLAG_OVERRIDES="-static-libgcc"
+diff -urN rebase-4.4.1.orig/imagehelper/objectfile.cc rebase-4.4.1/imagehelper/objectfile.cc
+--- rebase-4.4.1.orig/imagehelper/objectfile.cc	2014-06-13 22:24:51.322930900 +0100
++++ rebase-4.4.1/imagehelper/objectfile.cc	2014-06-13 22:25:12.467140300 +0100
+@@ -41,12 +41,6 @@
+     return L"";
+ #if !defined (__CYGWIN__)
+   MultiByteToWideChar (CP_OEMCP, 0, s, -1, w32_pbuf, 32768);
+-#elif defined(__MSYS__)
+-  {
+-    char buf[MAX_PATH];
+-    cygwin_conv_to_win32_path(s, buf);
+-    MultiByteToWideChar (CP_OEMCP, 0, buf, -1, w32_pbuf, 32768);
+-  }
+ #else
+   cygwin_conv_path (CCP_POSIX_TO_WIN_W, s, w32_pbuf, 32768 * sizeof (WCHAR));
+ #endif
+@@ -491,9 +485,11 @@
+   ObjectFile test("/bin/cygz.dll");
+   std::cout << test.getFileName() << std::endl;
+ 
+-
++#if defined (__MSYS__)
++  LinkedObjectFile test("/usr/bin/msys-z.dll");
++#else
+   LinkedObjectFile test("/bin/cygz.dll");
+-
++#endif
+   /* FIXME: update necessary
+     char *symbol = "gzgets"; 
+     std::cerr << std::setw(20) << std::setfill(' ') << symbol << " 0x" \
+diff -urN rebase-4.4.1.orig/imagehelper/sections.h rebase-4.4.1/imagehelper/sections.h
+--- rebase-4.4.1.orig/imagehelper/sections.h	2014-06-13 22:24:51.325931100 +0100
++++ rebase-4.4.1/imagehelper/sections.h	2014-06-13 22:25:12.468140400 +0100
+@@ -23,8 +23,8 @@
+ 
+ #include <windows.h>
+ 
+-#if !defined(__CYGWIN__) || defined(__MSYS__)
+-/* MinGW|MSYS: mingw only defines uintptr_t for        */
++#if !defined(__CYGWIN__)
++/* MinGW: mingw only defines uintptr_t for        */
+ /* MSVC 2005 or better, and MSYS doesn't have stdint.h */
+ # ifndef _UINTPTR_T_DEFINED
+ #  define _UINTPTR_T_DEFINED
+diff -urN rebase-4.4.1.orig/peflags.c rebase-4.4.1/peflags.c
+--- rebase-4.4.1.orig/peflags.c	2014-06-13 22:24:51.326931200 +0100
++++ rebase-4.4.1/peflags.c	2014-06-13 22:25:12.469140400 +0100
+@@ -34,21 +34,10 @@
+ #if defined (__CYGWIN__) || defined (__MSYS__)
+ #include <sys/mman.h>
+ #endif
+-#if defined(__MSYS__)
+-/* MSYS has no inttypes.h */
+-# define PRIu64 "llu"
+-# define PRIx64 "llx"
+-#else
+-# include <inttypes.h>
+-#endif
++#include <inttypes.h>
+ 
+ #include <windows.h>
+ 
+-#if defined(__MSYS__)
+-/* MSYS has no strtoull */
+-unsigned long long strtoull(const char *, char **, int);
+-#endif
+-
+ /* Fix broken definitions in older w32api. */
+ #ifndef IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE
+ #define IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE IMAGE_DLL_CHARACTERISTICS_DYNAMIC_BASE
+diff -urN rebase-4.4.1.orig/peflagsall.in rebase-4.4.1/peflagsall.in
+--- rebase-4.4.1.orig/peflagsall.in	2014-06-13 22:24:51.326931200 +0100
++++ rebase-4.4.1/peflagsall.in	2014-06-13 22:25:12.470140500 +0100
+@@ -268,7 +268,7 @@
+     do
+       find $f -type f |
+         grep -E "\.($Suffixes)\$" |
+-        sed -e '/msys-1\.0.*\.dll$/d' -e '/cygwin1\.dll$/d' \
++        sed -e '/msys-2\.0.*\.dll$/d' -e '/cygwin1\.dll$/d' \
+             -e '/cyglsa.*\.dll$/d' -e '/d?ash\.exe$/d' \
+             -e '/peflags\.exe$/d' >>"$TmpFile"
+     done
+diff -urN rebase-4.4.1.orig/rebase.c rebase-4.4.1/rebase.c
+--- rebase-4.4.1.orig/rebase.c	2014-06-13 22:24:51.328931300 +0100
++++ rebase-4.4.1/rebase.c	2014-06-13 22:25:12.471140500 +0100
+@@ -56,11 +56,6 @@
+ int file_list_fclose (FILE *file);
+ void version ();
+ 
+-#if defined(__MSYS__)
+-/* MSYS has no strtoull */
+-unsigned long long strtoull(const char *, char **, int);
+-#endif
+-
+ #ifdef __x86_64__
+ WORD machine = IMAGE_FILE_MACHINE_AMD64;
+ #else
+@@ -109,7 +104,7 @@
+ ULONG cygwin_dll_image_size = 0;
+ #endif
+ #if defined(__MSYS__)
+-# define CYGWIN_DLL "/usr/bin/msys-1.0.dll"
++# define CYGWIN_DLL "/usr/bin/msys-2.0.dll"
+ #elif defined (__CYGWIN__)
+ # define CYGWIN_DLL "/usr/bin/cygwin1.dll"
+ #endif
+@@ -153,8 +148,25 @@
+ #if defined(__MSYS__)
+   if (machine == IMAGE_FILE_MACHINE_I386)
+     {
+-      GetImageInfos64 ("/bin/msys-1.0.dll", NULL,
+-	               &cygwin_dll_image_base, &cygwin_dll_image_size);
++      /* Fetch the MSYS DLLs data to make sure that DLLs aren't rebased
++	 into the memory area taken by the MSYS DLL. */
++      GetImageInfos64 ("/usr/bin/msys-2.0.dll", NULL,
++		       &cygwin_dll_image_base, &cygwin_dll_image_size);
++      /* Take the up to four shared memory areas preceeding the DLL into
++      	 account. */
++      cygwin_dll_image_base -= 4 * ALLOCATION_SLOT;
++      /* Add a slack of 8 * 64K at the end of the MSYS DLL.  This leave a
++	 bit of room to install newer, bigger MSYS DLLs, as well as room to
++	 install non-optimized DLLs for debugging purposes.  Otherwise the
++	 slightest change might break fork again :-P */
++      cygwin_dll_image_size += 4 * ALLOCATION_SLOT + 8 * ALLOCATION_SLOT;
++    }
++  else
++    {
++      /* On x86_64 Cygwin, we want to keep free the whole 2 Gigs area in which
++	 the Cygwin DLL resides, no matter what. */
++      cygwin_dll_image_base = 0x180000000L;
++      cygwin_dll_image_size = 0x080000000L;
+     }
+ #elif defined(__CYGWIN__)
+   if (machine == IMAGE_FILE_MACHINE_I386)
+@@ -865,16 +877,7 @@
+   /* This back and forth from POSIX to Win32 is a way to get a full path
+      more thoroughly.  For instance, the difference between /bin and
+      /usr/bin will be eliminated. */
+-#if defined (__MSYS__)
+-  {
+-    char w32_path[MAX_PATH];
+-    char full_path[MAX_PATH];
+-    cygwin_conv_to_full_win32_path (pathname, w32_path);
+-    cygwin_conv_to_full_posix_path (w32_path, full_path);
+-    img_info_list[img_info_size].name = strdup (full_path);
+-    img_info_list[img_info_size].name_size = strlen (full_path) + 1;
+-  }
+-#elif defined (__CYGWIN__)
++#if defined (__CYGWIN__)
+   {
+     PWSTR w32_path = cygwin_create_path (CCP_POSIX_TO_WIN_W, pathname);
+     if (!w32_path)
+diff -urN rebase-4.4.1.orig/rebaseall.in rebase-4.4.1/rebaseall.in
+--- rebase-4.4.1.orig/rebaseall.in	2014-06-13 22:24:51.328931300 +0100
++++ rebase-4.4.1/rebaseall.in	2014-06-13 22:25:12.473140600 +0100
+@@ -90,7 +90,7 @@
+ 
+ # On x86_64 Cygwin, set DefaultAddressBase to 0x4:00000000
+ case $Platform in
+-  cygwin )
++  cygwin | msys )
+     [ `uname -m` = "x86_64" ] && DefaultBaseAddress=0x400000000
+     ;;
+   * )
+@@ -235,10 +235,24 @@
+     do
+       find $f -type f |
+         grep -E "\.($Suffixes)\$" |
+-	sed -e '/\/msys-1\.0.*\.dll$/d' -e '/\/cygwin1\.dll$/d' \
++	sed -e '/\/msys-2\.0.*\.dll$/d' -e '/\/cygwin1\.dll$/d' \
+ 	    -e '/\/cyglsa.*\.dll$/d' -e '/\/d\?ash\.exe$/d' \
+ 	    -e '/\/rebase\.exe$/d' >>"$TmpFile"
+     done
++	# some interpreters include a method for installing addons outside of the
++    # package manager, such as CPAN and RubyGems.
++    for d in /usr/lib/perl5/site_perl /usr/lib/py*/site-packages \
++             /usr/lib/php /usr/lib/R/site-library /usr/lib/rub*/gems \
++             /usr/lib/octave/site
++    do
++      if [ -d $d ]
++      then
++        find $d -type f | grep -E "\.($Suffixes)\$" >>"${TmpFile}"
++      fi
++    done
++    # Unconditionally add the -n flag so rebased DLLs get the
++    # dynamicbase flag removed.
++    NoDyn='-n'
+     ;;
+ esac
+ 
+diff -urN rebase-4.4.1.orig/rebase-db.c rebase-4.4.1/rebase-db.c
+--- rebase-4.4.1.orig/rebase-db.c	2014-06-13 22:24:51.327931200 +0100
++++ rebase-4.4.1/rebase-db.c	2014-06-13 22:25:12.474140700 +0100
+@@ -18,12 +18,7 @@
+  */
+ #include "rebase-db.h"
+ 
+-#if defined(__MSYS__)
+-/* MSYS has no inttypes.h */
+-# define PRIx64 "llx"
+-#else
+-# include <inttypes.h>
+-#endif
++#include <inttypes.h>
+ 
+ const char IMG_INFO_MAGIC[4] = "rBiI";
+ const ULONG IMG_INFO_VERSION = 1;
+diff -urN rebase-4.4.1.orig/rebase-db.h rebase-4.4.1/rebase-db.h
+--- rebase-4.4.1.orig/rebase-db.h	2014-06-13 22:24:51.327931200 +0100
++++ rebase-4.4.1/rebase-db.h	2014-06-13 22:25:12.474140700 +0100
+@@ -21,13 +21,7 @@
+ 
+ #include <windows.h>
+ #include <stdio.h>
+-#if defined(__MSYS__)
+-/* MSYS has no inttypes.h */
+-# define PRIu64 "llu"
+-# define PRIx64 "llx"
+-#else
+-# include <inttypes.h>
+-#endif
++#include <inttypes.h>
+ 
+ #define roundup(x,y)	((((x) + ((y) - 1)) / (y)) * (y))
+ #define roundup2(x,y)	(((x) + (y) - 1) & ~((y) - 1))
+diff -urN rebase-4.4.1.orig/rebase-dump.c rebase-4.4.1/rebase-dump.c
+--- rebase-4.4.1.orig/rebase-dump.c	2014-06-13 22:24:51.327931200 +0100
++++ rebase-4.4.1/rebase-dump.c	2014-06-13 22:25:12.475140800 +0100
+@@ -32,12 +32,7 @@
+ #include <locale.h>
+ #include <getopt.h>
+ #include <string.h>
+-#if defined(__MSYS__)
+-/* MSYS has no inttypes.h */
+-# define PRIx64 "llx"
+-#else
+-# include <inttypes.h>
+-#endif
++#include <inttypes.h>
+ #include <errno.h>
+ #include <windows.h>
+ #include "rebase-db.h"

@@ -1,0 +1,144 @@
+--- origsrc/glib-2.50.3/gmodule/gmodule-win32.c	2017-03-17 13:34:41.869717400 -0500
++++ src/glib-2.50.3/gmodule/gmodule-win32.c	2017-03-17 13:43:50.357304400 -0500
+@@ -37,7 +37,20 @@
+ 
+ #ifdef G_WITH_CYGWIN
+ #include <sys/cygwin.h>
+-#endif
++#include <dlfcn.h>
++
++static gchar*
++fetch_dlerror (gboolean replace_null)
++{
++  gchar *msg = dlerror ();
++
++  if (!msg && replace_null)
++    return "unknown dl-error";
++
++  return msg;
++}
++
++#else
+ 
+ static void
+ set_error (const gchar *format,
+@@ -62,20 +75,24 @@ set_error (const gchar *format,
+   g_free (error);
+ }
+ 
++#endif /* G_WITH_CYGWIN */
++
+ /* --- functions --- */
+ static gpointer
+ _g_module_open (const gchar *file_name,
+ 		gboolean     bind_lazy,
+ 		gboolean     bind_local)
+ {
+-  HINSTANCE handle;
+-  wchar_t *wfilename;
+ #ifdef G_WITH_CYGWIN
+-  gchar tmp[MAX_PATH];
++  gpointer handle;
+ 
+-  cygwin_conv_to_win32_path(file_name, tmp);
+-  file_name = tmp;
+-#endif
++  handle = dlopen (file_name,
++          (bind_local ? RTLD_LOCAL : RTLD_GLOBAL) | (bind_lazy ? RTLD_LAZY : RTLD_NOW));
++  if (!handle)
++    g_module_set_error (fetch_dlerror (TRUE));
++#else
++  HINSTANCE handle;
++  wchar_t *wfilename;
+   wfilename = g_utf8_to_utf16 (file_name, -1, NULL, NULL, NULL);
+ 
+   handle = LoadLibraryW (wfilename);
+@@ -83,26 +100,44 @@ _g_module_open (const gchar *file_name,
+       
+   if (!handle)
+     set_error ("'%s': ", file_name);
++#endif
+ 
+   return handle;
+ }
+ 
++#ifndef G_WITH_CYGWIN
+ static gint dummy;
+ static gpointer null_module_handle = &dummy;
++#endif
+   
+ static gpointer
+ _g_module_self (void)
+ {
++#ifdef G_WITH_CYGWIN
++  gpointer handle;
++
++  handle = dlopen (NULL, RTLD_GLOBAL | RTLD_LAZY);
++  if (!handle)
++    g_module_set_error (fetch_dlerror (TRUE));
++
++  return handle;
++#else
+   return null_module_handle;
++#endif
+ }
+ 
+ static void
+ _g_module_close (gpointer handle,
+ 		 gboolean is_unref)
+ {
++#ifdef G_WITH_CYGWIN
++  if (dlclose (handle) != 0)
++    g_module_set_error (fetch_dlerror (TRUE));
++#else
+   if (handle != null_module_handle)
+     if (!FreeLibrary (handle))
+       set_error ("");
++#endif
+ }
+ 
+ static gpointer
+@@ -121,8 +156,19 @@ find_in_any_module_using_toolhelp (const
+   if (Module32First (snapshot, &me32))
+     {
+       do {
+-	if ((p = GetProcAddress (me32.hModule, symbol_name)) != NULL)
+-	  break;
++	if ((p = GetProcAddress (me32.hModule, symbol_name)) != NULL) {
++#ifdef G_WITH_CYGWIN
++	  /* if symbol is found in another module, we probably do not want it */
++	  ssize_t size = cygwin_conv_path (CCP_WIN_A_TO_POSIX, me32.szExePath, NULL, 0);
++	  char *posix = (char *) alloca (size);
++	  cygwin_conv_path (CCP_WIN_A_TO_POSIX, me32.szExePath, posix, size);
++	  if (g_strstr_len (posix, size, "/usr/lib")
++	      || g_strstr_len (posix, size, "/usr/local/lib"))
++	    p = NULL;
++	  else
++#endif
++	    break;
++	  }
+       } while (Module32Next (snapshot, &me32));
+     }
+ 
+@@ -148,6 +193,13 @@ _g_module_symbol (gpointer     handle,
+ {
+   gpointer p;
+   
++#ifdef G_WITH_CYGWIN
++  p = dlsym (handle, symbol_name);
++  if (!p)
++    p = find_in_any_module (symbol_name);
++  if (!p)
++    g_module_set_error (fetch_dlerror (FALSE));
++#else
+   if (handle == null_module_handle)
+     {
+       if ((p = GetProcAddress (GetModuleHandle (NULL), symbol_name)) == NULL)
+@@ -158,6 +210,7 @@ _g_module_symbol (gpointer     handle,
+ 
+   if (!p)
+     set_error ("");
++#endif
+ 
+   return p;
+ }

@@ -2,8 +2,8 @@
 
 pkgbase=libgcrypt
 pkgname=('libgcrypt' 'libgcrypt-devel')
-pkgver=1.8.1
-pkgrel=1
+pkgver=1.8.3
+pkgrel=2
 pkgdesc="General purpose cryptographic library based on the code from GnuPG"
 arch=(i686 x86_64)
 url="https://gnupg.org"
@@ -12,23 +12,33 @@ depends=('libgpg-error')
 makedepends=('libgpg-error-devel')
 options=('!emptydirs')
 source=(https://gnupg.org/ftp/gcrypt/${pkgname}/${pkgname}-${pkgver}.tar.bz2
-        libgcrypt-1.7.3-ecc-test-fix.patch
-        libgcrypt-1.7.3-aliasing.patch
         1.7.6-cygwin-asm.patch
-        libgcrypt-1.6.1-msys2.patch)
-sha256sums=('7a2875f8b1ae0301732e878c0cca2c9664ff09ef71408f085c50e332656a78b3'
-            '3a420cc2b238203b1d107bb20313bfdaa79f8a1358678a2f222093223132038c'
-            '0a3d63b4fe6da05f5ac0b69cdf32290f4c381c58344658bf3beaddeafe46b426'
+        libgcrypt-1.7.3-ecc-test-fix.patch
+        libgcrypt-1.8.0-use-poll.patch
+        libgcrypt-1.6.1-msys2.patch
+        ecc-curves.c
+        curves.c
+        t-mpi-point.c)
+sha256sums=('66ec90be036747602f2b48f98312361a9180c97c68a690a5f376fa0f67d0af7c'
             'a1a493b4414b203a78761fca17a53d2c859847254ad171f448e743735f112099'
-            'cd7f58dc81a13328e34e0de8c6011196b5a2aa61b69dd611d4d7579ebf6cbb32')
+            '3a420cc2b238203b1d107bb20313bfdaa79f8a1358678a2f222093223132038c'
+            '488e6ff582dbcdf75d1330a7811a963867026ca6519564a04c1109c4f74ddca0'
+            'cd7f58dc81a13328e34e0de8c6011196b5a2aa61b69dd611d4d7579ebf6cbb32'
+            '6bdb3af59ba93404eae5499fe16a65c7e2d56c8b2f6a42030ed8e72fa0c6db50'
+            'bb012228f4957287ede2d621c2e394e8aa0282edfe247d55021400e1514ac7c3'
+            'c8173c6b97b4d7946a0742304190ce7ca4594f4539ad62eb5ebdc3dda01a0577')
 
 prepare() {
-  cd "$srcdir/$pkgname-$pkgver"
+  cd "${srcdir}/${pkgname}-${pkgver}"
 
   patch -p1 -i ${srcdir}/libgcrypt-1.7.3-ecc-test-fix.patch
-  patch -p1 -i ${srcdir}/libgcrypt-1.7.3-aliasing.patch
+  patch -p1 -i ${srcdir}/libgcrypt-1.8.0-use-poll.patch
   patch -p2 -i ${srcdir}/1.7.6-cygwin-asm.patch
   patch -p1 -i ${srcdir}/libgcrypt-1.6.1-msys2.patch
+
+  mv ${srcdir}/ecc-curves.c cipher/
+  mv ${srcdir}/curves.c ${srcdir}/t-mpi-point.c tests/
+
   autoreconf -fi
 }
 
@@ -38,7 +48,14 @@ build() {
     --prefix=/usr \
     --build=${CHOST} \
     --enable-shared \
-    --enable-static
+    --enable-static \
+    --exec-prefix=/usr \
+    --localstatedir=/var \
+    --sysconfdir=/etc \
+    --docdir=/usr/share/doc/libgcrypt \
+    --htmldir=/usr/share/doc/libgcrypt/html \
+    --config-cache \
+    --disable-asm
 
   make no_undefined=-no-undefined
   make DESTDIR=${srcdir}/dest install
@@ -51,7 +68,7 @@ check() {
 
 package_libgcrypt() {
   groups=('libraries')
-  install=$pkgname.install
+  install=${pkgname}.install
 
   mkdir -p ${pkgdir}/usr/share
   cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/

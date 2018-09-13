@@ -15,6 +15,11 @@
 # If not running interactively, don't do anything
 [[ "$-" != *i* ]] && return
 
+# If started from sshd, make sure profile is sourced
+if [[ -n "$SSH_CONNECTION" ]] && [[ "$PATH" != *:/usr/bin* ]]; then
+    source /etc/profile
+fi
+
 # Warnings
 unset _warning_found
 for _warning_prefix in '' ${MINGW_PREFIX}; do

@@ -19,4 +19,4 @@
 #mapping, rather than the locale setting.  Only on Windows 2000 which
 #doesn't know about the user's geographical location, or if fetching
 #the geographical location fails, it falls back to the user's locale.
-test -z "$TZ" && export TZ=$(/usr/bin/tzset)
+test -z "$TZ" && export TZ=$(exec /usr/bin/tzset)

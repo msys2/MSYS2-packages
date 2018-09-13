@@ -2,21 +2,17 @@
 
 pkgbase=rhash
 pkgname=("lib${pkgbase}" "lib${pkgbase}-devel" "${pkgbase}")
-pkgver=1.3.5
-pkgrel=2
+pkgver=1.3.6
+pkgrel=1
 pkgdesc='Utility for verifying hash sums of files'
 url='http://rhash.anz.ru/?l=en'
 license=('custom' 'MIT')
 arch=('i686' 'x86_64')
 source=("https://downloads.sourceforge.net/rhash/rhash-${pkgver}-src.tar.gz"
-        001-mingw-cygwin-msys.patch
-        002-fix-symlinks.patch)
+        001-mingw.patch)
 makedepends=('openssl-devel')
-sha256sums=('98e0688acae29e68c298ffbcdbb0f838864105f9b2bd8857980664435b1f1f2e'
-            '6d9cffe4dc72ee88df9f4364586c4d7c9f8a295a482abc26dd709bafc5af6d11'
-            '8d1c0c742c2beb95dbb465e2936820429739384a63131e82c1d95d528f74e382')
-
-_make_params="CC=/usr/bin/gcc AR=/usr/bin/ar IS_WIN=yes DLLNAME_PREFIX=msys- ADDCFLAGS=-DOPENSSL_RUNTIME"
+sha256sums=('964df972b60569b5cb35ec989ced195ab8ea514fc46a74eab98e86569ffbcf92'
+            '0de7aa61dfe43fe7ed453d807c10604e1bcd664867b67b13c46a33efe9bc7480')
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -41,24 +37,23 @@ del_file_exists() {
 prepare() {
   cd ${srcdir}/RHash-${pkgver}
   apply_patch_with_msg \
-    001-mingw-cygwin-msys.patch \
-    002-fix-symlinks.patch
+    001-mingw.patch
 }
 
 build() {
   [[ -d "${srcdir}"/build-${CARCH} ]] && rm -rf "${srcdir}"/build-${CARCH}
   cp -r "${srcdir}"/RHash-${pkgver} "${srcdir}"/build-${CARCH}
   cd "${srcdir}"/build-${CARCH}
-  export ADDCFLAGS="$CFLAGS"
-  export ADDLDFLAGS="$LDFLAGS"
-  make ${_make_params} lib-shared lib-static build-shared
-  make install ${_make_params} install-conf install-lib-shared install-lib-static DESTDIR="${srcdir}/dest" PREFIX="/usr" 
+  ./configure --prefix=/usr --sysconfdir=/etc \
+     --enable-lib-static --enable-lib-shared
+  make 
+  make install DESTDIR="${srcdir}/dest" PREFIX="/usr" 
 }
 
 check() {
    echo "Skipping make check"
    cd "${srcdir}"/build-${CARCH}
-   make ${_make_params} test-shared-lib test-static-lib test
+   make test
 }
 
 package_librhash() {
@@ -95,6 +90,6 @@ package_rhash() {
   cp -rf ${srcdir}/dest/usr/bin/* ${pkgdir}/usr/bin/
   rm  -f ${pkgdir}/usr/bin/*.dll
   cp -rf ${srcdir}/dest/usr/share/* ${pkgdir}/usr
-  cp -rf ${srcdir}/dest/etc $}pkgdir}/
+  cp -rf ${srcdir}/dest/etc ${pkgdir}/etc
 }
 

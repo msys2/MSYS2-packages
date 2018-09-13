@@ -1,0 +1,77 @@
+diff -up libgcrypt-1.8.0/random/rndlinux.c.use-poll libgcrypt-1.8.0/random/rndlinux.c
+--- libgcrypt-1.8.0/random/rndlinux.c.use-poll	2017-06-24 13:34:29.000000000 +0200
++++ libgcrypt-1.8.0/random/rndlinux.c	2017-08-15 15:37:37.604629377 +0200
+@@ -32,6 +32,7 @@
+ #include <string.h>
+ #include <unistd.h>
+ #include <fcntl.h>
++#include <poll.h>
+ #if defined(__linux__) && defined(HAVE_SYSCALL)
+ # include <sys/syscall.h>
+ #endif
+@@ -216,9 +217,8 @@ _gcry_rndlinux_gather_random (void (*add
+                  return with something we will actually use 100ms. */
+   while (length)
+     {
+-      fd_set rfds;
+-      struct timeval tv;
+       int rc;
++      struct pollfd pfd;
+ 
+       /* If we have a modern Linux kernel and we want to read from the
+        * the non-blocking /dev/urandom, we first try to use the new
+@@ -276,36 +276,25 @@ _gcry_rndlinux_gather_random (void (*add
+           any_need_entropy = 1;
+         }
+ 
+-      /* If the system has no limit on the number of file descriptors
+-         and we encounter an fd which is larger than the fd_set size,
+-         we don't use the select at all.  The select code is only used
+-         to emit progress messages.  A better solution would be to
+-         fall back to poll() if available.  */
+-#ifdef FD_SETSIZE
+-      if (fd < FD_SETSIZE)
+-#endif
++      pfd.fd = fd;
++      pfd.events = POLLIN;
++
++      _gcry_pre_syscall ();
++      rc = poll(&pfd, 1, delay);
++      _gcry_post_syscall ();
++      if (!rc)
+         {
+-          FD_ZERO(&rfds);
+-          FD_SET(fd, &rfds);
+-          tv.tv_sec = delay;
+-          tv.tv_usec = delay? 0 : 100000;
+-          _gcry_pre_syscall ();
+-          rc = select (fd+1, &rfds, NULL, NULL, &tv);
+-          _gcry_post_syscall ();
+-          if (!rc)
+-            {
+-              any_need_entropy = 1;
+-              delay = 3; /* Use 3 seconds henceforth.  */
+-              continue;
+-            }
+-          else if( rc == -1 )
+-            {
+-              log_error ("select() error: %s\n", strerror(errno));
+-              if (!delay)
+-                delay = 1; /* Use 1 second if we encounter an error before
+-                              we have ever blocked.  */
+-              continue;
+-            }
++          any_need_entropy = 1;
++          delay = 3000; /* Use 3 seconds henceforth.  */
++          continue;
++        }
++        else if( rc == -1 )
++        {
++          log_error ("poll() error: %s\n", strerror(errno));
++          if (!delay)
++            delay = 1000; /* Use 1 second if we encounter an error before
++                          we have ever blocked.  */
++          continue;
+         }
+ 
+       do

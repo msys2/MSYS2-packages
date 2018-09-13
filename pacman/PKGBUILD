@@ -3,8 +3,8 @@
 # Contributor: Ray Donnelly <mingw.android@gmail.com>
 
 pkgname=pacman
-pkgver=5.0.1
-pkgrel=5
+pkgver=5.1.1
+pkgrel=2
 pkgdesc="A library-based package manager with dependency support (MSYS2 port)"
 arch=('i686' 'x86_64')
 url="https://www.archlinux.org/pacman/"
@@ -52,12 +52,13 @@ backup=("etc/pacman.conf"
         "etc/makepkg_mingw32.conf"
         "etc/makepkg_mingw64.conf")
 source=(https://sources.archlinux.org/other/pacman/${pkgname}-${pkgver}.tar.gz{,.sig}
+        https://git.archlinux.org/pacman-contrib.git/snapshot/pacman-contrib-1.0.0.tar.xz
         "pacman.conf"
         "makepkg.conf"
         "makepkg_mingw32.conf"
         "makepkg_mingw64.conf"
         "makepkg-mingw"
-        0000-pacman-msysize.patch
+        "0000-pacman-msysize.patch"
         "0001-more-debugging-info.patch"
         "0002-Add-util-msys2.-c-h-and-rebase-db-msys2.-c.patch"
         "0003-use-busybox-for-msys2-post-installs.patch"
@@ -65,46 +66,59 @@ source=(https://sources.archlinux.org/other/pacman/${pkgname}-${pkgver}.tar.gz{,
         "0005-Hack-gettext-libalpm-pkg-config-static-link.patch"
         "0006-makepkg-avoid-creating-.tar-files-with-extended-attr.patch"
         "0007-exe-interp-ignore-file-conflict.patch"
-        "0008-answer-yes-by-default.patch")
-sha256sums=('8bd5f407ce8e05c4be8f1c4be4d8dcc8550ea5e494937da5220ea2c23cbb8e04'
+        "0008-answer-yes-by-default.patch"
+        "0009-msys-use-pipe-instead-socket.patch"
+        "0050-fix-make-target-dependencies.patch"
+        "0100-contrib.patch")
+sha256sums=('be04b9162d62d2567e21402dcbabb5bedfdb03909fa5ec6e8568e02ab325bd8d'
             'SKIP'
+            'd47240396476eaf126b2f2a3f6ac77d5b397f5cc80b1c3700ba4fa355c4786c8'
             '6024bbf50cc92236b7b437430cb9e4180da91925cdc19a5a7910fe172931cfb6'
             '3d2f8a8c363a76ebd417e883cf28dc093e611b1360fe684d40e29540cbcb7ef2'
-            'e1e2f7a4ad1f0a26e72b0fbd68630392ce487c81f852474ca45c3728e00f0cc8'
-            'b63fd1ef326f75a17f892cef15a8874bba49a13b4c64d01f34e37548f3bfaeba'
+            '364552567f4d436e12f5b19634dd06ed0a9ae92a72d3e3f08ccbfaa8b69f48a5'
+            'c0e4f55fa0c4b7b9f772f59f0f3d5e61cabc81cad770ed84171e833f73b7d034'
             '40109ac4f4e200ae9f76864231527f5f1049c27800e78d04656fcf5844ed789d'
-            '42d3a7869a5ec184b41bba355d366ed05348640428ac8598e54188900f8f9f76'
+            '8595c574e8b475591107e553832e4fbc93373769d9d193007d4512454e47a9ea'
             '24ea2c8dca37847e04894ebfd05d1cf5df49dc0c8089f5581c99caa19b77a7ef'
-            '928ed3ab09ec57dfd652112bc881b06ef0978f4dcfebb87c43822ea8ad7557a8'
+            '870b197b7d6379a9c1ebb5c449c902b21d75ec21e966a2e54af82501465180f7'
             '23132552a388b238acf8bf650b5c2aa08cf3de63c647e84ad551807c4edfeb1e'
-            '1ec59e4262546a4f25432a9194adadd039641f61225c71e56464dc641ae4a299'
-            '1c71c5f38a408fbc027db164730739e644047706a0ea3f8330ea1666a58e3e91'
-            '3422115a859547b25babb5181301a0e9a485d6bc5de5169c828d59fd88486952'
-            'a88d4531283d5b85cde5793c8867bb554fdac7513f948f172c0d64ea0ca544f9'
-            'e4f6e17af19e17e745a9f1c6b8402f5896229062c82167cb61f8e7d29eda716c')
+            '65906109a7b71a9b836566ea888532b41f4ba6ea5996f1f3303c5789e03960cb'
+            '0ffa9fbbea35054996075d5ca952a83e9b6357369dfdc2dc091ed789838205fc'
+            '790ade0712c938ca03760f4f1e8ce2880016a4602a0c21975692940e4a46a28e'
+            '52343bbf99da6408950e34dd84319e34724040f866c497c25e36b4ee54030e82'
+            'e4f6e17af19e17e745a9f1c6b8402f5896229062c82167cb61f8e7d29eda716c'
+            '9e8fe5ee78192b0407e80ad2e52cb27569c35974b6c26e465e3d55e19c03d108'
+            '5bd66342aff56343aa5e07dbf997d18cc3dcae691cc7d8f83e94fee12b5b61b8'
+            '3bd0cd48d608b31d7df564c50e8d31df58dd38cfaaea9ec0fcceb42936486549')
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
   patch -p1 -i ${srcdir}/0000-pacman-msysize.patch
   patch -p1 -i ${srcdir}/0001-more-debugging-info.patch
-  #git am "${srcdir}"/0002-Add-util-msys2.-c-h-and-rebase-db-msys2.-c.patch
-  #git am "${srcdir}"/0003-use-busybox-for-msys2-post-installs.patch
+  # patch -p1 -i "${srcdir}"/0002-Add-util-msys2.-c-h-and-rebase-db-msys2.-c.patch
+  # patch -p1 -i "${srcdir}"/0003-use-busybox-for-msys2-post-installs.patch
   patch -p1 -i ${srcdir}/0004-Link-pacman-with-static-libraries.patch
   patch -p1 -i ${srcdir}/0005-Hack-gettext-libalpm-pkg-config-static-link.patch
   patch -p1 -i ${srcdir}/0006-makepkg-avoid-creating-.tar-files-with-extended-attr.patch
   patch -p1 -i ${srcdir}/0007-exe-interp-ignore-file-conflict.patch
   patch -p1 -i ${srcdir}/0008-answer-yes-by-default.patch
+  patch -p1 -i ${srcdir}/0009-msys-use-pipe-instead-socket.patch
+  patch -p1 -i ${srcdir}/0050-fix-make-target-dependencies.patch
 
   test "../common/util-common.h" != "$(cat src/util/util-common.h)" ||
   cp src/common/util-common.[ch] src/util/
 
   autoreconf -fi
+
+  cd ${srcdir}/${pkgname}-contrib-1.0.0
+  patch -p1 -i ${srcdir}/0100-contrib.patch
+  ./autogen.sh
 }
 
 build() {
   cd ${srcdir}/${pkgname}-${pkgver}
 
-  export PKG_CONFIG="/usr/bin/pkg-config --static"
+  PKG_CONFIG="/usr/bin/pkg-config --static" \
   ./configure \
     --prefix=/usr \
     --sysconfdir=/etc \
@@ -117,8 +131,17 @@ build() {
     --with-scriptlet-shell=/usr/bin/bash \
     --with-pkg-ext=.pkg.tar.xz
 
+  make -j3
+
+  cd ${srcdir}/${pkgname}-contrib-1.0.0
+  ./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
+    --disable-git-version
+
   make
-  make -C contrib
+  
 }
 
 check() {
@@ -128,7 +151,9 @@ check() {
 package() {
   cd ${srcdir}/${pkgname}-${pkgver}
   make -j1 DESTDIR=${pkgdir} install
-  make -j1 DESTDIR=${pkgdir} -C contrib install
+
+  cd ${srcdir}/${pkgname}-contrib-1.0.0
+  make -j1 DESTDIR=${pkgdir} install
 
   # install Arch specific stuff
   install -dm755 ${pkgdir}/etc

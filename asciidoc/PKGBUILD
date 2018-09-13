@@ -1,8 +1,8 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=asciidoc
-pkgver=8.6.9
-pkgrel=4
+pkgver=8.6.10
+pkgrel=1
 pkgdesc='Text document format for short documents, articles, books and UNIX man pages.'
 arch=('any')
 url='http://www.methods.co.nz/asciidoc/'
@@ -17,10 +17,10 @@ groups=('base-devel')
             # 'fop: alternative pdf generation'
             # 'lynx: text generation'
             # 'w3m: text generation (alternative to lynx)')
-source=("https://downloads.sourceforge.net/${pkgname}/${pkgname}-${pkgver}.tar.gz"
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/asciidoc/asciidoc/archive/${pkgver}.tar.gz"
         0001-W32-confdir.msys2.patch)
 noextract=("${pkgname}-${pkgver}.tar.gz")
-sha256sums=('78db9d0567c8ab6570a6eff7ffdf84eadd91f2dfc0a92a2d0105d323cab4e1f0'
+sha256sums=('9e52f8578d891beaef25730a92a6e723596ddbd07bfe0d2a56486fcf63a0b983'
             '71f44b513f627b133afead38576fcb8a5460d0514174a4ce219c6ea761d8b40c')
 
 prepare() {
@@ -29,22 +29,20 @@ prepare() {
   cd ${pkgname}-${pkgver}
 
   patch -p1 -i ${srcdir}/0001-W32-confdir.msys2.patch
+
   # python2 fix
-  for file in asciidocapi.py a2x.py asciidoc.py filters/music/music2png.py filters/latex/latex2png.py \
+  for file in asciidocapi.py a2x.py asciidoc.py filters/music/music2png.py filters/latex/latex2img.py \
     filters/code/code-filter.py filters/graphviz/graphviz2png.py; do
-  sed -i 's_#!/usr/bin/env python_#!/usr/bin/python2_' $file
+  sed -i 's_#!/usr/bin/env python2_#!/usr/bin/python2_' $file
   done
-  #sed -i -e 's_sys:python_sys:python2_g' -e 's_sys3:python_sys3:python2_g' xhtml11.conf
-  #sed -i 's_sys:python_sys:python2_g' xhtml11-quirks.conf
-  #sed -i -e 's/{python}/{python2}/g' \
-    #-e 's#{language@python:py:#{language@python2:py:#' \
-    #filters/source/source-highlight-filter.conf \
-    #html5.conf xhtml11.conf xhtml11-quirks.conf
-  #sed -i -e "s#'python'#'python2'#g" filters/code/code-filter.py
+
+  sed -i -e 's#python a2x.py#python2 a2x.py#' Makefile.in
 }
 
 build() {
   cd ${pkgname}-${pkgver}
+
+  autoreconf -fi
 
   ./configure \
     --prefix=/usr \
@@ -61,11 +59,4 @@ package() {
 
   install -Dm644 vim/syntax/asciidoc.vim \
     ${pkgdir}/usr/share/vim/vimfiles/syntax/asciidoc.vim
-
-  #install -Dm644 vim/ftdetect/asciidoc_filetype.vim \
-  #  ${pkgdir}/usr/share/vim/vimfiles/ftdetect/asciidoc.vim
-
-  # fix FS#21579 - [asciidoc] 8.6.2-2 "asciidoc" table style doesn't work (mismatched python version)
-  #sed -i 's/python/python2/' \
-    #${pkgdir}/etc/asciidoc/asciidoc.conf
 }

@@ -1,0 +1,58 @@
+From 716b5d58ac859cc240b8ccb9cbd79ace3e0593c1 Mon Sep 17 00:00:00 2001
+From: Felix Gruber <felgru@gmx.de>
+Date: Fri, 5 May 2017 22:20:00 +0200
+Subject: [PATCH 1/2] fix format truncation error with GCC-7
+
+GCC-7 introduced new warnings and errors. Among them is a new warning
+for possible truncations in the output of snprintf. Since we are only
+interested in the return value of snprintf and do not use the string
+written by it we can also replace the buffer with a NULL pointer.
+This makes it explicit that we do not want to write a string and
+silences the GCC-7 error.
+
+See also the examples in
+http://en.cppreference.com/w/c/io/fprintf
+---
+ src/hexcurse.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/hexcurse.c b/src/hexcurse.c
+index 9342eb5..e723ddc 100644
+--- a/src/hexcurse.c
++++ b/src/hexcurse.c
+@@ -235,10 +235,9 @@ off_t parseArgs(int argc, char *argv[])
+ \********************************************************/
+ int getMinimumAddressLength(off_t len)
+ {
+-        char buffer[1];
+         int min_address_length;
+         
+-        min_address_length = snprintf(buffer, 1, "%jd", (intmax_t)len);
++        min_address_length = snprintf(NULL, 0, "%jd", (intmax_t)len);
+         
+         /* At least 8 characters wide */
+         return min_address_length > 8 ? min_address_length : 8;
+
+From d808cb7067d1df067f8b707fabbfaf9f8931484c Mon Sep 17 00:00:00 2001
+From: Felix Gruber <felgru@gmx.de>
+Date: Fri, 5 May 2017 22:40:07 +0200
+Subject: [PATCH 2/2] explicitly mark fallthrough case
+
+This prevents another error that got introduced with the more thorough
+diagnostics in GCC-7.
+---
+ src/acceptch.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/acceptch.c b/src/acceptch.c
+index 1580645..d57207b 100644
+--- a/src/acceptch.c
++++ b/src/acceptch.c
+@@ -297,6 +297,7 @@ int wacceptch(WINS *win, off_t len)
+ 		}
+ 		else
+ 		    currentLine -= (2*MAXY);
++                /* fall through */
+ 
+ 	case CTRL_AND('d'):
+ 	case KEY_PGDN:					/* if KEY_PGDN...     */

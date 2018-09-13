@@ -1,0 +1,44 @@
+--- lz4-1.8.2/lib/Makefile	2017-01-02 23:09:52.000000000 -0600
++++ lz4-1.8.2/lib/Makefile	2017-06-19 09:39:30.318048400 -0500
+@@ -89,6 +89,9 @@
+ 
+ $(LIBLZ4): *.c
+ 	@echo compiling dynamic library $(LIBVER)
++ifneq (,$(filter MSYS%,$(shell uname)))
++	@$(CC) $(FLAGS) -shared $^ -Wl,--out-implib,liblz4.dll.a $(SONAME_FLAGS) -o msys-lz4-$(LIBVER_MAJOR).dll
++else
+ ifneq (,$(filter Windows%,$(OS)))
+ 	@$(CC) $(FLAGS) -DLZ4_DLL_EXPORT=1 -shared $^ -o dll\$@.dll
+ 	dlltool -D dll\liblz4.dll -d dll\liblz4.def -l dll\liblz4.lib
+@@ -98,6 +101,7 @@
+ 	@ln -sf $@ liblz4.$(SHARED_EXT_MAJOR)
+ 	@ln -sf $@ liblz4.$(SHARED_EXT)
+ endif
++endif
+ 
+ liblz4: $(LIBLZ4)
+ 
+@@ -137,6 +137,7 @@ endif
+ prefix      ?= $(PREFIX)
+ EXEC_PREFIX ?= $(prefix)
+ exec_prefix ?= $(EXEC_PREFIX)
++BINDIR     ?= $(PREFIX)/bin
+ LIBDIR      ?= $(exec_prefix)/lib
+ libdir      ?= $(LIBDIR)
+ INCLUDEDIR  ?= $(prefix)/include
+@@ -175,9 +175,15 @@
+ 	$(Q)$(INSTALL_DATA) lz4frame_static.h $(DESTDIR)$(includedir)/lz4frame_static.h
+ endif
+ ifeq ($(BUILD_SHARED),yes)
++ifneq (,$(filter MSYS%,$(shell uname)))
++	@install -d -m 755 $(DESTDIR)$(BINDIR)/
++	@install -m 755 msys-lz4-$(LIBVER_MAJOR).dll $(DESTDIR)$(BINDIR)/
++	@install -m 644 liblz4.dll.a $(DESTDIR)$(LIBDIR)/liblz4.dll.a
++else
+ 	$(Q)$(INSTALL_PROGRAM) liblz4.$(SHARED_EXT_VER) $(DESTDIR)$(libdir)
+ 	$(Q)ln -sf liblz4.$(SHARED_EXT_VER) $(DESTDIR)$(libdir)/liblz4.$(SHARED_EXT_MAJOR)
+ 	$(Q)ln -sf liblz4.$(SHARED_EXT_VER) $(DESTDIR)$(libdir)/liblz4.$(SHARED_EXT)
++endif
+ endif
+ 	@echo Installing headers in $(includedir)
+ 	$(Q)$(INSTALL_DATA) lz4.h $(DESTDIR)$(includedir)/lz4.h

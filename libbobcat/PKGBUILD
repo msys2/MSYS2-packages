@@ -1,46 +1,59 @@
 # Maintainer: LoveSy <shana@zju.edu.cn>
-pkgname=libbobcat
-pkgver=4.07.00
+
+pkgbase=libbobcat
+pkgname=('libbobcat' 'libbobcat-devel')
+pkgver=4.08.03
 pkgrel=1
 pkgdesc="Bobcat (Brokken's Own Base Classes And Templates) library"
 arch=('i686' 'x86_64')
-url="https://fbb-git.github.io/bobcat/"
+url="http://fbb-git.gitlab.io/bobcat/"
 license=('GPL')
 # Versions taken from the 'required' file in sources
 makedepends=('icmake>=8.01.00' 'yodl>=3.07.01')
 optdepends=()
 # Use my own repo temporarily to avoid untaring soft link.
-source=("https://github.com/yujincheng08/bobcat/archive/${pkgver}-${pkgrel}.tar.gz"
+source=("${pkgname}::git+https://gitlab.com/fbb-git/bobcat.git#tag=${pkgver}"
         "fix-g_errno.patch"
         "fix-build.patch")
-sha256sums=('6c4386339bf5b31fa723bca820ea37282c5a066aea197dcb6eb84efe19da1a4d'
+sha256sums=('SKIP'
             'fe1bedf6bbe255128aeab37215164022a029f2343bc29229e03e943501f3f73a'
-            'a2e662f2d30cc1a7c50d092b79ee86929273d577c4a79e612582c0dc2a7dd466')
+            '43d44fc32f62836dcf47ea21b987af1e45ab2a3b0b13a9ea477b3331590d3b0d')
 
 prepare() {
-  cd "${srcdir}/bobcat-${pkgver}-${pkgrel}"
+  cd "${srcdir}/${pkgname}"
   patch -p1 -i ${srcdir}/fix-g_errno.patch
   patch -p1 -i ${srcdir}/fix-build.patch
 }
 build() {
-  cd "$srcdir/bobcat-${pkgver}-${pkgrel}/bobcat"
+  cd "${srcdir}/${pkgname}/bobcat"
   CXXFLAGS="$CXXFLAGS -std=c++14"
   # Add the -P option not to use precompiled headers, which can be useful since
   # they require a lot of free space, compared to a normal compilation:
   # ./build -P libraries all
   ./build -p light
   ./build man
+  ./build install x "${srcdir}/dest"
+
+  mkdir -p ${srcdir}/dest/usr/bin
+  mv ${srcdir}/dest/usr/lib/*.dll ${srcdir}/dest/usr/bin/
 }
 
-package() {
-  cd "$srcdir/bobcat-${pkgver}-${pkgrel}/bobcat"
+package_libbobcat() {
+  depends=('gcc-libs')
 
-  # Since 4.01.02, first argument to install is <what to install> (x = all),
-  # and second is the base directory (absolute path, unlike 4.01.00)
-  ./build install x "${pkgdir}"
-  
-  mkdir -p ${pkgdir}/usr/bin
-  
-  mv ${pkgdir}/usr/lib/*.dll ${pkgdir}/usr/bin/
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
 }
 
+package_libbobcat-devel() {
+  pkgdesc="libbobcat headers and libraries"
+  options=('staticlibs')
+  groups=('development')
+  depends=("libbobcat=${pkgver}")
+
+  mkdir -p ${pkgdir}/usr
+
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}

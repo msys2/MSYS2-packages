@@ -1,48 +1,49 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=('texinfo' 'info' 'texinfo-tex')
-pkgver=6.3
-pkgrel=1
+pkgver=6.5
+pkgrel=2
 pkgdesc="Utilities to work with and produce manuals, ASCII text, and on-line documentation from a single source file"
 arch=('i686' 'x86_64')
 url="https://www.gnu.org/software/texinfo/"
 license=('GPL3')
-makedepends=('ncurses-devel' 'gettext-devel' 'findutils' 'gzip' 'perl')
+makedepends=('libcrypt-devel' 'ncurses-devel' 'gettext-devel' 'findutils' 'gzip' 'perl')
 source=(https://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig}
-        6.1.90-1-fix_interactive_tests.patch
-        0001-texinfo-5.1-msys2.patch
+        0001-texinfo-6.5-msys2.patch
         0002-manifest.all.patch
-        0003-be-content-with-older-gettext.msys2.patch
         0004-no-w32-stuff.msys2.patch
-        0005-fix-makeinfo-exeext.msys2.patch)
-sha256sums=('246cf3ffa54985118ec2eea2b8d0c71b92114efe6282c2ae90d65029db4cf93a'
+        0005-fix-makeinfo-exeext.msys2.patch
+        0006-Fix-unescaped-left-braces-in-regexps-deprecated-sinc.patch)
+sha256sums=('77774b3f4a06c20705cc2ef1c804864422e3cf95235e965b1f00a46df7da5f62'
             'SKIP'
-            '4fde5a5b6d83df412c49076120639accd754f4ed5b3212f999b9324a9195fe13'
-            '78d58e51288fae64b73084d9f275621628a7100d5d79192329c506785a06eb61'
+            '4ce942aa3a0fc16dbaf069b1b67d4281f961b7f9c87332810b2dc763ce710bb2'
             '5bc6680fa441b26ed18a794ad201a1252dba9f03d5426c87e42d33c758a4a039'
-            '8631da81d0ee9531afb65df3deeb56a9893b0ee0c13e396449905451d094878b'
             'ccf696f2777ebd2c85c4cb311a4735957ffa40952ecbe50c7031b9f05dc6cdee'
-            'e5b18f11d9a5d99f96f9228266e6204cfb2e076e2d9c336db0eceb72e2252873')
+            'e5b18f11d9a5d99f96f9228266e6204cfb2e076e2d9c336db0eceb72e2252873'
+            '8932b1b40d3e95bac89c30446d11c455d7ef3ae2f06ca031508f2607c788f0d0')
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
-  patch -p2 -i ${srcdir}/6.1.90-1-fix_interactive_tests.patch
-
-  patch -p1 -i ${srcdir}/0001-texinfo-5.1-msys2.patch
+  patch -p1 -i ${srcdir}/0001-texinfo-6.5-msys2.patch
   patch -p1 -i ${srcdir}/0002-manifest.all.patch
-  #patch -p1 -i ${srcdir}/0003-be-content-with-older-gettext.msys2.patch
   patch -p1 -i ${srcdir}/0004-no-w32-stuff.msys2.patch
   patch -p1 -i ${srcdir}/0005-fix-makeinfo-exeext.msys2.patch
+  patch -p1 -i ${srcdir}/0006-Fix-unescaped-left-braces-in-regexps-deprecated-sinc.patch
 
-  autoreconf -fi
+  autoreconf -fiv
+  pushd tp/Texinfo/Convert/XSParagraph
+    autoreconf -fiv
+  popd
 }
 
 build() {
   cd ${srcdir}/${pkgname}-${pkgver}
-  ./configure --build=${CHOST} \
+  ./configure \
+    --build=${CHOST} \
     --prefix=/usr \
     --without-libiconv-prefix \
     --without-libintl-prefix \
+    --enable-perl-xs \
     gl_cv_func_wcwidth_works=yes
 
   make
@@ -59,13 +60,14 @@ package_texinfo() {
   groups=('base-devel')
   install=texinfo.install
 
-  mkdir -p ${pkgdir}/usr/bin
+  mkdir -p ${pkgdir}/usr/{bin,lib}
   mkdir -p ${pkgdir}/usr/share/info
   mkdir -p ${pkgdir}/usr/share/man/man{1,5}
   for ff in makeinfo pod2texi texi2any; do
     cp -f ${srcdir}/dest/usr/bin/${ff} ${pkgdir}/usr/bin/${ff}
     cp -f ${srcdir}/dest/usr/share/man/man1/${ff}.1 ${pkgdir}/usr/share/man/man1/${ff}.1
   done
+  cp -rf ${srcdir}/dest/usr/lib/texinfo ${pkgdir}/usr/lib/
   cp -rf ${srcdir}/dest/usr/share/locale ${pkgdir}/usr/share/
   cp -rf ${srcdir}/dest/usr/share/texinfo ${pkgdir}/usr/share/
   cp -f ${srcdir}/dest/usr/share/man/man5/texinfo.5 ${pkgdir}/usr/share/man/man5/
@@ -73,7 +75,7 @@ package_texinfo() {
 }
 
 package_info() {
-  depends=('ncurses' 'libintl' 'gzip')
+  depends=('gzip' 'libcrypt' 'libintl' 'ncurses')
   groups=(base)
   install=info.install
 
@@ -89,7 +91,7 @@ package_info() {
 }
 
 package_texinfo-tex() {
-  depends=('perl' 'sh')
+  depends=('gawk' 'perl' 'sh')
   groups=('base-devel')
 
   mkdir -p ${pkgdir}/usr/{bin,share}

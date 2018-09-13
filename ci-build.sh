@@ -28,6 +28,7 @@ for package in "${packages[@]}"; do
     execute 'Building binary' makepkg --noconfirm --noprogressbar --skippgpcheck --nocheck --syncdeps --rmdeps --cleanbuild
     execute 'Building source' makepkg --noconfirm --noprogressbar --skippgpcheck --allsource
     execute 'Installing' yes:pacman --noprogressbar --upgrade *.pkg.tar.xz
+    execute 'Checking dll depencencies' list_dll_deps ./pkg
     deploy_enabled && mv "${package}"/*.pkg.tar.xz artifacts
     deploy_enabled && mv "${package}"/*.src.tar.gz artifacts
     unset package

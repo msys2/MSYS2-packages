@@ -1,0 +1,127 @@
+--- origsrc/cpan/Win32/Win32.pm	2015-08-19 02:44:07.000000000 +0200
++++ src/cpan/Win32/Win32.pm	2017-09-17 08:44:53.273150400 +0200
+@@ -8,7 +8,7 @@
+     require DynaLoader;
+ 
+     @ISA = qw|Exporter DynaLoader|;
+-    $VERSION = '0.52';
++    $VERSION = '0.52_01';
+     $XS_VERSION = $VERSION;
+     $VERSION = eval $VERSION;
+ 
+--- origsrc/cpan/Win32/Win32.xs	2015-08-19 02:44:07.000000000 +0200
++++ src/cpan/Win32/Win32.xs	2017-09-17 08:44:53.273150400 +0200
+@@ -1,4 +1,5 @@
+ #define WIN32_LEAN_AND_MEAN
++#include <wchar.h>
+ #include <wctype.h>
+ #include <windows.h>
+ #include <shlobj.h>
+
+--- origsrc/cpan/Win32/t/GetShortPathName.t	2015-08-19 02:44:07.000000000 +0200
++++ src/cpan/Win32/t/GetShortPathName.t	2017-09-17 08:44:53.273150400 +0200
+@@ -2,18 +2,21 @@ use strict;
+ use Test;
+ use Win32;
+ 
+-my $path = "Long Path $$";
++my $path = "C:\\Long Path $$";
+ unlink($path);
+ END { unlink $path }
+ 
+-plan tests => 5;
++plan tests => 7;
+ 
+ Win32::CreateFile($path);
+ ok(-f $path);
+ 
+ my $short = Win32::GetShortPathName($path);
+-ok($short, qr/^\S{1,8}(\.\S{1,3})?$/);
++ok($short, qr/^C:\\\S{1,8}(\.\S{1,3})?$/);
+ ok(-f $short);
++my $long = Win32::GetLongPathName($short);
++ok($long, $path);
++ok(-f $long);
+ 
+ unlink($path);
+ ok(!-f $path);
+
+--- origsrc/cpan/Win32/t/Unicode.t	2015-08-19 02:44:07.000000000 +0200
++++ src/cpan/Win32/t/Unicode.t	2017-09-17 08:44:53.273150400 +0200
+@@ -1,8 +1,9 @@
+ use strict;
+-use Test;
++use utf8;
++use Test::More;
+ use Config qw(%Config);
+ use Cwd qw(cwd);
+-use Encode qw();
++use Encode qw(encode decode);
+ use Win32;
+ 
+ BEGIN {
+@@ -20,10 +21,13 @@ BEGIN {
+     }
+ }
+ 
+-my $home = Win32::GetCwd();
+-my $cwd  = cwd(); # may be a Cygwin path
+-my $dir  = "Foo \x{394}\x{419} Bar \x{5E7}\x{645} Baz";
+-my $file = "$dir\\xyzzy \x{394}\x{419} plugh \x{5E7}\x{645}";
++my $home  = Win32::GetCwd();
++my $cwd   = cwd(); # may be a Cygwin path
++my $dir8  = "Foo ΔЙ Bar קم Baz"; #Foo \x{394}\x{419} Bar \x{5E7}\x{645} Baz";
++my $file8 = "$dir8\\xyzzy ΔЙ plugh קم"; #xyzzy \x{394}\x{419} plugh \x{5E7}\x{645}";
++my $dir   = encode("UTF-8", $dir8);
++my $file  = encode("UTF-8", $file8);
++
+ 
+ sub cleanup {
+     chdir($home);
+@@ -36,32 +40,29 @@ sub cleanup {
+ cleanup();
+ END { cleanup() }
+ 
+-plan test => 12;
++plan tests => 12;
+ 
+ # Create Unicode directory
+-Win32::CreateDirectory($dir);
++Win32::CreateDirectory($dir8);
+ ok(-d Win32::GetANSIPathName($dir));
+ 
+ # Create Unicode file
+-Win32::CreateFile($file);
++Win32::CreateFile($file8);
+ ok(-f Win32::GetANSIPathName($file));
+ 
+ # readdir() returns ANSI form of Unicode filename
+ ok(opendir(my $dh, Win32::GetANSIPathName($dir)));
+ while ($_ = readdir($dh)) {
+     next if /^\./;
+-    # On Cygwin 1.7 readdir() returns the utf8 representation of the
+-    # filename but doesn't turn on the SvUTF8 bit
+-    Encode::_utf8_on($_) if $^O eq "cygwin" && $Config{osvers} !~ /^1.5/;
+     ok($file, Win32::GetLongPathName("$dir\\$_"));
+ }
+ closedir($dh);
+ 
+ # Win32::GetLongPathName() of the absolute path restores the Unicode dir name
+-my $full = Win32::GetFullPathName($dir);
++my $full = Win32::GetFullPathName($dir8);
+ my $long = Win32::GetLongPathName($full);
+ 
+-ok($long, Win32::GetLongPathName($home)."\\$dir");
++ok($long, Win32::GetLongPathName($home)."\\".$dir);
+ 
+ # We can Win32::SetCwd() into the Unicode directory
+ ok(Win32::SetCwd($dir));
+@@ -80,7 +81,7 @@ ok(Win32::GetLongPathName($w32dir), $lon
+ # cwd() on Cygwin returns a mapped path that we need to translate
+ # back to a Windows path. Invoking `cygpath` on $subdir doesn't work.
+ if ($^O eq "cygwin") {
+-    $subdir = Cygwin::posix_to_win_path($subdir, 1);
++    $subdir = decode "UTF-8", Cygwin::posix_to_win_path($subdir, 1);
+ }
+ $subdir =~ s,/,\\,g;
+ ok(Win32::GetLongPathName($subdir), $long);

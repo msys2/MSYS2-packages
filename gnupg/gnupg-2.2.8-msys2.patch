@@ -1,0 +1,119 @@
+diff -ru gnupg-2.2.8-orig/build-aux/compile gnupg-2.2.8/build-aux/compile
+--- gnupg-2.2.8-orig/build-aux/compile	2017-08-28 12:22:54.000000000 +0200
++++ gnupg-2.2.8/build-aux/compile	2018-06-20 22:40:35.675346800 +0200
+@@ -53,7 +53,7 @@
+ 	  MINGW*)
+ 	    file_conv=mingw
+ 	    ;;
+-	  CYGWIN*)
++	  CYGWIN*|MSYS*)
+ 	    file_conv=cygwin
+ 	    ;;
+ 	  *)
+@@ -67,7 +67,7 @@
+ 	mingw/*)
+ 	  file=`cmd //C echo "$file " | sed -e 's/"\(.*\) " *$/\1/'`
+ 	  ;;
+-	cygwin/*)
++	cygwin/*|msys/*)
+ 	  file=`cygpath -m "$file" || echo "$file"`
+ 	  ;;
+ 	wine/*)
+diff -ru gnupg-2.2.8-orig/build-aux/config.guess gnupg-2.2.8/build-aux/config.guess
+--- gnupg-2.2.8-orig/build-aux/config.guess	2017-08-28 12:22:54.000000000 +0200
++++ gnupg-2.2.8/build-aux/config.guess	2018-06-20 22:41:49.000540700 +0200
+@@ -891,6 +891,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -ru gnupg-2.2.8-orig/build-aux/config.rpath gnupg-2.2.8/build-aux/config.rpath
+--- gnupg-2.2.8-orig/build-aux/config.rpath	2017-08-28 12:22:54.000000000 +0200
++++ gnupg-2.2.8/build-aux/config.rpath	2018-06-20 22:44:10.790650700 +0200
+@@ -57,7 +57,7 @@
+     aix*)
+       wl='-Wl,'
+       ;;
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       ;;
+     hpux9* | hpux10* | hpux11*)
+       wl='-Wl,'
+@@ -149,7 +149,7 @@
+ hardcode_minus_L=no
+ 
+ case "$host_os" in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -198,7 +198,7 @@
+         ld_shlibs=no
+       fi
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+       # no search path for DLLs.
+       hardcode_libdir_flag_spec='-L$libdir'
+@@ -348,7 +348,7 @@
+       ;;
+     bsdi[45]*)
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -537,7 +537,7 @@
+   bsdi[45]*)
+     library_names_spec='$libname$shrext'
+     ;;
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     shrext=.dll
+     library_names_spec='$libname.dll.a $libname.lib'
+     ;;
+diff -ru gnupg-2.2.8-orig/configure.ac gnupg-2.2.8/configure.ac
+--- gnupg-2.2.8-orig/configure.ac	2018-05-02 22:02:29.000000000 +0200
++++ gnupg-2.2.8/configure.ac	2018-06-20 22:35:22.683444700 +0200
+@@ -1219,6 +1219,9 @@
+     *-*-cygwin*)
+         PRINTABLE_OS_NAME="Cygwin"
+         ;;
++    *-*-msys*)
++        PRINTABLE_OS_NAME="MSYS"
++        ;;
+     i?86-emx-os2 | i?86-*-os2*emx )
+         PRINTABLE_OS_NAME="OS/2"
+         ;;
+diff -ru gnupg-2.2.8-orig/g10/gpg.c gnupg-2.2.8/g10/gpg.c
+--- gnupg-2.2.8-orig/g10/gpg.c	2018-06-06 11:59:06.000000000 +0200
++++ gnupg-2.2.8/g10/gpg.c	2018-06-21 01:00:49.167416100 +0200
+@@ -1508,7 +1508,7 @@
+ 	{
+ 	  if(statbuf.st_uid==getuid())
+ 	    {
+-	      if((statbuf.st_mode & (S_IRWXG|S_IRWXO))==0)
++	      if((statbuf.st_mode & (S_IWGRP|S_IWOTH))==0)
+ 		ret=0;
+ 	      else
+ 		perm=1;
+diff -ru gnupg-2.2.8-orig/m4/intl.m4 gnupg-2.2.8/m4/intl.m4
+--- gnupg-2.2.8-orig/m4/intl.m4	2017-08-28 12:22:54.000000000 +0200
++++ gnupg-2.2.8/m4/intl.m4	2018-06-20 22:38:34.133395000 +0200
+@@ -98,7 +98,7 @@
+   dnl    exported variables _also_ in the static library.
+   if test "$enable_shared" = yes; then
+     case "$host_os" in
+-      cygwin*) is_woe32dll=yes ;;
++      cygwin* | msys*) is_woe32dll=yes ;;
+       *) is_woe32dll=no ;;
+     esac
+   else
