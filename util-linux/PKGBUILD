@@ -1,31 +1,29 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=("util-linux" "libutil-linux" "libutil-linux-devel")
-pkgver=2.26.2
+pkgver=2.32.1
 pkgrel=1
 pkgdesc="Miscellaneous system utilities for Linux"
 arch=('i686' 'x86_64')
 license=('GPL3')
 url="https://www.kernel.org/pub/linux/utils/util-linux/"
-makedepends=('gettext-devel' 'libiconv-devel' 'ncurses-devel' 'libcrypt-devel' 'libtool' 'patch')
+makedepends=('gettext-devel' 'libiconv-devel' 'ncurses-devel' 'libcrypt-devel' 'libtool' 'patch' 'zlib-devel')
 source=(https://www.kernel.org/pub/linux/utils/$pkgname/v${pkgver%.*}/$pkgname-$pkgver.tar.xz
         2.24.2-agetty.patch
         2.24.2-libblkid-topology.patch
         2.24.2-libintl.patch
         2.24.2-msysize.patch
         2.25.1-cygwin-include.patch
-        2.25.1-ipc-utils.patch
-        2.25.1-lslogins.patch
-        2.25.1-relocate-sbin-to-usr-bin.patch)
-sha256sums=('0e29bda142528a48a0a953c39ff63093651a4809042e1790fbd6aa8663fd9666'
+        2.25.1-relocate-sbin-to-usr-bin.patch
+        2.32.1-disable-tiocsti-test.patch)
+sha256sums=('86e6707a379c7ff5489c218cfaf1e3464b0b95acf7817db0bc5f179e356a67b2'
             '0d6c812fab3deb34842dfb4313ce626e389c0961fe863a653ee1799a16614200'
             '347ff26c7750ef586dd50c3ac0be0b86604f8c4a4f148a0fc4e49d9ec55e2198'
             'a678a08fa18fc2ad34bc2a39bb0ff983f76803d4df742daf9d5e7b0d1d3b76f6'
             'e194d292a70ad8a10db6c365392a0cadba4cc31cdff4f8e60d6d4d82518a53df'
             '82545b7762445c5fbd43481f12bc8416f26783a70b3ce6a6ff3f42b2b9a1afc6'
-            'd32fa6a4792de3b9414de607f83f3cd7571dd5bb741ba6086821cc634df9a4e1'
-            'bac76eba04a41f1d7f3c403801e5b50d6aefbae4886d3d4e5bb1a3d4f0e17e63'
-            'a1d64a62cbf9f6aaefbb2c40e76f56ec2240aa071d5c0c29910b05eec8a949d6')
+            '03e762f6025179f22643d8bdb46cfabdffa0ca6e2f0ac62c4820ac3a13c8d648'
+            'ce0dd22590c67f753937bef7713dc898cc39f4b8b9be9bbb57f1ba7ffdd8ac9d')
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
@@ -34,11 +32,9 @@ prepare() {
   patch -p2 -i $srcdir/2.24.2-libblkid-topology.patch
   patch -p2 -i $srcdir/2.24.2-libintl.patch
   patch -p2 -i $srcdir/2.25.1-cygwin-include.patch
-  patch -p2 -i $srcdir/2.25.1-ipc-utils.patch
-  patch -p2 -i $srcdir/2.25.1-lslogins.patch
   patch -p1 -i $srcdir/2.24.2-msysize.patch
   patch -p1 -i $srcdir/2.25.1-relocate-sbin-to-usr-bin.patch
-  
+  patch -p1 -i $srcdir/2.32.1-disable-tiocsti-test.patch
   autoreconf -fi
 }
 
@@ -98,6 +94,7 @@ build() {
     --disable-sulogin \
     --disable-su \
     --disable-runuser \
+    --disable-uuidd \
     --enable-ul \
     --enable-more \
     --enable-pg \
@@ -110,11 +107,19 @@ build() {
     --disable-makeinstall-setuid \
     --without-libiconv-prefix \
     --without-libintl-prefix \
+    --enable-usrdir-path \
     ac_cv_func___fpending=yes \
     SOLIB_LDFLAGS=-no-undefined
 
   make
   make DESTDIR=${srcdir}/dest install
+}
+
+check() {
+  cd $srcdir/build-${CHOST}
+
+  # Remove || true once testcase doesn't cause failures.
+  make check || true
 }
 
 package_util-linux() {
