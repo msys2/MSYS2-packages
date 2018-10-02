@@ -1,0 +1,36 @@
+jobs:
+  - job: MSYS
+    timeoutInMinutes: 360
+    pool:
+      vmImage: vs2015-win2012r2
+    steps:
+      - script: |
+          git clone https://github.com/lazka/msys2-ci-base.git %CD:~0,2%\msys64
+          %CD:~0,2%\msys64\usr\bin\rm -rf %CD:~0,2%\msys64\.git
+        displayName: Install MSYS2
+      - script: |
+          set PATH=%CD:~0,2%\msys64\usr\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem
+          %CD:~0,2%\msys64\usr\bin\pacman --noconfirm -Syyuu
+        displayName: Update MSYS2
+      - script: |
+          set PATH=%CD:~0,2%\msys64\usr\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem
+          %CD:~0,2%\msys64\usr\bin\pacman --noconfirm --needed -S git base-devel msys2-devel
+        displayName: Install Toolchain
+      - script: |
+          set PATH=C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem
+          %CD:~0,2%\msys64\usr\bin\bash -lc "bash ci-build.sh"
+        displayName: CI-Build
+        env:
+          MSYSTEM: MSYS
+          CHERE_INVOKING: yes
+          BUILD_URL: dummy
+          DEPLOY_PROVIDER: bintray
+          BINTRAY_ACCOUNT: Alexpux
+          PACMAN_REPOSITORY_NAME: ci.msys
+      - task: PublishBuildArtifacts@1
+        displayName: Publish packages
+        continueOnError: true
+        condition: and(succeeded(), eq(variables['system.pullrequest.isfork'], false))
+        inputs:
+          pathtoPublish: $(Build.SourcesDirectory)/artifacts
+          artifactName: msys-x86_64
