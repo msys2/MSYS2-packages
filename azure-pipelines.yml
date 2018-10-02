@@ -3,22 +3,30 @@ jobs:
     timeoutInMinutes: 360
     pool:
       vmImage: vs2015-win2012r2
+    strategy:
+      maxParallel: 5
+      matrix:
+        i686:
+          MSYS_DIR: msys32
+          BASE_REPO: msys2-ci-base-i686
+        x86_64:
+          MSYS_DIR: msys64
+          BASE_REPO: msys2-ci-base
     steps:
       - script: |
-          git clone https://github.com/lazka/msys2-ci-base.git %CD:~0,2%\msys64
-          %CD:~0,2%\msys64\usr\bin\rm -rf %CD:~0,2%\msys64\.git
+          git clone https://github.com/lazka/$(BASE_REPO).git %CD:~0,2%\$(MSYS_DIR)
         displayName: Install MSYS2
       - script: |
-          set PATH=%CD:~0,2%\msys64\usr\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem
-          %CD:~0,2%\msys64\usr\bin\pacman --noconfirm -Syyuu
+          set PATH=%CD:~0,2%\$(MSYS_DIR)\usr\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem
+          %CD:~0,2%\$(MSYS_DIR)\usr\bin\pacman --noconfirm -Syyuu
         displayName: Update MSYS2
       - script: |
-          set PATH=%CD:~0,2%\msys64\usr\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem
-          %CD:~0,2%\msys64\usr\bin\pacman --noconfirm --needed -S git base-devel msys2-devel
+          set PATH=%CD:~0,2%\$(MSYS_DIR)\usr\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem
+          %CD:~0,2%\$(MSYS_DIR)\usr\bin\pacman --noconfirm --needed -S git base-devel msys2-devel
         displayName: Install Toolchain
       - script: |
           set PATH=C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem
-          %CD:~0,2%\msys64\usr\bin\bash -lc "bash ci-build.sh"
+          %CD:~0,2%\$(MSYS_DIR)\usr\bin\bash -lc "bash ci-build.sh"
         displayName: CI-Build
         env:
           MSYSTEM: MSYS
@@ -33,4 +41,4 @@ jobs:
         condition: and(succeeded(), eq(variables['system.pullrequest.isfork'], false))
         inputs:
           pathtoPublish: $(Build.SourcesDirectory)/artifacts
-          artifactName: msys-x86_64
+          artifactName: $(MSYS_DIR)
