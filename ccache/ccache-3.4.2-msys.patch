@@ -1,18 +1,5 @@
 diff --git a/src/ccache.h b/src/ccache.h
 index 973d42dd..227264da 100644
---- a/src/ccache.h
-+++ b/src/ccache.h
-@@ -277,8 +277,10 @@ typedef int (*COMPAR_FN_T)(const void *, const void *);
- 
- // mkstemp() on some versions of cygwin don't handle binary files, so override.
- #ifdef __CYGWIN__
-+#ifndef __MSYS__
- #undef HAVE_MKSTEMP
- #endif
-+#endif
- 
- #ifdef _WIN32
- char *win32argvtos(char *prefix, char **argv);
 diff --git a/src/lockfile.c b/src/lockfile.c
 index 9d1a49db..733e9169 100644
 --- a/src/lockfile.c
@@ -30,15 +17,15 @@ diff --git a/test/run b/test/run
 index 82a80541..6b907f3f 100755
 --- a/test/run
 +++ b/test/run
-@@ -289,6 +289,7 @@ COMPILER_USES_MINGW=false
- HOST_OS_APPLE=false
+@@ -295,6 +295,7 @@ COMPILER_USES_MINGW=false
  HOST_OS_LINUX=false
+ HOST_OS_FREEBSD=false
  HOST_OS_WINDOWS=false
 +HOST_OS_CYGWIN=false
  
  compiler_version="`$COMPILER --version 2>&1 | head -1`"
  case $compiler_version in
-@@ -317,6 +318,9 @@ case $(uname -s) in
+@@ -323,6 +324,9 @@ case $(uname -s) in
      *MINGW*|*mingw*)
          HOST_OS_WINDOWS=true
          ;;
@@ -52,7 +39,7 @@ diff --git a/test/suites/base.bash b/test/suites/base.bash
 index 307100e8..07c005b4 100644
 --- a/test/suites/base.bash
 +++ b/test/suites/base.bash
-@@ -815,6 +815,7 @@ EOF
+@@ -822,6 +822,7 @@ EOF
      expect_stat 'cache miss' 1
  
      # -------------------------------------------------------------------------
@@ -60,7 +47,7 @@ index 307100e8..07c005b4 100644
      TEST "Symlink to source directory"
  
      mkdir dir
-@@ -835,7 +836,9 @@ EOF
+@@ -842,7 +843,9 @@ EOF
          test_failed "Incorrect header file used"
      fi
  
@@ -70,7 +57,7 @@ index 307100e8..07c005b4 100644
      TEST "Symlink to source file"
  
      mkdir dir
-@@ -856,6 +859,7 @@ EOF
+@@ -863,6 +866,7 @@ EOF
          test_failed "Incorrect header file used"
      fi
  
@@ -111,16 +98,16 @@ diff --git a/test/suites/debug_prefix_map.bash b/test/suites/debug_prefix_map.ba
 index 25cc36ff..98067cb3 100644
 --- a/test/suites/debug_prefix_map.bash
 +++ b/test/suites/debug_prefix_map.bash
-@@ -23,6 +23,8 @@ EOF
- objdump_cmd() {
-     if $HOST_OS_APPLE; then
+@@ -25,6 +24,8 @@ EOF
          xcrun dwarfdump -r0 $1
+     elif $HOST_OS_FREEBSD; then
+         objdump -W $1
 +    elif $HOST_OS_WINDOWS || $HOST_OS_CYGWIN; then
 +        strings $1 # for some reason objdump only shows the basename of the file, so fall back to brute force and ignorance
      else
          objdump -g $1
      fi
-@@ -31,6 +33,8 @@ objdump_cmd() {
+@@ -33,6 +35,8 @@ objdump_cmd() {
  grep_cmd() {
      if $HOST_OS_APPLE; then
          grep "( \"$1\" )"
@@ -129,7 +116,7 @@ index 25cc36ff..98067cb3 100644
      else
          grep ": $1[[:space:]]*$"
      fi
-@@ -49,6 +53,9 @@ SUITE_debug_prefix_map() {
+@@ -51,6 +55,9 @@ SUITE_debug_prefix_map() {
      if objdump_cmd test.o | grep_cmd "`pwd`" >/dev/null 2>&1; then
          test_failed "Source dir (`pwd`) found in test.o"
      fi
@@ -139,7 +126,7 @@ index 25cc36ff..98067cb3 100644
  
      cd ../dir2
      CCACHE_BASEDIR=`pwd` $CCACHE_COMPILE -I`pwd`/include -g -fdebug-prefix-map=`pwd`=dir -c `pwd`/src/test.c -o `pwd`/test.o
-@@ -72,7 +79,7 @@ SUITE_debug_prefix_map() {
+@@ -74,7 +81,7 @@ SUITE_debug_prefix_map() {
      if objdump_cmd test.o | grep_cmd "`pwd`" >/dev/null 2>&1; then
          test_failed "Source dir (`pwd`) found in test.o"
      fi
@@ -152,7 +139,7 @@ diff --git a/test/suites/masquerading.bash b/test/suites/masquerading.bash
 index 0b42eef3..3e254dc2 100644
 --- a/test/suites/masquerading.bash
 +++ b/test/suites/masquerading.bash
-@@ -3,6 +3,10 @@ SUITE_masquerading_PROBE() {
+@@ -4,6 +4,10 @@ SUITE_masquerading_PROBE() {
      if [ "$(dirname $compiler_binary)" != . ]; then
          echo "compiler ($compiler_binary) not taken from PATH"
      fi
