@@ -1,8 +1,8 @@
 diff --git a/Include/object.h b/Include/object.h
-index 0c88603..e3413e8 100644
+index c772dea..5729797 100644
 --- a/Include/object.h
 +++ b/Include/object.h
-@@ -1071,6 +1071,49 @@ PyAPI_FUNC(void)
+@@ -1098,6 +1098,49 @@ PyAPI_FUNC(void)
  _PyObject_DebugTypeStats(FILE *out);
  #endif /* ifndef Py_LIMITED_API */
  
@@ -53,15 +53,16 @@ index 0c88603..e3413e8 100644
  }
  #endif
 diff --git a/Lib/test/test_gc.py b/Lib/test/test_gc.py
-index e727499..6efcafb 100644
+index 8d806db..dc8bb16 100644
 --- a/Lib/test/test_gc.py
 +++ b/Lib/test/test_gc.py
-@@ -1,10 +1,11 @@
+@@ -1,10 +1,12 @@
  import unittest
  from test.support import (verbose, refcount_test, run_unittest,
                            strip_python_stderr, cpython_only, start_threads,
--                          temp_dir, requires_type_collecting)
-+                          temp_dir, import_module, requires_type_collecting)
+-                          temp_dir, requires_type_collecting, TESTFN, unlink)
++                          temp_dir, requires_type_collecting, TESTFN, unlink,
++                          import_module)
  from test.support.script_helper import assert_python_ok, make_script
  
  import sys
@@ -69,7 +70,7 @@ index e727499..6efcafb 100644
  import time
  import gc
  import weakref
-@@ -50,6 +51,8 @@ class GC_Detector(object):
+@@ -46,6 +48,8 @@ class GC_Detector(object):
          # gc collects it.
          self.wr = weakref.ref(C1055820(666), it_happened)
  
@@ -78,7 +79,7 @@ index e727499..6efcafb 100644
  @with_tp_del
  class Uncollectable(object):
      """Create a reference cycle with multiple __del__ methods.
-@@ -862,6 +865,50 @@ class GCCallbackTests(unittest.TestCase):
+@@ -878,6 +882,50 @@ class GCCallbackTests(unittest.TestCase):
          self.assertEqual(len(gc.garbage), 0)
  
  
@@ -130,10 +131,10 @@ index e727499..6efcafb 100644
      def setUp(self):
          gc.enable()
 diff --git a/Modules/gcmodule.c b/Modules/gcmodule.c
-index 0c6f444..87edd5a 100644
+index 4d701cb..388dd78 100644
 --- a/Modules/gcmodule.c
 +++ b/Modules/gcmodule.c
-@@ -342,7 +342,8 @@ update_refs(PyGC_Head *containers)
+@@ -239,7 +239,8 @@ update_refs(PyGC_Head *containers)
  {
      PyGC_Head *gc = containers->gc.gc_next;
      for (; gc != containers; gc = gc->gc.gc_next) {
@@ -143,7 +144,7 @@ index 0c6f444..87edd5a 100644
          _PyGCHead_SET_REFS(gc, Py_REFCNT(FROM_GC(gc)));
          /* Python's cyclic gc should never see an incoming refcount
           * of 0:  if something decref'ed to 0, it should have been
-@@ -362,7 +363,8 @@ update_refs(PyGC_Head *containers)
+@@ -259,7 +260,8 @@ update_refs(PyGC_Head *containers)
           * so serious that maybe this should be a release-build
           * check instead of an assert?
           */
@@ -153,7 +154,7 @@ index 0c6f444..87edd5a 100644
      }
  }
  
-@@ -377,7 +379,9 @@ visit_decref(PyObject *op, void *data)
+@@ -274,7 +276,9 @@ visit_decref(PyObject *op, void *data)
           * generation being collected, which can be recognized
           * because only they have positive gc_refs.
           */
@@ -164,7 +165,7 @@ index 0c6f444..87edd5a 100644
          if (_PyGCHead_REFS(gc) > 0)
              _PyGCHead_DECREF(gc);
      }
-@@ -437,9 +441,10 @@ visit_reachable(PyObject *op, PyGC_Head *reachable)
+@@ -334,9 +338,10 @@ visit_reachable(PyObject *op, PyGC_Head *reachable)
           * If gc_refs == GC_UNTRACKED, it must be ignored.
           */
           else {
@@ -178,7 +179,7 @@ index 0c6f444..87edd5a 100644
           }
      }
      return 0;
-@@ -481,7 +486,7 @@ move_unreachable(PyGC_Head *young, PyGC_Head *unreachable)
+@@ -378,7 +383,7 @@ move_unreachable(PyGC_Head *young, PyGC_Head *unreachable)
               */
              PyObject *op = FROM_GC(gc);
              traverseproc traverse = Py_TYPE(op)->tp_traverse;
@@ -187,7 +188,7 @@ index 0c6f444..87edd5a 100644
              _PyGCHead_SET_REFS(gc, GC_REACHABLE);
              (void) traverse(op,
                              (visitproc)visit_reachable,
-@@ -544,7 +549,7 @@ move_legacy_finalizers(PyGC_Head *unreachable, PyGC_Head *finalizers)
+@@ -441,7 +446,7 @@ move_legacy_finalizers(PyGC_Head *unreachable, PyGC_Head *finalizers)
      for (gc = unreachable->gc.gc_next; gc != unreachable; gc = next) {
          PyObject *op = FROM_GC(gc);
  
@@ -196,7 +197,7 @@ index 0c6f444..87edd5a 100644
          next = gc->gc.gc_next;
  
          if (has_legacy_finalizer(op)) {
-@@ -620,7 +625,7 @@ handle_weakrefs(PyGC_Head *unreachable, PyGC_Head *old)
+@@ -517,7 +522,7 @@ handle_weakrefs(PyGC_Head *unreachable, PyGC_Head *old)
          PyWeakReference **wrlist;
  
          op = FROM_GC(gc);
@@ -205,7 +206,7 @@ index 0c6f444..87edd5a 100644
          next = gc->gc.gc_next;
  
          if (! PyType_SUPPORTS_WEAKREFS(Py_TYPE(op)))
-@@ -641,9 +646,9 @@ handle_weakrefs(PyGC_Head *unreachable, PyGC_Head *old)
+@@ -538,9 +543,9 @@ handle_weakrefs(PyGC_Head *unreachable, PyGC_Head *old)
               * the callback pointer intact.  Obscure:  it also
               * changes *wrlist.
               */
@@ -217,7 +218,7 @@ index 0c6f444..87edd5a 100644
              if (wr->wr_callback == NULL)
                  continue;                       /* no callback */
  
-@@ -677,7 +682,7 @@ handle_weakrefs(PyGC_Head *unreachable, PyGC_Head *old)
+@@ -574,7 +579,7 @@ handle_weakrefs(PyGC_Head *unreachable, PyGC_Head *old)
       */
              if (IS_TENTATIVELY_UNREACHABLE(wr))
                  continue;
@@ -226,7 +227,7 @@ index 0c6f444..87edd5a 100644
  
              /* Create a new reference so that wr can't go away
               * before we can process it again.
-@@ -686,7 +691,8 @@ handle_weakrefs(PyGC_Head *unreachable, PyGC_Head *old)
+@@ -583,7 +588,8 @@ handle_weakrefs(PyGC_Head *unreachable, PyGC_Head *old)
  
              /* Move wr to wrcb_to_call, for the next pass. */
              wrasgc = AS_GC(wr);
@@ -236,7 +237,7 @@ index 0c6f444..87edd5a 100644
                                         next isn't, so they can't
                                         be the same */
              gc_list_move(wrasgc, &wrcb_to_call);
-@@ -702,11 +708,11 @@ handle_weakrefs(PyGC_Head *unreachable, PyGC_Head *old)
+@@ -599,11 +605,11 @@ handle_weakrefs(PyGC_Head *unreachable, PyGC_Head *old)
  
          gc = wrcb_to_call.gc.gc_next;
          op = FROM_GC(gc);
@@ -251,7 +252,7 @@ index 0c6f444..87edd5a 100644
  
          /* copy-paste of weakrefobject.c's handle_callback() */
          temp = PyObject_CallFunctionObjArgs(callback, wr, NULL);
-@@ -823,12 +829,14 @@ check_garbage(PyGC_Head *collectable)
+@@ -717,12 +723,14 @@ check_garbage(PyGC_Head *collectable)
      for (gc = collectable->gc.gc_next; gc != collectable;
           gc = gc->gc.gc_next) {
          _PyGCHead_SET_REFS(gc, Py_REFCNT(FROM_GC(gc)));
@@ -269,11 +270,11 @@ index 0c6f444..87edd5a 100644
              return -1;
      }
 diff --git a/Objects/object.c b/Objects/object.c
-index 559794f..a47d47f 100644
+index 220aa90..f6c7161 100644
 --- a/Objects/object.c
 +++ b/Objects/object.c
-@@ -2025,6 +2025,35 @@ _PyTrash_thread_destroy_chain(void)
-     }
+@@ -2177,6 +2177,35 @@ _PyTrash_thread_destroy_chain(void)
+     --tstate->trash_delete_nesting;
  }
  
 +PyAPI_FUNC(void)
