@@ -1,0 +1,198 @@
+From 5fcdcf95cb62ab3d593c36ef90df27cef63874a1 Mon Sep 17 00:00:00 2001
+From: Elliott Sales de Andrade <quantum.analyst@gmail.com>
+Date: Sat, 31 Dec 2016 03:12:51 -0500
+Subject: [PATCH 1/9] Make TimeStamp 64-bit.
+
+This prepares it for higher-resolution timestamps.
+---
+ src/build_log.cc |  2 +-
+ src/deps_log.cc  | 13 ++++++-------
+ src/deps_log.h   |  7 ++++---
+ src/graph.cc     |  8 ++++----
+ src/ninja.cc     |  2 +-
+ src/timestamp.h  |  6 +++---
+ src/util.h       |  1 +
+ src/win32port.h  |  1 +
+ 8 files changed, 21 insertions(+), 19 deletions(-)
+
+diff --git a/src/build_log.cc b/src/build_log.cc
+index 333915a..a591050 100644
+--- a/src/build_log.cc
++++ b/src/build_log.cc
+@@ -353,7 +353,7 @@ BuildLog::LogEntry* BuildLog::LookupByOutput(const string& path) {
+ }
+ 
+ bool BuildLog::WriteEntry(FILE* f, const LogEntry& entry) {
+-  return fprintf(f, "%d\t%d\t%d\t%s\t%" PRIx64 "\n",
++  return fprintf(f, "%d\t%d\t%" PRId64 "\t%s\t%" PRIx64 "\n",
+           entry.start_time, entry.end_time, entry.mtime,
+           entry.output.c_str(), entry.command_hash) > 0;
+ }
+diff --git a/src/deps_log.cc b/src/deps_log.cc
+index 89c6023..d7f0b26 100644
+--- a/src/deps_log.cc
++++ b/src/deps_log.cc
+@@ -30,7 +30,7 @@
+ // The version is stored as 4 bytes after the signature and also serves as a
+ // byte order mark. Signature and version combined are 16 bytes long.
+ const char kFileSignature[] = "# ninjadeps\n";
+-const int kCurrentVersion = 3;
++const int kCurrentVersion = 4;
+ 
+ // Record size is currently limited to less than the full 32 bit, due to
+ // internal buffers having to have this size.
+@@ -124,7 +124,7 @@ bool DepsLog::RecordDeps(Node* node, TimeStamp mtime,
+     return true;
+ 
+   // Update on-disk representation.
+-  unsigned size = 4 * (1 + 1 + node_count);
++  unsigned size = 4 * (1 + 2 + node_count);
+   if (size > kMaxRecordSize) {
+     errno = ERANGE;
+     return false;
+@@ -135,8 +135,7 @@ bool DepsLog::RecordDeps(Node* node, TimeStamp mtime,
+   int id = node->id();
+   if (fwrite(&id, 4, 1, file_) < 1)
+     return false;
+-  int timestamp = mtime;
+-  if (fwrite(&timestamp, 4, 1, file_) < 1)
++  if (fwrite(&mtime, 8, 1, file_) < 1)
+     return false;
+   for (int i = 0; i < node_count; ++i) {
+     id = nodes[i]->id();
+@@ -218,9 +217,9 @@ bool DepsLog::Load(const string& path, State* state, string* err) {
+       assert(size % 4 == 0);
+       int* deps_data = reinterpret_cast<int*>(buf);
+       int out_id = deps_data[0];
+-      int mtime = deps_data[1];
+-      deps_data += 2;
+-      int deps_count = (size / 4) - 2;
++      TimeStamp mtime = reinterpret_cast<TimeStamp*>(&deps_data[1])[0];
++      deps_data += 3;
++      int deps_count = (size / 4) - 3;
+ 
+       Deps* deps = new Deps(mtime, deps_count);
+       for (int i = 0; i < deps_count; ++i) {
+diff --git a/src/deps_log.h b/src/deps_log.h
+index cec0257..793af07 100644
+--- a/src/deps_log.h
++++ b/src/deps_log.h
+@@ -57,7 +57,8 @@ struct State;
+ ///      one's complement of the expected index of the record (to detect
+ ///      concurrent writes of multiple ninja processes to the log).
+ ///    dependency records are an array of 4-byte integers
+-///      [output path id, output path mtime, input path id, input path id...]
++///      [output path id, output path mtime (8-byte int), input path id,
++///       input path id...]
+ ///      (The mtime is compared against the on-disk output path mtime
+ ///      to verify the stored data is up-to-date.)
+ /// If two records reference the same output the latter one in the file
+@@ -75,10 +76,10 @@ struct DepsLog {
+ 
+   // Reading (startup-time) interface.
+   struct Deps {
+-    Deps(int mtime, int node_count)
++    Deps(int64_t mtime, int node_count)
+         : mtime(mtime), node_count(node_count), nodes(new Node*[node_count]) {}
+     ~Deps() { delete [] nodes; }
+-    int mtime;
++    TimeStamp mtime;
+     int node_count;
+     Node** nodes;
+   };
+diff --git a/src/graph.cc b/src/graph.cc
+index ce4ea77..b41c247 100644
+--- a/src/graph.cc
++++ b/src/graph.cc
+@@ -233,7 +233,7 @@ bool DependencyScan::RecomputeOutputDirty(Edge* edge,
+ 
+     if (output_mtime < most_recent_input->mtime()) {
+       EXPLAIN("%soutput %s older than most recent input %s "
+-              "(%d vs %d)",
++              "(%" PRId64 " vs %" PRId64 ")",
+               used_restat ? "restat of " : "", output->path().c_str(),
+               most_recent_input->path().c_str(),
+               output_mtime, most_recent_input->mtime());
+@@ -257,7 +257,7 @@ bool DependencyScan::RecomputeOutputDirty(Edge* edge,
+         // mtime of the most recent input.  This can occur even when the mtime
+         // on disk is newer if a previous run wrote to the output file but
+         // exited with an error or was interrupted.
+-        EXPLAIN("recorded mtime of %s older than most recent input %s (%d vs %d)",
++        EXPLAIN("recorded mtime of %s older than most recent input %s (%" PRId64 " vs %" PRId64 ")",
+                 output->path().c_str(), most_recent_input->path().c_str(),
+                 entry->mtime, most_recent_input->mtime());
+         return true;
+@@ -441,7 +441,7 @@ string Node::PathDecanonicalized(const string& path, uint64_t slash_bits) {
+ }
+ 
+ void Node::Dump(const char* prefix) const {
+-  printf("%s <%s 0x%p> mtime: %d%s, (:%s), ",
++  printf("%s <%s 0x%p> mtime: %" PRId64 "%s, (:%s), ",
+          prefix, path().c_str(), this,
+          mtime(), mtime() ? "" : " (:missing)",
+          dirty() ? " dirty" : " clean");
+@@ -547,7 +547,7 @@ bool ImplicitDepLoader::LoadDepsFromLog(Edge* edge, string* err) {
+ 
+   // Deps are invalid if the output is newer than the deps.
+   if (output->mtime() > deps->mtime) {
+-    EXPLAIN("stored deps info out of date for '%s' (%d vs %d)",
++    EXPLAIN("stored deps info out of date for '%s' (%" PRId64 " vs %" PRId64 ")",
+             output->path().c_str(), deps->mtime, output->mtime());
+     return false;
+   }
+diff --git a/src/ninja.cc b/src/ninja.cc
+index ed004ac..a9030aa 100644
+--- a/src/ninja.cc
++++ b/src/ninja.cc
+@@ -494,7 +494,7 @@ int NinjaMain::ToolDeps(const Options* options, int argc, char** argv) {
+     TimeStamp mtime = disk_interface.Stat((*it)->path(), &err);
+     if (mtime == -1)
+       Error("%s", err.c_str());  // Log and ignore Stat() errors;
+-    printf("%s: #deps %d, deps mtime %d (%s)\n",
++    printf("%s: #deps %d, deps mtime %" PRId64 " (%s)\n",
+            (*it)->path().c_str(), deps->node_count, deps->mtime,
+            (!mtime || mtime > deps->mtime ? "STALE":"VALID"));
+     for (int i = 0; i < deps->node_count; ++i)
+diff --git a/src/timestamp.h b/src/timestamp.h
+index cee7ba8..58ae148 100644
+--- a/src/timestamp.h
++++ b/src/timestamp.h
+@@ -17,8 +17,8 @@
+ 
+ // When considering file modification times we only care to compare
+ // them against one another -- we never convert them to an absolute
+-// real time.  On POSIX we use time_t (seconds since epoch) and on
+-// Windows we use a different value.  Both fit in an int.
+-typedef int TimeStamp;
++// real time.  On POSIX we use timespec (seconds&nanoseconds since epoch)
++// and on Windows we use a different value.  Both fit in an int64.
++typedef int64_t TimeStamp;
+ 
+ #endif  // NINJA_TIMESTAMP_H_
+diff --git a/src/util.h b/src/util.h
+index 4ee41a5..a8493d6 100644
+--- a/src/util.h
++++ b/src/util.h
+@@ -18,6 +18,7 @@
+ #ifdef _WIN32
+ #include "win32port.h"
+ #else
++#include <inttypes.h>
+ #include <stdint.h>
+ #endif
+ 
+diff --git a/src/win32port.h b/src/win32port.h
+index ce3c949..5464797 100644
+--- a/src/win32port.h
++++ b/src/win32port.h
+@@ -23,6 +23,7 @@ typedef unsigned long long uint64_t;
+ 
+ // printf format specifier for uint64_t, from C99.
+ #ifndef PRIu64
++#define PRId64 "I64d"
+ #define PRIu64 "I64u"
+ #define PRIx64 "I64x"
+ #endif
+-- 
+2.14.1
+
