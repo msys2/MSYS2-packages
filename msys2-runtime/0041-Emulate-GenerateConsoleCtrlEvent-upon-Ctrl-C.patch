@@ -1,10 +1,7 @@
-From 4ae93069adfb0c2bfd0ae921cf0d1133e56e8f46 Mon Sep 17 00:00:00 2001
+From ed9f6281c1f2749cde0edb24a0718c31ab360aca Mon Sep 17 00:00:00 2001
 From: Johannes Schindelin <johannes.schindelin@gmx.de>
-Date: Tue, 17 Apr 2018 11:56:50 +0200
-Subject: [PATCH 53/N] squash! Try to handle Ctrl+C on Win32 processes the
- same way CMD does
-
-Emulate GenerateConsoleCtrlEvent() upon Ctrl+C
+Date: Fri, 20 Mar 2015 09:56:28 +0000
+Subject: [PATCH 41/N] Emulate GenerateConsoleCtrlEvent() upon Ctrl+C
 
 When a process is terminated via TerminateProcess(), it has no chance to
 do anything in the way of cleaning up. This is particularly noticeable
@@ -80,41 +77,69 @@ already killed appropriately upon Ctrl+C, by `cmd.exe` itself.
 
 Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
 ---
- winsup/cygwin/exceptions.cc                 |   4 +-
- winsup/cygwin/include/cygwin/exit_process.h | 374 +++++++++++++++-----
- 2 files changed, 290 insertions(+), 88 deletions(-)
+ winsup/cygwin/exceptions.cc                 |  20 +-
+ winsup/cygwin/include/cygwin/exit_process.h | 371 ++++++++++++++++++++
+ winsup/cygwin/include/cygwin/signal.h       |   1 +
+ 3 files changed, 390 insertions(+), 2 deletions(-)
+ create mode 100644 winsup/cygwin/include/cygwin/exit_process.h
 
 diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
-index 51a3ed1..7e83170 100644
+index 2cdfed7..9733da1 100644
 --- a/winsup/cygwin/exceptions.cc
 +++ b/winsup/cygwin/exceptions.cc
-@@ -1561,8 +1561,8 @@ dosig:
-           goto done;
-         default:
-           sigproc_printf ("terminating captive process");
--          exit_process (ch_spawn, 128 + (sigExeced = si.si_signo), 0);
--          break;
+@@ -27,6 +27,7 @@ details. */
+ #include "child_info.h"
+ #include "ntdll.h"
+ #include "exception.h"
++#include "cygwin/exit_process.h"
+ 
+ /* Definitions for code simplification */
+ #ifdef __x86_64__
+@@ -1532,8 +1533,23 @@ exit_sig:
+ dosig:
+   if (have_execed)
+     {
+-      sigproc_printf ("terminating captive process");
+-      TerminateProcess (ch_spawn, sigExeced = si.si_signo);
++      switch (si.si_signo)
++        {
++        case SIGUSR1:
++        case SIGUSR2:
++        case SIGCONT:
++        case SIGSTOP:
++        case SIGTSTP:
++        case SIGTTIN:
++        case SIGTTOU:
++          system_printf ("Suppressing signal %d to win32 process (pid %u)",
++              (int)si.si_signo, (unsigned int)GetProcessId(ch_spawn));
++          goto done;
++        default:
++          sigproc_printf ("terminating captive process");
 +          rc = exit_process_tree (ch_spawn, 128 + (sigExeced = si.si_signo));
 +          goto done;
-         }
++        }
      }
    /* Dispatch to the appropriate function. */
+   sigproc_printf ("signal %d, signal handler %p", si.si_signo, handler);
 diff --git a/winsup/cygwin/include/cygwin/exit_process.h b/winsup/cygwin/include/cygwin/exit_process.h
-index 6783950..e0981bb 100644
---- a/winsup/cygwin/include/cygwin/exit_process.h
+new file mode 100644
+index 0000000..e0981bb
+--- /dev/null
 +++ b/winsup/cygwin/include/cygwin/exit_process.h
-@@ -5,14 +5,232 @@
-  * This file contains functions to terminate a Win32 process, as gently as
-  * possible.
-  *
-- * If appropriate, we will attempt to generate a console Ctrl event.
-- * Otherwise we will fall back to terminating the entire process tree.
+@@ -0,0 +1,371 @@
++#ifndef EXIT_PROCESS_H
++#define EXIT_PROCESS_H
++
++/*
++ * This file contains functions to terminate a Win32 process, as gently as
++ * possible.
++ *
 + * If appropriate, we will attempt to emulate a console Ctrl event for the
 + * process and its (transitive) children. Otherwise we will fall back to
 + * terminating the process(es).
-  *
-  * As we do not want to export this function in the MSYS2 runtime, these
-  * functions are marked as file-local.
++ *
++ * As we do not want to export this function in the MSYS2 runtime, these
++ * functions are marked as file-local.
 + *
 + * The idea is to inject a thread into the given process that runs either
 + * kernel32!CtrlRoutine() (i.e. the work horse of GenerateConsoleCtrlEvent())
@@ -141,9 +166,8 @@ index 6783950..e0981bb 100644
 + * The idea to use kernel32!CtrlRoutine for the other signals comes from
 + * SendSignal (https://github.com/AutoSQA/SendSignal/ and
 + * http://stanislavs.org/stopping-command-line-applications-programatically-with-ctrl-c-events-from-net/).
-  */
- 
--#include <tlhelp32.h>
++ */
++
 +#include <wchar.h>
 +
 +#ifndef __INSIDE_CYGWIN__
@@ -336,16 +360,17 @@ index 6783950..e0981bb 100644
 +
 +  return res;
 +}
- 
- /**
-  * Terminates the process corresponding to the process ID
-@@ -22,24 +240,51 @@
-  * .lock files, terminating spawned processes (if any), etc).
-  */
- static int
--terminate_process(HANDLE process, int exit_code)
++
++/**
++ * Terminates the process corresponding to the process ID
++ *
++ * This way of terminating the processes is not gentle: the process gets
++ * no chance of cleaning up after itself (closing file handles, removing
++ * .lock files, terminating spawned processes (if any), etc).
++ */
++static int
 +exit_one_process(HANDLE process, int exit_code)
- {
++{
 +  LPTHREAD_START_ROUTINE address = NULL;
 +  int signo = exit_code & 0x7f;
 +
@@ -369,55 +394,56 @@ index 6783950..e0981bb 100644
 +	break;
 +    }
 +
-   return int(TerminateProcess (process, exit_code));
- }
- 
++  return int(TerminateProcess (process, exit_code));
++}
++
 +#include <tlhelp32.h>
 +#include <unistd.h>
 +
- /**
-  * Terminates the process corresponding to the process ID and all of its
-- * directly and indirectly spawned subprocesses using the provided
-- * terminate callback function
++/**
++ * Terminates the process corresponding to the process ID and all of its
 + * directly and indirectly spawned subprocesses using the
 + * exit_one_process() function.
-  */
- static int
--terminate_process_tree(HANDLE main_process, int exit_code, int (*terminate)(HANDLE, int))
++ */
++static int
 +exit_process_tree(HANDLE main_process, int exit_code)
- {
-   HANDLE snapshot = CreateToolhelp32Snapshot (TH32CS_SNAPPROCESS, 0);
-   PROCESSENTRY32 entry;
-   DWORD pids[16384];
-   int max_len = sizeof (pids) / sizeof (*pids), i, len, ret = 0;
-   pid_t pid = GetProcessId (main_process);
++{
++  HANDLE snapshot = CreateToolhelp32Snapshot (TH32CS_SNAPPROCESS, 0);
++  PROCESSENTRY32 entry;
++  DWORD pids[16384];
++  int max_len = sizeof (pids) / sizeof (*pids), i, len, ret = 0;
++  pid_t pid = GetProcessId (main_process);
 +  int signo = exit_code & 0x7f;
- 
-   pids[0] = (DWORD) pid;
-   len = 1;
-@@ -55,29 +300,36 @@ terminate_process_tree(HANDLE main_process, int exit_code, int (*terminate)(HAND
-    */
-   for (;;)
-     {
--      int orig_len = len;
--      pid_t cyg_pid;
--
-       memset (&entry, 0, sizeof (entry));
-       entry.dwSize = sizeof (entry);
- 
-       if (!Process32First (snapshot, &entry))
-         break;
- 
++
++  pids[0] = (DWORD) pid;
++  len = 1;
++
++  /*
++   * Even if Process32First()/Process32Next() seem to traverse the
++   * processes in topological order (i.e. parent processes before
++   * child processes), there is nothing in the Win32 API documentation
++   * suggesting that this is guaranteed.
++   *
++   * Therefore, run through them at least twice and stop when no more
++   * process IDs were added to the list.
++   */
++  for (;;)
++    {
++      memset (&entry, 0, sizeof (entry));
++      entry.dwSize = sizeof (entry);
++
++      if (!Process32First (snapshot, &entry))
++        break;
++
 +      int orig_len = len;
-       do
-         {
++      do
++        {
 +	  /**
 +	   * Look for the parent process ID in the list of pids to kill, and if
 +	   * found, add it to the list.
 +	   */
-           for (i = len - 1; i >= 0; i--)
-             {
--              cyg_pid = cygwin_winpid_to_pid(entry.th32ProcessID);
++          for (i = len - 1; i >= 0; i--)
++            {
 +              if (pids[i] == entry.th32ProcessID)
 +                break;
 +              if (pids[i] != entry.th32ParentProcessID)
@@ -425,41 +451,30 @@ index 6783950..e0981bb 100644
 +
 +              /* We found a process to kill; is it an MSYS2 process? */
 +	      pid_t cyg_pid = cygwin_winpid_to_pid(entry.th32ProcessID);
-               if (cyg_pid > -1)
-                 {
--                  kill(cyg_pid, exit_code);
--                  continue;
++              if (cyg_pid > -1)
++                {
 +                  if (cyg_pid == getpgid (cyg_pid))
 +                    kill(cyg_pid, signo);
 +                  break;
-                 }
--              if (pids[i] == entry.th32ProcessID)
--                break;
--              if (pids[i] == entry.th32ParentProcessID)
--                pids[len++] = entry.th32ProcessID;
++                }
 +	      pids[len++] = entry.th32ProcessID;
 +	      break;
-             }
-         }
-       while (len < max_len && Process32Next (snapshot, &entry));
-@@ -88,82 +340,32 @@ terminate_process_tree(HANDLE main_process, int exit_code, int (*terminate)(HAND
- 
-   for (i = len - 1; i >= 0; i--)
-     {
--      HANDLE process = i == 0 ? main_process :
--        OpenProcess (PROCESS_TERMINATE, FALSE, pids[i]);
++            }
++        }
++      while (len < max_len && Process32Next (snapshot, &entry));
++
++      if (orig_len == len || len >= max_len)
++        break;
++    }
++
++  for (i = len - 1; i >= 0; i--)
++    {
 +      HANDLE process;
- 
--      if (process)
++
 +      if (!i)
 +	process = main_process;
 +      else
-         {
--          if (!(*terminate) (process, exit_code))
--            ret = -1;
--          CloseHandle (process);
--        }
--    }
++        {
 +	  process = OpenProcess (PROCESS_CREATE_THREAD |
 +				 PROCESS_QUERY_INFORMATION |
 +				 PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
@@ -468,82 +483,33 @@ index 6783950..e0981bb 100644
 +	    process = OpenProcess (PROCESS_TERMINATE, FALSE, pids[i]);
 +	}
 +      DWORD code;
- 
--  return ret;
--}
--
--/**
-- * For SIGINT/SIGTERM, call GenerateConsoleCtrlEven(). Otherwise fall back to
-- * running terminate_process_tree().
-- */
--static int
--exit_process(HANDLE process, int exit_code, int okay_to_kill_this_process)
--{
--  DWORD code;
--
--  if (GetExitCodeProcess (process, &code) && code == STILL_ACTIVE)
--    {
--      int signal = exit_code & 0x7f;
--      if (signal == SIGINT || signal == SIGTERM)
++
 +      if (process &&
 +	  (!GetExitCodeProcess (process, &code) || code == STILL_ACTIVE))
-         {
--#ifndef __INSIDE_CYGWIN__
--          if (!okay_to_kill_this_process)
--            return -1;
--          FreeConsole();
--          if (!AttachConsole(GetProcessId(process)))
--            return -1;
--          if (GenerateConsoleCtrlEvent(signal == SIGINT ? CTRL_C_EVENT : CTRL_BREAK_EVENT, 0))
--            return 0;
--#else
--          path_conv helper ("/bin/kill.exe");
--          if (helper.exists ())
--            {
--              STARTUPINFOW si = {};
--              PROCESS_INFORMATION pi;
--              size_t len = helper.get_wide_win32_path_len ();
--              WCHAR cmd[len + (2 * strlen (" -f -32 0xffffffff")) + 1];
--              WCHAR title[] = L"kill";
--
--              helper.get_wide_win32_path (cmd);
--              __small_swprintf (cmd + len, L" -f -%d %d", signal, (int)GetProcessId(ch_spawn));
--
--              si.cb = sizeof (si);
--              si.dwFlags = STARTF_USESHOWWINDOW;
--              si.wShowWindow = SW_HIDE;
--              si.lpTitle = title;
--
--              /* Create a new hidden process.  Use the two event handles as
--                 argv[1] and argv[2]. */
--              BOOL x = CreateProcessW (NULL, cmd, &sec_none_nih, &sec_none_nih,
--                  true, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
--              if (x)
--                {
--                  CloseHandle (pi.hThread);
--                  if (WaitForSingleObject (pi.hProcess, 10000) == WAIT_OBJECT_0)
--                    {
--                      CloseHandle (pi.hProcess);
--                      return 0;
--                    }
--                  CloseHandle (pi.hProcess);
--                }
--            }
--#endif
++        {
 +          if (!exit_one_process (process, exit_code))
 +            ret = -1;
-         }
--
--      return terminate_process_tree (process, exit_code, terminate_process);
++        }
 +      if (process)
 +        CloseHandle (process);
-     }
- 
--  return -1;
++    }
++
 +  return ret;
- }
- 
++}
++
++#endif
+diff --git a/winsup/cygwin/include/cygwin/signal.h b/winsup/cygwin/include/cygwin/signal.h
+index 9d99727..7d59075 100644
+--- a/winsup/cygwin/include/cygwin/signal.h
++++ b/winsup/cygwin/include/cygwin/signal.h
+@@ -475,6 +475,7 @@ extern const char *sys_siglist[];
+ extern const char __declspec(dllimport) *sys_sigabbrev[];
+ extern const char __declspec(dllimport) *sys_siglist[];
  #endif
++void kill_process_tree(pid_t pid, int sig);
+ 
+ #ifdef __cplusplus
+ }
 -- 
 2.9.0
 

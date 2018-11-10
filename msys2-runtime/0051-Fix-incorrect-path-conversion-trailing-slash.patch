@@ -1,60 +1,57 @@
-From 50159fe297ca46145558b60a0354701e3ce1bb54 Mon Sep 17 00:00:00 2001
+From 53dbbe95a2efee6c23183fa9f11c7a0b0ac8dc6a Mon Sep 17 00:00:00 2001
 From: Johannes Schindelin <johannes.schindelin@gmx.de>
 Date: Wed, 14 Mar 2018 17:04:19 +0100
 Subject: [PATCH 51/N] Fix incorrect path conversion (trailing slash)
 
-This commit reverts part of 8eae854a91 (Special case for converting root
-directory to have training slash, 2016-03-01) which not only introduced
-a funny typo, but also introduced overzealous behavior where the
-path_conv class would keep trailing slashes in *waaaaaaay* too many
-cases. Unfortunately, the original commit's message as well as the code
-comment it introduced are seriously deficient in clarity and are only
-excelling in their terseness that makes them pretty useless.
+The problem with the original approach is not that it is completely
+bogus. After all, when you pass the option --prefix=/tmp/ to Git, you do
+want to end up with a trailing slash.
 
-So the best we can do is assume that the change that caused the trailing
-slashes to be kept in pretty much all cases (i.e. failing to normalize
-the path `Y:\directory\` to `Y:\directory`) was introduced by mistake.
+The real problem with the original approach is that it simply changed
+path_conv, completely oblivious and careless about other users of
+path_conv.
 
-This mistake has serious repercussions, so the above rant has merit.
-On FAT file systems, the normalized path is used to fake inode numbers.
-As a result, `Y:\directory\` and `Y:\directory` have different inode
-numbers!!!
+That was really wrong, of course, and cost us time, sweat and tears. The
+appropriate approach is to *not* affect other users, but instead
+introduce a flag that we use in *our* caller, so that everybody gets
+what they want:
 
-One consequence of this bug has been reported on the Git for Windows:
-the `find` and `rm` commands can error out on FAT file systems with very
-confusing "No such file or directory" errors, for no good reason.
+- emulation of inodes on FAT by calculating the hash on the normalized
+  path: works.
 
-Vasil Minkov even pointed out that this bug had been fixed in Cygwin as
-early as 1997... and we reintroduced it in MSYS2.
-
-This fixes https://github.com/git-for-windows/git/issues/1497 and
-https://github.com/git-for-windows/git/issues/1536.
+- MSYS2's conversion of "POSIX" paths to Windows paths: works.
 
 Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
 ---
- winsup/cygwin/path.cc | 18 +++++++++---------
- 1 file changed, 9 insertions(+), 9 deletions(-)
+ winsup/cygwin/msys2_path_conv.cc |  2 +-
+ winsup/cygwin/path.cc            | 16 +++++++++++++++-
+ winsup/cygwin/path.h             |  1 +
+ 3 files changed, 17 insertions(+), 2 deletions(-)
 
+diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
+index 57fca1c..4127ed4 100644
+--- a/winsup/cygwin/msys2_path_conv.cc
++++ b/winsup/cygwin/msys2_path_conv.cc
+@@ -685,7 +685,7 @@ void posix_to_win32_path(const char* from, const char* to, char** dst, const cha
+         strncpy(one_path, from, to-from);
+         one_path[to-from] = '\0';
+ 
+-        path_conv conv (one_path, 0);
++        path_conv conv (one_path, PC_KEEP_FINAL_SLASH);
+         if (conv.error)
+         {
+           set_errno(conv.error);
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index 52a95bc..d67a127 100644
+index 8b58302..30369fb 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
-@@ -1226,17 +1226,17 @@ path_conv::check (const char *src, unsigned opt,
+@@ -1223,9 +1223,22 @@ path_conv::check (const char *src, unsigned opt,
  		cfree (wide_path);
  	      wide_path = NULL;
  	    }
--	}
- 
--      if (need_directory)
--	{
--	  size_t n = strlen (this->path);
--	  /* Do not add trailing \ to UNC device names like \\.\a: */
--	  if (this->path[n - 1] != '\\' &&
--	      (strncmp (this->path, "\\\\.\\", 4) != 0))
++
 +	  if (need_directory)
- 	    {
--	      this->modifiable_path ()[n] = '\\';
--	      this->modifiable_path ()[n + 1] = '\0';
++	    {
 +	      size_t n = strlen (this->path);
 +	      /* Do not add trailing \ to UNC device names like \\.\a: */
 +	      if (this->path[n - 1] != '\\' &&
@@ -63,9 +60,35 @@ index 52a95bc..d67a127 100644
 +		  this->modifiable_path ()[n] = '\\';
 +		  this->modifiable_path ()[n + 1] = '\0';
 +		}
- 	    }
++	      need_directory = 0;
++	    }
  	}
  
+-      if (need_directory)
++      if ((opt & PC_KEEP_FINAL_SLASH) && need_directory)
+ 	{
+ 	  size_t n = strlen (this->path);
+ 	  /* Do not add trailing \ to UNC device names like \\.\a: */
+@@ -1235,6 +1248,7 @@ path_conv::check (const char *src, unsigned opt,
+ 	      this->modifiable_path ()[n] = '\\';
+ 	      this->modifiable_path ()[n + 1] = '\0';
+ 	    }
++	  need_directory = 0;
+ 	}
+ 
+       if (saw_symlinks)
+diff --git a/winsup/cygwin/path.h b/winsup/cygwin/path.h
+index 69954d8..f0d8ec2 100644
+--- a/winsup/cygwin/path.h
++++ b/winsup/cygwin/path.h
+@@ -51,6 +51,7 @@ enum pathconv_arg
+   PC_NOWARN		= 0x0100,
+   PC_OPEN		= 0x0200,	/* use open semantics */
+   PC_CTTY		= 0x0400,	/* could later be used as ctty */
++  PC_KEEP_FINAL_SLASH	= 0x0800,
+   PC_KEEP_HANDLE	= 0x00400000,
+   PC_NO_ACCESS_CHECK	= 0x00800000
+ };
 -- 
 2.9.0
 
