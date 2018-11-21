@@ -1,11 +1,11 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=('openssl' 'libopenssl' 'openssl-devel')
-_ver=1.0.2p
+_ver=1.1.1a
 
 # use a pacman compatible version scheme
 pkgver=${_ver/[a-z]/.${_ver//[0-9.]/}}
-pkgrel=2
+pkgrel=1
 pkgdesc='The Open Source toolkit for Secure Sockets Layer and Transport Layer Security'
 arch=('i686' 'x86_64')
 url='https://www.openssl.org'
@@ -15,32 +15,26 @@ makedepends=('gcc' 'tar' 'perl' 'zlib-devel' 'diffutils' 'nasm')
 options=('!makeflags' 'staticlibs')
 noextract=(${pkgname}-${_ver}.tar.gz)
 source=("https://www.openssl.org/source/${pkgname}-${_ver}.tar.gz"{,.asc}
-        'no-rpath.patch'
-        'ca-dir.patch'
-        'openssl-1.0.1e-cygwin64.patch'
-        'openssl-1.0.1e-msys2.patch'
-        'openssl-1.0.0-beta5-enginesdir.patch')
-sha256sums=('50a98e07b1a89eb8f6a99477f262df71c6fa7bef77df4dc83025a2845c827d00'
+        '0001-Use-usr-ssl-as-ca-dir-instead-of-.-demoCA.patch'
+        '0002-Support-MSYS2.patch'
+        '0003-tls13secretstest-work-around-multiple-definition-of.patch'
+        '0004-Override-engines-directory.patch')
+sha256sums=('fc20130f8b7cbd2fb918b2f14e2f429e109c31ddd0fb38fc5d71d9ffed3f9f41'
             'SKIP'
-            '754d6107a306311e15a1db6a1cc031b81691c8b9865e8809ac60ca6f184c957c'
-            '01b7d475d1aeeecdae1ca8ff90483c11f34991348418d9e98c655e1579764bb1'
-            'e82f015bd01f73bb3840eaf6ad5e00b62399ea38f924372471d00a9782d56b1a'
-            '7ddfe47d4b582cf5085ae20f2a2db0f2b87e0cd1a91885cf1f76ff1a2219bf40'
-            '1ce6d3d795124f4a0206790f21d178049fb6d56945820582779a0d0e14dbf230')
+            '35f5508bc3e651bb2ef1bf9f4e052f531aeaefbbdeff95b9746fff71137fff31'
+            '9a4e721ab9fb9c693d0a6bbc3ae0d71456857f83febc1c8412bfdf323e4d69e2'
+            'a83dcfeec646724f081f8ff89beccee83c962758aa74d724f263138aa21b2438'
+            '79765cc10799691ae47880556255287c64b8c1f26ea3907ad2e0add97bc9f1fc')
 validpgpkeys=('8657ABB260F056B1E5190839D9C4D26D0E604491')
 
 prepare() {
   [[ -d ${srcdir}/${pkgname}-${_ver} ]] || tar -xzvf ${srcdir}/${pkgname}-${_ver}.tar.gz -C ${srcdir}
   cd ${srcdir}/${pkgname}-${_ver}
 
-  # remove rpath: https://bugs.archlinux.org/task/14367
-  patch -p0 -i ${srcdir}/no-rpath.patch
-  # set ca dir to /etc/ssl by default
-  patch -p0 -i ${srcdir}/ca-dir.patch
-
-  #patch -p1 -i ${srcdir}/openssl-1.0.1e-cygwin64.patch
-  patch -p1 -i ${srcdir}/openssl-1.0.1e-msys2.patch
-  patch -p1 -i ${srcdir}/openssl-1.0.0-beta5-enginesdir.patch
+  patch -p1 -i ${srcdir}/0001-Use-usr-ssl-as-ca-dir-instead-of-.-demoCA.patch
+  patch -p1 -i ${srcdir}/0002-Support-MSYS2.patch
+  patch -p1 -i ${srcdir}/0003-tls13secretstest-work-around-multiple-definition-of.patch
+  patch -p1 -i ${srcdir}/0004-Override-engines-directory.patch
 }
 
 build() {
@@ -55,7 +49,6 @@ build() {
   ./Configure \
     --prefix=/usr \
     --openssldir=/usr/ssl \
-    --enginesdir=/usr/lib/openssl/engines \
     --libdir=lib \
     shared \
     zlib \
@@ -65,16 +58,16 @@ build() {
 
   make depend
   make all
-  make INSTALL_PREFIX=${srcdir}/dest MANDIR=/usr/share/man MANSUFFIX=ssl install
+  make DESTDIR=${srcdir}/dest MANDIR=/usr/share/man MANSUFFIX=ssl install
 }
 
 check() {
   cd ${srcdir}/${pkgname}-${_ver}
-  # the test fails due to missing write permissions in /usr/ssl
-  # revert this patch for make test
-  patch -p0 -R -i "$srcdir/ca-dir.patch"
+
+  # the test would write test data into /usr/ssl, which we do not want
+  patch -R -p1 -i ${srcdir}/0001-Use-usr-ssl-as-ca-dir-instead-of-.-demoCA.patch
   make test
-  patch -p0 -i "$srcdir/ca-dir.patch"
+  patch -p1 -i ${srcdir}/0001-Use-usr-ssl-as-ca-dir-instead-of-.-demoCA.patch
 }
 
 package_openssl() {
@@ -97,8 +90,8 @@ package_libopenssl() {
   cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
 
   mkdir -p ${pkgdir}/usr/lib/openssl
-  cp -rf ${srcdir}/dest/usr/lib/engines ${pkgdir}/usr/lib/openssl/
-  chmod -R 755 ${pkgdir}/usr/lib/openssl/engines
+  cp -rf ${srcdir}/dest/usr/lib/openssl/engines-1.1 ${pkgdir}/usr/lib/openssl/
+  chmod -R 755 ${pkgdir}/usr/lib/openssl/engines-1.1
 }
 
 package_openssl-devel() {

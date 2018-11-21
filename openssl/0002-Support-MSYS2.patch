@@ -1,0 +1,229 @@
+From 7c1d18bcc3fc6cf4e59cd2d82e2e39b19d98ab42 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Wed, 21 Nov 2018 13:55:56 +0100
+Subject: [PATCH 2/3] Support MSYS2
+
+This is an almost mechanical "copy/edit Cygwin support" patch.
+---
+ Configurations/10-main.conf       | 51 +++++++++++++++++++++++++++++++
+ Configurations/shared-info.pl     |  4 +++
+ Configurations/unix-Makefile.tmpl |  2 +-
+ Configure                         |  4 +--
+ apps/build.info                   |  2 +-
+ build.info                        |  5 ++-
+ config                            |  5 +++
+ crypto/build.info                 |  2 +-
+ tools/c_rehash.in                 |  1 +
+ util/process_docs.pl              |  1 +
+ 13 files changed, 75 insertions(+), 10 deletions(-)
+
+diff --git a/Configurations/10-main.conf b/Configurations/10-main.conf
+index 5cf345d..a17caea 100644
+--- a/Configurations/10-main.conf
++++ b/Configurations/10-main.conf
+@@ -1505,6 +1505,57 @@ my %targets = (
+ 	inherit_from     => [ "Cygwin-x86" ]
+     },
+ 
++#### MSYS
++    "Msys-x86" => {
++        inherit_from     => [ "BASE_unix", asm("x86_asm") ],
++        CC               => "gcc",
++        CFLAGS           => picker(default => "-Wall",
++                                   debug   => "-g -O0",
++                                   release => "-O3 -fomit-frame-pointer"),
++        lib_cppflags     => "-DTERMIOS -DL_ENDIAN",
++        sys_id           => "CYGWIN",
++        bn_ops           => "BN_LLONG",
++        thread_scheme    => "pthread",
++        perlasm_scheme   => "coff",
++        dso_scheme       => "dlfcn",
++        shared_target    => "msys-shared",
++        shared_cppflags  => "-D_WINDLL",
++        shared_extension => ".dll",
++    },
++    "Msys-x86_64" => {
++        inherit_from     => [ "BASE_unix", asm("x86_64_asm") ],
++        CC               => "gcc",
++        CFLAGS           => picker(default => "-Wall",
++                                   debug   => "-g -O0",
++                                   release => "-O3"),
++        lib_cppflags     => "-DTERMIOS -DL_ENDIAN",
++        sys_id           => "CYGWIN",
++        bn_ops           => "SIXTY_FOUR_BIT_LONG",
++        thread_scheme    => "pthread",
++        perlasm_scheme   => "mingw64",
++        dso_scheme       => "dlfcn",
++        shared_target    => "msys-shared",
++        shared_cppflags  => "-D_WINDLL",
++        shared_extension => ".dll",
++    },
++    # Backward compatibility for those using this target
++    "Msys" => {
++	inherit_from     => [ "Msys-x86" ]
++    },
++    # In case someone constructs the Msys target name themself
++    "Msys-i386" => {
++	inherit_from     => [ "Msys-x86" ]
++    },
++    "Msys-i486" => {
++	inherit_from     => [ "Msys-x86" ]
++    },
++    "Msys-i586" => {
++	inherit_from     => [ "Msys-x86" ]
++    },
++    "Msys-i686" => {
++	inherit_from     => [ "Msys-x86" ]
++    },
++
+ ##### MacOS X (a.k.a. Darwin) setup
+     "darwin-common" => {
+         inherit_from     => [ "BASE_unix" ],
+diff --git a/Configurations/shared-info.pl b/Configurations/shared-info.pl
+index 47eddd6..34f0f3b 100644
+--- a/Configurations/shared-info.pl
++++ b/Configurations/shared-info.pl
+@@ -50,6 +50,10 @@ my %shared_info;
+         shared_ldflag         => '-shared -Wl,--enable-auto-image-base',
+         shared_impflag        => '-Wl,--out-implib=',
+     },
++    'msys-shared' => {
++        shared_ldflag         => '-shared -Wl,--enable-auto-image-base',
++        shared_impflag        => '-Wl,--out-implib=',
++    },
+     'mingw-shared' => sub {
+         return {
+             %{$shared_info{'cygwin-shared'}},
+diff --git a/Configurations/unix-Makefile.tmpl b/Configurations/unix-Makefile.tmpl
+index e712019..df5a5ae 100644
+--- a/Configurations/unix-Makefile.tmpl
++++ b/Configurations/unix-Makefile.tmpl
+@@ -14,7 +14,7 @@
+      our $dsoext = $target{dso_extension} || ".so";
+      our $makedepprog = $disabled{makedepend} ? undef : $config{makedepprog};
+ 
+-     sub windowsdll { $config{target} =~ /^(?:Cygwin|mingw)/ }
++     sub windowsdll { $config{target} =~ /^(?:Cygwin|Msys|mingw)/ }
+ 
+      # Shared AIX support is special. We put libcrypto[64].so.ver into
+      # libcrypto.a and use libcrypto_a.a as static one.
+diff --git a/Configure b/Configure
+index d5dc36c..5801912 100755
+--- a/Configure
++++ b/Configure
+@@ -1124,7 +1124,7 @@ $target{CXXFLAGS}//=$target{CFLAGS} if $target{CXX};
+ $target{cxxflags}//=$target{cflags} if $target{CXX};
+ $target{exe_extension}="";
+ $target{exe_extension}=".exe" if ($config{target} eq "DJGPP"
+-                                  || $config{target} =~ /^(?:Cygwin|mingw)/);
++                                  || $config{target} =~ /^(?:Cygwin|Msys|mingw)/);
+ $target{exe_extension}=".pm"  if ($config{target} =~ /vos/);
+ 
+ ($target{shared_extension_simple}=$target{shared_extension})
+@@ -1132,7 +1132,7 @@ $target{exe_extension}=".pm"  if ($config{target} =~ /vos/);
+     unless defined($target{shared_extension_simple});
+ $target{dso_extension}//=$target{shared_extension_simple};
+ ($target{shared_import_extension}=$target{shared_extension_simple}.".a")
+-    if ($config{target} =~ /^(?:Cygwin|mingw)/);
++    if ($config{target} =~ /^(?:Cygwin|Msys|mingw)/);
+ 
+ # Fill %config with values from %user, and in case those are undefined or
+ # empty, use values from %target (acting as a default).
+diff --git a/apps/build.info b/apps/build.info
+index 751d8da..4c27432 100644
+--- a/apps/build.info
++++ b/apps/build.info
+@@ -22,7 +22,7 @@ IF[{- !$disabled{apps} -}]
+   INCLUDE[openssl]=.. ../include
+   DEPEND[openssl]=libapps.a ../libssl
+ 
+-IF[{- $config{target} =~ /^(?:Cygwin|mingw|VC-)/ -}]
++IF[{- $config{target} =~ /^(?:Cygwin|Msys|mingw|VC-)/ -}]
+   GENERATE[openssl.rc]=../util/mkrc.pl openssl
+   SOURCE[openssl]=openssl.rc
+ ENDIF
+diff --git a/build.info b/build.info
+index 3dda4e8..25e198a 100644
+--- a/build.info
++++ b/build.info
+@@ -71,7 +71,7 @@ ELSIF[{- $config{target} =~ /^vms/ -}]
+   SHARED_SOURCE[libssl]=libssl.opt
+ ENDIF
+ 
+-IF[{- $config{target} =~ /^(?:Cygwin|mingw|VC-)/ -}]
++IF[{- $config{target} =~ /^(?:Cygwin|Msys|mingw|VC-)/ -}]
+   GENERATE[libcrypto.rc]=util/mkrc.pl libcrypto
+   GENERATE[libssl.rc]=util/mkrc.pl libssl
+ 
+@@ -82,6 +82,9 @@ ENDIF
+ IF[{- $config{target} =~ /^Cygwin/ -}]
+  SHARED_NAME[libcrypto]=cygcrypto-{- $sover_filename -}
+  SHARED_NAME[libssl]=cygssl-{- $sover_filename -}
++ELSIF[{- $config{target} =~ /^Msys/ -}]
++ SHARED_NAME[libcrypto]=msys-crypto-{- $sover_filename -}
++ SHARED_NAME[libssl]=msys-ssl-{- $sover_filename -}
+ ELSIF[{- $config{target} =~ /^mingw/ -}]
+  SHARED_NAME[libcrypto]=libcrypto-{- $sover_filename -}{- $config{target} eq "mingw64" ? "-x64" : "" -}
+  SHARED_NAME[libssl]=libssl-{- $sover_filename -}{- $config{target} eq "mingw64" ? "-x64" : "" -}
+diff --git a/config b/config
+index b8adf34..02f3571 100755
+--- a/config
++++ b/config
+@@ -331,6 +331,10 @@ case "${SYSTEM}:${RELEASE}:${VERSION}:${MACHINE}" in
+ 	echo "${MACHINE}-pc-cygwin"; exit 0
+ 	;;
+ 
++    MSYS*)
++	echo "${MACHINE}-pc-msys"; exit 0
++	;;
++
+     vxworks*)
+        echo "${MACHINE}-whatever-vxworks"; exit 0;
+        ;;
+@@ -815,6 +819,7 @@ case "$GUESSOS" in
+   # these are all covered by the catchall below
+   i[3456]86-*-cygwin) OUT="Cygwin-x86" ;;
+   *-*-cygwin) OUT="Cygwin-${MACHINE}" ;;
++  *-*-msys) OUT="Msys-${MACHINE}" ;;
+   x86-*-android|i?86-*-android) OUT="android-x86" ;;
+   armv[7-9]*-*-android)
+       OUT="android-armeabi"
+diff --git a/crypto/build.info b/crypto/build.info
+index 2c619c6..a196bcc 100644
+--- a/crypto/build.info
++++ b/crypto/build.info
+@@ -34,6 +34,6 @@ INCLUDE[armv4cpuid.o]=.
+ GENERATE[s390xcpuid.S]=s390xcpuid.pl $(PERLASM_SCHEME)
+ INCLUDE[s390xcpuid.o]=.
+ 
+-IF[{- $config{target} =~ /^(?:Cygwin|mingw|VC-)/ -}]
++IF[{- $config{target} =~ /^(?:Cygwin|Msys|mingw|VC-)/ -}]
+   SHARED_SOURCE[../libcrypto]=dllmain.c
+ ENDIF
+diff --git a/tools/c_rehash.in b/tools/c_rehash.in
+index 421fd89..640db8c 100644
+--- a/tools/c_rehash.in
++++ b/tools/c_rehash.in
+@@ -21,6 +21,7 @@ my $x509hash = "-subject_hash";
+ my $crlhash = "-hash";
+ my $verbose = 0;
+ my $symlink_exists=eval {symlink("",""); 1};
++if ($^O eq "msys") { $symlink_exists=0 };
+ my $removelinks = 1;
+ 
+ ##  Parse flags.
+diff --git a/util/process_docs.pl b/util/process_docs.pl
+index 30b149e..0f97ce1 100755
+--- a/util/process_docs.pl
++++ b/util/process_docs.pl
+@@ -79,6 +79,7 @@ if ($options{debug}) {
+ }
+ 
+ my $symlink_exists = eval { symlink("",""); 1 };
++if ($^O eq "msys") { $symlink_exists=0 };
+ 
+ foreach my $section (sort @{$options{section}}) {
+     my $subdir = "man$section";
+-- 
+2.19.1
+
