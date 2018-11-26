@@ -1,44 +1,36 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=pkgfile
-pkgver=17
+pkgver=19
 pkgrel=1
 pkgdesc="A pacman .files metadata explorer"
 arch=('i686' 'x86_64')
 url="https://github.com/falconindy/pkgfile"
 groups=('base' 'base-devel')
 license=('MIT')
-makedepends=('pcre-devel' 'libarchive-devel' 'libcurl-devel')
+makedepends=('pcre-devel' 'libarchive-devel' 'libcurl-devel' 'meson')
 depends=('libarchive' 'curl' 'pcre' 'pacman')
 options=('emptydirs')
-source=(${pkgname}-${pkgver}.tar.gz::"https://github.com/falconindy/$pkgname/archive/v$pkgver.tar.gz")
-
+source=(${pkgname}-${pkgver}.tar.gz::"https://github.com/falconindy/${pkgname}/archive/v${pkgver}.tar.gz"
+        001-cygwin-alloca.patch)
 install=pkgfile.install
-sha256sums=('de406dae1535296d4e71554cdaae4e1d279ef2c645fcff4405ed1b3d9e8ed0cb')
+sha256sums=('a1d37f058751b144d78757bd03fd9e391eb49d4dcca6c55942ebc2293c1431e5'
+            '9281aa0964a912c3b698eea169ff698f7e24eff8e7ae5929c235b7fc58989de7')
 
 prepare() {
-  cd "$srcdir/$pkgname-$pkgver"
-  ./autogen.sh
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  patch -p1 -i ${srcdir}/001-cygwin-alloca.patch
 }
 
 build() {
-  [[ -d "$srcdir/build-${CHOST}" ]] && rm -rf "$srcdir/build-${CHOST}"
-  mkdir "$srcdir/build-${CHOST}" && cd "$srcdir/build-${CHOST}"
-  #cd "$pkgname-$pkgver"
-
-  ../$pkgname-$pkgver/configure \
-    --prefix=/usr \
-    --sysconfdir=/etc \
-    --localstatedir=/var
-  make
-
-  # generate a license file
-  sed '/\*\//q' $srcdir/$pkgname-$pkgver/src/pkgfile.c >LICENSE
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  meson build-${CARCH}
+  ninja -v -C build-${CARCH}
 }
 
 package() {
-  cd "$srcdir/build-${CHOST}"
+  cd "${srcdir}/${pkgname}-${pkgver}"
 
-  make DESTDIR="$pkgdir" install
-  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  DESTDIR="${pkgdir}" ninja -C build-${CARCH} install
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
