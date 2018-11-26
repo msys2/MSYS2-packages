@@ -1,0 +1,73 @@
+diff --git a/mesonbuild/environment.py b/mesonbuild/environment.py
+index 6c270431..fc80b178 100644
+--- a/mesonbuild/environment.py
++++ b/mesonbuild/environment.py
+@@ -257,7 +257,7 @@ def detect_cpu(compilers):
+ 
+ def detect_system():
+     system = platform.system().lower()
+-    if system.startswith('cygwin'):
++    if system.startswith('cygwin') or system.startswith('msys'):
+         return 'cygwin'
+     return system
+ 
+diff --git a/mesonbuild/mesonlib.py b/mesonbuild/mesonlib.py
+index 8648a0dc..128092db 100644
+--- a/mesonbuild/mesonlib.py
++++ b/mesonbuild/mesonlib.py
+@@ -281,7 +281,7 @@ def is_windows():
+ 
+ def is_cygwin():
+     platname = platform.system().lower()
+-    return platname.startswith('cygwin')
++    return platname.startswith('cygwin') or platname.startswith('msys')
+ 
+ def is_debianlike():
+     return os.path.isfile('/etc/debian_version')
+diff --git a/mesonbuild/mesonmain.py b/mesonbuild/mesonmain.py
+index dfad2e78..71ec6f70 100644
+--- a/mesonbuild/mesonmain.py
++++ b/mesonbuild/mesonmain.py
+@@ -274,15 +274,7 @@ def run(original_args, mainfile):
+         print('You have python %s.' % sys.version)
+         print('Please update your environment')
+         return 1
+-    # https://github.com/mesonbuild/meson/issues/3653
+-    if sys.platform.lower() == 'msys':
+-        mlog.error('This python3 seems to be msys/python on MSYS2 Windows, which is known to have path semantics incompatible with Meson')
+-        msys2_arch = detect_msys2_arch()
+-        if msys2_arch:
+-            mlog.error('Please install and use mingw-w64-i686-python3 and/or mingw-w64-x86_64-python3 with Pacman')
+-        else:
+-            mlog.error('Please download and use Python as detailed at: https://mesonbuild.com/Getting-meson.html')
+-        return 2
++
+     # Set the meson command that will be used to run scripts and so on
+     set_meson_command(mainfile)
+     args = original_args[:]
+diff --git a/mesonbuild/mtest.py b/mesonbuild/mtest.py
+index 8d9a5853..7d0ea30d 100644
+--- a/mesonbuild/mtest.py
++++ b/mesonbuild/mtest.py
+@@ -41,7 +41,7 @@ def is_windows():
+ 
+ def is_cygwin():
+     platname = platform.system().lower()
+-    return 'cygwin' in platname
++    return 'cygwin' in platname or 'msys' in platname
+ 
+ def determine_worker_count():
+     varname = 'MESON_TESTTHREADS'
+diff --git a/mesonbuild/scripts/meson_exe.py b/mesonbuild/scripts/meson_exe.py
+index 84abfc33..59aabff0 100644
+--- a/mesonbuild/scripts/meson_exe.py
++++ b/mesonbuild/scripts/meson_exe.py
+@@ -34,7 +34,7 @@ def is_windows():
+ 
+ def is_cygwin():
+     platname = platform.system().lower()
+-    return 'cygwin' in platname
++    return 'cygwin' in platname or 'msys' in platname
+ 
+ def run_with_mono(fname):
+     if fname.endswith('.exe') and not (is_windows() or is_cygwin()):
