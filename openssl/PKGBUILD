@@ -16,12 +16,14 @@ noextract=(${pkgname}-${_ver}.tar.gz)
 source=("https://www.openssl.org/source/${pkgname}-${_ver}.tar.gz"{,.asc}
         '0001-Use-usr-ssl-as-ca-dir-instead-of-.-demoCA.patch'
         '0002-Support-MSYS2.patch'
-        '0003-tls13secretstest-work-around-multiple-definition-of.patch')
+        '0003-tls13secretstest-work-around-multiple-definition-of.patch'
+        '0004-Override-engines-directory.patch')
 sha256sums=('fc20130f8b7cbd2fb918b2f14e2f429e109c31ddd0fb38fc5d71d9ffed3f9f41'
             'SKIP'
             '35f5508bc3e651bb2ef1bf9f4e052f531aeaefbbdeff95b9746fff71137fff31'
-            'e8d768abeeeced09f54cd9159cc10a091f43a283b96b4a2b6e804be330b4ffea'
-            'a83dcfeec646724f081f8ff89beccee83c962758aa74d724f263138aa21b2438')
+            'e29ab22b76333ee3c56db33181390477ce744f7051aa3094ef5996be1370ae4e'
+            'a83dcfeec646724f081f8ff89beccee83c962758aa74d724f263138aa21b2438'
+            '79765cc10799691ae47880556255287c64b8c1f26ea3907ad2e0add97bc9f1fc')
 validpgpkeys=('8657ABB260F056B1E5190839D9C4D26D0E604491')
 
 prepare() {
@@ -31,6 +33,7 @@ prepare() {
   patch -p1 -i ${srcdir}/0001-Use-usr-ssl-as-ca-dir-instead-of-.-demoCA.patch
   patch -p1 -i ${srcdir}/0002-Support-MSYS2.patch
   patch -p1 -i ${srcdir}/0003-tls13secretstest-work-around-multiple-definition-of.patch
+  patch -p1 -i ${srcdir}/0004-Override-engines-directory.patch
 }
 
 build() {
@@ -60,7 +63,10 @@ build() {
 check() {
   cd ${srcdir}/${pkgname}-${_ver}
 
+  # the test would write test data into /usr/ssl, which we do not want
+  patch -R -p1 -i ${srcdir}/0001-Use-usr-ssl-as-ca-dir-instead-of-.-demoCA.patch
   make test
+  patch -p1 -i ${srcdir}/0001-Use-usr-ssl-as-ca-dir-instead-of-.-demoCA.patch
 }
 
 package_openssl() {
@@ -80,10 +86,10 @@ package_libopenssl() {
   groups=('libraries')
 
   mkdir -p ${pkgdir}/usr/bin
-  cp -f ${srcdir}/dest/usr/lib/*.dll ${pkgdir}/usr/bin/
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
 
   mkdir -p ${pkgdir}/usr/lib/openssl
-  cp -rf ${srcdir}/dest/usr/lib/engines-1.1 ${pkgdir}/usr/lib/openssl/
+  cp -rf ${srcdir}/dest/usr/lib/openssl/engines-1.1 ${pkgdir}/usr/lib/openssl/
   chmod -R 755 ${pkgdir}/usr/lib/openssl/engines-1.1
 }
 

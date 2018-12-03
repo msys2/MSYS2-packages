@@ -1,23 +1,24 @@
-From ccf4a669f8c23296e3f89d1da5109d9a63ad63ea Mon Sep 17 00:00:00 2001
+From 7c1d18bcc3fc6cf4e59cd2d82e2e39b19d98ab42 Mon Sep 17 00:00:00 2001
 From: Johannes Schindelin <johannes.schindelin@gmx.de>
 Date: Wed, 21 Nov 2018 13:55:56 +0100
 Subject: [PATCH 2/3] Support MSYS2
 
 This is an almost mechanical "copy/edit Cygwin support" patch.
 ---
- Configurations/10-main.conf   | 51 +++++++++++++++++++++++++++++++++++
- Configurations/shared-info.pl |  4 +++
- Configure                     |  4 +--
- apps/build.info               |  2 +-
- build.info                    |  2 +-
- config                        |  5 ++++
- crypto/build.info             |  2 +-
- crypto/dllmain.c              |  4 +--
- crypto/dso/dso_dlfcn.c        |  2 +-
- include/openssl/e_os2.h       |  2 +-
- tools/c_rehash.in             |  1 +
- util/process_docs.pl          |  1 +
- 12 files changed, 71 insertions(+), 9 deletions(-)
+ Configurations/10-main.conf       | 51 +++++++++++++++++++++++++++++++
+ Configurations/shared-info.pl     |  4 +++
+ Configurations/unix-Makefile.tmpl |  2 +-
+ Configure                         |  4 +--
+ apps/build.info                   |  2 +-
+ build.info                        |  5 ++-
+ config                            |  5 +++
+ crypto/build.info                 |  2 +-
+ crypto/dllmain.c                  |  4 +--
+ crypto/dso/dso_dlfcn.c            |  2 +-
+ include/openssl/e_os2.h           |  2 +-
+ tools/c_rehash.in                 |  1 +
+ util/process_docs.pl              |  1 +
+ 13 files changed, 75 insertions(+), 10 deletions(-)
 
 diff --git a/Configurations/10-main.conf b/Configurations/10-main.conf
 index 5cf345d..a17caea 100644
@@ -96,6 +97,19 @@ index 47eddd6..34f0f3b 100644
      'mingw-shared' => sub {
          return {
              %{$shared_info{'cygwin-shared'}},
+diff --git a/Configurations/unix-Makefile.tmpl b/Configurations/unix-Makefile.tmpl
+index e712019..df5a5ae 100644
+--- a/Configurations/unix-Makefile.tmpl
++++ b/Configurations/unix-Makefile.tmpl
+@@ -14,7 +14,7 @@
+      our $dsoext = $target{dso_extension} || ".so";
+      our $makedepprog = $disabled{makedepend} ? undef : $config{makedepprog};
+ 
+-     sub windowsdll { $config{target} =~ /^(?:Cygwin|mingw)/ }
++     sub windowsdll { $config{target} =~ /^(?:Cygwin|Msys|mingw)/ }
+ 
+      # Shared AIX support is special. We put libcrypto[64].so.ver into
+      # libcrypto.a and use libcrypto_a.a as static one.
 diff --git a/Configure b/Configure
 index d5dc36c..5801912 100755
 --- a/Configure
@@ -132,7 +146,7 @@ index 751d8da..4c27432 100644
    SOURCE[openssl]=openssl.rc
  ENDIF
 diff --git a/build.info b/build.info
-index 3dda4e8..37136aa 100644
+index 3dda4e8..25e198a 100644
 --- a/build.info
 +++ b/build.info
 @@ -71,7 +71,7 @@ ELSIF[{- $config{target} =~ /^vms/ -}]
@@ -144,6 +158,16 @@ index 3dda4e8..37136aa 100644
    GENERATE[libcrypto.rc]=util/mkrc.pl libcrypto
    GENERATE[libssl.rc]=util/mkrc.pl libssl
  
+@@ -82,6 +82,9 @@ ENDIF
+ IF[{- $config{target} =~ /^Cygwin/ -}]
+  SHARED_NAME[libcrypto]=cygcrypto-{- $sover_filename -}
+  SHARED_NAME[libssl]=cygssl-{- $sover_filename -}
++ELSIF[{- $config{target} =~ /^Msys/ -}]
++ SHARED_NAME[libcrypto]=msys-crypto-{- $sover_filename -}
++ SHARED_NAME[libssl]=msys-ssl-{- $sover_filename -}
+ ELSIF[{- $config{target} =~ /^mingw/ -}]
+  SHARED_NAME[libcrypto]=libcrypto-{- $sover_filename -}{- $config{target} eq "mingw64" ? "-x64" : "" -}
+  SHARED_NAME[libssl]=libssl-{- $sover_filename -}{- $config{target} eq "mingw64" ? "-x64" : "" -}
 diff --git a/config b/config
 index b8adf34..02f3571 100755
 --- a/config
