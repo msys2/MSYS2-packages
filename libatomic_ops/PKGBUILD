@@ -1,0 +1,59 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgbase=libatomic_ops
+pkgname=("${pkgbase}" "${pkgbase}-devel")
+pkgver=7.6.6
+pkgrel=1
+pkgdesc="Provides semi-portable access to hardware provided atomic memory operations"
+arch=('any')
+url="http://www.hboehm.info/gc"
+license=('GPL2' 'MIT')
+source=("https://github.com/ivmai/${pkgbase}/releases/download/v${pkgver}/${pkgbase}-${pkgver}.tar.gz"
+        libatomic_ops-7.6.6-msysize.patch)
+sha256sums=('99feabc5f54877f314db4fadeb109f0b3e1d1a54afb6b4b3dfba1e707e38e074'
+            'e1b8c8adcddbecf0a083d0ea47d8778cda13d632dd156b4f6c5a2e9ae9d5f92a')
+
+prepare(){
+  cd ${srcdir}/${pkgbase}-${pkgver}
+  patch -p1 -i ${srcdir}/libatomic_ops-7.6.6-msysize.patch
+  autoreconf -fiv
+}
+
+build() {
+  [[ -d ${srcdir}/build-${CHOST} ]] && rm -rf ${srcdir}/build-${CHOST}
+  mkdir -p ${srcdir}/build-${CHOST} && cd ${srcdir}/build-${CHOST}
+
+  ../${pkgbase}-${pkgver}/configure \
+    --build=${CHOST} \
+    --host=${CHOST} \
+    --target=${CHOST} \
+    --prefix=/usr \
+    --enable-shared \
+    --enable-static
+  make
+}
+
+check() {
+  cd ${srcdir}/build-${CHOST}
+  PATH="${srcdir}/build-${CHOST}/src/.libs:$PATH" make check
+}
+
+package_libatomic_ops() {
+  cd "${srcdir}/build-${CHOST}"
+  make DESTDIR=${pkgdir} install
+
+  rm -rf ${pkgdir}/usr/{include,lib,share}
+  install -Dm644 ${srcdir}/${pkgbase}-${pkgver}/doc/LICENSING.txt "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
+
+package_libatomic_ops-devel() {
+  groups=('development')
+  options=('staticlibs')
+  depends=("libatomic_ops=${pkgver}")
+
+  cd "${srcdir}/build-${CHOST}"
+
+  make DESTDIR=${pkgdir} install
+
+  rm -rf ${pkgdir}/usr/bin
+}
