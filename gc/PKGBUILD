@@ -1,30 +1,25 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgbase=gc
-pkgname=('libgc' 'libgc-devel' 'libatomic_ops-devel')
+pkgname=('libgc' 'libgc-devel')
 pkgver=8.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc="A garbage collector for C and C++"
 arch=('i686' 'x86_64')
 gropus=('libraries')
 url="http://www.hboehm.info/gc/"
 license=('GPL')
 source=("https://github.com/ivmai/bdwgc/releases/download/v${pkgver}/${pkgbase}-${pkgver}.tar.gz"
-        gc-8.0-msys2.patch
-        libatomic_ops-7.4.4.patch)
-depends=('gcc-libs')
+        gc-8.0-msys2.patch)
+makedepends=(libatomic_ops-devel)
 options=('!libtool')
 sha256sums=('8f23f9a20883d00af2bff122249807e645bdf386de0de8cbd6cce3e0c6968f04'
-            '28d1a532badc3f83ed804727f99b7189106a1be92f98ac452e7a219ba2f115af'
-            '613b5ab7913f30f1585071f731181f4fbffc7dbee296043d5c6363b6e5369b1c')
+            '28d1a532badc3f83ed804727f99b7189106a1be92f98ac452e7a219ba2f115af')
 
 prepare() {
   cd "${srcdir}/${pkgbase}-${pkgver}"
-
   patch -p1 -i ${srcdir}/gc-8.0-msys2.patch
-  patch -p1 -i ${srcdir}/libatomic_ops-7.4.4.patch
-  
-  autoreconf -vif
+  autoreconf -fiv
 }
 
 build() {
@@ -36,7 +31,9 @@ build() {
     --prefix=/usr \
     --enable-cplusplus \
     --enable-threads=pthreads \
-    --with-libatomic-ops=no
+    --with-libatomic-ops=yes \
+    --enable-handle-fork
+
   make
 }
 
@@ -47,6 +44,7 @@ check() {
 }
 
 package_libgc() {
+  depends=('libatomic_ops' 'gcc-libs')
   cd "${srcdir}/build-${CARCH}"
 
   make DESTDIR=${pkgdir} install
@@ -57,20 +55,11 @@ package_libgc() {
 package_libgc-devel() {
   groups=('development')
   options=('staticlibs')
-  depends=("libgc=${pkgver}")
+  depends=("libgc=${pkgver}" "libatomic_ops-devel")
 
   cd "${srcdir}/build-${CARCH}"
 
   make DESTDIR=${pkgdir} install
 
   rm -rf ${pkgdir}/usr/{bin,share}
-}
-
-package_libatomic_ops-devel() {
-  groups=('development')
-  options=('staticlibs')
-
-  cd "${srcdir}/build-${CARCH}/libatomic_ops"
-
-  make DESTDIR=${pkgdir} install
 }
