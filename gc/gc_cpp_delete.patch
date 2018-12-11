@@ -1,0 +1,85 @@
+From 4a67c8d07b6fb729cd2f1a1b87ffe8aaa1b1c936 Mon Sep 17 00:00:00 2001
+From: Ivan Maidanski <ivmai@mail.ru>
+Date: Wed, 15 Aug 2018 10:23:33 +0300
+Subject: [PATCH] Fix delete operator redirection if gc_cpp is built as .dll
+ (Cygwin, MinGW) (back-port of commit 5e51e8d from 'master')
+
+Issue #229 (bdwgc).
+
+* include/gc_cpp.h [(__CYGWIN32__ || __CYGWIN__ || __MINGW32__)
+&& !GC_BUILD && !GC_NOT_DLL && GC_OPERATOR_NEW_ARRAY] (operator new[],
+operator delete[]): Define inline function.
+* include/gc_cpp.h [(__CYGWIN32__ || __CYGWIN__ || __MINGW32__)
+&& !GC_BUILD && !GC_NOT_DLL] (operator new, operator delete): Likewise.
+* include/gc_cpp.h [(_MSC_VER || __DMC__ || (__CYGWIN32__ || __CYGWIN__
+|| __MINGW32__) && !GC_BUILD && !GC_NOT_DLL) && __cplusplus>201103L]
+(operator delete(void*,size_t)): Likewise.
+* include/gc_cpp.h [(_MSC_VER || __DMC__ || (__CYGWIN32__ || __CYGWIN__
+|| __MINGW32__) && !GC_BUILD && !GC_NOT_DLL) && __cplusplus>201103L
+&& GC_OPERATOR_NEW_ARRAY] (operator delete[](void*,size_t)): Likewise.
+* include/gc_cpp.h [(_MSC_VER || __DMC__) && GC_OPERATOR_NEW_ARRAY]
+(operator delete[](void*)): Add GC_DECL_DELETE_THROW.
+* include/gc_cpp.h [_MSC_VER || __DMC__] (operator delete(void*)):
+Likewise.
+* include/gc_cpp.h (operator new(size_t, int, const char*, int),
+operator new[](size_t, int, const char*, int)): Do not define
+for __DMC__.
+---
+ include/gc_cpp.h | 26 +++++++++++++++++++++++---
+ 1 file changed, 23 insertions(+), 3 deletions(-)
+
+diff --git a/include/gc_cpp.h b/include/gc_cpp.h
+index 92ec2317..7afc7838 100644
+--- a/include/gc_cpp.h
++++ b/include/gc_cpp.h
+@@ -304,7 +304,9 @@ inline void* operator new(size_t size, GC_NS_QUALIFY(GCPlacement) gcp,
+                               GC_NS_QUALIFY(GCCleanUpFunc), void*);
+ #endif
+ 
+-#if defined(_MSC_VER) || defined(__DMC__)
++#if defined(_MSC_VER) || defined(__DMC__) \
++    || ((defined(__CYGWIN32__) || defined(__CYGWIN__) \
++        || defined(__MINGW32__)) && !defined(GC_BUILD) && !defined(GC_NOT_DLL))
+   // The following ensures that the system default operator new[] does not
+   // get undefined, which is what seems to happen on VC++ 6 for some reason
+   // if we define a multi-argument operator new[].
+@@ -321,7 +323,7 @@ inline void* operator new(size_t size, GC_NS_QUALIFY(GCPlacement) gcp,
+       return obj;
+     }
+ 
+-    inline void operator delete[](void* obj)
++    inline void operator delete[](void* obj) GC_DECL_DELETE_THROW
+     {
+       GC_FREE(obj);
+     }
+@@ -334,11 +336,29 @@ inline void* operator new(size_t size, GC_NS_QUALIFY(GCPlacement) gcp,
+     return obj;
+   }
+ 
+-  inline void operator delete(void* obj)
++  inline void operator delete(void* obj) GC_DECL_DELETE_THROW
+   {
+     GC_FREE(obj);
+   }
+ 
++# if __cplusplus > 201103L // C++14
++    inline void operator delete(void* obj, size_t size) GC_DECL_DELETE_THROW {
++      (void)size; // size is ignored
++      GC_FREE(obj);
++    }
++
++#   if defined(GC_OPERATOR_NEW_ARRAY)
++      inline void operator delete[](void* obj, size_t size)
++                                        GC_DECL_DELETE_THROW {
++        (void)size;
++        GC_FREE(obj);
++      }
++#   endif
++# endif // C++14
++#endif
++
++#ifdef _MSC_VER
++
+   // This new operator is used by VC++ in case of Debug builds:
+ # ifdef GC_DEBUG
+     inline void* operator new(size_t size, int /* nBlockUse */,
