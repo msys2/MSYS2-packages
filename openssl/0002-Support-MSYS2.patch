@@ -13,9 +13,6 @@ This is an almost mechanical "copy/edit Cygwin support" patch.
  build.info                        |  5 ++-
  config                            |  5 +++
  crypto/build.info                 |  2 +-
- crypto/dllmain.c                  |  4 +--
- crypto/dso/dso_dlfcn.c            |  2 +-
- include/openssl/e_os2.h           |  2 +-
  tools/c_rehash.in                 |  1 +
  util/process_docs.pl              |  1 +
  13 files changed, 75 insertions(+), 10 deletions(-)
@@ -177,7 +174,7 @@ index b8adf34..02f3571 100755
  	;;
  
 +    MSYS*)
-+	echo "${MACHINE}-whatever-msys"; exit 0
++	echo "${MACHINE}-pc-msys"; exit 0
 +	;;
 +
      vxworks*)
@@ -187,7 +184,7 @@ index b8adf34..02f3571 100755
    # these are all covered by the catchall below
    i[3456]86-*-cygwin) OUT="Cygwin-x86" ;;
    *-*-cygwin) OUT="Cygwin-${MACHINE}" ;;
-+  *-*-msys) OUT="Msys" ;;
++  *-*-msys) OUT="Msys-${MACHINE}" ;;
    x86-*-android|i?86-*-android) OUT="android-x86" ;;
    armv[7-9]*-*-android)
        OUT="android-armeabi"
@@ -203,47 +200,6 @@ index 2c619c6..a196bcc 100644
 +IF[{- $config{target} =~ /^(?:Cygwin|Msys|mingw|VC-)/ -}]
    SHARED_SOURCE[../libcrypto]=dllmain.c
  ENDIF
-diff --git a/crypto/dllmain.c b/crypto/dllmain.c
-index 0838c55..f74d36c 100644
---- a/crypto/dllmain.c
-+++ b/crypto/dllmain.c
-@@ -10,8 +10,8 @@
- #include "e_os.h"
- #include "internal/cryptlib_int.h"
- 
--#if defined(_WIN32) || defined(__CYGWIN__)
--# ifdef __CYGWIN__
-+#if defined(_WIN32) || defined(__CYGWIN__) || defined(__MSYS__)
-+# if defined(__CYGWIN__) || defined(__MSYS__)
- /* pick DLL_[PROCESS|THREAD]_[ATTACH|DETACH] definitions */
- #  include <windows.h>
- /*
-diff --git a/crypto/dso/dso_dlfcn.c b/crypto/dso/dso_dlfcn.c
-index ad8899c..d70f81c 100644
---- a/crypto/dso/dso_dlfcn.c
-+++ b/crypto/dso/dso_dlfcn.c
-@@ -26,7 +26,7 @@
- #  endif
- #  include <dlfcn.h>
- #  define HAVE_DLINFO 1
--#  if defined(__CYGWIN__) || \
-+#  if defined(__CYGWIN__) || defined(__MSYS__) || \
-      defined(__SCO_VERSION__) || defined(_SCO_ELF) || \
-      (defined(__osf__) && !defined(RTLD_NEXT))     || \
-      (defined(__OpenBSD__) && !defined(RTLD_SELF)) || \
-diff --git a/include/openssl/e_os2.h b/include/openssl/e_os2.h
-index eeae215..f13b7dc 100644
---- a/include/openssl/e_os2.h
-+++ b/include/openssl/e_os2.h
-@@ -48,7 +48,7 @@ extern "C" {
- #  undef OPENSSL_SYS_UNIX
- #  define OPENSSL_SYS_WIN32_UWIN
- # else
--#  if defined(__CYGWIN__) || defined(OPENSSL_SYS_CYGWIN)
-+#  if defined(__CYGWIN__) || defined(__MSYS__) || defined(OPENSSL_SYS_CYGWIN)
- #   define OPENSSL_SYS_WIN32_CYGWIN
- #  else
- #   if defined(_WIN32) || defined(OPENSSL_SYS_WIN32)
 diff --git a/tools/c_rehash.in b/tools/c_rehash.in
 index 421fd89..640db8c 100644
 --- a/tools/c_rehash.in
