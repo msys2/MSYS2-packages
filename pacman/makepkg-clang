@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+#   makepkg-mingw - wrapper for makepkg to build mingw-w64 packages under  MSYS2
+#
+#   Copyright (c) 2018 Alexey Pavlov <alexpux@gmail.com>
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+plain() {
+  local mesg=$1; shift
+  printf "${BOLD}    ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_warning() {
+  local mesg=$1; shift
+  printf "${YELLOW}=> WARNING:${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_msg1() {
+  local mesg=$1; shift
+  printf "${GREEN}==> ${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_msg2() {
+  local mesg=$1; shift
+  printf "${BLUE}  ->${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_error() {
+  local mesg=$1; shift
+  printf "${RED}==> ERROR:${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+if /usr/bin/tput setaf 0 &>/dev/null; then
+  ALL_OFF="$(/usr/bin/tput sgr0)"
+  BOLD="$(/usr/bin/tput bold)"
+  BLUE="${BOLD}$(/usr/bin/tput setaf 4)"
+  GREEN="${BOLD}$(/usr/bin/tput setaf 2)"
+  RED="${BOLD}$(/usr/bin/tput setaf 1)"
+  YELLOW="${BOLD}$(/usr/bin/tput setaf 3)"
+else
+  ALL_OFF="\e[1;0m"
+  BOLD="\e[1;1m"
+  BLUE="${BOLD}\e[1;34m"
+  GREEN="${BOLD}\e[1;32m"
+  RED="${BOLD}\e[1;31m"
+  YELLOW="${BOLD}\e[1;33m"
+fi
+
+readonly ALL_OFF BOLD BLUE GREEN RED YELLOW
+MINGW_INSTALLS="${MINGW_INSTALLS:-clang64 clang32}"
+
+for _mingw in ${MINGW_INSTALLS}; do
+  if [ ! "${_mingw}" = 'clang32' -a ! "${_mingw}" = 'clang64' ]; then
+    print_error "Requested mingw installation '${_mingw}', but only 'clang32' and 'clang64' are allowed."
+    exit 1
+  fi
+done
+
+for _arg in "$@"; do
+  if [ ${_arg} = "--help" -o ${_arg} = "-h" -o ${_arg} = "--version" -o ${_arg} = "-V" ]; then
+    /usr/bin/makepkg $@
+    exit 0
+  fi
+done
+
+for _mingw in ${MINGW_INSTALLS}; do
+  case ${_mingw} in
+    clang32)
+      _arch=i686
+      _msystem=MINGW32
+    ;;
+    clang64)
+      _arch=x86_64
+      _msystem=MINGW64
+    ;;
+  esac
+
+  if [ -f "/${_mingw}/bin/clang.exe" ]; then
+    MSYSTEM=${_msystem} \
+    PATH=/${_mingw}/bin:$(echo $PATH | tr ':' '\n' | awk '$0 != "/opt/bin"' | paste -sd:) \
+    /usr/bin/makepkg --config /etc/makepkg_${_mingw}.conf $@ || exit 1
+  else
+    print_warning "You don't have installed mingw-w64 toolchain for architecture ${_arch}."
+    print_warning "To install it run: 'pacman -S mingw-w64-${_arch}-toolchain'"
+  fi
+done
+
+exit 0
