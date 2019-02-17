@@ -1,4 +1,4 @@
-From 6b31c8ca6fefeed915436eaa5811b8466fd8b9df Mon Sep 17 00:00:00 2001
+From 8a145e5eae0d5a0cfed729ba78d8b33cf46250cf Mon Sep 17 00:00:00 2001
 From: Alexpux <alexey.pawlow@gmail.com>
 Date: Thu, 12 Mar 2015 13:58:27 +0300
 Subject: [PATCH 03/N] Add functionality for converting UNIX paths in
@@ -21,10 +21,10 @@ Subject: [PATCH 03/N] Add functionality for converting UNIX paths in
  create mode 100644 winsup/cygwin/msys2_path_conv.h
 
 diff --git a/winsup/cygwin/Makefile.in b/winsup/cygwin/Makefile.in
-index 6b31632..70a32c8 100644
+index a3a4ee4..ada012a 100644
 --- a/winsup/cygwin/Makefile.in
 +++ b/winsup/cygwin/Makefile.in
-@@ -337,6 +337,7 @@ DLL_OFILES:= \
+@@ -344,6 +344,7 @@ DLL_OFILES:= \
  	mmap.o \
  	msg.o \
  	msgcat.o \
@@ -33,7 +33,7 @@ index 6b31632..70a32c8 100644
  	net.o \
  	netdb.o \
 diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
-index 67ead1d..851922d 100644
+index 495c340..c655589 100644
 --- a/winsup/cygwin/environ.cc
 +++ b/winsup/cygwin/environ.cc
 @@ -1043,7 +1043,7 @@ env_compare (const void *key, const void *memb)
@@ -87,10 +87,10 @@ index 269591a..71c3f22 100644
  char ** __reg2 win32env_to_cygenv (PWCHAR rawenv, bool posify);
  
 diff --git a/winsup/cygwin/external.cc b/winsup/cygwin/external.cc
-index 3a9130e..6592eb3 100644
+index fbb901f..79cbae7 100644
 --- a/winsup/cygwin/external.cc
 +++ b/winsup/cygwin/external.cc
-@@ -137,7 +137,7 @@ create_winenv (const char * const *env)
+@@ -141,7 +141,7 @@ create_winenv (const char * const *env)
    int unused_envc;
    PWCHAR envblock = NULL;
    char **envp = build_env (env ?: cur_environ (), envblock, unused_envc, false,
@@ -100,7 +100,7 @@ index 3a9130e..6592eb3 100644
  
    if (envp)
 diff --git a/winsup/cygwin/include/sys/cygwin.h b/winsup/cygwin/include/sys/cygwin.h
-index c5da87c..874447a 100644
+index afc193f..ba1bfe7 100644
 --- a/winsup/cygwin/include/sys/cygwin.h
 +++ b/winsup/cygwin/include/sys/cygwin.h
 @@ -83,6 +83,12 @@ extern ssize_t cygwin_conv_path_list (cygwin_conv_path_t what, const void *from,
@@ -905,7 +905,7 @@ index 0000000..e1e5e87
 +#endif /* end of include guard: PATH_CONV_H_DB4IQBH3 */
 +
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index 3cb46c9..9da78fb 100644
+index 158f1e5..5db4bd9 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
 @@ -66,6 +66,7 @@
@@ -916,7 +916,7 @@ index 3cb46c9..9da78fb 100644
  #undef basename
  
  suffix_info stat_suffixes[] =
-@@ -3368,6 +3369,69 @@ fchdir (int fd)
+@@ -3447,6 +3448,69 @@ fchdir (int fd)
    return res;
  }
  
@@ -987,11 +987,11 @@ index 3cb46c9..9da78fb 100644
  
  /* Cover functions to the path conversion routines.
 diff --git a/winsup/cygwin/spawn.cc b/winsup/cygwin/spawn.cc
-index 37db526..d941675 100644
+index ebc34d1..e5ac899 100644
 --- a/winsup/cygwin/spawn.cc
 +++ b/winsup/cygwin/spawn.cc
-@@ -261,6 +261,27 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
-   pid_t cygpid;
+@@ -260,6 +260,27 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+   bool rc;
    int res = -1;
  
 +  /* Environment variable MSYS2_ARG_CONV_EXCL contains a list
@@ -1018,7 +1018,7 @@ index 37db526..d941675 100644
    /* Check if we have been called from exec{lv}p or spawn{lv}p and mask
       mode to keep only the spawn mode. */
    bool p_type_exec = !!(mode & _P_PATH_TYPE_EXEC);
-@@ -370,12 +391,26 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+@@ -369,12 +390,26 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
  	      moreinfo->argc = newargv.argc;
  	      moreinfo->argv = newargv;
  	    }
@@ -1050,7 +1050,7 @@ index 37db526..d941675 100644
  	    }
  
  
-@@ -507,7 +542,8 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+@@ -506,7 +541,8 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
        moreinfo->envp = build_env (envp, envblock, moreinfo->envc,
  				  real_path.iscygexec (),
  				  switch_user ? ::cygheap->user.primary_token ()
