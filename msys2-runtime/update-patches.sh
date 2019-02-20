@@ -32,6 +32,7 @@ git -c core.abbrev=7 \
 	-c format.useAutoBase=false \
 	-C src/msys2-runtime \
 	format-patch \
+		--topo-order \
 		--diff-algorithm=default \
 		--no-attach \
 		--no-add-header \
