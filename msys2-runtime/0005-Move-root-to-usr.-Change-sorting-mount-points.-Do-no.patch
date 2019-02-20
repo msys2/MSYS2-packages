@@ -1,4 +1,4 @@
-From 6ec48453e22437a16f62122dc2d73b5501fc3010 Mon Sep 17 00:00:00 2001
+From 462dd6094ab68fb87c42ab0d17def8a115413656 Mon Sep 17 00:00:00 2001
 From: Alexpux <alexey.pawlow@gmail.com>
 Date: Thu, 12 Mar 2015 14:09:29 +0300
 Subject: [PATCH 05/N] - Move root to /usr. - Change sorting mount points. -
@@ -8,10 +8,10 @@ Subject: [PATCH 05/N] - Move root to /usr. - Change sorting mount points. -
 ---
  winsup/cygwin/cygheap.cc |  12 ++-
  winsup/cygwin/globals.cc |   2 +-
- winsup/cygwin/mount.cc   | 189 +++++++++++++++++++++++++++++++++------
+ winsup/cygwin/mount.cc   | 187 +++++++++++++++++++++++++++++++++------
  winsup/cygwin/mount.h    |   3 +-
  winsup/cygwin/uinfo.cc   |   2 +-
- 5 files changed, 177 insertions(+), 31 deletions(-)
+ 5 files changed, 177 insertions(+), 29 deletions(-)
 
 diff --git a/winsup/cygwin/cygheap.cc b/winsup/cygwin/cygheap.cc
 index eb60cf2..5f6d27f 100644
@@ -71,7 +71,7 @@ index ebe8b56..05ff5f0 100644
  bool pipe_byte;
  bool reset_com;
 diff --git a/winsup/cygwin/mount.cc b/winsup/cygwin/mount.cc
-index 146b2b6..2034ff2 100644
+index e034981..bff33ff 100644
 --- a/winsup/cygwin/mount.cc
 +++ b/winsup/cygwin/mount.cc
 @@ -39,7 +39,6 @@ details. */
@@ -94,19 +94,19 @@ index 146b2b6..2034ff2 100644
    sys_wcstombs (native_root, PATH_MAX, root);
    assert (*native_root != '\0');
    if (add_item (native_root, "/",
--		MOUNT_SYSTEM | MOUNT_BINARY | MOUNT_IMMUTABLE | MOUNT_AUTOMATIC)
-+		MOUNT_SYSTEM | MOUNT_BINARY | MOUNT_IMMUTABLE | MOUNT_AUTOMATIC | MOUNT_NOACL)
+-		MOUNT_SYSTEM | MOUNT_IMMUTABLE | MOUNT_AUTOMATIC)
++		MOUNT_SYSTEM | MOUNT_IMMUTABLE | MOUNT_AUTOMATIC | MOUNT_NOACL)
        < 0)
      api_fatal ("add_item (\"%s\", \"/\", ...) failed, errno %d", native_root, errno);
    /* Create a default cygdrive entry.  Note that this is a user entry.
       This allows to override it with mount, unless the sysadmin created
       a cygdrive entry in /etc/fstab. */
--  cygdrive_flags = MOUNT_BINARY | MOUNT_NOPOSIX | MOUNT_CYGDRIVE;
-+  cygdrive_flags = MOUNT_BINARY | MOUNT_NOPOSIX | MOUNT_CYGDRIVE | MOUNT_NOACL;
+-  cygdrive_flags = MOUNT_NOPOSIX | MOUNT_CYGDRIVE;
++  cygdrive_flags = MOUNT_NOPOSIX | MOUNT_CYGDRIVE | MOUNT_NOACL;
    strcpy (cygdrive, CYGWIN_INFO_CYGDRIVE_DEFAULT_PREFIX "/");
    cygdrive_len = strlen (cygdrive);
  }
-@@ -499,25 +497,17 @@ mount_info::init (bool user_init)
+@@ -499,23 +497,17 @@ mount_info::init (bool user_init)
    pathend = wcpcpy (pathend, L"\\etc\\fstab");
    from_fstab (user_init, path, pathend);
  
@@ -122,32 +122,30 @@ index 146b2b6..2034ff2 100644
 -      if (!got_usr_bin)
 -      {
 -	stpcpy (p, "\\bin");
--	add_item (native, "/usr/bin",
--		  MOUNT_SYSTEM | MOUNT_BINARY | MOUNT_AUTOMATIC);
+-	add_item (native, "/usr/bin", MOUNT_SYSTEM | MOUNT_AUTOMATIC);
 -      }
 -      if (!got_usr_lib)
 -      {
 -	stpcpy (p, "\\lib");
--	add_item (native, "/usr/lib",
--		  MOUNT_SYSTEM | MOUNT_BINARY | MOUNT_AUTOMATIC);
+-	add_item (native, "/usr/lib", MOUNT_SYSTEM | MOUNT_AUTOMATIC);
 -      }
 -    }
 +	stpcpy (p, "\\usr\\bin");
 +	add_item (native, "/bin",
-+		  MOUNT_SYSTEM | MOUNT_BINARY | MOUNT_AUTOMATIC | MOUNT_NOACL);
++		  MOUNT_SYSTEM | MOUNT_AUTOMATIC | MOUNT_NOACL);
 +   }
  }
  
- static void
-@@ -604,6 +594,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
+ int
+@@ -595,6 +587,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
    /* See if this is a cygwin "device" */
    if (win32_device_name (src_path, dst, dev))
      {
 +      debug_printf ("win32_device_name (%s)", src_path);
-       *flags = MOUNT_BINARY;	/* FIXME: Is this a sensible default for devices? */
+       *flags = 0;
        rc = 0;
        goto out_no_chroot_check;
-@@ -634,6 +625,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
+@@ -625,6 +618,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
      }
    if (isproc (src_path))
      {
@@ -155,7 +153,7 @@ index 146b2b6..2034ff2 100644
        dev = *proc_dev;
        dev = fhandler_proc::get_proc_fhandler (src_path);
        if (dev == FH_NADA)
-@@ -655,6 +647,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
+@@ -646,6 +640,7 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
       off the prefix and transform it into an MS-DOS path. */
    else if (iscygdrive (src_path))
      {
@@ -163,12 +161,12 @@ index 146b2b6..2034ff2 100644
        int n = mount_table->cygdrive_len - 1;
        int unit;
  
-@@ -666,11 +659,15 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
+@@ -657,11 +652,15 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
  	}
        else if (cygdrive_win32_path (src_path, dst, unit))
  	{
-+      debug_printf ("cygdrive_win32_path (%s)", src_path);
- 	  set_flags (flags, (unsigned) cygdrive_flags);
++          debug_printf ("cygdrive_win32_path (%s)", src_path);
+ 	  *flags = cygdrive_flags;
  	  goto out;
  	}
        else if (mount_table->cygdrive_len > 1)
@@ -179,7 +177,7 @@ index 146b2b6..2034ff2 100644
      }
  
    int chroot_pathlen;
-@@ -681,7 +678,9 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
+@@ -672,7 +671,9 @@ mount_info::conv_to_win32_path (const char *src_path, char *dst, device& dev,
        const char *path;
        int len;
  
@@ -190,7 +188,7 @@ index 146b2b6..2034ff2 100644
        if (!cygheap->root.exists ()
  	  || (mi->posix_pathlen == 1 && mi->posix_path[0] == '/'))
  	{
-@@ -912,7 +911,8 @@ mount_info::conv_to_posix_path (const char *src_path, char *posix_path,
+@@ -903,7 +904,8 @@ mount_info::conv_to_posix_path (const char *src_path, char *posix_path,
    int pathbuflen = tail - pathbuf;
    for (int i = 0; i < nmounts; ++i)
      {
@@ -200,7 +198,7 @@ index 146b2b6..2034ff2 100644
        if (!path_prefix_p (mi.native_path, pathbuf, mi.native_pathlen,
  			  mi.flags & MOUNT_NOPOSIX))
  	continue;
-@@ -1140,8 +1140,17 @@ mount_info::from_fstab_line (char *line, bool user)
+@@ -1116,8 +1118,17 @@ mount_info::from_fstab_line (char *line, bool user)
    if (!*c)
      return true;
    cend = find_ws (c);
@@ -208,7 +206,7 @@ index 146b2b6..2034ff2 100644
    posix_path = conv_fstab_spaces (c);
 +  if (!*cend)
 +   {
-+     unsigned mount_flags = MOUNT_SYSTEM | MOUNT_BINARY | MOUNT_NOPOSIX | MOUNT_NOACL;
++     unsigned mount_flags = MOUNT_SYSTEM | MOUNT_NOPOSIX | MOUNT_NOACL;
 +
 +     int res = mount_table->add_item (native_path, posix_path, mount_flags);
 +     if (res && get_errno () == EMFILE)
@@ -219,7 +217,7 @@ index 146b2b6..2034ff2 100644
    /* Third field: FS type. */
    c = skip_ws (cend + 1);
    if (!*c)
-@@ -1370,16 +1379,145 @@ sort_by_native_name (const void *a, const void *b)
+@@ -1346,16 +1357,145 @@ sort_by_native_name (const void *a, const void *b)
    return res;
  }
  
@@ -366,7 +364,7 @@ index 146b2b6..2034ff2 100644
  }
  
  /* Add an entry to the mount table.
-@@ -1470,12 +1608,9 @@ mount_info::add_item (const char *native, const char *posix,
+@@ -1446,12 +1586,9 @@ mount_info::add_item (const char *native, const char *posix,
    if (i == nmounts)
      nmounts++;
  
@@ -381,7 +379,7 @@ index 146b2b6..2034ff2 100644
      root_idx = i;
  
 diff --git a/winsup/cygwin/mount.h b/winsup/cygwin/mount.h
-index 86e1b19..475d511 100644
+index 122a679..c447381 100644
 --- a/winsup/cygwin/mount.h
 +++ b/winsup/cygwin/mount.h
 @@ -171,7 +171,6 @@ class mount_info
