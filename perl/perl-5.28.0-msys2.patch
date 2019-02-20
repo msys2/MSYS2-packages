@@ -680,7 +680,7 @@ diff -Naur perl-5.28.0-orig/cpan/Win32/t/GetCurrentThreadId.t perl-5.28.0/cpan/W
 diff -Naur perl-5.28.0-orig/cpan/Win32/t/Unicode.t perl-5.28.0/cpan/Win32/t/Unicode.t
 --- perl-5.28.0-orig/cpan/Win32/t/Unicode.t	2018-03-20 23:06:36.000000000 +0300
 +++ perl-5.28.0/cpan/Win32/t/Unicode.t	2018-06-28 07:53:18.615782100 +0300
-@@ -79,7 +79,7 @@
+@@ -80,7 +80,7 @@
  
  # cwd() on Cygwin returns a mapped path that we need to translate
  # back to a Windows path. Invoking `cygpath` on $subdir doesn't work.
@@ -755,15 +755,17 @@ diff -Naur perl-5.28.0-orig/cpan/Win32API-File/t/file.t perl-5.28.0/cpan/Win32AP
 diff -Naur perl-5.28.0-orig/Cross/Makefile-cross-SH perl-5.28.0/Cross/Makefile-cross-SH
 --- perl-5.28.0-orig/Cross/Makefile-cross-SH	2018-05-21 15:29:23.000000000 +0300
 +++ perl-5.28.0/Cross/Makefile-cross-SH	2018-06-28 07:53:18.638783500 +0300
-@@ -61,7 +61,7 @@
+@@ -61,8 +61,8 @@
  				${revision}.${patchlevel}.${subversion} \
  			     -install_name \$(shrpdir)/\$@"
  		;;
 -	cygwin*)
+-		linklibperl="-lperl"
 +	cygwin* | msys*)
- 		linklibperl="-lperl"
++		linklibperl="-L. -lperl"
  		;;
  	sunos*)
+ 		linklibperl="-lperl"
 @@ -467,7 +467,7 @@
  
  !NO!SUBS!
@@ -935,7 +937,7 @@ diff -Naur perl-5.28.0-orig/dist/PathTools/Cwd.pm perl-5.28.0/dist/PathTools/Cwd
 diff -Naur perl-5.28.0-orig/dist/PathTools/lib/File/Spec/Cygwin.pm perl-5.28.0/dist/PathTools/lib/File/Spec/Cygwin.pm
 --- perl-5.28.0-orig/dist/PathTools/lib/File/Spec/Cygwin.pm	2018-05-21 15:29:23.000000000 +0300
 +++ perl-5.28.0/dist/PathTools/lib/File/Spec/Cygwin.pm	2018-06-28 07:53:18.902798600 +0300
-@@ -117,7 +117,7 @@
+@@ -117,12 +117,12 @@
  =cut
  
  sub case_tolerant {
@@ -944,6 +946,12 @@ diff -Naur perl-5.28.0-orig/dist/PathTools/lib/File/Spec/Cygwin.pm perl-5.28.0/d
      and defined &Cygwin::mount_flags;
  
    my $drive = shift;
+   if (! $drive) {
+-      my @flags = split(/,/, Cygwin::mount_flags('/cygwin'));
++      my @flags = split(/,/, Cygwin::mount_flags('/msys'));
+       my $prefix = pop(@flags);
+       if (! $prefix || $prefix eq 'cygdrive') {
+           $drive = '/cygdrive/c';
 diff -Naur perl-5.28.0-orig/dist/PathTools/lib/File/Spec/Unix.pm perl-5.28.0/dist/PathTools/lib/File/Spec/Unix.pm
 --- perl-5.28.0-orig/dist/PathTools/lib/File/Spec/Unix.pm	2018-05-21 15:29:23.000000000 +0300
 +++ perl-5.28.0/dist/PathTools/lib/File/Spec/Unix.pm	2018-06-28 07:53:18.911799100 +0300
@@ -1534,6 +1542,15 @@ diff -Naur perl-5.28.0-orig/Makefile.SH perl-5.28.0/Makefile.SH
  	-rm -f $(PERL_EXE) $(MINIPERL_EXE) $(LIBPERL) libperl.* microperl
  	-rm -f config.arch config.over $(DTRACE_H)
  
+@@ -1525,7 +1525,7 @@ case "$targethost" in
+ '') $spitshell >>$Makefile <<'!NO!SUBS!'
+ test_prep test-prep: test_prep_pre $(MINIPERL_EXE) $(unidatafiles) $(PERL_EXE) \
+ 	$(dynamic_ext) $(TEST_PERL_DLL) runtests $(generated_pods) common_build
+-	cd t && (rm -f $(PERL_EXE); $(LNS) ../$(PERL_EXE) $(PERL_EXE))
++	cd t && (rm -f $(PERL_EXE) $(LIBPERL); $(LNS) ../$(PERL_EXE) $(PERL_EXE); $(LNS) ../$(LIBPERL) $(LIBPERL))
+ 
+ !NO!SUBS!
+ ;;
 diff -Naur perl-5.28.0-orig/regen/regen_lib.pl perl-5.28.0/regen/regen_lib.pl
 --- perl-5.28.0-orig/regen/regen_lib.pl	2018-05-21 15:29:23.000000000 +0300
 +++ perl-5.28.0/regen/regen_lib.pl	2018-06-28 07:53:21.586949900 +0300
@@ -1719,11 +1736,11 @@ diff -Naur perl-5.28.0-orig/t/op/sigdispatch.t perl-5.28.0/t/op/sigdispatch.t
  	if is_miniperl() || !$Config{d_sigprocmask};
      skip("This doesn\'t work on $^O threaded builds RT#88814", 17)
 -        if ($^O =~ /cygwin/ && $Config{useithreads});
-+        if ($^O =~ /cygwin|msys/ && $Config{useithreads})
++        if ($^O =~ /cygwin|msys/ && $Config{useithreads});
      skip("This doesn\'t work on $^O version $Config{osvers} RT#88814", 17)
          if ($^O eq "openbsd" && $Config{osvers} < 5.2);
  
-@@ -60,7 +60,7 @@
+@@ -60,7 +61,7 @@
      kill 'SIGUSR1', $$;
      is $gotit, 0, 'Haven\'t received third signal yet';
  
@@ -1732,7 +1749,7 @@ diff -Naur perl-5.28.0-orig/t/op/sigdispatch.t perl-5.28.0/t/op/sigdispatch.t
      is POSIX::sigpending($pending), '0 but true', 'sigpending';
      is $pending->ismember(&POSIX::SIGUSR1), 1, 'SIGUSR1 is pending';
      
-@@ -118,7 +118,7 @@
+@@ -118,7 +119,7 @@
  
  SKIP: {
      skip("alarm cannot interrupt blocking system calls on $^O", 2)
@@ -1794,7 +1811,7 @@ diff -Naur perl-5.28.0-orig/t/porting/extrefs.t perl-5.28.0/t/porting/extrefs.t
      my ($c, %args) = @_;
  
 -    my $ld_exeext = ($^O eq 'cygwin' || $^O eq 'MSWin32' ||
-+    my $ld_exeext = ($^O eq 'cygwin' || $^O eq 'MSWin32' || $^O eq 'msys' ||
++    my $ld_exeext = ($^O eq 'cygwin' || $^O eq 'msys' || $^O eq 'MSWin32' ||
                   $^O eq 'os2' && $Config{ldflags} =~ /-Zexe\b/) ? '.exe' :
                  (($^O eq 'vos') ? $Config{exe_ext} : '');
  
