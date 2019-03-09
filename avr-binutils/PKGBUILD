@@ -1,0 +1,76 @@
+# Maintainer: fauxpark <fauxpark@gmail.com>
+# Contributor: fauxpark <fauxpark@gmail.com>
+
+# Adapted for MSYS2 from https://www.archlinux.org/packages/community/x86_64/avr-binutils/
+
+# Build order: avr-binutils -> avr-gcc -> avr-libc
+
+pkgname=avr-binutils
+pkgver=2.32
+pkgrel=1
+pkgdesc="A set of programs to assemble and manipulate binary and object files for the AVR architecture"
+arch=('i686' 'x86_64')
+url="http://www.gnu.org/software/binutils/"
+license=('GPL')
+depends=('zlib' 'binutils')
+options=('!distcc' '!ccache')
+source=(ftp://ftp.gnu.org/gnu/binutils/binutils-${pkgver}.tar.bz2
+        avr-size.patch)
+sha256sums=('de38b15c902eb2725eac6af21183a5f34ea4634cb0bcef19612b50e5ed31072d'
+            '1776fa53ec8c8cc6031c205be0ca358db32fccef7831d29d17b3435309ef7a1c')
+
+_builddir=binutils-build
+
+prepare() {
+  cd ${srcdir}/binutils-${pkgver}
+  patch -Np0 < ${srcdir}/avr-size.patch
+
+  sed -i "/ac_cpp=/s/\$CPPFLAGS/\$CPPFLAGS -O2/" libiberty/configure
+
+  rm -rf ${srcdir}/${_builddir}
+  mkdir ${srcdir}/${_builddir}
+}
+
+build() {
+  cd ${srcdir}/binutils-${pkgver}
+
+  config_guess=$(./config.guess)
+
+  cd ${srcdir}/${_builddir}
+
+  ${srcdir}/binutils-${pkgver}/configure \
+    --prefix=/usr \
+    --with-lib-path=/usr/lib \
+    --enable-ld=default \
+    --enable-gold \
+    --enable-plugins \
+    --enable-threads \
+    --with-pic \
+    --enable-shared \
+    --disable-werror \
+    --disable-multilib \
+    --build=${config_guess} \
+    --target=avr \
+    $CONFIGFLAG
+
+  # This checks the host environment and makes sure all the necessary tools are available to compile Binutils.
+  make configure-host
+
+  make tooldir=/usr
+}
+
+package() {
+  cd ${srcdir}/${_builddir}
+
+  make prefix=${pkgdir}/usr tooldir=${pkgdir}/usr install
+
+  for bin in ar as nm objcopy objdump ranlib strip readelf; do
+    rm -f ${pkgdir}/usr/bin/${bin}
+  done
+
+  for info in as bfd binutils gprof ld; do
+    mv ${pkgdir}/usr/share/info/${info}.info ${pkgdir}/usr/share/info/avr-${info}.info
+  done
+
+  rm -r ${pkgdir}/usr/share/locale
+}
