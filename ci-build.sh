@@ -10,7 +10,7 @@ source 'ci-library.sh'
 deploy_enabled && mkdir artifacts
 git_config user.email 'ci@msys2.org'
 git_config user.name  'MSYS2 Continuous Integration'
-git remote add upstream 'https://github.com/Alexpux/MSYS2-packages'
+git remote add upstream 'https://github.com/MSYS2/MSYS2-packages'
 git fetch --quiet upstream
 
 # Detect
