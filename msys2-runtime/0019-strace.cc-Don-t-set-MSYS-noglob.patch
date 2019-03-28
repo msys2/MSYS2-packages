@@ -29,10 +29,11 @@ diff --git a/winsup/utils/strace.cc b/winsup/utils/strace.cc
 index bf507981a..638b66293 100644
 --- a/winsup/utils/strace.cc
 +++ b/winsup/utils/strace.cc
-@@ -353,10 +353,28 @@ create_child (char **argv)
+@@ -357,6 +357,25 @@ create_child (char **argv)
    make_command_line (one_line, argv);
  
    SetConsoleCtrlHandler (NULL, 0);
++#ifndef __MSYS__
 +/* Commit message for this code was:
 +"* strace.cc (create_child): Set CYGWIN=noglob when starting new process so that
 +
@@ -46,27 +47,19 @@ index bf507981a..638b66293 100644
 +  The reason it badly breaks this use-case is because dcrt0.cc depends
 +  on globbing to happen to parse commandlines from Windows programs;
 +  irrespective of whether they contain any glob patterns or not.
-+  
++
 +  See quoted () comment:
 +  "This must have been run from a Windows shell, so preserve
 +     quotes for globify to play with later."
-+
-   const char *cygwin_env = getenv ("MSYS");
-   const char *space;
++ */
  
--  if (cygwin_env && strlen (cygwin_env) <= 256) /* sanity check */
-+  if (cygwin_env && strlen (cygwin_env) <= 256) // sanity check
-     space = " ";
-   else
-     space = cygwin_env = "";
-@@ -364,6 +382,7 @@ create_child (char **argv)
- 				  + strlen (space) + strlen (cygwin_env));
-   sprintf (newenv, "MSYS=noglob%s%s", space, cygwin_env);
+ #ifdef __MSYS__
+   const char *cygwin_env = getenv ("MSYS");
+@@ -379,6 +398,7 @@ create_child (char **argv)
+   sprintf (newenv, "CYGWIN=noglob%s%s", space, cygwin_env);
+ #endif
    _putenv (newenv);
-+*/
++#endif
    ret = CreateProcess (0, one_line.buf,	/* command line */
  		       NULL,	/* Security */
  		       NULL,	/* thread */
--- 
-2.18.0
-

@@ -338,15 +338,25 @@ diff --git a/winsup/cygwin/cygthread.cc b/winsup/cygwin/cygthread.cc
 index 4404e4a19..db5858646 100644
 --- a/winsup/cygwin/cygthread.cc
 +++ b/winsup/cygwin/cygthread.cc
-@@ -168,7 +168,7 @@ new (size_t)
+@@ -170,10 +170,17 @@ new (size_t)
        }
  
  #ifdef DEBUGGING
--  if (!getenv ("CYGWIN_FREERANGE_NOCHECK"))
++  #ifdef __MSYS__
 +  if (!getenv ("MSYS_FREERANGE_NOCHECK"))
++    api_fatal ("overflowed MSYS thread pool");
++  else
++    thread_printf ("overflowed MSYS thread pool");
++  #else
+   if (!getenv ("CYGWIN_FREERANGE_NOCHECK"))
      api_fatal ("overflowed cygwin thread pool");
    else
      thread_printf ("overflowed cygwin thread pool");
++  #endif
+ #endif
+ 
+   info = freerange ();	/* exhausted thread pool */
+
 diff --git a/winsup/cygwin/cygwin.sc.in b/winsup/cygwin/cygwin.sc.in
 index 134ae3f76..d390a51ec 100644
 --- a/winsup/cygwin/cygwin.sc.in
@@ -395,48 +405,58 @@ diff --git a/winsup/cygwin/dcrt0.cc b/winsup/cygwin/dcrt0.cc
 index af5eaaca7..7a23e0320 100644
 --- a/winsup/cygwin/dcrt0.cc
 +++ b/winsup/cygwin/dcrt0.cc
-@@ -377,21 +377,21 @@ check_sanity_and_sync (per_process *p)
+@@ -377,17 +377,29 @@ check_sanity_and_sync (per_process *p)
  
    /* Complain if older than last incompatible change */
    if (p->dll_major < CYGWIN_VERSION_DLL_EPOCH)
--    api_fatal ("cygwin DLL and APP are out of sync -- DLL version mismatch %u < %u",
++#ifdef __MSYS__
 +    api_fatal ("msys DLL and APP are out of sync -- DLL version mismatch %u < %u",
++#else
+     api_fatal ("cygwin DLL and APP are out of sync -- DLL version mismatch %u < %u",
++#endif
  	       p->dll_major, CYGWIN_VERSION_DLL_EPOCH);
  
    /* magic_biscuit != 0 if using the old style version numbering scheme.  */
    if (p->magic_biscuit != SIZEOF_PER_PROCESS)
--    api_fatal ("Incompatible cygwin .dll -- incompatible per_process info %u != %u",
++#ifdef __MSYS__
 +    api_fatal ("Incompatible msys .dll -- incompatible per_process info %u != %u",
++#else
+     api_fatal ("Incompatible cygwin .dll -- incompatible per_process info %u != %u",
++#endif
  	       p->magic_biscuit, SIZEOF_PER_PROCESS);
  
    /* Complain if incompatible API changes made */
    if (p->api_major > cygwin_version.api_major)
--    api_fatal ("cygwin DLL and APP are out of sync -- API version mismatch %u > %u",
++#ifdef __MSYS__
 +    api_fatal ("msys DLL and APP are out of sync -- API version mismatch %u > %u",
++#else
+     api_fatal ("cygwin DLL and APP are out of sync -- API version mismatch %u > %u",
++#endif
  	       p->api_major, cygwin_version.api_major);
  
  #ifdef __i386__
--  /* This is a kludge to work around a version of _cygwin_common_crt0
-+  /* This is a kludge to work around a version of _msys_common_crt0
-      which overwrote the cxx_malloc field with the local DLL copy.
-      Hilarity ensues if the DLL is not loaded while the process
-      is forking. */
-@@ -490,12 +490,12 @@ break_here ()
+@@ -490,12 +502,20 @@ break_here ()
  static void
  initial_env ()
  {
--  if (GetEnvironmentVariableA ("CYGWIN_TESTING", NULL, 0))
++#ifdef __MSYS__
 +  if (GetEnvironmentVariableA ("MSYS_TESTING", NULL, 0))
++#else
+   if (GetEnvironmentVariableA ("CYGWIN_TESTING", NULL, 0))
++#endif
      _cygwin_testing = 1;
  
  #ifdef DEBUGGING
    char buf[PATH_MAX];
--  if (GetEnvironmentVariableA ("CYGWIN_DEBUG", buf, sizeof (buf) - 1))
++#ifdef __MSYS__
 +  if (GetEnvironmentVariableA ("MSYS_DEBUG", buf, sizeof (buf) - 1))
++#else
+   if (GetEnvironmentVariableA ("CYGWIN_DEBUG", buf, sizeof (buf) - 1))
++#endif
      {
        char buf1[PATH_MAX];
        GetModuleFileName (NULL, buf1, PATH_MAX);
-@@ -1101,7 +1101,11 @@ dll_crt0 (per_process *uptr)
+@@ -1105,7 +1125,11 @@ dll_crt0 (per_process *uptr)
     See winsup/testsuite/cygload for an example of how to use cygwin1.dll
     from MSVC and non-cygwin MinGW applications.  */
  extern "C" void
@@ -448,21 +468,27 @@ index af5eaaca7..7a23e0320 100644
  {
  #ifdef __i386__
    static char **envp;
-@@ -1314,7 +1318,7 @@ multiple_cygwin_problem (const char *what, uintptr_t magic_version, uintptr_t ve
+@@ -1318,7 +1342,11 @@ multiple_cygwin_problem (const char *what, uintptr_t magic_version, uintptr_t ve
        return;
      }
  
--  if (GetEnvironmentVariableA ("CYGWIN_MISMATCH_OK", NULL, 0))
++#ifdef __MSYS__
 +  if (GetEnvironmentVariableA ("MSYS_MISMATCH_OK", NULL, 0))
++#else
+   if (GetEnvironmentVariableA ("CYGWIN_MISMATCH_OK", NULL, 0))
++#endif
      return;
  
    if (CYGWIN_VERSION_MAGIC_VERSION (magic_version) == version)
-@@ -1334,7 +1338,7 @@ are unable to find another cygwin DLL.",
+@@ -1338,7 +1366,11 @@ are unable to find another cygwin DLL.",
  void __reg1
  cygbench (const char *s)
  {
--  if (GetEnvironmentVariableA ("CYGWIN_BENCH", NULL, 0))
++#ifdef __MSYS__
 +  if (GetEnvironmentVariableA ("MSYS_BENCH", NULL, 0))
++#else
+   if (GetEnvironmentVariableA ("CYGWIN_BENCH", NULL, 0))
++#endif
      small_printf ("%05u ***** %s : %10d\n", GetCurrentProcessId (), s, strace.microseconds ());
  }
  #endif
@@ -535,20 +561,26 @@ diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
 index 419b0976f..2cdfed770 100644
 --- a/winsup/cygwin/exceptions.cc
 +++ b/winsup/cygwin/exceptions.cc
-@@ -500,14 +500,14 @@ try_to_debug (bool waitloop)
+@@ -501,14 +501,22 @@ try_to_debug (bool waitloop)
    PWCHAR rawenv = GetEnvironmentStringsW () ;
    for (PWCHAR p = rawenv; *p != L'\0'; p = wcschr (p, L'\0') + 1)
      {
--      if (wcsncmp (p, L"CYGWIN=", wcslen (L"CYGWIN=")) == 0)
++#ifdef __MSYS__
 +      if (wcsncmp (p, L"MSYS=", wcslen (L"MSYS=")) == 0)
++#else
+       if (wcsncmp (p, L"CYGWIN=", wcslen (L"CYGWIN=")) == 0)
++#endif
  	{
  	  PWCHAR q = wcsstr (p, L"error_start") ;
  	  /* replace 'error_start=...' with '_rror_start=...' */
  	  if (q)
  	    {
  	      *q = L'_' ;
--	      SetEnvironmentVariableW (L"CYGWIN", p + wcslen (L"CYGWIN=")) ;
-+	      SetEnvironmentVariableW (L"MSYS", p + wcslen (L"MSYS=")) ;
++#ifdef __MSYS__
++              SetEnvironmentVariableW (L"MSYS", p + wcslen (L"MSYS=")) ;
++#else
+ 	      SetEnvironmentVariableW (L"CYGWIN", p + wcslen (L"CYGWIN=")) ;
++#endif
  	    }
  	  break;
  	}
@@ -596,12 +628,15 @@ diff --git a/winsup/cygwin/fork.cc b/winsup/cygwin/fork.cc
 index c6fef6755..fbac1f904 100644
 --- a/winsup/cygwin/fork.cc
 +++ b/winsup/cygwin/fork.cc
-@@ -160,7 +160,7 @@ frok::child (volatile char * volatile here)
+@@ -164,7 +164,11 @@ frok::child (volatile char * volatile here)
    char buf[80];
    /* This is useful for debugging fork problems.  Use gdb to attach to
       the pid reported here. */
--  if (GetEnvironmentVariableA ("CYGWIN_FORK_SLEEP", buf, sizeof (buf)))
++#ifdef __MSYS__
 +  if (GetEnvironmentVariableA ("MSYS_FORK_SLEEP", buf, sizeof (buf)))
++#else
+   if (GetEnvironmentVariableA ("CYGWIN_FORK_SLEEP", buf, sizeof (buf)))
++#endif
      {
        small_printf ("Sleeping %d after fork, pid %u\n", atoi (buf), GetCurrentProcessId ());
        Sleep (atoi (buf));
@@ -653,55 +688,97 @@ diff --git a/winsup/cygwin/include/cygwin/cygwin_dll.h b/winsup/cygwin/include/c
 index 56b4363ce..6bc948a08 100644
 --- a/winsup/cygwin/include/cygwin/cygwin_dll.h
 +++ b/winsup/cygwin/include/cygwin/cygwin_dll.h
-@@ -24,8 +24,8 @@ details. */
- CDECL_BEGIN								      \
-   int WINAPI Entry (HINSTANCE h, DWORD reason, void *ptr);	              \
-   typedef int (*mainfunc) (int, char **, char **);			      \
--  extern PVOID cygwin_attach_dll (HMODULE, mainfunc);			      \
--  extern void cygwin_detach_dll (PVOID);				      \
+@@ -19,6 +19,84 @@ details. */
+ #define CDECL_END
+ #endif
+ 
++#ifdef __MSYS__
++
++#define DECLARE_CYGWIN_DLL(Entry)					      \
++									      \
++CDECL_BEGIN								      \
++  int WINAPI Entry (HINSTANCE h, DWORD reason, void *ptr);	              \
++  typedef int (*mainfunc) (int, char **, char **);			      \
 +  extern PVOID msys_attach_dll (HMODULE, mainfunc);			      \
 +  extern void msys_detach_dll (PVOID);				      \
- CDECL_END								      \
- 									      \
- static HINSTANCE storedHandle;						      \
-@@ -42,7 +42,7 @@ static int __dllMain (int a __attribute__ ((__unused__)),		      \
- 									      \
- static PVOID dll_index;							      \
- 									      \
--int WINAPI _cygwin_dll_entry (HINSTANCE h, DWORD reason, void *ptr)	      \
++CDECL_END								      \
++									      \
++static HINSTANCE storedHandle;						      \
++static DWORD storedReason;						      \
++static void* storedPtr;							      \
++int __dynamically_loaded;						      \
++									      \
++static int __dllMain (int a __attribute__ ((__unused__)),		      \
++		      char **b __attribute__ ((__unused__)),		      \
++		      char **c __attribute__ ((__unused__)))		      \
++{									      \
++  return Entry (storedHandle, storedReason, storedPtr);		              \
++}									      \
++									      \
++static PVOID dll_index;							      \
++									      \
 +int WINAPI _msys_dll_entry (HINSTANCE h, DWORD reason, void *ptr)	      \
- {									      \
-   int ret;								      \
-   ret = 1;								      \
-@@ -55,7 +55,7 @@ int WINAPI _cygwin_dll_entry (HINSTANCE h, DWORD reason, void *ptr)	      \
-       storedReason = reason;						      \
-       storedPtr = ptr;							      \
-       __dynamically_loaded = (ptr == NULL);				      \
--      dll_index = cygwin_attach_dll (h, &__dllMain);			      \
++{									      \
++  int ret;								      \
++  ret = 1;								      \
++									      \
++  switch (reason)							      \
++  {									      \
++    case DLL_PROCESS_ATTACH:						      \
++    {									      \
++      storedHandle = h;							      \
++      storedReason = reason;						      \
++      storedPtr = ptr;							      \
++      __dynamically_loaded = (ptr == NULL);				      \
 +      dll_index = msys_attach_dll (h, &__dllMain);			      \
-       if (dll_index == (PVOID) -1)					      \
- 	ret = 0;							      \
-     }									      \
-@@ -66,7 +66,7 @@ int WINAPI _cygwin_dll_entry (HINSTANCE h, DWORD reason, void *ptr)	      \
-       ret = Entry (h, reason, ptr);					      \
-       if (ret)								      \
-       {									      \
--	cygwin_detach_dll (dll_index);					      \
++      if (dll_index == (PVOID) -1)					      \
++	ret = 0;							      \
++    }									      \
++    break;								      \
++									      \
++    case DLL_PROCESS_DETACH:						      \
++    {									      \
++      ret = Entry (h, reason, ptr);					      \
++      if (ret)								      \
++      {									      \
 +	msys_detach_dll (dll_index);					      \
- 	dll_index = (PVOID) -1;						      \
-       }									      \
-     }									      \
-@@ -88,9 +88,9 @@ int WINAPI _cygwin_dll_entry (HINSTANCE h, DWORD reason, void *ptr)	      \
- }									      \
- 									      \
- /* OBSOLETE: This is only provided for source level compatibility. */         \
--int WINAPI _cygwin_noncygwin_dll_entry (HINSTANCE h, DWORD reason, void *ptr) \
-+int WINAPI _msys_nonmsys_dll_entry (HINSTANCE h, DWORD reason, void *ptr) \
- {									      \
--  return _cygwin_dll_entry (h, reason, ptr);				      \
++	dll_index = (PVOID) -1;						      \
++      }									      \
++    }									      \
++    break;								      \
++									      \
++    case DLL_THREAD_ATTACH:						      \
++    {									      \
++      ret = Entry (h, reason, ptr);					      \
++    }									      \
++    break;								      \
++									      \
++    case DLL_THREAD_DETACH:						      \
++    {									      \
++      ret = Entry (h, reason, ptr);					      \
++    }									      \
++    break;								      \
++  }									      \
++  return ret;								      \
++}									      \
++									      \
++/* OBSOLETE: This is only provided for source level compatibility. */         \
++int WINAPI _cygwin_noncygwin_dll_entry (HINSTANCE h, DWORD reason, void *ptr) \
++{									      \
 +  return _msys_dll_entry (h, reason, ptr);				      \
++}									      \
++
++#else /* __MSYS__ */
++
+ #define DECLARE_CYGWIN_DLL(Entry)					      \
+ 									      \
+ CDECL_BEGIN								      \
+@@ -93,4 +171,6 @@ int WINAPI _cygwin_noncygwin_dll_entry (HINSTANCE h, DWORD reason, void *ptr) \
+   return _cygwin_dll_entry (h, reason, ptr);				      \
  }									      \
  
++#endif /* __MSYS__ */
++
  #endif /* __CYGWIN_CYGWIN_DLL_H__ */
 diff --git a/winsup/cygwin/include/cygwin/version.h b/winsup/cygwin/include/cygwin/version.h
 index 5a53a1d86..82a80fc12 100644
@@ -836,29 +913,23 @@ diff --git a/winsup/cygwin/pinfo.cc b/winsup/cygwin/pinfo.cc
 index 6b6986c9e..f4ca03299 100644
 --- a/winsup/cygwin/pinfo.cc
 +++ b/winsup/cygwin/pinfo.cc
-@@ -188,7 +188,7 @@ pinfo::maybe_set_exit_code_from_windows ()
+@@ -188,7 +188,11 @@ pinfo::maybe_set_exit_code_from_windows ()
        GetExitCodeProcess (hProcess, &x);
        set_exit_code (x);
      }
--  sigproc_printf ("pid %d, exit value - old %y, windows %y, cygwin %y",
++#ifdef __MSYS__
 +  sigproc_printf ("pid %d, exit value - old %y, windows %y, MSYS %y",
++#else
+   sigproc_printf ("pid %d, exit value - old %y, windows %y, cygwin %y",
++#endif
  		  self->pid, oexitcode, x, self->exitcode);
  }
  
-@@ -357,7 +357,7 @@ pinfo::init (pid_t n, DWORD flag, HANDLE h0)
-       if (procinfo->process_state & PID_EXECED)
- 	{
- 	  pid_t realpid = procinfo->pid;
--	  debug_printf ("execed process windows pid %u, cygwin pid %d", n, realpid);
-+	  debug_printf ("execed process windows pid %u, MSYS pid %d", n, realpid);
- 	  if (realpid == n)
- 	    api_fatal ("retrieval of execed process info for pid %d failed due to recursion.", n);
- 
-diff --git a/winsup/cygwin/pipe.cc b/winsup/cygwin/pipe.cc
+diff --git a/winsup/cygwin/fhandler_pipe.cc b/winsup/cygwin/fhandler_pipe.cc
 index f1eace6a6..071e09221 100644
---- a/winsup/cygwin/pipe.cc
-+++ b/winsup/cygwin/pipe.cc
-@@ -197,7 +197,11 @@ fhandler_pipe::dup (fhandler_base *child, int flags)
+--- a/winsup/cygwin/fhandler_pipe.cc
++++ b/winsup/cygwin/fhandler_pipe.cc
+@@ -201,7 +201,11 @@ fhandler_pipe::dup (fhandler_base *child, int flags)
    return res;
  }
  
@@ -874,12 +945,15 @@ diff --git a/winsup/cygwin/pseudo-reloc.cc b/winsup/cygwin/pseudo-reloc.cc
 index c250fdc01..a230b35e6 100644
 --- a/winsup/cygwin/pseudo-reloc.cc
 +++ b/winsup/cygwin/pseudo-reloc.cc
-@@ -87,7 +87,7 @@ __report_error (const char *msg, ...)
+@@ -87,7 +87,11 @@ __report_error (const char *msg, ...)
    char buf[128];
    char *posix_module = NULL;
    static const char UNKNOWN_MODULE[] = "<unknown module>: ";
--  static const char CYGWIN_FAILURE_MSG[] = "Cygwin runtime failure: ";
++#ifdef __MSYS__
 +  static const char CYGWIN_FAILURE_MSG[] = "MSYS runtime failure: ";
++#else
+   static const char CYGWIN_FAILURE_MSG[] = "Cygwin runtime failure: ";
++#endif
    HANDLE errh = GetStdHandle (STD_ERROR_HANDLE);
    va_list args;
  
@@ -887,68 +961,137 @@ diff --git a/winsup/cygwin/sec_auth.cc b/winsup/cygwin/sec_auth.cc
 index d4c2701da..600129928 100644
 --- a/winsup/cygwin/sec_auth.cc
 +++ b/winsup/cygwin/sec_auth.cc
-@@ -764,7 +764,7 @@ verify_token (HANDLE token, cygsid &usersid, user_groups &groups, bool *pintern)
+@@ -848,7 +848,11 @@ verify_token (HANDLE token, cygsid &usersid, user_groups &groups, bool *pintern)
        if (!NT_SUCCESS (status))
  	debug_printf ("NtQueryInformationToken(), %y", status);
        else
--	*pintern = intern = !memcmp (ts.SourceName, "Cygwin.1", 8);
++#ifdef __MSYS__
 +	*pintern = intern = !memcmp (ts.SourceName, "MSYS.2", 6);
++#else
+ 	*pintern = intern = !memcmp (ts.SourceName, "Cygwin.1", 8);
++#endif
      }
    /* Verify usersid */
    cygsid tok_usersid (NO_SID);
-@@ -882,7 +882,7 @@ create_token (cygsid &usersid, user_groups &new_groups)
+@@ -992,7 +996,11 @@ create_token (cygsid &usersid, user_groups &new_groups)
    TOKEN_DEFAULT_DACL dacl = {};
    TOKEN_SOURCE source;
    TOKEN_STATISTICS stats;
--  memcpy (source.SourceName, "Cygwin.1", 8);
++#ifdef __MSYS__
 +  memcpy (source.SourceName, "MSYS.2", 6);
++#else
+   memcpy (source.SourceName, "Cygwin.1", 8);
++#endif
    source.SourceIdentifier.HighPart = 0;
    source.SourceIdentifier.LowPart = 0x0101;
  
-@@ -1036,7 +1036,7 @@ lsaauth (cygsid &usersid, user_groups &new_groups)
+@@ -1151,7 +1159,11 @@ lsaauth (cygsid &usersid, user_groups &new_groups)
    push_self_privilege (SE_TCB_PRIVILEGE, true);
  
    /* Register as logon process. */
--  RtlInitAnsiString (&name, "Cygwin");
++#ifdef __MSYS__
 +  RtlInitAnsiString (&name, "MSYS");
-   SetLastError (0);
++#else
+   RtlInitAnsiString (&name, "Cygwin");
++#endif
    status = LsaRegisterLogonProcess (&name, &lsa_hdl, &sec_mode);
    if (status != STATUS_SUCCESS)
-@@ -1065,10 +1065,10 @@ lsaauth (cygsid &usersid, user_groups &new_groups)
+     {
+@@ -1174,10 +1186,18 @@ lsaauth (cygsid &usersid, user_groups &new_groups)
      goto out;
  
    /* Create origin. */
--  stpcpy (origin.buf, "Cygwin");
++#ifdef __MSYS__
 +  stpcpy (origin.buf, "MSYS");
++#else
+   stpcpy (origin.buf, "Cygwin");
++#endif
    RtlInitAnsiString (&origin.str, origin.buf);
    /* Create token source. */
--  memcpy (ts.SourceName, "Cygwin.1", 8);
++#ifdef __MSYS__
 +  memcpy (ts.SourceName, "MSYS.2", 6);
++#else
+   memcpy (ts.SourceName, "Cygwin.1", 8);
++#endif
    ts.SourceIdentifier.HighPart = 0;
    ts.SourceIdentifier.LowPart = 0x0103;
+ 
+@@ -1320,10 +1340,18 @@ lsaauth (cygsid &usersid, user_groups &new_groups)
+   if (status != STATUS_SUCCESS)
+     {
+       if (status == STATUS_ACCOUNT_RESTRICTION)
++#ifdef __MSYS__
++	debug_printf ("MSYS LSA Auth LsaLogonUser failed: %y (%s)",
++#else
+ 	debug_printf ("Cygwin LSA Auth LsaLogonUser failed: %y (%s)",
++#endif
+ 		      status, account_restriction (sub_status));
+       else
++#ifdef __MSYS__
++	debug_printf ("MSYS LSA Auth LsaLogonUser failed: %y", status);
++#else
+ 	debug_printf ("Cygwin LSA Auth LsaLogonUser failed: %y", status);
++#endif
+       __seterrno_from_nt_status (status);
+       goto out;
+     }
+@@ -1526,7 +1554,11 @@ s4uauth (bool logon, PCWSTR domain, PCWSTR user, NTSTATUS &ret_status)
+     {
+       /* Register as logon process. */
+       debug_printf ("Impersonation requested");
++#ifdef __MSYS__
++      RtlInitAnsiString (&name, "MSYS");
++#else
+       RtlInitAnsiString (&name, "Cygwin");
++#endif
+       status = LsaRegisterLogonProcess (&name, &lsa_hdl, &sec_mode);
+     }
+   else
+@@ -1562,11 +1594,19 @@ s4uauth (bool logon, PCWSTR domain, PCWSTR user, NTSTATUS &ret_status)
+     }
+ 
+   /* Create origin. */
++#ifdef __MSYS__
++  stpcpy (origin.buf, "MSYS");
++#else
+   stpcpy (origin.buf, "Cygwin");
++#endif
+   RtlInitAnsiString (&origin.str, origin.buf);
+ 
+   /* Create token source. */
++#ifdef __MSYS__
++  memcpy (ts.SourceName, "MSYS.2", 6);
++#else
+   memcpy (ts.SourceName, "Cygwin.1", 8);
++#endif
+   ts.SourceIdentifier.HighPart = 0;
+   ts.SourceIdentifier.LowPart = kerberos_auth ? 0x0105 : 0x0106;
  
 diff --git a/winsup/cygwin/syscalls.cc b/winsup/cygwin/syscalls.cc
 index 6d1085539..a81ce6ebd 100644
 --- a/winsup/cygwin/syscalls.cc
 +++ b/winsup/cygwin/syscalls.cc
-@@ -331,7 +331,7 @@ try_to_bin (path_conv &pc, HANDLE &fh, ACCESS_MASK access, ULONG flags)
-   /* Create hopefully unique filename.
-      Since we have to stick to the current directory on remote shares, make
-      the new filename at least very unlikely to match by accident.  It starts
--     with ".cyg", with "cyg" transposed into the Unicode low surrogate area
-+     with ".msys", with "msys" transposed into the Unicode low surrogate area
-      starting at U+dc00.  Use plain ASCII chars on filesystems not supporting
-      Unicode.  The rest of the filename is the inode number in hex encoding
-      and a hash of the full NT path in hex.  The combination allows to remove
-@@ -340,7 +340,7 @@ try_to_bin (path_conv &pc, HANDLE &fh, ACCESS_MASK access, ULONG flags)
-   RtlAppendUnicodeToString (&recycler,
- 			    (pc.fs_flags () & FILE_UNICODE_ON_DISK
- 			     && !pc.fs_is_samba ())
--			    ? L".\xdc63\xdc79\xdc67" : L".cyg");
-+			    ? L".\xdc73\xdc6d\xdc79\xdc6d" : L".msys");
-   pfii = (PFILE_INTERNAL_INFORMATION) infobuf;
-   /* Note: Modern Samba versions apparently don't like buffer sizes of more
-      than 65535 in some NtQueryInformationFile/NtSetInformationFile calls.
+@@ -327,7 +327,7 @@ try_to_bin (path_conv &pc, HANDLE &fh, ACCESS_MASK access, ULONG flags)
+     }
+   else
+     {
+-      /* Create unique filename.  Start with a dot, followed by "cyg"
++      /* Create unique filename.  Start with a dot, followed by "cyg" or "msys"
+ 	 transposed into the Unicode low surrogate area (U+dc00) on file
+ 	 systems supporting Unicode (except Samba), followed by the inode
+ 	 number in hex, followed by a path hash in hex.  The combination
+@@ -335,7 +335,11 @@ try_to_bin (path_conv &pc, HANDLE &fh, ACCESS_MASK access, ULONG flags)
+       RtlAppendUnicodeToString (&recycler,
+ 				(pc.fs_flags () & FILE_UNICODE_ON_DISK
+ 				 && !pc.fs_is_samba ())
++#ifdef __MSYS__
++                                ? L".\xdc73\xdc6d\xdc79\xdc6d" : L".msys");
++#else
+ 				? L".\xdc63\xdc79\xdc67" : L".cyg");
++#endif
+       pfii = (PFILE_INTERNAL_INFORMATION) infobuf;
+       status = NtQueryInformationFile (fh, &io, pfii, sizeof *pfii,
+ 				       FileInternalInformation);
 diff --git a/winsup/cygwin/syslog.cc b/winsup/cygwin/syslog.cc
 index 6a295501f..431f9d239 100644
 --- a/winsup/cygwin/syslog.cc
@@ -1008,12 +1151,15 @@ diff --git a/winsup/lsaauth/cyglsa.c b/winsup/lsaauth/cyglsa.c
 index 9d9c9ff03..ffdb8f71e 100644
 --- a/winsup/lsaauth/cyglsa.c
 +++ b/winsup/lsaauth/cyglsa.c
-@@ -410,7 +410,7 @@ LsaApLogonUserEx (PLSA_CLIENT_REQUEST request, SECURITY_LOGON_TYPE logon_type,
+@@ -410,7 +410,11 @@ LsaApLogonUserEx (PLSA_CLIENT_REQUEST request, SECURITY_LOGON_TYPE logon_type,
  	  return stat;
  	}
  
--      memcpy (ts.SourceName, "Cygwin.1", 8);
++#ifdef __MSYS__
 +      memcpy (ts.SourceName, "MSYS.2", 6);
++#else
+       memcpy (ts.SourceName, "Cygwin.1", 8);
++#endif
        ts.SourceIdentifier.HighPart = 0;
        ts.SourceIdentifier.LowPart = 0x0104;
        RtlInitEmptyUnicodeString (&flatnm, flatname,
@@ -1054,23 +1200,29 @@ diff --git a/winsup/testsuite/cygrun.c b/winsup/testsuite/cygrun.c
 index d1f53aad3..e8220d0d2 100644
 --- a/winsup/testsuite/cygrun.c
 +++ b/winsup/testsuite/cygrun.c
-@@ -29,8 +29,8 @@ main (int argc, char **argv)
+@@ -29,8 +29,13 @@ main (int argc, char **argv)
        exit (0);
      }
  
--  SetEnvironmentVariable ("CYGWIN_TESTING", "1");
--  if ((p = getenv ("CYGWIN")) == NULL || (strstr (p, "ntsec") == NULL))
++#ifdef __MSYS__
 +  SetEnvironmentVariable ("MSYS_TESTING", "1");
 +  if ((p = getenv ("MSYS")) == NULL || (strstr (p, "ntsec") == NULL))
++#else
+   SetEnvironmentVariable ("CYGWIN_TESTING", "1");
+   if ((p = getenv ("CYGWIN")) == NULL || (strstr (p, "ntsec") == NULL))
++#endif
      {
        char buf[4096];
        if (!p)
-@@ -44,7 +44,7 @@ main (int argc, char **argv)
+@@ -44,7 +49,11 @@ main (int argc, char **argv)
  	  strcat (buf, " ");
  	}
        strcat(buf, "ntsec");
--      SetEnvironmentVariable ("CYGWIN", buf);
++#ifdef __MSYS__
 +      SetEnvironmentVariable ("MSYS", buf);
++#else
+       SetEnvironmentVariable ("CYGWIN", buf);
++#endif
      }
  
    memset (&sa, 0, sizeof (sa));
@@ -1078,49 +1230,79 @@ diff --git a/winsup/testsuite/winsup.api/cygload.cc b/winsup/testsuite/winsup.ap
 index ad4599666..7a398dc62 100644
 --- a/winsup/testsuite/winsup.api/cygload.cc
 +++ b/winsup/testsuite/winsup.api/cygload.cc
+@@ -9,13 +9,13 @@
+    under the GPL unless you purchase a Cygwin Contract with Red Hat, Inc.
+    See http://www.redhat.com/software/cygwin/ for more information.
+ 
+-   cygload demonstrates how to dynamically load cygwin1.dll.  The default
++   cygload demonstrates how to dynamically load cygwin1.dll or "msys-2.0.dll".  The default
+    build uses MinGW to compile it; the Makefile also shows how to build
+    it using the Microsoft compiler.
+ 
+    By default, the program will silently test basic functionality:
+      * Making space on the stack for cygtls
+-     * Loading and initializing cygwin1.dll
++     * Loading and initializing cygwin1.dll or "msys-2.0.dll"
+      * Path translation
+      * Error handling
+      * Signal handling
 @@ -25,7 +25,7 @@
  		     save for errors.
       -testinterrupts Pauses the program for 30 seconds so you can demonstrate
  		     that it handles ^C properly.
 -     -cygwin         Name of DLL to load.  Defaults to "cygwin1.dll". */
-+     -cygwin         Name of DLL to load.  Defaults to "msys-2.0.dll". */
++     -cygwin         Name of DLL to load.  Defaults to "cygwin1.dll" or "msys-2.0.dll". */
  
  #include "cygload.h"
  #include <iostream>
-@@ -136,15 +136,15 @@ cygwin::connector::connector (const char *dll)
+@@ -136,15 +136,23 @@ cygwin::connector::connector (const char *dll)
    if ((_library = LoadLibrary (dll)) == NULL)
      throw windows_error ("LoadLibrary", dll);
  
--  *out << "Initializing cygwin..." << endl;
++#ifdef __MSYS__
 +  *out << "Initializing msys..." << endl;
++#else
+   *out << "Initializing cygwin..." << endl;
++#endif
  
 -  // This calls dcrt0.cc:cygwin_dll_init(), which calls dll_crt0_1(),
-+  // This calls dcrt0.cc:msys_dll_init(), which calls dll_crt0_1(),
-   // which will, among other things:
+-  // which will, among other things:
++  // This calls dcrt0.cc:cygwin_dll_init() or dcrt0.cc:msys_dll_init(),
++  // which calls dll_crt0_1(), which will, among other things:
    // * spawn the cygwin signal handling thread from sigproc_init()
    // * initialize the thread-local storage for this thread and overwrite
    //   the first 4K of the stack
    void (*cyginit) ();
 -  get_symbol ("cygwin_dll_init", cyginit);
++#ifdef __MSYS__
 +  get_symbol ("msys_dll_init", cyginit);
++#else
++   get_symbol ("cygwin_dll_init", cyginit);
++#endif
    (*cyginit) ();
  
    *out << "Loading symbols..." << endl;
-@@ -210,7 +210,7 @@ cygwin::connector::~connector ()
+@@ -210,7 +218,11 @@ cygwin::connector::~connector ()
  
      // This should call init.cc:dll_entry() with DLL_PROCESS_DETACH.
      if (!FreeLibrary (_library))
--      throw windows_error ("FreeLibrary", "cygwin1.dll");
++#ifdef __MSYS__
 +      throw windows_error ("FreeLibrary", "msys-2.0.dll");
++#else
+       throw windows_error ("FreeLibrary", "cygwin1.dll");
++#endif
    }
    catch (std::exception &x)
    {
-@@ -476,7 +476,7 @@ main (int argc, char *argv[])
+@@ -476,7 +488,11 @@ main (int argc, char *argv[])
  
    std::ostringstream output;
    bool verbose = false, testinterrupts = false;
--  const char *dll = "cygwin1.dll";
++#ifdef __MSYS__
 +  const char *dll = "msys-2.0.dll";
++#else
+   const char *dll = "cygwin1.dll";
++#endif
  
    out = &output;
  
@@ -1141,15 +1323,19 @@ diff --git a/winsup/testsuite/winsup.api/cygload.h b/winsup/testsuite/winsup.api
 index 8007fd593..ab4003bd5 100644
 --- a/winsup/testsuite/winsup.api/cygload.h
 +++ b/winsup/testsuite/winsup.api/cygload.h
-@@ -76,7 +76,7 @@ namespace cygwin
+@@ -76,7 +76,11 @@ namespace cygwin
    // spawns a thread to let you receive signals from cygwin.
    class connector {
    public:
--    connector (const char *dll = "cygwin1.dll");
++#ifdef __MSYS__
 +    connector (const char *dll = "msys-2.0.dll");
++#else
+     connector (const char *dll = "cygwin1.dll");
++#endif
      ~connector ();
  
      // A wrapper around GetProcAddress() for fetching symbols from the
+
 diff --git a/winsup/testsuite/winsup.api/winsup.exp b/winsup/testsuite/winsup.api/winsup.exp
 index 639096267..769b7c0c6 100644
 --- a/winsup/testsuite/winsup.api/winsup.exp
@@ -1200,167 +1386,253 @@ diff --git a/winsup/utils/cygcheck.cc b/winsup/utils/cygcheck.cc
 index d5972c0cf..6d6189182 100644
 --- a/winsup/utils/cygcheck.cc
 +++ b/winsup/utils/cygcheck.cc
-@@ -69,8 +69,7 @@ static const char *known_env_vars[] = {
+@@ -69,8 +69,12 @@ static const char *known_env_vars[] = {
    "c_include_path",
    "compiler_path",
    "cxx_include_path",
--  "cygwin",
--  "cygwin32",
++#ifdef __MSYS__
 +  "msys",
++#else
+   "cygwin",
+   "cygwin32",
++#endif
    "dejagnu",
    "expect",
    "gcc_default_options",
-@@ -505,12 +504,12 @@ struct ImpDirectory
+@@ -505,12 +509,20 @@ struct ImpDirectory
  
  static bool track_down (const char *file, const char *suffix, int lvl);
  
--#define CYGPREFIX (sizeof ("%%% Cygwin ") - 1)
++#ifdef __MSYS__
 +#define CYGPREFIX (sizeof ("%%% Msys ") - 1)
++#else
+ #define CYGPREFIX (sizeof ("%%% Cygwin ") - 1)
++#endif
  static void
  cygwin_info (HANDLE h)
  {
    char *buf, *bufend, *buf_start = NULL;
--  const char *hello = "    Cygwin DLL version info:\n";
++#ifdef __MSYS__
 +  const char *hello = "    Msys DLL version info:\n";
++#else
+   const char *hello = "    Cygwin DLL version info:\n";
++#endif
    DWORD size = GetFileSize (h, NULL);
    DWORD n;
  
-@@ -537,7 +536,7 @@ cygwin_info (HANDLE h)
+@@ -537,7 +549,11 @@ cygwin_info (HANDLE h)
    while (buf < bufend)
      if ((buf = (char *) memchr (buf, '%', bufend - buf)) == NULL)
        break;
--    else if (strncmp ("%%% Cygwin ", buf, CYGPREFIX) != 0)
++#ifdef __MSYS__
 +    else if (strncmp ("%%% Msys ", buf, CYGPREFIX) != 0)
++#else
+     else if (strncmp ("%%% Cygwin ", buf, CYGPREFIX) != 0)
++#endif
        buf++;
      else
        {
-@@ -736,7 +735,7 @@ dll_info (const char *path, HANDLE fh, int lvl, int recurse)
+@@ -736,7 +752,11 @@ dll_info (const char *path, HANDLE fh, int lvl, int recurse)
  	    }
  	}
      }
--  if (strstr (path, "\\cygwin1.dll"))
++#ifdef __MSYS__
 +  if (strstr (path, "\\msys-2.0.dll"))
++#else
+   if (strstr (path, "\\cygwin1.dll"))
++#endif
      cygwin_info (fh);
  }
  
-@@ -983,7 +982,7 @@ scan_registry (RegInfo * prev, HKEY hKey, char *name, int cygwin, bool wow64)
+@@ -983,7 +1003,11 @@ scan_registry (RegInfo * prev, HKEY hKey, char *name, int cygwin, bool wow64)
  
    char *cp;
    for (cp = name; *cp; cp++)
--    if (strncasecmp (cp, "Cygwin", 6) == 0)
++#ifdef __MSYS__
 +    if (strncasecmp (cp, "Msys", 4) == 0)
++#else
+     if (strncasecmp (cp, "Cygwin", 6) == 0)
++#endif
        cygwin = 1;
  
    DWORD num_subkeys, max_subkey_len, num_values;
-@@ -1247,7 +1246,7 @@ dump_sysinfo_services ()
+@@ -1159,7 +1183,11 @@ dump_sysinfo_services ()
+   bool no_services = false;
+ 
+   if (givehelp)
++#ifdef __MSYS__
++    printf ("\nChecking for any Msys services... %s\n\n",
++#else
+     printf ("\nChecking for any Cygwin services... %s\n\n",
++#endif
+ 		  verbose ? "" : "(use -v for more detail)");
+   else
+     fputc ('\n', stdout);
+@@ -1247,7 +1275,11 @@ dump_sysinfo_services ()
  
    /* inform the user if nothing found */
    if (no_services)
--    puts ("No Cygwin services found.\n");
++#ifdef __MSYS__
 +    puts ("No Msys services found.\n");
++#else
+     puts ("No Cygwin services found.\n");
++#endif
  }
  
  enum handle_reg_t
-@@ -1262,10 +1261,10 @@ handle_reg_installation (handle_reg_t what)
+@@ -1262,10 +1294,18 @@ handle_reg_installation (handle_reg_t what)
    HKEY key;
  
    if (what == PRINT_KEY)
--    printf ("Cygwin installations found in the registry:\n");
++#ifdef __MSYS__
 +    printf ("Msys installations found in the registry:\n");
++#else
+     printf ("Cygwin installations found in the registry:\n");
++#endif
    for (int i = 0; i < 2; ++i)
      if (RegOpenKeyEx (i ? HKEY_CURRENT_USER : HKEY_LOCAL_MACHINE,
--		      "SOFTWARE\\Cygwin\\Installations", 0,
++#ifdef __MSYS__
 +		      "SOFTWARE\\Msys\\Installations", 0,
++#else
+ 		      "SOFTWARE\\Cygwin\\Installations", 0,
++#endif
  		      what == DELETE_KEY ? KEY_READ | KEY_WRITE : KEY_READ,
  		      &key)
  	== ERROR_SUCCESS)
-@@ -1287,7 +1286,7 @@ handle_reg_installation (handle_reg_t what)
+@@ -1287,7 +1327,11 @@ handle_reg_installation (handle_reg_t what)
  	      if (what == PRINT_KEY)
  		printf ("  %s Key: %s Path: %s", i ? "User:  " : "System:",
  			name, path);
--	      strcat (path, "\\bin\\cygwin1.dll");
++#ifdef __MSYS__
 +	      strcat (path, "\\bin\\msys-2.0.dll");
++#else
+ 	      strcat (path, "\\bin\\cygwin1.dll");
++#endif
  	      if (what == PRINT_KEY)
  		printf ("%s\n", access (path, F_OK) ? " (ORPHANED)" : "");
  	      else if (access (path, F_OK))
-@@ -1361,7 +1360,7 @@ dump_sysinfo ()
+@@ -1361,7 +1405,11 @@ dump_sysinfo ()
        _wputenv (comspec);
      }
  
--  printf ("\nCygwin Configuration Diagnostics\n");
-+  printf ("\nMsys Configuration Diagnostics\n");
++#ifdef __MSYS__
++    printf ("\nMsys Configuration Diagnostics\n");
++#else
+   printf ("\nCygwin Configuration Diagnostics\n");
++#endif
    time (&now);
    printf ("Current System Time: %s\n", ctime (&now));
  
-@@ -1640,7 +1639,7 @@ dump_sysinfo ()
+@@ -1640,7 +1688,11 @@ dump_sysinfo ()
  
  
    if (givehelp)
--    printf ("Here's some environment variables that may affect cygwin:\n");
++#ifdef __MSYS__
 +    printf ("Here's some environment variables that may affect msys:\n");
++#else
+     printf ("Here's some environment variables that may affect cygwin:\n");
++#endif
    for (i = 0; environ[i]; i++)
      {
        char *eq = strchr (environ[i], '=');
-@@ -1690,7 +1689,7 @@ dump_sysinfo ()
+@@ -1662,7 +1714,11 @@ dump_sysinfo ()
+   if (verbose)
+     {
+       if (givehelp)
++#ifdef __MSYS__
++        printf ("Scanning registry for keys with 'Msys' in them...\n");
++#else
+ 	printf ("Here's the rest of your environment variables:\n");
++#endif
+       for (i = 0; environ[i]; i++)
+ 	{
+ 	  int found = 0;
+@@ -1690,7 +1746,11 @@ dump_sysinfo ()
    if (registry)
      {
        if (givehelp)
--	printf ("Scanning registry for keys with 'Cygwin' in them...\n");
-+	printf ("Scanning registry for keys with 'Msys' in them...\n");
++#ifdef __MSYS__
++        printf ("Looking for various Msys DLLs...  (-v gives version info)\n");
++#else
+ 	printf ("Scanning registry for keys with 'Cygwin' in them...\n");
++#endif
        scan_registry (0, HKEY_CURRENT_USER,
  		     (char *) "HKEY_CURRENT_USER", 0, false);
        scan_registry (0, HKEY_LOCAL_MACHINE,
-@@ -1868,7 +1867,7 @@ dump_sysinfo ()
+@@ -1868,7 +1928,11 @@ dump_sysinfo ()
    printf ("\n");
  
    if (givehelp)
--    printf ("Looking for various Cygwin DLLs...  (-v gives version info)\n");
++#ifdef __MSYS__
 +    printf ("Looking for various Msys DLLs...  (-v gives version info)\n");
++#else
+     printf ("Looking for various Cygwin DLLs...  (-v gives version info)\n");
++#endif
    int cygwin_dll_count = 0;
    char cygdll_path[32768];
    for (pathlike *pth = paths; pth->dir; pth++)
-@@ -1885,10 +1884,10 @@ dump_sysinfo ()
+@@ -1883,12 +1947,22 @@ dump_sysinfo ()
+ 	{
+ 	  char f[FILENAME_MAX + 1];
  	  wcstombs (f, ffinfo.cFileName, sizeof f);
++#ifdef __MSYS__
++	  if (strcasecmp (f + strlen (f) - 6, ".dll") == 0)
++	    {
++              if (strncasecmp (f, "msys-", 5) == 0)
++#else
  	  if (strcasecmp (f + strlen (f) - 4, ".dll") == 0)
  	    {
--	      if (strncasecmp (f, "cyg", 3) == 0)
-+	      if (strncasecmp (f, "msys-", 5) == 0)
+ 	      if (strncasecmp (f, "cyg", 3) == 0)
++#endif
  		{
  		  sprintf (tmp, "%s%s", pth->dir, f);
--		  if (strcasecmp (f, "cygwin1.dll") == 0)
-+		  if (strcasecmp (f, "msys-2.0.dll") == 0)
++#ifdef __MSYS__
++                  if (strcasecmp (f, "msys-2.0.dll") == 0)
++#else
+ 		  if (strcasecmp (f, "cygwin1.dll") == 0)
++#endif
  		    {
  		      if (!cygwin_dll_count)
  			strcpy (cygdll_path, pth->dir);
-@@ -1912,9 +1911,9 @@ dump_sysinfo ()
+@@ -1912,9 +1986,15 @@ dump_sysinfo ()
        FindClose (ff);
      }
    if (cygwin_dll_count > 1)
--    puts ("Warning: There are multiple cygwin1.dlls on your path");
++#ifdef __MSYS__
 +    puts ("Warning: There are multiple msys-2.0.dlls on your path");
-   if (!cygwin_dll_count)
--    puts ("Warning: cygwin1.dll not found on your path");
++  if (!cygwin_dll_count)
 +    puts ("Warning: msys-2.0.dll not found on your path");
++#else
+     puts ("Warning: There are multiple cygwin1.dlls on your path");
+   if (!cygwin_dll_count)
+     puts ("Warning: cygwin1.dll not found on your path");
++#endif
  
    dump_dodgy_apps (verbose);
  
-@@ -2161,8 +2160,8 @@ static char opts[] = "cdsrvkflphV";
+@@ -2161,8 +2241,13 @@ static char opts[] = "cdsrvkflphV";
  static void
  print_version ()
  {
--  printf ("cygcheck (cygwin) %d.%d.%d\n"
--	  "System Checker for Cygwin\n"
++#ifdef __MSYS__
 +  printf ("cygcheck (msys) %d.%d.%d\n"
 +	  "System Checker for Msys\n"
++#else
+   printf ("cygcheck (cygwin) %d.%d.%d\n"
+ 	  "System Checker for Cygwin\n"
++#endif
  	  "Copyright (C) 1998 - %s Cygwin Authors\n"
  	  "This is free software; see the source for copying conditions.  "
  	  "There is NO\n"
-@@ -2194,7 +2193,7 @@ load_cygwin (int& argc, char **&argv)
+@@ -2194,7 +2279,11 @@ load_cygwin (int& argc, char **&argv)
  {
    HMODULE h;
  
--  if (!(h = LoadLibrary ("cygwin1.dll")))
++#ifdef __MSYS__
 +  if (!(h = LoadLibrary ("msys-2.0.dll")))
++#else
+   if (!(h = LoadLibrary ("cygwin1.dll")))
++#endif
      return;
    GetModuleFileNameW (h, cygwin_dll_path, 32768);
    if ((cygwin_internal = (uintptr_t (*) (int, ...))
@@ -1368,12 +1640,15 @@ diff --git a/winsup/utils/ldd.cc b/winsup/utils/ldd.cc
 index bbc62f12f..82b9c0238 100644
 --- a/winsup/utils/ldd.cc
 +++ b/winsup/utils/ldd.cc
-@@ -246,7 +246,7 @@ tocyg (wchar_t *win_fn)
+@@ -246,7 +246,11 @@ tocyg (wchar_t *win_fn)
    return fn;
  }
  
--#define CYGWIN_DLL_LEN (wcslen (L"\\cygwin1.dll"))
++#ifdef __MSYS__
 +#define CYGWIN_DLL_LEN (wcslen (L"\\msys-2.0.dll"))
++#else
+ #define CYGWIN_DLL_LEN (wcslen (L"\\cygwin1.dll"))
++#endif
  static int
  print_dlls (dlls *dll, const wchar_t *dllfn, const wchar_t *process_fn)
  {
@@ -1386,18 +1661,21 @@ index c83b76478..42ffbfdc0 100644
  
  /* Load all system libs from the windows system directory by prepending the
 -   full path.  This doesn't work for loadling cygwin1.dll.  For this case,
-+   full path.  This doesn't work for loadling msys-2.0.dll.  For this case,
++   full path.  This doesn't work for loadling cygwin1.dll and msys-2.0.dll.  For this case,
     instead of prepending the path, make sure that the CWD is removed from
     the DLL search path, if possible (XP SP1++, Vista++). */
  static HMODULE _load_sys_library (const wchar_t *dll) __attribute__ ((used));
-@@ -45,8 +45,8 @@ _load_sys_library (const wchar_t *dll)
+@@ -45,8 +45,13 @@ _load_sys_library (const wchar_t *dll)
        	set_dll_directory (L"");
      }
  
--  if (wcscmp (dll, L"cygwin1.dll") == 0)
--    return LoadLibraryExW (L"cygwin1.dll", NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
++#ifdef __MSYS__
 +  if (wcscmp (dll, L"msys-2.0.dll") == 0)
 +    return LoadLibraryExW (L"msys-2.0.dll", NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
++#else
+   if (wcscmp (dll, L"cygwin1.dll") == 0)
+     return LoadLibraryExW (L"cygwin1.dll", NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
++#endif
  
    wcscpy (dllpath, sysdir);
    wcscpy (dllpath + sysdir_len, dll);
@@ -1410,105 +1688,185 @@ index 17ea3524d..d0d4cab83 100644
    max_mount_entry = 0;
  
 -  /* First fetch the cygwin1.dll path from the LoadLibrary call in load_cygwin.
--     This utilizes the DLL search order to find a matching cygwin1.dll and to
-+  /* First fetch the msys-2.0.dll path from the LoadLibrary call in load_cygwin.
-+     This utilizes the DLL search order to find a matching msys-2.0.dll and to
++  /* First fetch the cygwin1.dll or msys-2.0.dllpath from the LoadLibrary call in load_cygwin.
+      This utilizes the DLL search order to find a matching cygwin1.dll and to
       compute the installation path from that DLL's path. */
    if (cygwin_dll_path[0])
      wcscpy (path, cygwin_dll_path);
 -  /* If we can't load cygwin1.dll, check where cygcheck is living itself and
 -     try to fetch installation path from here.  Does cygwin1.dll exist in the
 -     same path?  This should only kick in if the cygwin1.dll in the same path
-+  /* If we can't load msys-2.0.dll, check where cygcheck is living itself and
-+     try to fetch installation path from here.  Does msys-2.0.dll exist in the
-+     same path?  This should only kick in if the msys-2.0.dll in the same path
++  /* If we can't load cygwin1.dll or msys-2.0.dll, check where cygcheck is living itself and
++     try to fetch installation path from here.  Does cygwin1.dll or msys-2.0.dll exist in the
++     same path?  This should only kick in if the cygwin1.dll or msys-2.0.dllin the same path
       has been made non-executable for the current user accidentally. */
    else if (!GetModuleFileNameW (NULL, path, 32768))
      return;
-@@ -614,7 +614,7 @@ read_mounts ()
+@@ -614,7 +614,11 @@ read_mounts ()
      {
        if (!cygwin_dll_path[0])
  	{
--	  wcscpy (path_end, L"\\cygwin1.dll");
++#ifdef __MSYS__
 +	  wcscpy (path_end, L"\\msys-2.0.dll");
++#else
+ 	  wcscpy (path_end, L"\\cygwin1.dll");
++#endif
  	  DWORD attr = GetFileAttributesW (path);
  	  if (attr == (DWORD) -1
  	      || (attr & (FILE_ATTRIBUTE_DIRECTORY
+@@ -633,7 +637,11 @@ read_mounts ()
+     {
+       for (int i = 0; i < 2; ++i)
+ 	if ((ret = RegOpenKeyExW (i ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER,
++#ifdef __MSYS__
++				  L"Software\\Msys\\setup", 0,
++#else
+ 				  L"Software\\Cygwin\\setup", 0,
++#endif
+ 				  KEY_READ, &setup_key)) == ERROR_SUCCESS)
+ 	  {
+ 	    len = 32768 * sizeof (WCHAR);
 diff --git a/winsup/utils/ssp.c b/winsup/utils/ssp.c
 index 548b89ac8..09ee26d01 100644
 --- a/winsup/utils/ssp.c
 +++ b/winsup/utils/ssp.c
-@@ -718,15 +718,15 @@ usage (FILE * stream)
+@@ -713,20 +713,40 @@ usage (FILE * stream)
+     "the profiling program \"gprof\", although gprof will claim the values\n"
+     "are seconds, they really are instruction counts.  More on that later.\n"
+     "\n"
+-    "Because the SSP was originally designed to profile the cygwin DLL, it\n"
++    "Because the SSP was originally designed to profile the "
++#ifdef __MSYS__
++"Msys"
++#else
++"cygwin"
++#endif
++" DLL, it\n"
+     "does not automatically select a block of code to report statistics on.\n"
      "You must specify the range of memory addresses to keep track of\n"
      "manually, but it's not hard to figure out what to specify.  Use the\n"
      "\"objdump\" program to determine the bounds of the target's \".text\"\n"
 -    "section.  Let's say we're profiling cygwin1.dll.  Make sure you've\n"
-+    "section.  Let's say we're profiling msys-2.0.dll.  Make sure you've\n"
++    "section.  Let's say we're profiling "
++#ifdef __MSYS__
++"msys-2.0.dll"
++#else
++"cygwin1.dll"
++#endif
++".  Make sure you've\n"
      "built it with debug symbols (else gprof won't run) and run objdump\n"
      "like this:\n"
      "\n"
--    "	objdump -h cygwin1.dll\n"
++#ifdef __MSYS__
 +    "	objdump -h msys-2.0.dll\n"
++#else
+     "	objdump -h cygwin1.dll\n"
++#endif
      "\n"
      "It will print a report like this:\n"
      "\n"
--    "cygwin1.dll:     file format pei-i386\n"
-+    "msys-2.0.dll:     file format pei-i386\n"
++#ifdef __MSYS__
++    "msys-2.0.dll:    file format pei-i386\n"
++#else
+     "cygwin1.dll:     file format pei-i386\n"
++#endif
      "\n"
      "Sections:\n"
      "Idx Name          Size      VMA       LMA       File off  Algn\n"
-@@ -757,7 +757,7 @@ usage (FILE * stream)
+@@ -757,7 +777,11 @@ usage (FILE * stream)
      "\"gmon.out\".  You can turn this data file into a readable report with\n"
      "gprof:\n"
      "\n"
--    "	gprof -b cygwin1.dll\n"
++#ifdef __MSYS__
 +    "	gprof -b msys-2.0.dll\n"
++#else
+     "	gprof -b cygwin1.dll\n"
++#endif
      "\n"
      "The \"-b\" means 'skip the help pages'.  You can omit this until you're\n"
      "familiar with the report layout.  The gprof documentation explains\n"
+@@ -840,7 +864,11 @@ usage (FILE * stream)
+ static void
+ print_version ()
+ {
++#ifdef __MSYS__
++  printf ("ssp (msys) %d.%d.%d\n"
++#else
+   printf ("ssp (cygwin) %d.%d.%d\n"
++#endif
+ 	  "Single-Step Profiler\n"
+ 	  "Copyright (C) 2000 - %s Cygwin Authors\n"
+ 	  "This is free software; see the source for copying conditions.  There is NO\n"
 diff --git a/winsup/utils/strace.cc b/winsup/utils/strace.cc
 index 21c0835d4..bf507981a 100644
 --- a/winsup/utils/strace.cc
 +++ b/winsup/utils/strace.cc
-@@ -283,7 +283,7 @@ load_cygwin ()
+@@ -283,7 +283,11 @@ load_cygwin ()
    if (h)
      return 0;
  
--  if (!(h = LoadLibrary ("cygwin1.dll")))
++#ifdef __MSYS__
 +  if (!(h = LoadLibrary ("msys-2.0.dll")))
++#else
+   if (!(h = LoadLibrary ("cygwin1.dll")))
++#endif
      {
        errno = ENOENT;
        return 0;
-@@ -353,17 +353,16 @@ create_child (char **argv)
-   make_command_line (one_line, argv);
+@@ -354,16 +358,26 @@ create_child (char **argv)
  
    SetConsoleCtrlHandler (NULL, 0);
--
--  const char *cygwin_env = getenv ("CYGWIN");
+ 
++#ifdef __MSYS__
 +  const char *cygwin_env = getenv ("MSYS");
++#else
+   const char *cygwin_env = getenv ("CYGWIN");
++#endif
    const char *space;
  
    if (cygwin_env && strlen (cygwin_env) <= 256) /* sanity check */
      space = " ";
    else
      space = cygwin_env = "";
--  char *newenv = (char *) malloc (sizeof ("CYGWIN=noglob")
++#ifdef __MSYS__
 +  char *newenv = (char *) malloc (sizeof ("MSYS=noglob")
- 				  + strlen (space) + strlen (cygwin_env));
--  sprintf (newenv, "CYGWIN=noglob%s%s", space, cygwin_env);
++				  + strlen (space) + strlen (cygwin_env));
 +  sprintf (newenv, "MSYS=noglob%s%s", space, cygwin_env);
++#else
+   char *newenv = (char *) malloc (sizeof ("CYGWIN=noglob")
+ 				  + strlen (space) + strlen (cygwin_env));
+   sprintf (newenv, "CYGWIN=noglob%s%s", space, cygwin_env);
++#endif
    _putenv (newenv);
    ret = CreateProcess (0, one_line.buf,	/* command line */
  		       NULL,	/* Security */
-@@ -794,7 +793,7 @@ dotoggle (pid_t pid)
+@@ -794,7 +808,11 @@ dotoggle (pid_t pid)
    child_pid = (DWORD) cygwin_internal (CW_CYGWIN_PID_TO_WINPID, pid);
    if (!child_pid)
      {
--      warn (0, "no such cygwin pid - %d", pid);
-+      warn (0, "no such msys pid - %d", pid);
++#ifdef __MSYS__
++      warn (0, "no such Msys pid - %d", pid);
++#else
+       warn (0, "no such cygwin pid - %d", pid);
++#endif
        child_pid = pid;
      }
    if (cygwin_internal (CW_STRACE_TOGGLE, child_pid))
+@@ -952,7 +970,13 @@ Trace system calls and signals\n\
+   -n, --crack-error-numbers    output descriptive text instead of error\n\
+ 			       numbers for Windows errors\n\
+   -o, --output=FILENAME        set output file to FILENAME\n\
+-  -p, --pid=n                  attach to executing program with cygwin pid n\n\
++  -p, --pid=n                  attach to executing program with "
++#ifdef __MSYS__
++"Msys"
++#else
++"cygwin"
++#endif
++" pid n\n\
+   -q, --quiet                  suppress messages about attaching, detaching, etc.\n\
+   -S, --flush-period=PERIOD    flush buffered strace output every PERIOD secs\n\
+   -t, --timestamp              use an absolute hh:mm:ss timestamp insted of \n\
 -- 
 2.18.0
 

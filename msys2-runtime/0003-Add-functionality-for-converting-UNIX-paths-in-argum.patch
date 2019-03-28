@@ -36,16 +36,20 @@ diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
 index 67ead1dde..851922d37 100644
 --- a/winsup/cygwin/environ.cc
 +++ b/winsup/cygwin/environ.cc
-@@ -1043,7 +1043,7 @@ env_compare (const void *key, const void *memb)
+@@ -1053,7 +1053,11 @@ env_compare (const void *key, const void *memb)
     to the child. */
  char ** __reg3
  build_env (const char * const *envp, PWCHAR &envblock, int &envc,
 -	   bool no_envblock, HANDLE new_token)
-+	   bool no_envblock, HANDLE new_token, bool keep_posix)
++	   bool no_envblock, HANDLE new_token
++#ifdef __MSYS__
++, bool keep_posix
++#endif
++)
  {
    PWCHAR cwinenv = NULL;
    size_t winnum = 0;
-@@ -1136,6 +1136,11 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+@@ -1146,6 +1150,11 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
    for (srcp = envp, dstp = newenv, pass_dstp = pass_env; *srcp; srcp++)
      {
        bool calc_tl = !no_envblock;
@@ -82,10 +86,10 @@ index 269591a01..71c3f2208 100644
  #endif
  char ** __reg3 build_env (const char * const *envp, PWCHAR &envblock,
 -			  int &envc, bool need_envblock, HANDLE new_token);
-+			  int &envc, bool need_envblock, HANDLE new_token, bool keep_posix);
- 
++                         int &envc, bool need_envblock, HANDLE new_token, bool keep_posix);
+
  char ** __reg2 win32env_to_cygenv (PWCHAR rawenv, bool posify);
- 
+
 diff --git a/winsup/cygwin/external.cc b/winsup/cygwin/external.cc
 index 3a9130efd..6592eb394 100644
 --- a/winsup/cygwin/external.cc
@@ -124,11 +128,11 @@ index 000000000..74ebd2e0b
 @@ -0,0 +1,619 @@
 +/*
 +  The MSYS2 Path conversion source code is licensed under:
-+  
++
 +  CC0 1.0 Universal
-+  
++
 +  Official translations of this legal tool are available
-+  
++
 +  CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
 +  LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN
 +  ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
@@ -137,14 +141,14 @@ index 000000000..74ebd2e0b
 +  PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM
 +  THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED
 +  HEREUNDER.
-+  
++
 +  Statement of Purpose
-+  
++
 +  The laws of most jurisdictions throughout the world automatically
 +  confer exclusive Copyright and Related Rights (defined below) upon the
 +  creator and subsequent owner(s) (each and all, an "owner") of an
 +  original work of authorship and/or a database (each, a "Work").
-+  
++
 +  Certain owners wish to permanently relinquish those rights to a Work
 +  for the purpose of contributing to a commons of creative, cultural and
 +  scientific works ("Commons") that the public can reliably and without
@@ -156,7 +160,7 @@ index 000000000..74ebd2e0b
 +  creative, cultural and scientific works, or to gain reputation or
 +  greater distribution for their Work in part through the use and
 +  efforts of others.
-+  
++
 +  For these and/or other purposes and motivations, and without any
 +  expectation of additional consideration or compensation, the person
 +  associating CC0 with a Work (the "Affirmer"), to the extent that he or
@@ -165,12 +169,12 @@ index 000000000..74ebd2e0b
 +  the Work under its terms, with knowledge of his or her Copyright and
 +  Related Rights in the Work and the meaning and intended legal effect
 +  of CC0 on those rights.
-+  
++
 +  1. Copyright and Related Rights. A Work made available under CC0 may
 +  be protected by copyright and related or neighboring rights
 +  ("Copyright and Related Rights"). Copyright and Related Rights
 +  include, but are not limited to, the following:
-+  
++
 +  the right to reproduce, adapt, distribute, perform, display,
 +  communicate, and translate a Work;
 +  moral rights retained by the original author(s) and/or performer(s);
@@ -188,7 +192,7 @@ index 000000000..74ebd2e0b
 +  other similar, equivalent or corresponding rights throughout the world
 +  based on applicable law or treaty, and any national implementations
 +  thereof.
-+  
++
 +  2. Waiver. To the greatest extent permitted by, but not in
 +  contravention of, applicable law, Affirmer hereby overtly, fully,
 +  permanently, irrevocably and unconditionally waives, abandons, and
@@ -206,7 +210,7 @@ index 000000000..74ebd2e0b
 +  revocation, rescission, cancellation, termination, or any other legal
 +  or equitable action to disrupt the quiet enjoyment of the Work by the
 +  public as contemplated by Affirmer's express Statement of Purpose.
-+  
++
 +  3. Public License Fallback. Should any part of the Waiver for any
 +  reason be judged legally invalid or ineffective under applicable law,
 +  then the Waiver shall be preserved to the maximum extent permitted
@@ -229,9 +233,9 @@ index 000000000..74ebd2e0b
 +  the Work or (ii) assert any associated claims and causes of action
 +  with respect to the Work, in either case contrary to Affirmer's
 +  express Statement of Purpose.
-+  
++
 +  4. Limitations and Disclaimers.
-+  
++
 +  No trademark or patent rights held by Affirmer are waived, abandoned,
 +  surrendered, licensed or otherwise affected by this document.
 +  Affirmer offers the Work as-is and makes no representations or
@@ -256,7 +260,7 @@ index 000000000..74ebd2e0b
 +    Ely Arzhannikov <iarzhannikov@gmail.com>
 +    Alexey Pavlov <alexpux@gmail.com>
 +    Ray Donnelly <mingw.android@gmail.com>
-+  
++
 +*/
 +
 +#include "winsup.h"
@@ -749,11 +753,11 @@ index 000000000..e1e5e8781
 @@ -0,0 +1,146 @@
 +/*
 +  The MSYS2 Path conversion source code is licensed under:
-+  
++
 +  CC0 1.0 Universal
-+  
++
 +  Official translations of this legal tool are available
-+  
++
 +  CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
 +  LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN
 +  ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
@@ -762,14 +766,14 @@ index 000000000..e1e5e8781
 +  PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM
 +  THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED
 +  HEREUNDER.
-+  
++
 +  Statement of Purpose
-+  
++
 +  The laws of most jurisdictions throughout the world automatically
 +  confer exclusive Copyright and Related Rights (defined below) upon the
 +  creator and subsequent owner(s) (each and all, an "owner") of an
 +  original work of authorship and/or a database (each, a "Work").
-+  
++
 +  Certain owners wish to permanently relinquish those rights to a Work
 +  for the purpose of contributing to a commons of creative, cultural and
 +  scientific works ("Commons") that the public can reliably and without
@@ -781,7 +785,7 @@ index 000000000..e1e5e8781
 +  creative, cultural and scientific works, or to gain reputation or
 +  greater distribution for their Work in part through the use and
 +  efforts of others.
-+  
++
 +  For these and/or other purposes and motivations, and without any
 +  expectation of additional consideration or compensation, the person
 +  associating CC0 with a Work (the "Affirmer"), to the extent that he or
@@ -790,12 +794,12 @@ index 000000000..e1e5e8781
 +  the Work under its terms, with knowledge of his or her Copyright and
 +  Related Rights in the Work and the meaning and intended legal effect
 +  of CC0 on those rights.
-+  
++
 +  1. Copyright and Related Rights. A Work made available under CC0 may
 +  be protected by copyright and related or neighboring rights
 +  ("Copyright and Related Rights"). Copyright and Related Rights
 +  include, but are not limited to, the following:
-+  
++
 +  the right to reproduce, adapt, distribute, perform, display,
 +  communicate, and translate a Work;
 +  moral rights retained by the original author(s) and/or performer(s);
@@ -813,7 +817,7 @@ index 000000000..e1e5e8781
 +  other similar, equivalent or corresponding rights throughout the world
 +  based on applicable law or treaty, and any national implementations
 +  thereof.
-+  
++
 +  2. Waiver. To the greatest extent permitted by, but not in
 +  contravention of, applicable law, Affirmer hereby overtly, fully,
 +  permanently, irrevocably and unconditionally waives, abandons, and
@@ -831,7 +835,7 @@ index 000000000..e1e5e8781
 +  revocation, rescission, cancellation, termination, or any other legal
 +  or equitable action to disrupt the quiet enjoyment of the Work by the
 +  public as contemplated by Affirmer's express Statement of Purpose.
-+  
++
 +  3. Public License Fallback. Should any part of the Waiver for any
 +  reason be judged legally invalid or ineffective under applicable law,
 +  then the Waiver shall be preserved to the maximum extent permitted
@@ -854,9 +858,9 @@ index 000000000..e1e5e8781
 +  the Work or (ii) assert any associated claims and causes of action
 +  with respect to the Work, in either case contrary to Affirmer's
 +  express Statement of Purpose.
-+  
++
 +  4. Limitations and Disclaimers.
-+  
++
 +  No trademark or patent rights held by Affirmer are waived, abandoned,
 +  surrendered, licensed or otherwise affected by this document.
 +  Affirmer offers the Work as-is and makes no representations or
@@ -881,7 +885,7 @@ index 000000000..e1e5e8781
 +    Ely Arzhannikov <iarzhannikov@gmail.com>
 +    Alexey Pavlov <alexpux@gmail.com>
 +    Ray Donnelly <mingw.android@gmail.com>
-+  
++
 +*/
 +
 +#ifndef PATH_CONV_H_DB4IQBH3
@@ -920,7 +924,7 @@ index 6d8f76db5..cd544e0d8 100644
 +
 +  // Must return something ..
 +  size_t arglen = (arg ? strlen (arg): 0);
-+  
++
 +  if (arglen == 0 || !arg)
 +  {
 +    arg_result = (char *)malloc (sizeof (char));
@@ -973,16 +977,17 @@ index 6d8f76db5..cd544e0d8 100644
 +
 +
  /******************** Exported Path Routines *********************/
- 
+
  /* Cover functions to the path conversion routines.
 diff --git a/winsup/cygwin/spawn.cc b/winsup/cygwin/spawn.cc
 index 37db52608..d94167507 100644
 --- a/winsup/cygwin/spawn.cc
 +++ b/winsup/cygwin/spawn.cc
-@@ -261,6 +261,27 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
-   pid_t cygpid;
+@@ -260,6 +260,29 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+   bool rc;
    int res = -1;
- 
+
++#ifdef __MSYS__
 +  /* Environment variable MSYS2_ARG_CONV_EXCL contains a list
 +     of ';' separated argument prefixes to pass un-modified..
 +     It isn't applied to env. variables; only spawn arguments.
@@ -1003,49 +1008,60 @@ index 37db52608..d94167507 100644
 +          msys2_arg_conv_excl_env = strchr ( msys2_arg_conv_excl_env + 1, ';' );
 +        }
 +    }
++#endif
 +
    /* Check if we have been called from exec{lv}p or spawn{lv}p and mask
       mode to keep only the spawn mode. */
    bool p_type_exec = !!(mode & _P_PATH_TYPE_EXEC);
-@@ -370,12 +391,26 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+@@ -369,6 +392,29 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
  	      moreinfo->argc = newargv.argc;
  	      moreinfo->argv = newargv;
  	    }
--	  if ((wincmdln || !real_path.iscygexec ())
--	       && !cmd.fromargv (newargv, real_path.get_win32 (),
--				 real_path.iscygexec ()))
++#ifdef __MSYS__
 +	  else
- 	    {
--	      res = -1;
--	      __leave;
++            {
 +	      for (int i = 0; i < newargv.argc; i++)
-+	        {
++                {
 +	          //convert argv to win32
-+	          int newargvlen = strlen (newargv[i]);
-+	          char *tmpbuf = (char *)malloc (newargvlen + 1);
-+	          memcpy (tmpbuf, newargv[i], newargvlen + 1);
-+	          tmpbuf = arg_heuristic_with_exclusions(tmpbuf, msys2_arg_conv_excl, msys2_arg_conv_excl_count);
-+	          debug_printf("newargv[%d] = %s", i, newargv[i]);
-+	          newargv.replace (i, tmpbuf);
-+	          free (tmpbuf);
-+	        }
-+	      if ((wincmdln || !real_path.iscygexec ())
-+	            && !cmd.fromargv (newargv, real_path.get_win32 (),
++                  int newargvlen = strlen (newargv[i]);
++                  char *tmpbuf = (char *)malloc (newargvlen + 1);
++                  memcpy (tmpbuf, newargv[i], newargvlen + 1);
++                  tmpbuf = arg_heuristic_with_exclusions(tmpbuf, msys2_arg_conv_excl, msys2_arg_conv_excl_count);
++                  debug_printf("newargv[%d] = %s", i, newargv[i]);
++                  newargv.replace (i, tmpbuf);
++                  free (tmpbuf);
++                }
++              if ((wincmdln || !real_path.iscygexec ())
++                    && !cmd.fromargv (newargv, real_path.get_win32 (),
 +			        real_path.iscygexec ()))
-+	        {
-+	          res = -1;
-+	          __leave;
-+	        }
++                {
++                  res = -1;
++                  __leave;
++                }
++           }
++#else
+ 	  if ((wincmdln || !real_path.iscygexec ())
+ 	       && !cmd.fromargv (newargv, real_path.get_win32 (),
+ 				 real_path.iscygexec ()))
+@@ -376,7 +422,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 	      res = -1;
+ 	      __leave;
  	    }
+-
++#endif
  
- 
-@@ -507,7 +542,8 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 	  if (mode != _P_OVERLAY || !real_path.iscygexec ()
+ 	      || !DuplicateHandle (GetCurrentProcess (), myself.shared_handle (),
+@@ -506,7 +552,12 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
        moreinfo->envp = build_env (envp, envblock, moreinfo->envc,
  				  real_path.iscygexec (),
  				  switch_user ? ::cygheap->user.primary_token ()
--					      : NULL);
-+					      : NULL,
++#ifdef __MSYS__
++                                              : NULL,
 +				  real_path.iscygexec ());
++#else
+ 					      : NULL);
++#endif
        if (!moreinfo->envp || !envblock)
  	{
  	  set_errno (E2BIG);
@@ -1064,6 +1080,6 @@ index e3a65f8cc..1aeec8d9c 100644
    void dup_all ()
    {
      for (int i = calloced; i < argc; i++)
--- 
+--
 2.18.0
 
