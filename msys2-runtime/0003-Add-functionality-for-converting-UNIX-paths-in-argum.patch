@@ -1,7 +1,8 @@
-From a43140231840fceeb9d0263e808214f1f8d4edaf Mon Sep 17 00:00:00 2001
-From: Alexpux <alexey.pawlow@gmail.com>
-Date: Thu, 12 Mar 2015 13:58:27 +0300
-Subject: [PATCH 03/23] Add functionality for converting UNIX paths in
+From 1de329f6bd4fd3c6d9921b11effd242af1622f51 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=D0=90=D0=BB=D0=B5=D0=BA=D1=81=D0=B5=D0=B8=CC=86=20=D0=9F?=
+ =?UTF-8?q?=D0=B0=D0=B2=D0=BB=D0=BE=D0=B2?= <alexey.pawlow@gmail.com>
+Date: Sun, 14 Apr 2019 21:17:46 +0300
+Subject: [PATCH 03/15] Add functionality for converting UNIX paths in
  arguments and environment variables to Windows form for native Win32
  applications.
 
@@ -11,20 +12,20 @@ Subject: [PATCH 03/23] Add functionality for converting UNIX paths in
  winsup/cygwin/environ.h            |   2 +-
  winsup/cygwin/external.cc          |   2 +-
  winsup/cygwin/include/sys/cygwin.h |   6 +
- winsup/cygwin/msys2_path_conv.cc   | 619 +++++++++++++++++++++++++++++
- winsup/cygwin/msys2_path_conv.h    | 146 +++++++
- winsup/cygwin/path.cc              |  64 +++
+ winsup/cygwin/msys2_path_conv.cc   | 630 +++++++++++++++++++++++++++++
+ winsup/cygwin/msys2_path_conv.h    | 147 +++++++
+ winsup/cygwin/path.cc              |  69 ++++
  winsup/cygwin/spawn.cc             |  48 ++-
  winsup/cygwin/winf.h               |   4 +
- 10 files changed, 899 insertions(+), 9 deletions(-)
+ 10 files changed, 916 insertions(+), 9 deletions(-)
  create mode 100644 winsup/cygwin/msys2_path_conv.cc
  create mode 100644 winsup/cygwin/msys2_path_conv.h
 
 diff --git a/winsup/cygwin/Makefile.in b/winsup/cygwin/Makefile.in
-index beedc7c5e..b7ef34b3a 100644
+index a3a4ee4fd..ada012adc 100644
 --- a/winsup/cygwin/Makefile.in
 +++ b/winsup/cygwin/Makefile.in
-@@ -338,6 +338,7 @@ DLL_OFILES:= \
+@@ -344,6 +344,7 @@ DLL_OFILES:= \
  	mmap.o \
  	msg.o \
  	msgcat.o \
@@ -33,10 +34,10 @@ index beedc7c5e..b7ef34b3a 100644
  	net.o \
  	netdb.o \
 diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
-index 67ead1dde..851922d37 100644
+index a47ed72e7..27acc8156 100644
 --- a/winsup/cygwin/environ.cc
 +++ b/winsup/cygwin/environ.cc
-@@ -1043,7 +1043,7 @@ env_compare (const void *key, const void *memb)
+@@ -1056,7 +1056,7 @@ env_compare (const void *key, const void *memb)
     to the child. */
  char ** __reg3
  build_env (const char * const *envp, PWCHAR &envblock, int &envc,
@@ -45,7 +46,7 @@ index 67ead1dde..851922d37 100644
  {
    PWCHAR cwinenv = NULL;
    size_t winnum = 0;
-@@ -1136,6 +1136,11 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+@@ -1149,6 +1149,11 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
    for (srcp = envp, dstp = newenv, pass_dstp = pass_env; *srcp; srcp++)
      {
        bool calc_tl = !no_envblock;
@@ -57,7 +58,7 @@ index 67ead1dde..851922d37 100644
        /* Look for entries that require special attention */
        for (unsigned i = 0; i < SPENVS_SIZE; i++)
  	if (!saw_spenv[i] && (*dstp = spenvs[i].retrieve (no_envblock, *srcp)))
-@@ -1256,6 +1261,15 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+@@ -1269,6 +1274,15 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
  		  saw_PATH = true;
  		}
  	    }
@@ -87,10 +88,10 @@ index 269591a01..71c3f2208 100644
  char ** __reg2 win32env_to_cygenv (PWCHAR rawenv, bool posify);
  
 diff --git a/winsup/cygwin/external.cc b/winsup/cygwin/external.cc
-index 3a9130efd..6592eb394 100644
+index 94431bb52..ffeafcbf3 100644
 --- a/winsup/cygwin/external.cc
 +++ b/winsup/cygwin/external.cc
-@@ -137,7 +137,7 @@ create_winenv (const char * const *env)
+@@ -141,7 +141,7 @@ create_winenv (const char * const *env)
    int unused_envc;
    PWCHAR envblock = NULL;
    char **envp = build_env (env ?: cur_environ (), envblock, unused_envc, false,
@@ -100,7 +101,7 @@ index 3a9130efd..6592eb394 100644
  
    if (envp)
 diff --git a/winsup/cygwin/include/sys/cygwin.h b/winsup/cygwin/include/sys/cygwin.h
-index c5da87c65..874447a0f 100644
+index 805671ef9..b395e969d 100644
 --- a/winsup/cygwin/include/sys/cygwin.h
 +++ b/winsup/cygwin/include/sys/cygwin.h
 @@ -83,6 +83,12 @@ extern ssize_t cygwin_conv_path_list (cygwin_conv_path_t what, const void *from,
@@ -118,10 +119,10 @@ index c5da87c65..874447a0f 100644
  extern void cygwin_split_path (const char *, char *, char *);
 diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
 new file mode 100644
-index 000000000..74ebd2e0b
+index 000000000..406b98ac8
 --- /dev/null
 +++ b/winsup/cygwin/msys2_path_conv.cc
-@@ -0,0 +1,619 @@
+@@ -0,0 +1,630 @@
 +/*
 +  The MSYS2 Path conversion source code is licensed under:
 +  
@@ -256,6 +257,7 @@ index 000000000..74ebd2e0b
 +    Ely Arzhannikov <iarzhannikov@gmail.com>
 +    Alexey Pavlov <alexpux@gmail.com>
 +    Ray Donnelly <mingw.android@gmail.com>
++    Johannes Schindelin <johannes.schindelin@gmx.de>
 +  
 +*/
 +
@@ -406,6 +408,7 @@ index 000000000..74ebd2e0b
 +        *dstit = '\0';
 +        return dst;
 +    }
++    *dstend = '\0';
 +
 +    const char* srcit = src;
 +    const char* srcbeg = src;
@@ -533,6 +536,9 @@ index 000000000..74ebd2e0b
 +      if (isalpha(*it)) {
 +        it += 1;
 +        starts_with_minus_alpha = 1;
++        if (memchr(it, ';', end - it)) {
++        	return WINDOWS_PATH_LIST;
++        }
 +      }
 +    }
 +
@@ -643,7 +649,7 @@ index 000000000..74ebd2e0b
 +        posix_to_win32_path(it, real_to, dst, dstend);
 +    }
 +
-+    if (real_to != to) {
++    if (*dst != dstend && real_to != to) {
 +        **dst = *real_to;
 +        *dst += 1;
 +    }
@@ -675,6 +681,7 @@ index 000000000..74ebd2e0b
 +}
 +
 +void ppl_convert(const char** from, const char* to, char** dst, const char* dstend) {
++    const char *orig_dst = *dst;
 +    const char* it = *from;
 +    const char* beg = it;
 +    int prev_was_simc = 0;
@@ -691,6 +698,11 @@ index 000000000..74ebd2e0b
 +            prev_was_simc = 1;
 +            subp_convert(&beg, it, is_url, dst, dstend);
 +            is_url = 0;
++
++            if (*dst == dstend) {
++                system_printf("Path cut off during conversion: %s\n", orig_dst);
++                break;
++            }
 +
 +            **dst = ';';
 +            *dst += 1;
@@ -743,10 +755,10 @@ index 000000000..74ebd2e0b
 +
 diff --git a/winsup/cygwin/msys2_path_conv.h b/winsup/cygwin/msys2_path_conv.h
 new file mode 100644
-index 000000000..e1e5e8781
+index 000000000..67d85ecb6
 --- /dev/null
 +++ b/winsup/cygwin/msys2_path_conv.h
-@@ -0,0 +1,146 @@
+@@ -0,0 +1,147 @@
 +/*
 +  The MSYS2 Path conversion source code is licensed under:
 +  
@@ -881,6 +893,7 @@ index 000000000..e1e5e8781
 +    Ely Arzhannikov <iarzhannikov@gmail.com>
 +    Alexey Pavlov <alexpux@gmail.com>
 +    Ray Donnelly <mingw.android@gmail.com>
++    Johannes Schindelin <johannes.schindelin@gmx.de>
 +  
 +*/
 +
@@ -894,7 +907,7 @@ index 000000000..e1e5e8781
 +#endif /* end of include guard: PATH_CONV_H_DB4IQBH3 */
 +
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index 6d8f76db5..cd544e0d8 100644
+index 158f1e5fb..1fb65ca03 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
 @@ -66,6 +66,7 @@
@@ -905,7 +918,7 @@ index 6d8f76db5..cd544e0d8 100644
  #undef basename
  
  suffix_info stat_suffixes[] =
-@@ -3357,6 +3358,69 @@ fchdir (int fd)
+@@ -3447,6 +3448,74 @@ fchdir (int fd)
    return res;
  }
  
@@ -933,28 +946,33 @@ index 6d8f76db5..cd544e0d8 100644
 +    {
 +      /* Since we've got regex linked we should maybe switch to that, but
 +         running regexes for every argument could be too slow. */
-+      if ( strcmp (exclusions, "*") == 0 || strstr (arg, exclusions) == arg )
++      if ( strcmp (exclusions, "*") == 0 || (strlen (exclusions) && strstr (arg, exclusions) == arg) )
 +        return (char*)arg;
 +      exclusions += strlen (exclusions) + 1;
 +    }
 +
-+  size_t stack_len = arglen + MAX_PATH;
++  // Leave enough room for at least 16 path elements; we might be converting
++  // a path list.
++  size_t stack_len = arglen + 16 * MAX_PATH;
 +  char * stack_path = (char *)malloc (stack_len);
-+  memset (stack_path, 0, MAX_PATH);
-+  if (!stack_len)
++  if (!stack_path)
 +    {
 +      debug_printf ("out of stack space?");
 +      return (char *)arg;
 +    }
++  memset (stack_path, 0, MAX_PATH);
 +  convert (stack_path, stack_len - 1, arg);
 +  debug_printf ("convert()'ed: %s (length %d)\n.....->: %s", arg, arglen, stack_path);
 +  // Don't allocate memory if no conversion happened.
 +  if (!strcmp (arg, stack_path))
 +    {
++      if (arg != stack_path)
++        {
++          free (stack_path);
++        }
 +      return ((char *)arg);
 +    }
-+  arg_result = (char *)malloc (strlen (stack_path)+1);
-+  strcpy (arg_result, stack_path);
++  arg_result = (char *)realloc (stack_path, strlen (stack_path)+1);
 +  // Windows doesn't like empty entries in PATH env. variables (;;)
 +  char* semisemi = strstr(arg_result, ";;");
 +  while (semisemi)
@@ -976,11 +994,11 @@ index 6d8f76db5..cd544e0d8 100644
  
  /* Cover functions to the path conversion routines.
 diff --git a/winsup/cygwin/spawn.cc b/winsup/cygwin/spawn.cc
-index 37db52608..d94167507 100644
+index 579b3c9c3..e5c20fb53 100644
 --- a/winsup/cygwin/spawn.cc
 +++ b/winsup/cygwin/spawn.cc
-@@ -261,6 +261,27 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
-   pid_t cygpid;
+@@ -260,6 +260,27 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+   bool rc;
    int res = -1;
  
 +  /* Environment variable MSYS2_ARG_CONV_EXCL contains a list
@@ -1007,7 +1025,7 @@ index 37db52608..d94167507 100644
    /* Check if we have been called from exec{lv}p or spawn{lv}p and mask
       mode to keep only the spawn mode. */
    bool p_type_exec = !!(mode & _P_PATH_TYPE_EXEC);
-@@ -370,12 +391,26 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+@@ -369,12 +390,26 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
  	      moreinfo->argc = newargv.argc;
  	      moreinfo->argv = newargv;
  	    }
@@ -1039,7 +1057,7 @@ index 37db52608..d94167507 100644
  	    }
  
  
-@@ -507,7 +542,8 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+@@ -506,7 +541,8 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
        moreinfo->envp = build_env (envp, envblock, moreinfo->envc,
  				  real_path.iscygexec (),
  				  switch_user ? ::cygheap->user.primary_token ()
@@ -1065,5 +1083,5 @@ index e3a65f8cc..1aeec8d9c 100644
    {
      for (int i = calloced; i < argc; i++)
 -- 
-2.18.0
+2.21.0
 
