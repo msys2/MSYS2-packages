@@ -1,0 +1,58 @@
+From 93030261b665a0b017d79c9a26f3aa3ba0040977 Mon Sep 17 00:00:00 2001
+From: Jon Turney <jon.turney@dronecode.org.uk>
+Date: Sat, 14 Jul 2018 12:17:29 +0100
+Subject: [PATCH 7/7] Fix Cygwin compilation after target_ops C++ conversion.
+
+After f6ac5f3d "Convert struct target_ops to C++", we need to explicitly use
+the global namespace when calling ::close() from windows_nat_target methods,
+as that object has a close() method.
+
+gdb/ChangeLog:
+
+2018-07-14  Jon Turney  <jon.turney@dronecode.org.uk>
+
+	* windows-nat.c (windows_nat_target::create_inferior): Update to
+	call close() in global namespace.
+---
+ gdb/ChangeLog     | 5 +++++
+ gdb/windows-nat.c | 8 ++++----
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/gdb/ChangeLog b/gdb/ChangeLog
+index f117364424..a51080b8fa 100644
+--- a/gdb/ChangeLog
++++ b/gdb/ChangeLog
+@@ -1,3 +1,8 @@
++2018-07-14  Jon Turney  <jon.turney@dronecode.org.uk>
++
++	* windows-nat.c (windows_nat_target::create_inferior): Update to
++	call close() in global namespace.
++
+ 2018-12-23  Joel Brobecker  <brobecker@adacore.com>
+ 
+ 	* version.in: Set GDB version number to 8.2.1.DATE-git.
+diff --git a/gdb/windows-nat.c b/gdb/windows-nat.c
+index b5c00d7793..070aabe0de 100644
+--- a/gdb/windows-nat.c
++++ b/gdb/windows-nat.c
+@@ -2701,13 +2701,13 @@ windows_nat_target::create_inferior (const char *exec_file,
+ 
+   if (tty >= 0)
+     {
+-      close (tty);
++      ::close (tty);
+       dup2 (ostdin, 0);
+       dup2 (ostdout, 1);
+       dup2 (ostderr, 2);
+-      close (ostdin);
+-      close (ostdout);
+-      close (ostderr);
++      ::close (ostdin);
++      ::close (ostdout);
++      ::close (ostderr);
+     }
+ #else  /* !__CYGWIN__ */
+   allargs_len = strlen (allargs);
+-- 
+2.17.0
+

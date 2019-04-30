@@ -1,7 +1,7 @@
-From 629bcfd10b3ec4d4b8d6ae0945d8a91b5ad4d3de Mon Sep 17 00:00:00 2001
+From a0d37b07bbbd1d2c4f103203cb207f0dc5d7261d Mon Sep 17 00:00:00 2001
 From: Jon Turney <jon.turney@dronecode.org.uk>
 Date: Mon, 26 Sep 2016 15:45:28 +0100
-Subject: [PATCH 5/5] Remove a spurious target_terminal_ours() from
+Subject: [PATCH 5/6] Remove a spurious target_terminal::ours() from
  windows_wait()
 
 This causes the inferior to stop with SIGTTIN if it tries to read from the
@@ -10,11 +10,12 @@ terminal after it has been continued.
 See https://cygwin.com/ml/cygwin/2016-09/msg00285.html for reproduction.
 
 I don't think this problem is observed on MinGW, but Cygwin has tcsetpgrp()
-so target_terminal_ours() will call it.
+so target_terminal::ours() will call it.
 
-Calling target_terminal_ours() here seems to be is no longer appropriate
-after the "Merge async and sync code paths" changes (??? as the inferior is
-now in a separate process group even in sync mode ???)
+Calling target_terminal::ours() here seems to be is no longer appropriate
+after the "Merge async and sync code paths" changes (as the inferior is now
+in a separate process group even in sync mode, which is always used on
+Windows targets ???)
 
 This call was added in commit c44537cf (and see
 https://sourceware.org/ml/gdb-patches/2007-02/msg00167.html for what it
@@ -24,25 +25,25 @@ When windows_wait() is entered, the inferior is running (either it's been
 just been started or attached to, or windows_continue() was called), so
 grabbing the controlling terminal away from it here seems to be wrong.
 
-infrun.c takes care of calling target_terminal_ours() when the inferior
+infrun.c takes care of calling target_terminal::ours() when the inferior
 stops.
 ---
  gdb/windows-nat.c | 2 --
  1 file changed, 2 deletions(-)
 
 diff --git a/gdb/windows-nat.c b/gdb/windows-nat.c
-index 3bd191aa96..18342d8b9f 100644
+index 6b763c3a1b..d0d86fb6f1 100644
 --- a/gdb/windows-nat.c
 +++ b/gdb/windows-nat.c
-@@ -1578,8 +1578,6 @@ windows_wait (struct target_ops *ops,
+@@ -1658,8 +1658,6 @@ windows_wait (struct target_ops *ops,
  {
    int pid = -1;
  
--  target_terminal_ours ();
+-  target_terminal::ours ();
 -
    /* We loop when we get a non-standard exception rather than return
       with a SPURIOUS because resume can try and step or modify things,
       which needs a current_thread->h.  But some of these exceptions mark
 -- 
-2.14.2
+2.17.0
 
