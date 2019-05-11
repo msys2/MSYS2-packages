@@ -2,27 +2,26 @@
 
 pkgname=('libxml2' 'libxml2-devel' 'libxml2-python')
 pkgver=2.9.9
-pkgrel=4
+pkgrel=5
 pkgdesc="XML parsing library, version 2"
 arch=(i686 x86_64)
 license=('MIT')
-makedepends=('python2' 'python3' 'icu-devel>=59.1' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel')
+makedepends=('python2' 'python3' 'icu-devel>=59.1' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel' 'libcrypt-devel')
 url="http://www.xmlsoft.org/"
 source=(http://xmlsoft.org/sources/${pkgname}-${pkgver}.tar.gz
         https://www.w3.org/XML/Test/xmlts20130923.tar.gz
         libxml2-2.9.0-do-not-check-crc.patch
         libxml2-2.7.3-doc-install.patch
         libxml2-cygwin-reentrant.patch
-        libxml2-2.9.1-msys2.patch)
+        libxml2-2.9.1-msys2.patch
+        0001-remove-buggy-linker-flags.patch)
 sha256sums=('94fb70890143e3c6549f265cee93ec064c80a84c42ad0f23e85ee1fd6540a871'
             '9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f'
             '5a53d640ebce5a96e35fbdf5f644c37642dfa3345a1dc4fc355728897c19b7e7'
             'bff6790eadec6d7b3affd2d3a7385ce7f80cec2cf4abbd2ed83e9cb297a614a9'
             'fbd5ddb92e3cd0ab0f1f058436ca73b677f12fa00f65d634be7ef791e3706e33'
-            '5b87437da7fa6fc83bc96dda29e3566fe56f4402a1f3edbd096cc9dc13e0aca4')
-
-PYTHON_SITELIB=/usr/lib/python2.7/site-packages
-PYTHON_LIB=/usr/lib/python2.7
+            '5b87437da7fa6fc83bc96dda29e3566fe56f4402a1f3edbd096cc9dc13e0aca4'
+            '01e47a8fcdeed3d8a9b7bf66ac16f9505c320e3e6b25fd246eca35d88e273784')
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -55,15 +54,19 @@ prepare() {
     libxml2-2.9.0-do-not-check-crc.patch \
     libxml2-2.7.3-doc-install.patch \
     libxml2-cygwin-reentrant.patch \
-    libxml2-2.9.1-msys2.patch 
+    libxml2-2.9.1-msys2.patch \
+    0001-remove-buggy-linker-flags.patch
 
-  sed -e 's|/usr/bin/python -u|/usr/bin/python2 -u|g' -e 's|/usr/bin/python$|/usr/bin/python2|g' -i python/tests/*.py
+  sed -e 's|/usr/bin/python -u|/usr/bin/python2 -u|g' -e 's|/usr/bin/python$|/usr/bin/python2|g' -i python/tests/*.py *.py
 
   autoreconf -fi
 }
 
-build() {
-  cd ${pkgname}-${pkgver}
+_build() {
+  cd ${srcdir}
+  cp -r ${pkgname}-${pkgver} build-py$1
+  cd build-py$1
+
   ./configure \
     --prefix=/usr \
     --sysconfdir=/etc \
@@ -74,18 +77,21 @@ build() {
     --enable-ipv6 \
     --with-history \
     --with-icu \
-    --with-python=/usr/bin/python2 \
+    --with-python=/usr/bin/python$1 \
     --with-html-dir=/usr/share/doc \
     --with-html-subdir=libxml2/html
-  make
-  make DESTDIR=${srcdir}/dest install
 
-  mv ${srcdir}/dest${PYTHON_SITELIB}/${pkgname/lib/msys-}mod.dll ${srcdir}/dest${PYTHON_SITELIB}/${pkgname}mod.dll
-  sed -i -e "s:${pkgname/lib/msys-}mod:${PN}mod:g" ${srcdir}/dest${PYTHON_SITELIB}/${pkgname}mod.la
+  make
+}
+
+build() {
+  _build 2
+  _build 3
 }
 
 check() {
-  cd ${pkgname}-${pkgver}
+  cd ${srcdir}/build-py2
+
   make check
 }
 
@@ -94,11 +100,20 @@ package_libxml2() {
   groups=('libraries')
   install=libxml2.install
 
-  mkdir -p ${pkgdir}/usr
-  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
-  rm -f ${pkgdir}/usr/bin/*-config
-  mkdir -p ${pkgdir}/usr/share
-  cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
+  cd ${srcdir}/build-py2
+  make DESTDIR=${pkgdir} install
+  cd ${srcdir}/build-py3
+  make DESTDIR=${pkgdir} install
+
+  rm -rf ${pkgdir}/usr/bin/xml2-config
+  rm -rf ${pkgdir}/usr/share/gtk-doc
+  rm -rf ${pkgdir}/usr/share/doc
+  rm -rf ${pkgdir}/usr/share/aclocal
+  rm -rf ${pkgdir}/usr/lib
+  rm -rf ${pkgdir}/usr/lib/cmake
+  rm -rf ${pkgdir}/usr/lib/pkgconfig
+  rm -rf ${pkgdir}/usr/include
+
   install -Dm644 ${srcdir}/${pkgname}-${pkgver}/COPYING "${pkgdir}/usr/share/licenses/${pkgname}/COPYING"
 }
 
@@ -108,15 +123,16 @@ package_libxml2-devel() {
   options=('staticlibs')
   depends=("libxml2=${pkgver}" 'icu-devel>=59.1' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel')
 
-  mkdir -p ${pkgdir}/usr/{bin,share}
-  cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
-  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
-  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
-  rm -rf ${pkgdir}${PYTHON_SITELIB}
-  cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
-  cp -rf ${srcdir}/dest/usr/share/doc ${pkgdir}/usr/share/
+  cd ${srcdir}/build-py2
+  make DESTDIR=${pkgdir} install
+  cd ${srcdir}/build-py3
+  make DESTDIR=${pkgdir} install
+
+  rm -rf ${pkgdir}/usr/bin/*.dll
+  rm -rf ${pkgdir}/usr/bin/*.exe
+  rm -rf ${pkgdir}/usr/lib/python*
+  rm -rf ${pkgdir}/usr/share/man
   rm -rf ${pkgdir}/usr/share/doc/python-libxml2
-  cp -rf ${srcdir}/dest/usr/share/gtk-doc ${pkgdir}/usr/share/
 }
 
 package_libxml2-python(){
@@ -126,8 +142,24 @@ package_libxml2-python(){
   options=('staticlibs')
   install=libxml2-python.install
 
-  mkdir -p ${pkgdir}/${PYTHON_SITELIB}
-  mkdir -p ${pkgdir}/usr/share/doc
-  cp -rf ${srcdir}/dest${PYTHON_SITELIB}/* ${pkgdir}${PYTHON_SITELIB}/
-  cp -rf ${srcdir}/dest/usr/share/doc/python-libxml2 ${pkgdir}/usr/share/doc/
+  cd ${srcdir}/build-py2
+  make DESTDIR=${pkgdir} install
+  cd ${srcdir}/build-py3
+  make DESTDIR=${pkgdir} install
+
+  for site in "${pkgdir}"/usr/lib/python*/site-packages; do
+    mv "${site}"/msys-xml2mod.dll "${site}"/libxml2mod.dll
+    rm -rf "${site}"/*.a
+  done
+
+  rm -rf ${pkgdir}/usr/bin
+  rm -rf ${pkgdir}/usr/share/gtk-doc
+  rm -rf ${pkgdir}/usr/share/doc/libxml2
+  rm -rf ${pkgdir}/usr/share/aclocal
+  rm -rf ${pkgdir}/usr/share/man
+  rm -rf ${pkgdir}/usr/include
+  rm -rf ${pkgdir}/usr/lib/cmake
+  rm -rf ${pkgdir}/usr/lib/pkgconfig
+  rm -rf ${pkgdir}/usr/lib/*.a
+  rm -rf ${pkgdir}/usr/lib/*.sh
 }
