@@ -1,0 +1,182 @@
+From f46bac1f3e8634e24c747d06b28e11b874f1e488 Mon Sep 17 00:00:00 2001
+From: Kazuki Yamaguchi <k@rhe.jp>
+Date: Thu, 16 Aug 2018 19:40:48 +0900
+Subject: [PATCH] config: support .include directive
+
+OpenSSL 1.1.1 introduces a new '.include' directive. Update our config
+parser to support that.
+
+As mentioned in the referenced GitHub issue, we should use the OpenSSL
+API instead of implementing the parsing logic ourselves, but it will
+need backwards-incompatible changes which we can't backport to stable
+versions. So continue to use the Ruby implementation for now.
+
+Reference: https://github.com/ruby/openssl/issues/208
+---
+ ext/openssl/lib/openssl/config.rb | 54 ++++++++++++++++++++-----------
+ test/openssl/test_config.rb       | 54 +++++++++++++++++++++++++++++++
+ 2 files changed, 90 insertions(+), 18 deletions(-)
+
+diff --git a/ext/openssl/lib/openssl/config.rb b/ext/openssl/lib/openssl/config.rb
+index 88225451..ba3a54c8 100644
+--- a/ext/openssl/lib/openssl/config.rb
++++ b/ext/openssl/lib/openssl/config.rb
+@@ -77,29 +77,44 @@ def get_key_string(data, section, key) # :nodoc:
+       def parse_config_lines(io)
+         section = 'default'
+         data = {section => {}}
+-        while definition = get_definition(io)
++        io_stack = [io]
++        while definition = get_definition(io_stack)
+           definition = clear_comments(definition)
+           next if definition.empty?
+-          if definition[0] == ?[
++          case definition
++          when /\A\[/
+             if /\[([^\]]*)\]/ =~ definition
+               section = $1.strip
+               data[section] ||= {}
+             else
+               raise ConfigError, "missing close square bracket"
+             end
+-          else
+-            if /\A([^:\s]*)(?:::([^:\s]*))?\s*=(.*)\z/ =~ definition
+-              if $2
+-                section = $1
+-                key = $2
+-              else
+-                key = $1
++          when /\A\.include (\s*=\s*)?(.+)\z/
++            path = $2
++            if File.directory?(path)
++              files = Dir.glob(File.join(path, "*.{cnf,conf}"), File::FNM_EXTGLOB)
++            else
++              files = [path]
++            end
++
++            files.each do |filename|
++              begin
++                io_stack << StringIO.new(File.read(filename))
++              rescue
++                raise ConfigError, "could not include file '%s'" % filename
+               end
+-              value = unescape_value(data, section, $3)
+-              (data[section] ||= {})[key] = value.strip
++            end
++          when /\A([^:\s]*)(?:::([^:\s]*))?\s*=(.*)\z/
++            if $2
++              section = $1
++              key = $2
+             else
+-              raise ConfigError, "missing equal sign"
++              key = $1
+             end
++            value = unescape_value(data, section, $3)
++            (data[section] ||= {})[key] = value.strip
++          else
++            raise ConfigError, "missing equal sign"
+           end
+         end
+         data
+@@ -212,10 +227,10 @@ def clear_comments(line)
+         scanned.join
+       end
+ 
+-      def get_definition(io)
+-        if line = get_line(io)
++      def get_definition(io_stack)
++        if line = get_line(io_stack)
+           while /[^\\]\\\z/ =~ line
+-            if extra = get_line(io)
++            if extra = get_line(io_stack)
+               line += extra
+             else
+               break
+@@ -225,9 +240,12 @@ def get_definition(io)
+         end
+       end
+ 
+-      def get_line(io)
+-        if line = io.gets
+-          line.gsub(/[\r\n]*/, '')
++      def get_line(io_stack)
++        while io = io_stack.last
++          if line = io.gets
++            return line.gsub(/[\r\n]*/, '')
++          end
++          io_stack.pop
+         end
+       end
+     end
+diff --git a/test/openssl/test_config.rb b/test/openssl/test_config.rb
+index 99dcc497..5653b5d0 100644
+--- a/test/openssl/test_config.rb
++++ b/test/openssl/test_config.rb
+@@ -120,6 +120,49 @@ def test_s_parse_format
+     assert_equal("error in line 7: missing close square bracket", excn.message)
+   end
+ 
++  def test_s_parse_include
++    in_tmpdir("ossl-config-include-test") do |dir|
++      Dir.mkdir("child")
++      File.write("child/a.conf", <<~__EOC__)
++        [default]
++        file-a = a.conf
++        [sec-a]
++        a = 123
++      __EOC__
++      File.write("child/b.cnf", <<~__EOC__)
++        [default]
++        file-b = b.cnf
++        [sec-b]
++        b = 123
++      __EOC__
++      File.write("include-child.conf", <<~__EOC__)
++        key_outside_section = value_a
++        .include child
++      __EOC__
++
++      include_file = <<~__EOC__
++        [default]
++        file-main = unnamed
++        [sec-main]
++        main = 123
++        .include = include-child.conf
++      __EOC__
++
++      # Include a file by relative path
++      c1 = OpenSSL::Config.parse(include_file)
++      assert_equal(["default", "sec-a", "sec-b", "sec-main"], c1.sections.sort)
++      assert_equal(["file-main", "file-a", "file-b"], c1["default"].keys)
++      assert_equal({"a" => "123"}, c1["sec-a"])
++      assert_equal({"b" => "123"}, c1["sec-b"])
++      assert_equal({"main" => "123", "key_outside_section" => "value_a"}, c1["sec-main"])
++
++      # Relative paths are from the working directory
++      assert_raise(OpenSSL::ConfigError) do
++        Dir.chdir("child") { OpenSSL::Config.parse(include_file) }
++      end
++    end
++  end
++
+   def test_s_load
+     # alias of new
+     c = OpenSSL::Config.load
+@@ -299,6 +342,17 @@ def test_clone
+     @it['newsection'] = {'a' => 'b'}
+     assert_not_equal(@it.sections.sort, c.sections.sort)
+   end
++
++  private
++
++  def in_tmpdir(*args)
++    Dir.mktmpdir(*args) do |dir|
++      dir = File.realpath(dir)
++      Dir.chdir(dir) do
++        yield dir
++      end
++    end
++  end
+ end
+ 
+ end

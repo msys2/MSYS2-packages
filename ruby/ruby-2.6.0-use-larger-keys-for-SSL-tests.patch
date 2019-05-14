@@ -1,0 +1,486 @@
+From b0bcb19cb4f95d260c5993df0aaa3667522fb99d Mon Sep 17 00:00:00 2001
+From: Kazuki Yamaguchi <k@rhe.jp>
+Date: Thu, 16 Aug 2018 20:54:47 +0900
+Subject: [PATCH 1/2] test/openssl/test_pair: fix deadlock in
+ test_connect_accept_nonblock
+
+Call IO.select with a timeout value and limit the number of retries to
+prevent stacking forever.
+
+Reference: https://github.com/ruby/openssl/issues/214
+---
+ test/openssl/test_pair.rb | 51 +++++++++++++++++----------------------
+ 1 file changed, 22 insertions(+), 29 deletions(-)
+
+diff --git a/test/openssl/test_pair.rb b/test/openssl/test_pair.rb
+index ea5f0dcf..eac3655e 100644
+--- a/test/openssl/test_pair.rb
++++ b/test/openssl/test_pair.rb
+@@ -442,7 +442,7 @@ def test_connect_accept_nonblock_no_exception
+   end
+ 
+   def test_connect_accept_nonblock
+-    ctx = OpenSSL::SSL::SSLContext.new()
++    ctx = OpenSSL::SSL::SSLContext.new
+     ctx.cert = @svr_cert
+     ctx.key = @svr_key
+     ctx.tmp_dh_callback = proc { OpenSSL::TestUtils::Fixtures.pkey_dh("dh1024") }
+@@ -451,45 +451,38 @@ def test_connect_accept_nonblock
+ 
+     th = Thread.new {
+       s2 = OpenSSL::SSL::SSLSocket.new(sock2, ctx)
+-      s2.sync_close = true
+-      begin
++      5.times {
++        begin
++          break s2.accept_nonblock
++        rescue IO::WaitReadable
++          IO.select([s2], nil, nil, 1)
++        rescue IO::WaitWritable
++          IO.select(nil, [s2], nil, 1)
++        end
+         sleep 0.2
+-        s2.accept_nonblock
++      }
++    }
++
++    s1 = OpenSSL::SSL::SSLSocket.new(sock1)
++    5.times {
++      begin
++        break s1.connect_nonblock
+       rescue IO::WaitReadable
+-        IO.select([s2])
+-        retry
++        IO.select([s1], nil, nil, 1)
+       rescue IO::WaitWritable
+-        IO.select(nil, [s2])
+-        retry
++        IO.select(nil, [s1], nil, 1)
+       end
+-      s2
+-    }
+-
+-    sleep 0.1
+-    ctx = OpenSSL::SSL::SSLContext.new()
+-    s1 = OpenSSL::SSL::SSLSocket.new(sock1, ctx)
+-    begin
+       sleep 0.2
+-      s1.connect_nonblock
+-    rescue IO::WaitReadable
+-      IO.select([s1])
+-      retry
+-    rescue IO::WaitWritable
+-      IO.select(nil, [s1])
+-      retry
+-    end
+-    s1.sync_close = true
++    }
+ 
+     s2 = th.value
+ 
+     s1.print "a\ndef"
+     assert_equal("a\n", s2.gets)
+   ensure
+-    th.join if th
+-    s1.close if s1 && !s1.closed?
+-    s2.close if s2 && !s2.closed?
+-    sock1.close if sock1 && !sock1.closed?
+-    sock2.close if sock2 && !sock2.closed?
++    sock1&.close
++    sock2&.close
++    th&.join
+   end
+ end
+ 
+
+From 5ba99ad7ae1267ed964f53906530579299f3fcc6 Mon Sep 17 00:00:00 2001
+From: Kazuki Yamaguchi <k@rhe.jp>
+Date: Thu, 16 Aug 2018 20:04:13 +0900
+Subject: [PATCH 2/2] test: use larger keys for SSL tests
+
+Some systems enforce a system-wide policy to restrict key sizes used in
+SSL/TLS. Use larger ones if possible so that the test suite runs
+successfully.
+
+New PEM files test/openssl/fixtures/pkey/{dh-1,rsa-1,rsa-2,rsa-3}.pem are added
+to the tree, and SSL tests now use them instead of the fixed-size keys.
+
+Reference: https://github.com/ruby/openssl/issues/215
+---
+ test/openssl/fixtures/pkey/dh-1.pem  | 13 +++++++
+ test/openssl/fixtures/pkey/rsa-1.pem | 51 ++++++++++++++++++++++++++++
+ test/openssl/fixtures/pkey/rsa-2.pem | 51 ++++++++++++++++++++++++++++
+ test/openssl/fixtures/pkey/rsa-3.pem | 51 ++++++++++++++++++++++++++++
+ test/openssl/test_pair.rb            |  8 ++---
+ test/openssl/test_pkey_dh.rb         |  8 ++---
+ test/openssl/test_ssl.rb             | 11 +++---
+ test/openssl/utils.rb                | 14 ++++----
+ 8 files changed, 186 insertions(+), 21 deletions(-)
+ create mode 100644 test/openssl/fixtures/pkey/dh-1.pem
+ create mode 100644 test/openssl/fixtures/pkey/rsa-1.pem
+ create mode 100644 test/openssl/fixtures/pkey/rsa-2.pem
+ create mode 100644 test/openssl/fixtures/pkey/rsa-3.pem
+
+diff --git a/test/openssl/fixtures/pkey/dh-1.pem b/test/openssl/fixtures/pkey/dh-1.pem
+new file mode 100644
+index 00000000..3340a6a1
+--- /dev/null
++++ b/test/openssl/fixtures/pkey/dh-1.pem
+@@ -0,0 +1,13 @@
++-----BEGIN DH PARAMETERS-----
++MIICCAKCAgEAvRzXYxY6L2DjeYmm1eowtMDu1it3j+VwFr6s6PRWzc1apMtztr9G
++xZ2mYndUAJLgNLO3n2fUDCYVMB6ZkcekW8Siocof3xWiMA6wqZ6uw0dsE3q7ZX+6
++TLjgSjaXeGvjutvuEwVrFeaUi83bMgfXN8ToxIQVprIF35sYFt6fpbFATKfW7qqi
++P1pQkjmCskU4tztaWvlLh0qg85wuQGnpJaQT3gS30378i0IGbA0EBvJcSpTHYbLa
++nsdI9bfN/ZVgeolVMNMU9/n8R8vRhNPcHuciFwaqS656q+HavCIyxw/LfjSwwFvR
++TngCn0wytRErkzFIXnRKckh8/BpI4S+0+l1NkOwG4WJ55KJ/9OOdZW5o/QCp2bDi
++E0JN1EP/gkSom/prq8JR/yEqtsy99uc5nUxPmzv0IgdcFHZEfiQU7iRggEbx7qfQ
++Ve55XksmmJInmpCy1bSabAEgIKp8Ckt5KLYZ0RgTXUhcEpsxEo6cuAwoSJT5o4Rp
++yG3xow2ozPcqZkvb+d2CHj1sc54w9BVFAjVANEKmRil/9WKz14bu3wxEhOPqC54n
++QojjLcoXSoT66ZUOQnYxTSiLtzoKGPy8cAVPbkBrXz2u2sj5gcvr1JjoGjdHm9/3
++qnqC8fsTz8UndKNIQC337o4K0833bQMzRGl1/qjbAPit2B7E3b6xTZMCAQI=
++-----END DH PARAMETERS-----
+diff --git a/test/openssl/fixtures/pkey/rsa-1.pem b/test/openssl/fixtures/pkey/rsa-1.pem
+new file mode 100644
+index 00000000..bd5a624f
+--- /dev/null
++++ b/test/openssl/fixtures/pkey/rsa-1.pem
+@@ -0,0 +1,51 @@
++-----BEGIN RSA PRIVATE KEY-----
++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
++UxCXTuxFUdGfgvXo2XStOBMCtcGSYflM3fv27b4C13mUXhY0O2yTgn8m9LyZsknc
++xGalENpbWmwqrjYl8KOF2+gFZV68FZ67Bm6otkJ4ta80VJw6joT9/eIe6IA34KIw
++G+ktAoIBAFRuPxzvC4ZSaasyX21l25mQbC9pdWDKEkqxCmp3VOyy6R4xnlgBOhwS
++VeAacV2vQyvRfv4dSLIVkkNSRDHEqCWVlNk75TDXFCytIAyE54xAHbLqIVlY7yim
++qHVB07F/FC6PxdkPPziAAU2DA5XVedSHibslg6jbbD4jU6qiJ1+hNrAZEs+jQC+C
++n4Ri20y+Qbp0URb2+icemnARlwgr+3HjzQGL3gK4NQjYNmDBjEWOXl9aWWB90FNL
++KahGwfAhxcVW4W56opCzwR7nsujV4eDXGba83itidRuQfd5pyWOyc1E86TYGwD/b
++79OkEElv6Ea8uXTDVS075GmWATRapQECggEAd9ZAbyT+KouTfi2e6yLOosxSZfns
++eF06QAJi5n9GOtdfK5fqdmHJqJI7wbubCnd0oxPeL71lRjrOAMXufaQRdZtfXSMn
++B1TljteNrh1en5xF451rCPR/Y6tNKBvIKnhy1waO27/vA+ovXrm17iR9rRuGZ29i
++IurlKA6z/96UdrSdpqITTCyTjSOBYg34f49ueGjlpL4+8HJq2wor4Cb1Sbv8ErqA
++bsQ/Jz+KIGUiuFCfNa6d6McPRXIrGgzpprXgfimkV3nj49QyrnuCF/Pc4psGgIaN
++l3EiGXzRt/55K7DQVadtbcjo9zREac8QnDD6dS/gOfJ82L7frQfMpNWgQA==
++-----END RSA PRIVATE KEY-----
+diff --git a/test/openssl/fixtures/pkey/rsa-2.pem b/test/openssl/fixtures/pkey/rsa-2.pem
+new file mode 100644
+index 00000000..e4fd4f43
+--- /dev/null
++++ b/test/openssl/fixtures/pkey/rsa-2.pem
+@@ -0,0 +1,51 @@
++-----BEGIN RSA PRIVATE KEY-----
++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
++-----END RSA PRIVATE KEY-----
+diff --git a/test/openssl/fixtures/pkey/rsa-3.pem b/test/openssl/fixtures/pkey/rsa-3.pem
+new file mode 100644
+index 00000000..6c9c9ced
+--- /dev/null
++++ b/test/openssl/fixtures/pkey/rsa-3.pem
+@@ -0,0 +1,51 @@
++-----BEGIN RSA PRIVATE KEY-----
++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
++-----END RSA PRIVATE KEY-----
+diff --git a/test/openssl/test_pair.rb b/test/openssl/test_pair.rb
+index eac3655e..8d6ca1e9 100644
+--- a/test/openssl/test_pair.rb
++++ b/test/openssl/test_pair.rb
+@@ -10,7 +10,7 @@ def setup
+     ee_exts = [
+       ["keyUsage", "keyEncipherment,digitalSignature", true],
+     ]
+-    @svr_key = OpenSSL::TestUtils::Fixtures.pkey("rsa1024")
++    @svr_key = OpenSSL::TestUtils::Fixtures.pkey("rsa-1")
+     @svr_cert = issue_cert(svr_dn, @svr_key, 1, ee_exts, nil, nil)
+   end
+ 
+@@ -23,7 +23,7 @@ def ssl_pair
+       sctx = OpenSSL::SSL::SSLContext.new
+       sctx.cert = @svr_cert
+       sctx.key = @svr_key
+-      sctx.tmp_dh_callback = proc { OpenSSL::TestUtils::Fixtures.pkey_dh("dh1024") }
++      sctx.tmp_dh_callback = proc { OpenSSL::TestUtils::Fixtures.pkey("dh-1") }
+       sctx.options |= OpenSSL::SSL::OP_NO_COMPRESSION
+       ssls = OpenSSL::SSL::SSLServer.new(tcps, sctx)
+       ns = ssls.accept
+@@ -397,7 +397,7 @@ def test_connect_accept_nonblock_no_exception
+     ctx2 = OpenSSL::SSL::SSLContext.new
+     ctx2.cert = @svr_cert
+     ctx2.key = @svr_key
+-    ctx2.tmp_dh_callback = proc { OpenSSL::TestUtils::Fixtures.pkey_dh("dh1024") }
++    ctx2.tmp_dh_callback = proc { OpenSSL::TestUtils::Fixtures.pkey("dh-1") }
+ 
+     sock1, sock2 = tcp_pair
+ 
+@@ -445,7 +445,7 @@ def test_connect_accept_nonblock
+     ctx = OpenSSL::SSL::SSLContext.new
+     ctx.cert = @svr_cert
+     ctx.key = @svr_key
+-    ctx.tmp_dh_callback = proc { OpenSSL::TestUtils::Fixtures.pkey_dh("dh1024") }
++    ctx.tmp_dh_callback = proc { OpenSSL::TestUtils::Fixtures.pkey("dh-1") }
+ 
+     sock1, sock2 = tcp_pair
+ 
+diff --git a/test/openssl/test_pkey_dh.rb b/test/openssl/test_pkey_dh.rb
+index fb713813..79bf9bb7 100644
+--- a/test/openssl/test_pkey_dh.rb
++++ b/test/openssl/test_pkey_dh.rb
+@@ -19,7 +19,7 @@ def test_new_break
+   end
+ 
+   def test_DHparams
+-    dh1024 = Fixtures.pkey_dh("dh1024")
++    dh1024 = Fixtures.pkey("dh1024")
+     asn1 = OpenSSL::ASN1::Sequence([
+       OpenSSL::ASN1::Integer(dh1024.p),
+       OpenSSL::ASN1::Integer(dh1024.g)
+@@ -42,7 +42,7 @@ def test_DHparams
+   end
+ 
+   def test_public_key
+-    dh = Fixtures.pkey_dh("dh1024")
++    dh = Fixtures.pkey("dh1024")
+     public_key = dh.public_key
+     assert_no_key(public_key) #implies public_key.public? is false!
+     assert_equal(dh.to_der, public_key.to_der)
+@@ -50,14 +50,14 @@ def test_public_key
+   end
+ 
+   def test_generate_key
+-    dh = Fixtures.pkey_dh("dh1024").public_key # creates a copy
++    dh = Fixtures.pkey("dh1024").public_key # creates a copy
+     assert_no_key(dh)
+     dh.generate_key!
+     assert_key(dh)
+   end
+ 
+   def test_key_exchange
+-    dh = Fixtures.pkey_dh("dh1024")
++    dh = Fixtures.pkey("dh1024")
+     dh2 = dh.public_key
+     dh.generate_key!
+     dh2.generate_key!
+diff --git a/test/openssl/test_ssl.rb b/test/openssl/test_ssl.rb
+index 408c7d82..2633f7c4 100644
+--- a/test/openssl/test_ssl.rb
++++ b/test/openssl/test_ssl.rb
+@@ -712,7 +712,7 @@ def socketpair
+ 
+   def test_tlsext_hostname
+     fooctx = OpenSSL::SSL::SSLContext.new
+-    fooctx.tmp_dh_callback = proc { Fixtures.pkey_dh("dh1024") }
++    fooctx.tmp_dh_callback = proc { Fixtures.pkey("dh-1") }
+     fooctx.cert = @cli_cert
+     fooctx.key = @cli_key
+ 
+@@ -764,7 +764,7 @@ def test_servername_cb_raises_an_exception_on_unknown_objects
+     ctx2 = OpenSSL::SSL::SSLContext.new
+     ctx2.cert = @svr_cert
+     ctx2.key = @svr_key
+-    ctx2.tmp_dh_callback = proc { Fixtures.pkey_dh("dh1024") }
++    ctx2.tmp_dh_callback = proc { Fixtures.pkey("dh-1") }
+     ctx2.servername_cb = lambda { |args| Object.new }
+ 
+     sock1, sock2 = socketpair
+@@ -1144,7 +1144,7 @@ def test_alpn_protocol_selection_cancel
+     ctx1 = OpenSSL::SSL::SSLContext.new
+     ctx1.cert = @svr_cert
+     ctx1.key = @svr_key
+-    ctx1.tmp_dh_callback = proc { Fixtures.pkey_dh("dh1024") }
++    ctx1.tmp_dh_callback = proc { Fixtures.pkey("dh-1") }
+     ctx1.alpn_select_cb = -> (protocols) { nil }
+     ssl1 = OpenSSL::SSL::SSLSocket.new(sock1, ctx1)
+ 
+@@ -1386,20 +1386,21 @@ def test_fallback_scsv
+   def test_dh_callback
+     pend "TLS 1.2 is not supported" unless tls12_supported?
+ 
++    dh = Fixtures.pkey("dh-1")
+     called = false
+     ctx_proc = -> ctx {
+       ctx.ssl_version = :TLSv1_2
+       ctx.ciphers = "DH:!NULL"
+       ctx.tmp_dh_callback = ->(*args) {
+         called = true
+-        Fixtures.pkey_dh("dh1024")
++        dh
+       }
+     }
+     start_server(ctx_proc: ctx_proc) do |port|
+       server_connect(port) { |ssl|
+         assert called, "dh callback should be called"
+         if ssl.respond_to?(:tmp_key)
+-          assert_equal Fixtures.pkey_dh("dh1024").to_der, ssl.tmp_key.to_der
++          assert_equal dh.to_der, ssl.tmp_key.to_der
+         end
+       }
+     end
+diff --git a/test/openssl/utils.rb b/test/openssl/utils.rb
+index b7ddd891..fe626ade 100644
+--- a/test/openssl/utils.rb
++++ b/test/openssl/utils.rb
+@@ -42,10 +42,8 @@ module Fixtures
+ 
+     def pkey(name)
+       OpenSSL::PKey.read(read_file("pkey", name))
+-    end
+-
+-    def pkey_dh(name)
+-      # DH parameters can be read by OpenSSL::PKey.read atm
++    rescue OpenSSL::PKey::PKeyError
++      # TODO: DH parameters can be read by OpenSSL::PKey.read atm
+       OpenSSL::PKey::DH.new(read_file("pkey", name))
+     end
+ 
+@@ -157,9 +155,9 @@ class OpenSSL::SSLTestCase < OpenSSL::TestCase
+ 
+   def setup
+     super
+-    @ca_key  = Fixtures.pkey("rsa2048")
+-    @svr_key = Fixtures.pkey("rsa1024")
+-    @cli_key = Fixtures.pkey("rsa2048")
++    @ca_key  = Fixtures.pkey("rsa-1")
++    @svr_key = Fixtures.pkey("rsa-2")
++    @cli_key = Fixtures.pkey("rsa-3")
+     @ca  = OpenSSL::X509::Name.parse("/DC=org/DC=ruby-lang/CN=CA")
+     @svr = OpenSSL::X509::Name.parse("/DC=org/DC=ruby-lang/CN=localhost")
+     @cli = OpenSSL::X509::Name.parse("/DC=org/DC=ruby-lang/CN=localhost")
+@@ -200,7 +198,7 @@ def start_server(verify_mode: OpenSSL::SSL::VERIFY_NONE, start_immediately: true
+       ctx.cert_store = store
+       ctx.cert = @svr_cert
+       ctx.key = @svr_key
+-      ctx.tmp_dh_callback = proc { Fixtures.pkey_dh("dh1024") }
++      ctx.tmp_dh_callback = proc { Fixtures.pkey("dh-1") }
+       ctx.verify_mode = verify_mode
+       ctx_proc.call(ctx) if ctx_proc
+ 
