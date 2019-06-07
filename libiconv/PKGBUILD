@@ -1,7 +1,7 @@
 # Maintainer: Alexey Pavlov <Alexpux@gmail.com>
 
 pkgname=('libiconv' 'libiconv-devel')
-pkgver=1.15
+pkgver=1.16
 pkgrel=1
 pkgdesc='Libiconv is a conversion library'
 groups=('libraries')
@@ -10,24 +10,11 @@ url='https://www.gnu.org/software/libiconv/'
 license=('LGPL')
 source=("https://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.gz"
         1.14-cross-install.patch
-        libiconv-1.14-reloc.patch
-        libiconv-1.14-wchar.patch
-        msys2-libiconv-1.14.patch)
-sha256sums=('ccf536620a45458d26ba83887a983b96827001e92a13847b45e4925cc8913178'
-            '0891f33528131003939c5e7fa610384834d580e80396f411de0b9f26ec1c520f'
-            'f9186f805dbb136cc24ce389ecee5a4d4867eec722292bd77893524dcdedf190'
-            '0c8f78f688c2f116a6441ba0dc9c4308d2d4845114b574dd8f0cd1165f070132'
-            '849971a5b753222e672faf0d2b7c852e5e29ef07db12acd1d74f272ccc049d27')
+        libiconv-1.16-msysize.patch)
+sha256sums=('e6a1b1b589654277ee790cce3734f07876ac4ccfaecbee8afa0b649cf529cc04'
+            'e1e7aec604732219f9985458db46042b2bafe0459d1a6a0fb245c5810f65b066'
+            '7320176061251170c1af9f088e1ad0080dda9febafd4dc5358d1453f233fd1f5')
 options=(!libtool)
-
-# Helper macros to help make tasks easier #
-apply_patch_with_msg_p2() {
-  for _patch in "$@"
-  do
-    msg2 "Applying $_patch"
-    patch -Nbp2 -i "${srcdir}/$_patch"
-  done
-}
 
 apply_patch_with_msg() {
   for _patch in "$@"
@@ -40,8 +27,8 @@ apply_patch_with_msg() {
 del_file_exists() {
   for _fname in "$@"
   do
-    if [ -f $_fname ]; then
-      rm -rf $_fname
+    if [ -f ${_fname} ]; then
+      rm -rf ${_fname}
     fi
   done
 }
@@ -51,18 +38,26 @@ del_file_exists() {
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
 
-  apply_patch_with_msg_p2 1.14-cross-install.patch \
-    libiconv-1.14-reloc.patch \
-    libiconv-1.14-wchar.patch
-  apply_patch_with_msg  \
-   msys2-libiconv-1.14.patch
+  apply_patch_with_msg \
+    1.14-cross-install.patch \
+    libiconv-1.16-msysize.patch
 
-  #./autogen.sh --skip-gnulib
+  rm build-aux/ltmain.sh
+  rm m4/{libtool,lt~obsolete,ltoptions,ltsugar}.m4
+  rm libcharset/build-aux/ltmain.sh
+  rm libcharset/m4/{libtool,lt~obsolete,ltoptions,ltsugar}.m4
+  cp -f srcm4/* m4/
+
+  autoreconf -fiv
 }
 
 build() {
-  cd $srcdir/${pkgname}-${pkgver}
-  ./configure --prefix=/usr --enable-static --enable-shared
+  cd ${srcdir}/${pkgname}-${pkgver}
+  ./configure \
+    --prefix=/usr \
+    --enable-static \
+    --enable-shared
+
   make
   make DESTDIR=${srcdir}/dest install
 }
@@ -76,8 +71,8 @@ package_libiconv() {
   depends=('gcc-libs')
 
   mkdir -p ${pkgdir}/usr
-  cp -rf $srcdir/dest/usr/bin ${pkgdir}/usr/
-  cp -rf $srcdir/dest/usr/share ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
 }
 
 package_libiconv-devel() {
