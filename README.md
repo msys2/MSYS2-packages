@@ -1,6 +1,5 @@
 MSYS2-packages
 ==============
-[![TeaCI status](https://tea-ci.org/api/badges/Alexpux/MSYS2-packages/status.svg)](https://tea-ci.org/Alexpux/MSYS2-packages)
 [![AppVeyor status](https://ci.appveyor.com/api/projects/status/github/Alexpux/MSYS2-packages?branch=master&svg=true)](https://ci.appveyor.com/project/Alexpux/MSYS2-packages)
 
 Package scripts for MSYS2.
