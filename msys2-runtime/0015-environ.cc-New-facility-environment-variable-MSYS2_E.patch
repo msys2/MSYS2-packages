@@ -1,7 +1,7 @@
-From e5e3c6f0366fe50dd0325aed9488c0958e6dbdf7 Mon Sep 17 00:00:00 2001
+From 886bfa8b7aa5fd5f9b5807153209ae880144a6de Mon Sep 17 00:00:00 2001
 From: Ray Donnelly <mingw.android@gmail.com>
 Date: Sun, 10 Apr 2016 21:47:41 +0100
-Subject: [PATCH 15/15] environ.cc: New facility/environment variable
+Subject: [PATCH 15/16] environ.cc: New facility/environment variable
  MSYS2_ENV_CONV_EXCL
 
 Works very much like MSYS2_ARG_CONV_EXCL. In fact it uses the same
@@ -17,15 +17,15 @@ config variables (LOCAL_SOFT) and when this happens, msys2-runtime
 converts R_ARCH from "/x64" to an absolute Windows path and appends
 it to another absolute path, R_HOME, forming an invalid path.
 ---
- winsup/cygwin/environ.cc   | 22 ++++++++++++++++++----
+ winsup/cygwin/environ.cc   | 34 ++++++++++++++++++++++++----------
  winsup/cygwin/miscfuncs.cc | 21 +++++++++++++++++++++
  winsup/cygwin/miscfuncs.h  |  2 ++
  winsup/cygwin/path.cc      |  1 -
  winsup/cygwin/spawn.cc     | 12 ++----------
- 5 files changed, 43 insertions(+), 15 deletions(-)
+ 5 files changed, 49 insertions(+), 21 deletions(-)
 
 diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
-index ece670eda..dcbae12cf 100644
+index 508edea2b..d57fcaf9d 100644
 --- a/winsup/cygwin/environ.cc
 +++ b/winsup/cygwin/environ.cc
 @@ -1179,6 +1179,10 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
@@ -39,29 +39,43 @@ index ece670eda..dcbae12cf 100644
    char **pass_env = (char **) alloca (sizeof (char *)
  				      * (n + winnum + SPENVS_SIZE + 1));
    /* Iterate over input list, generating a new environment list and refreshing
-@@ -1187,9 +1191,18 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+@@ -1187,16 +1191,25 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
      {
        bool calc_tl = !no_envblock;
  #ifdef __MSYS__
 -      /* Don't pass timezone environment to non-msys applications */
 -      if (!keep_posix && ascii_strncasematch(*srcp, "TZ=", 3))
--        goto next1;
+-        {
+-          const char *v = *srcp + 3;
+-          if (*v == ':')
+-            goto next1;
+-          for (; *v; v++)
+-            if (!isalpha(*v) && !isdigit(*v) &&
+-                *v != '-' && *v != '+' && *v != ':')
+-              goto next1;
 +      if (!keep_posix)
-+      {
-+	/* Don't pass timezone environment to non-msys applications */
-+	if (ascii_strncasematch(*srcp, "TZ=", 3))
-+	  goto next1;
-+	else if (ascii_strncasematch(*srcp, "MSYS2_ENV_CONV_EXCL=", 20))
-+	  {
-+	    msys2_env_conv_excl_env = (char*)alloca (strlen(&(*srcp)[20])+1);
-+	    strcpy (msys2_env_conv_excl_env, &(*srcp)[20]);
-+	    msys2_env_conv_excl_count = string_split_delimited (msys2_env_conv_excl_env, ';');
-+	  }
-+      }
++        {
++          /* Don't pass timezone environment to non-msys applications */
++          if (ascii_strncasematch(*srcp, "TZ=", 3))
++            {
++              const char *v = *srcp + 3;
++              if (*v == ':')
++                goto next1;
++              for (; *v; v++)
++                if (!isalpha(*v) && !isdigit(*v) &&
++                    *v != '-' && *v != '+' && *v != ':')
++                  goto next1;
++            }
++          else if (ascii_strncasematch(*srcp, "MSYS2_ENV_CONV_EXCL=", 20))
++            {
++              msys2_env_conv_excl_env = (char*)alloca (strlen(&(*srcp)[20])+1);
++              strcpy (msys2_env_conv_excl_env, &(*srcp)[20]);
++              msys2_env_conv_excl_count = string_split_delimited (msys2_env_conv_excl_env, ';');
++            }
+         }
  #endif
        /* Look for entries that require special attention */
-       for (unsigned i = 0; i < SPENVS_SIZE; i++)
-@@ -1313,7 +1326,8 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+@@ -1321,7 +1334,8 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
  	    }
  #ifdef __MSYS__
  	  else if (!keep_posix) {
@@ -159,5 +173,5 @@ index 2e9f20465..de847549d 100644
  
    /* Check if we have been called from exec{lv}p or spawn{lv}p and mask
 -- 
-2.21.0
+2.22.0
 
