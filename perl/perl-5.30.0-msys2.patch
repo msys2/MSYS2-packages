@@ -1114,18 +1114,6 @@ diff -Naur perl-5.28.0-orig/ext/DynaLoader/t/DynaLoader.t perl-5.28.0/ext/DynaLo
      # Play safe and only try this test if this system
      # looks pretty much Unix-like.
      skip( "dl_findfile test not appropriate on $^O", 1 )
-diff -Naur perl-5.28.0-orig/ext/File-Find/lib/File/Find.pm perl-5.28.0/ext/File-Find/lib/File/Find.pm
---- perl-5.28.0-orig/ext/File-Find/lib/File/Find.pm	2018-05-21 11:41:35.000000000 +0300
-+++ perl-5.28.0/ext/File-Find/lib/File/Find.pm	2018-06-28 07:53:19.263817000 +0300
-@@ -785,7 +785,7 @@
- 
- $File::Find::dont_use_nlink = 1
-     if $^O eq 'os2' || $^O eq 'dos' || $^O eq 'amigaos' || $Is_Win32 ||
--       $^O eq 'interix' || $^O eq 'cygwin' || $^O eq 'qnx' || $^O eq 'nto';
-+       $^O eq 'interix' || $^O eq 'cygwin' || $^O eq 'msys' || $^O eq 'qnx' || $^O eq 'nto';
- 
- # Set dont_use_nlink in your hint file if your system's stat doesn't
- # report the number of links in a directory as an indication
 diff -Naur perl-5.28.0-orig/ext/File-Find/t/find.t perl-5.28.0/ext/File-Find/t/find.t
 --- perl-5.28.0-orig/ext/File-Find/t/find.t	2018-05-21 11:41:35.000000000 +0300
 +++ perl-5.28.0/ext/File-Find/t/find.t	2018-06-28 07:53:19.271817400 +0300
@@ -1141,12 +1129,12 @@ diff -Naur perl-5.28.0-orig/ext/File-Find/t/find.t perl-5.28.0/ext/File-Find/t/f
 diff -Naur perl-5.28.0-orig/ext/File-Glob/t/basic.t perl-5.28.0/ext/File-Glob/t/basic.t
 --- perl-5.28.0-orig/ext/File-Glob/t/basic.t	2018-05-21 13:44:04.000000000 +0300
 +++ perl-5.28.0/ext/File-Glob/t/basic.t	2018-06-28 07:53:19.276817700 +0300
-@@ -137,7 +137,7 @@
+@@ -142,7 +142,7 @@
  # should return an empty list, and set ERROR
  SKIP: {
      skip $^O, 2 if $^O eq 'MSWin32' or $^O eq 'NetWare'
--	or $^O eq 'os2' or $^O eq 'VMS' or $^O eq 'cygwin';
-+	or $^O eq 'os2' or $^O eq 'VMS' or $^O eq 'cygwin' or $^O eq 'msys';
+-        or $^O eq 'os2' or $^O eq 'VMS' or $^O eq 'cygwin';
++        or $^O eq 'os2' or $^O eq 'VMS' or $^O eq 'cygwin' or $^O eq 'msys';
      skip "AFS", 2 if Cwd::cwd() =~ m#^$Config{'afsroot'}#s;
      skip "running as root", 2 if not $>;
  
@@ -1227,15 +1215,15 @@ diff -Naur perl-5.28.0-orig/ext/Win32CORE/t/win32core.t perl-5.28.0/ext/Win32COR
 diff -Naur perl-5.28.0-orig/ext/XS-APItest/t/call_checker.t perl-5.28.0/ext/XS-APItest/t/call_checker.t
 --- perl-5.28.0-orig/ext/XS-APItest/t/call_checker.t	2018-03-20 23:06:36.000000000 +0300
 +++ perl-5.28.0/ext/XS-APItest/t/call_checker.t	2018-06-28 07:53:20.116865800 +0300
-@@ -5,7 +5,7 @@
- use XS::APItest;
+@@ -6,7 +6,7 @@
  
  {
--    local $TODO = $^O eq "cygwin" ? "[perl #78502] function pointers don't match on cygwin" : "";
-+    local $TODO = ($^O eq "cygwin" || $^O eq "msys") ? "[perl #78502] function pointers don't match on cygwin" : "";
-     ok( eval { XS::APItest::test_cv_getset_call_checker(); 1 })
-       or diag $@;
- }
+     local $TODO = "[perl #78502] function pointers don't match on cygwin"
+-        if $^O eq "cygwin";
++        if ($^O eq "cygwin" || $^O eq "msys");
+     ok( eval { XS::APItest::test_cv_getset_call_checker(); 1 },
+         "test_cv_getset_call_checker() works as expected")
+         or diag $@;
 diff -Naur perl-5.28.0-orig/haiku/Haiku/Makefile.PL perl-5.28.0/haiku/Haiku/Makefile.PL
 --- perl-5.28.0-orig/haiku/Haiku/Makefile.PL	2018-03-20 23:06:36.000000000 +0300
 +++ perl-5.28.0/haiku/Haiku/Makefile.PL	2018-06-28 07:53:20.252873500 +0300
@@ -1608,15 +1596,6 @@ diff -Naur perl-5.28.0-orig/t/io/fs.t perl-5.28.0/t/io/fs.t
  
  plan tests => 61;
  
-@@ -122,7 +122,7 @@
-         skip "hard links not that hard in $^O", 1 if $^O eq 'amigaos';
- 	skip "no mode checks", 1 if $skip_mode_checks;
- 
--#      if ($^O eq 'cygwin') { # new files on cygwin get rwx instead of rw-
-+#      if ($^O eq 'cygwin' or $^O eq 'msys') { # new files on cygwin get rwx instead of rw-
- #          is($mode & 0777, 0777, "mode of triply-linked file");
- #      } else {
-             is(sprintf("0%o", $mode & 0777), 
 @@ -455,7 +455,7 @@
  # check if rename() can be used to just change case of filename
  SKIP: {
@@ -1626,18 +1605,6 @@ diff -Naur perl-5.28.0-orig/t/io/fs.t perl-5.28.0/t/io/fs.t
  
      chdir "./$tmpdir";
      open(FH,'>x') || die "Can't create x";
-diff -Naur perl-5.28.0-orig/t/io/inplace.t perl-5.28.0/t/io/inplace.t
---- perl-5.28.0-orig/t/io/inplace.t	2018-03-20 23:06:37.000000000 +0300
-+++ perl-5.28.0/t/io/inplace.t	2018-06-28 07:53:21.618951700 +0300
-@@ -38,7 +38,7 @@
- {
-     # based on code, dosish systems can't do no-backup inplace
-     # edits
--    $^O =~ /^(MSWin32|cygwin|uwin|dos|os2)$/
-+    $^O =~ /^(MSWin32|cygwin|msys|uwin|dos|os2)$/
- 	and skip("Can't inplace edit without backups on $^O", 4);
-     
-     our @ifiles = ( tempfile(), tempfile(), tempfile() );
 diff -Naur perl-5.28.0-orig/t/io/tell.t perl-5.28.0/t/io/tell.t
 --- perl-5.28.0-orig/t/io/tell.t	2018-05-21 15:29:23.000000000 +0300
 +++ perl-5.28.0/t/io/tell.t	2018-06-28 07:53:21.622951900 +0300
