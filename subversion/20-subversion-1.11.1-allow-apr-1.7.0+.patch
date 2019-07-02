@@ -1,0 +1,69 @@
+--- a/build/ac-macros/swig.m4	2019/04/12 09:27:12	1857390
++++ b/build/ac-macros/swig.m4	2019/04/12 09:27:33	1857391
+@@ -128,41 +128,6 @@
+       ac_cv_python_libs="`$PYTHON ${abs_srcdir}/build/get-py-info.py --libs`"
+     ])
+     SWIG_PY_LIBS="`SVN_REMOVE_STANDARD_LIB_DIRS($ac_cv_python_libs)`"
+-
+-    dnl Sun Forte adds an extra space before substituting APR_INT64_T_FMT
+-    dnl gcc-2.95 adds an extra space after substituting APR_INT64_T_FMT
+-    dnl thus the egrep patterns have a + in them.
+-    SVN_PYCFMT_SAVE_CPPFLAGS="$CPPFLAGS"
+-    CPPFLAGS="$CPPFLAGS $SVN_APR_INCLUDES"
+-    AC_CACHE_CHECK([for apr_int64_t Python/C API format string],
+-                   [svn_cv_pycfmt_apr_int64_t], [
+-      if test "x$svn_cv_pycfmt_apr_int64_t" = "x"; then
+-        AC_EGREP_CPP([MaTcHtHiS +\"lld\" +EnDeNd],
+-                     [#include <apr.h>
+-                      MaTcHtHiS APR_INT64_T_FMT EnDeNd],
+-                     [svn_cv_pycfmt_apr_int64_t="L"])
+-      fi
+-      if test "x$svn_cv_pycfmt_apr_int64_t" = "x"; then
+-        AC_EGREP_CPP([MaTcHtHiS +\"ld\" +EnDeNd],r
+-                     [#include <apr.h>
+-                      MaTcHtHiS APR_INT64_T_FMT EnDeNd],
+-                     [svn_cv_pycfmt_apr_int64_t="l"])
+-      fi
+-      if test "x$svn_cv_pycfmt_apr_int64_t" = "x"; then
+-        AC_EGREP_CPP([MaTcHtHiS +\"d\" +EnDeNd],
+-                     [#include <apr.h>
+-                      MaTcHtHiS APR_INT64_T_FMT EnDeNd],
+-                     [svn_cv_pycfmt_apr_int64_t="i"])
+-      fi
+-    ])
+-    CPPFLAGS="$SVN_PYCFMT_SAVE_CPPFLAGS"
+-    if test "x$svn_cv_pycfmt_apr_int64_t" = "x"; then
+-      AC_MSG_ERROR([failed to recognize APR_INT64_T_FMT on this platform])
+-    fi
+-    AC_DEFINE_UNQUOTED([SVN_APR_INT64_T_PYCFMT],
+-                       ["$svn_cv_pycfmt_apr_int64_t"],
+-                       [Define to the Python/C API format character suitable]
+-                       [ for apr_int64_t])
+   fi
+ 
+   if test "$PERL" != "none"; then
+--- a/subversion/bindings/swig/python/libsvn_swig_py/swigutil_py.c	2019/04/12 09:27:12	1857390
++++ b/subversion/bindings/swig/python/libsvn_swig_py/swigutil_py.c	2019/04/12 09:27:33	1857391
+@@ -46,7 +46,7 @@
+ #include "svn_mergeinfo.h"
+ #include "svn_types.h"
+ 
+-#include "svn_private_config.h" /* for SVN_APR_INT64_T_PYCFMT */
++#include "svn_private_config.h"
+ 
+ #include "swig_python_external_runtime.swg"
+ #include "swigutil_py.h"
+@@ -3394,10 +3394,9 @@
+   svn_swig_py_acquire_py_lock();
+ 
+   if ((result = PyObject_CallFunction(receiver,
+-                                      (char *)
+-                                      (SVN_APR_INT64_T_PYCFMT "lsssO&"),
+-                                      line_no, revision, author, date, line,
+-                                      make_ob_pool, pool)) == NULL)
++                                      (char *)"LlsssO&",
++                                      (PY_LONG_LONG)line_no, revision, author,
++                                      date, line, make_ob_pool, pool)) == NULL)
+     {
+       err = callback_exception_error();
+     }
