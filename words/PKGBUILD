@@ -1,0 +1,80 @@
+# Maintainer: J. Peter Mugaas <jpmugaas@suddenlink.net>
+
+pkgname=words
+pkgver=2.1
+pkgrel=1
+pkgdesc="A collection of International 'words' files for /usr/share/dict."
+arch=('any')
+url="ftp://ftp.gnu.org/gnu/aspell/dict/0index.html"
+license=('GPL' 'GPL2' 'custom')
+depends=()
+makedepends=('coreutils' 'libiconv' 'aspell')
+install=words.install
+source=('ftp://ftp.gnu.org/gnu/aspell/dict/en/aspell6-en-2017.08.24-0.tar.bz2'
+        'ftp://ftp.gnu.org/gnu/aspell/dict/ca/aspell6-ca-2.1.5-1.tar.bz2'
+        'ftp://ftp.gnu.org/gnu/aspell/dict/fi/aspell6-fi-0.7-0.tar.bz2'
+        'ftp://ftp.gnu.org/gnu/aspell/dict/fr/aspell-fr-0.50-3.tar.bz2'
+        'ftp://ftp.gnu.org/gnu/aspell/dict/de-alt/aspell6-de-alt-2.1-1.tar.bz2'
+        'ftp://ftp.gnu.org/gnu/aspell/dict/it/aspell6-it-2.2_20050523-0.tar.bz2'
+        'ftp://ftp.gnu.org/gnu/aspell/dict/de/aspell-de-0.50-2.tar.bz2'
+        'ftp://ftp.gnu.org/gnu/aspell/dict/es/aspell6-es-1.11-2.tar.bz2')
+sha256sums=('09b562b02195e7facd31d65241050be7ac6f78654128ab41650511bf42dd5b7c'
+            'ebdae47edf87357a4df137dd754737e6417452540cb1ed34b545ccfd66f165b9'
+            'f8d7f07b4511e606eb56392ddaa76fd29918006331795e5942ad11b510d0a51d'
+            'f9421047519d2af9a7a466e4336f6e6ea55206b356cd33c8bd18cb626bf2ce91'
+            '36d13c6c743a6b1ff05fb1af79134e118e5a94db06ba40c076636f9d04158c73'
+            '3b19dc709924783c8d87111aa9653dc6c000e845183778abee750215d83aaebd'
+            'f1b6f23d694fc12da193de5d5d2232797e87aecf684d8aa5872d83176eeb84ba'
+            'ad367fa1e7069c72eb7ae37e4d39c30a44d32a6aa73cedccbd0d06a69018afcc')
+
+build() {
+    mkdir -p "$srcdir/$pkgname"
+    cd "$srcdir/$pkgname"
+
+    find "$srcdir" -name '*.cwl' -not -path "$srcdir/$pkgname/*" -exec cp -u '{}' './' \;
+    preunzip *.cwl
+    for wl in *.wl; do
+        iconv --from-code=ISO-8859-1 --to-code=UTF-8 $wl | \
+        cut -d '/' -f 1 | LC_ALL=C sort -df > $wl.utf8
+    done
+    rm *.wl
+
+    mkdir -p copy
+    while read cr; do
+        ver=$(cut -d '-' -f 2 <<< "$cr")
+        cp "$cr" "copy/copyright-$ver"
+    done <<< "$(find "$srcdir" -name 'Copyright')"
+    chmod 644 copy/*
+
+    # locale specific sort for other languages?
+    # sort specified from FS#47262
+    cat en-common.wl.utf8 en_US* | sort -u | LC_ALL=C sort -df > us-merged
+    cat en-common.wl.utf8 en_GB* | sort -u | LC_ALL=C sort -df > gb-merged
+    cat de-only.wl.utf8   de_*   | sort -u | LC_ALL=C sort -df > de-merged
+}
+
+package() {
+    cd "$srcdir/$pkgname"
+
+    install -Dm644 us-merged "$pkgdir/usr/share/dict/american-english"
+    install -Dm644 gb-merged "$pkgdir/usr/share/dict/british-english"
+    ln -s american-english   "$pkgdir/usr/share/dict/usa"
+    ln -s british-english    "$pkgdir/usr/share/dict/british"
+
+    install -Dm644 ca-common.wl.utf8 "$pkgdir/usr/share/dict/catala"
+    ln -s catala "$pkgdir/usr/share/dict/catalan"
+
+    install -Dm644 de-merged       "$pkgdir/usr/share/dict/ngerman"
+    install -Dm644 de-alt.wl.utf8  "$pkgdir/usr/share/dict/ogerman"
+    ln -s ngerman "$pkgdir/usr/share/dict/german"
+
+    install -Dm644 fr-40-only.wl.utf8 "$pkgdir/usr/share/dict/french"
+
+    install -Dm644 es.wl.utf8 "$pkgdir/usr/share/dict/spanish"
+    install -Dm644 fi.wl.utf8 "$pkgdir/usr/share/dict/finnish"
+    install -Dm644 it.wl.utf8 "$pkgdir/usr/share/dict/italian"
+
+    install -d "$pkgdir/usr/share/licenses/$pkgname/"
+    cp copy/*  "$pkgdir/usr/share/licenses/$pkgname/"
+}
+
