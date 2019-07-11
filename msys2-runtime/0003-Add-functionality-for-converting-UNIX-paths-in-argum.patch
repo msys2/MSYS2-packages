@@ -12,12 +12,12 @@ Subject: [PATCH 03/16] Add functionality for converting UNIX paths in
  winsup/cygwin/environ.h            |   2 +-
  winsup/cygwin/external.cc          |   2 +-
  winsup/cygwin/include/sys/cygwin.h |   6 +
- winsup/cygwin/msys2_path_conv.cc   | 630 +++++++++++++++++++++++++++++
+ winsup/cygwin/msys2_path_conv.cc   | 641 +++++++++++++++++++++++++++++
  winsup/cygwin/msys2_path_conv.h    | 147 +++++++
  winsup/cygwin/path.cc              |  69 ++++
  winsup/cygwin/spawn.cc             |  48 ++-
  winsup/cygwin/winf.h               |   4 +
- 10 files changed, 924 insertions(+), 9 deletions(-)
+ 10 files changed, 935 insertions(+), 9 deletions(-)
  create mode 100644 winsup/cygwin/msys2_path_conv.cc
  create mode 100644 winsup/cygwin/msys2_path_conv.h
 
@@ -130,7 +130,7 @@ new file mode 100644
 index 000000000..406b98ac8
 --- /dev/null
 +++ b/winsup/cygwin/msys2_path_conv.cc
-@@ -0,0 +1,630 @@
+@@ -0,0 +1,641 @@
 +/*
 +  The MSYS2 Path conversion source code is licensed under:
 +  
@@ -443,6 +443,10 @@ index 000000000..406b98ac8
 +    }
 +
 +    sub_convert(&srcbeg, &srcit, &dstit, dstend, &in_string);
++    if (!*srcit) {
++      *dstit = '\0';
++      return dst;
++    }
 +    srcbeg = srcit + 1;
 +    for (; *srcit != '\0'; ++srcit) {
 +      continue;
@@ -574,7 +578,7 @@ index 000000000..406b98ac8
 +            return find_path_start_and_type(src, true, end);
 +        }
 +
-+        if (ch == ':') {
++        if (ch == ':' && it2 + 1 != end) {
 +            it2 += 1;
 +            ch = *it2;
 +            if (ch == '/' || ch == ':' || ch == '.') {
@@ -669,7 +673,7 @@ index 000000000..406b98ac8
 +
 +void subp_convert(const char** from, const char* end, int is_url, char** dst, const char* dstend) {
 +    const char* begin = *from;
-+    path_type type = find_path_start_and_type(from, 0, end);
++    path_type type = is_url ? URL : find_path_start_and_type(from, 0, end);
 +    copy_to_dst(begin, *from, dst, dstend);
 +
 +    if (type == NONE) {
@@ -699,9 +703,16 @@ index 000000000..406b98ac8
 +            if (prev_was_simc) {
 +                continue;
 +            }
-+            if (*(it + 1) == '/' && *(it + 2) == '/') {
++            if (*(it + 1) == '/' && *(it + 2) == '/' && isalpha(*beg)) {
 +                is_url = 1;
-+                continue;
++                /* double-check: protocol must be alnum (or +) */
++                for (const char *p = beg; p != it; ++p)
++                    if (!isalnum(*p) && *p != '+') {
++                        is_url = 0;
++                        break;
++                    }
++                if (is_url)
++                    continue;
 +            }
 +            prev_was_simc = 1;
 +            subp_convert(&beg, it, is_url, dst, dstend);

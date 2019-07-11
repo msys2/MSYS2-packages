@@ -1,0 +1,127 @@
+From 604f64494bee31bcbce88ad539f66dca3bff3753 Mon Sep 17 00:00:00 2001
+From: Alexey Pavlov <alexey.pawlow@gmail.com>
+Date: Mon, 3 Jun 2019 20:15:50 +0200
+Subject: [PATCH] Fix GCC8 errors
+
+---
+ winsup/cygwin/flock.cc        | 2 +-
+ winsup/cygwin/path.h          | 2 +-
+ winsup/cygwin/path.cc         | 4 ++--
+ winsup/cygwin/pinfo.cc        | 6 +++---
+ winsup/cygserver/bsd_mutex.cc | 8 ++++----
+ 5 file changed, 11 insertions(+), 11 deletion(-)
+
+diff --git a/winsup/cygwin/flock.cc b/winsup/cygwin/flock.cc
+index f43eae461..b757851d5 100644
+--- a/winsup/cygwin/flock.cc
++++ b/winsup/cygwin/flock.cc
+@@ -1736,7 +1736,7 @@
+   splitlock = *split;
+   assert (splitlock != NULL);
+   *split = splitlock->lf_next;
+-  memcpy (splitlock, lock1, sizeof *splitlock);
++  memcpy (static_cast<void*>(splitlock), lock1, sizeof(*splitlock));
+   /* We have to unset the obj HANDLE here which has been copied by the
+      above memcpy, so that the calling function recognizes the new object.
+      See post-lf_split handling in lf_setlock and lf_clearlock. */
+diff --git a/winsup/cygwin/miscfuncs.cc b/winsup/cygwin/miscfuncs.cc
+index f43eae461..b757851d5 100644
+--- a/winsup/cygwin/miscfuncs.cc
++++ b/winsup/cygwin/miscfuncs.cc
+@@ -724,7 +724,7 @@
+    See FreeBSD src/lib/libc/amd64/string/memset.S
+    and FreeBSD src/lib/libc/amd64/string/bcopy.S */
+ 
+-asm volatile ("								\n\
++asm ("								\n\
+ /*									\n\
+  * Written by J.T. Conklin <jtc@NetBSD.org>.				\n\
+  * Public domain.							\n\
+@@ -791,7 +791,7 @@
+ 	.seh_endproc							\n\
+ ");
+ 
+-asm volatile ("								\n\
++asm ("								\n\
+ /*-									\n\
+  * Copyright (c) 1990 The Regents of the University of California.	\n\
+  * All rights reserved.							\n\
+diff --git a/winsup/cygwin/path.h b/winsup/cygwin/path.h
+index f43eae461..b757851d5 100644
+--- a/winsup/cygwin/path.h
++++ b/winsup/cygwin/path.h
+@@ -313,7 +313,7 @@
+   path_conv& eq_worker (const path_conv& pc, const char *in_path)
+   {
+     free_strings ();
+-    memcpy (this, &pc, sizeof pc);
++    memcpy (static_cast<void*>(this), &pc, sizeof(pc));
+     /* The device info might contain pointers to allocated strings, in
+        contrast to statically allocated strings.  Calling device::dup()
+        will duplicate the string if the source was allocated. */
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index f43eae461..b757851d5 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -1307,7 +1307,7 @@
+       n = 0;
+       return NULL;
+     }
+-  memcpy (&pcf->pc, this, sizeof *this);
++  memcpy (static_cast<void*>(&pcf->pc), this, sizeof(*this));
+   pcf->hdl = h;
+   pcf->name_len = nlen;
+   pcf->posix_len = plen;
+@@ -1326,7 +1326,7 @@
+   char *p;
+   HANDLE ret;
+ 
+-  memcpy (this, &pcf->pc, sizeof *this);
++  memcpy (static_cast<void*>(this), &pcf->pc, sizeof *this);
+   wide_path = uni_path.Buffer = NULL;
+   uni_path.MaximumLength = uni_path.Length = 0;
+   path = posix_path = NULL;
+diff --git a/winsup/cygwin/pinfo.cc b/winsup/cygwin/pinfo.cc
+index f43eae461..b757851d5 100644
+--- a/winsup/cygwin/pinfo.cc
++++ b/winsup/cygwin/pinfo.cc
+@@ -1417,13 +1417,13 @@
+   if (nelem >= npidlist)
+     {
+       npidlist += slop_pidlist;
+-      pidlist = (DWORD *) realloc (pidlist, size_pidlist (npidlist + 1));
+-      pinfolist = (pinfo *) realloc (pinfolist, size_pinfolist (npidlist + 1));
++      pidlist = (DWORD *) realloc (static_cast<void*>(pidlist), size_pidlist (npidlist + 1));
++      pinfolist = (pinfo *) realloc (static_cast<void*>(pinfolist), size_pinfolist (npidlist + 1));
+     }
+ 
+   _onreturn onreturn;
+   pinfo& p = pinfolist[nelem];
+-  memset (&p, 0, sizeof (p));
++  memset (static_cast<void*>(&p), 0, sizeof (p));
+ 
+   bool perform_copy;
+   if (cygpid == myself->pid)
+diff --git a/winsup/cygserver/bsd_mutex.cc b/winsup/cygserver/bsd_mutex.cc
+index f43eae461..b757851d5 100644
+--- a/winsup/cygserver/bsd_mutex.cc
++++ b/winsup/cygserver/bsd_mutex.cc
+@@ -275,12 +275,13 @@
+ };
+ 
+ static msleep_sync_array *msleep_sync;
++
++extern struct msginfo msginfo;
++extern struct seminfo seminfo;
+ 
+ void
+ msleep_init (void)
+ {
+-  extern struct msginfo msginfo;
+-  extern struct seminfo seminfo;
+ 
+   msleep_glob_evt = CreateEvent (NULL, TRUE, FALSE, NULL);
+   if (!msleep_glob_evt)
+-- 
+2.21.0
+
