@@ -2,7 +2,7 @@
 
 pkgbase="jsoncpp"
 pkgname=("${pkgbase}" "${pkgbase}-devel")
-pkgver=1.8.4
+pkgver=1.9.1
 pkgrel=1
 pkgdesc="A C++ library for interacting with JSON"
 arch=('any')
@@ -11,27 +11,45 @@ license=('MIT')
 depends=("gcc-libs")
 makedepends=("gcc"
              "cmake"
-             "python2"
-            )
+             "python2")
 options=('staticlibs' '!strip' '!buildflags')
 source=(${pkgname}-${pkgver}.tar.gz::"https://github.com/open-source-parsers/jsoncpp/archive/${pkgver}.tar.gz")
-sha256sums=('c49deac9e0933bcb7044f08516861a2d560988540b23de2ac1ad443b219afdb6')
+sha256sums=('c7b40f5605dd972108f503f031b20186f5e5bca2b65cd4b8bd6c3e4ba8126697')
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 }
 
 build() {
-  mkdir -p "${srcdir}/build-${CARCH}"
-  cd "${srcdir}/build-${CARCH}"
+  declare -a extra_config
+  if check_option "debug" "n"; then
+    extra_config+=("-DCMAKE_BUILD_TYPE=Release")
+  else
+    extra_config+=("-DCMAKE_BUILD_TYPE=Debug")
+  fi
+
+  [[ -d "${srcdir}/build-${CARCH}-static" ]] && rm -rf "${srcdir}/build-${CARCH}-static"
+  mkdir -p "${srcdir}/build-${CARCH}-static" && cd "${srcdir}/build-${CARCH}-static"
 
   cmake \
     -DCMAKE_INSTALL_PREFIX=/usr \
-    -DCMAKE_BUILD_TYPE=Release \
+    -DJSONCPP_WITH_CMAKE_PACKAGE=ON \
+    -DBUILD_SHARED_LIBS=OFF \
+    ${extra_config} \
+    ../${pkgbase}-${pkgver}
+
+  make
+  make DESTDIR=${srcdir}/dest install
+
+  [[ -d "${srcdir}/build-${CARCH}-shared" ]] && rm -rf "${srcdir}/build-${CARCH}-shared"
+  mkdir -p "${srcdir}/build-${CARCH}-shared" && cd "${srcdir}/build-${CARCH}-shared"
+
+  cmake \
+    -DCMAKE_INSTALL_PREFIX=/usr \
     -DJSONCPP_WITH_CMAKE_PACKAGE=ON \
     -DBUILD_SHARED_LIBS=ON \
-    -DBUILD_STATIC_LIBS=ON \
-    ../${pkgname}-${pkgver}
+    ${extra_config} \
+    ../${pkgbase}-${pkgver}
 
   make
   make DESTDIR=${srcdir}/dest install
