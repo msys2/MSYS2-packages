@@ -1,23 +1,27 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 # Contributor: Martell Malone <martellmalone@gmail.com>
 
-pkgname=cmake
+_realname=cmake
+pkgname=("${_realname}" "${_realname}-emacs" "${_realname}-vim")
 pkgver=3.15.0
-pkgrel=1
+pkgrel=2
 pkgdesc="A cross-platform open-source make system"
 arch=('i686' 'x86_64')
 url="https://www.cmake.org/"
 license=("MIT")
-makedepends=("gcc" "pkg-config"
-             jsoncpp-devel
-             libcurl-devel
-             libexpat-devel
-             libarchive-devel
-             librhash-devel
-             libutil-linux-devel
-             libuv-devel
-             ncurses-devel
-             zlib-devel)
+makedepends=("gcc" "pkg-config" 'emacs'
+             'jsoncpp-devel'
+             'libarchive-devel'
+             'libbz2-devel'
+             'libcurl-devel'
+             'libexpat-devel'
+             'liblzma-devel'
+             'librhash-devel'
+             'libutil-linux-devel'
+             'libuv-devel'
+             'libzstd-devel'
+             'ncurses-devel'
+             'zlib-devel')
 depends=("gcc-libs"
          "jsoncpp"
          "libcurl"
@@ -64,8 +68,11 @@ del_file_exists() {
 
 prepare() {
   cd ${pkgname}-${pkgver}
-  rm -f Modules/CPackMsys.cmake \
+  del_file_exists Modules/CPackMsys.cmake \
     Modules/FindMsys.cmake \
+    Modules/Platform/MSYS-Clang-C.cmake \
+    Modules/Platform/MSYS-Clang-CXX.cmake \
+    Modules/Platform/MSYS-Determine-CXX.cmake \
     Modules/Platform/MSYS-GNU.cmake \
     Modules/Platform/MSYS.cmake \
     Modules/Platform/MSYS-CXX.cmake \
@@ -84,13 +91,13 @@ build() {
   [[ -d "${srcdir}/build-${CARCH}" ]] && rm -rf "${srcdir}/build-${CARCH}"
   mkdir -p "${srcdir}/build-${CARCH}"
   cd "${srcdir}/build-${CARCH}"
-  MSYSTEM=MSYS "${srcdir}"/${pkgname}-${pkgver}/configure \
+  MSYSTEM=MSYS "${srcdir}"/${_realname}-${pkgver}/configure \
     --prefix=/usr \
     --system-libs \
     --no-qt-gui \
     --parallel=$(nproc) \
-    --mandir=share \
-    --docdir=share/doc/cmake \
+    --mandir=share/man \
+    --docdir=share/doc/${_realname} \
     -- -DCURSES_FORM_LIBRARY=/usr/lib/libformw.dll.a \
       -DCTEST_TEST_CTEST=ON \
       -DCMAKE_BUILD_TYPE=Release
@@ -100,17 +107,52 @@ build() {
        -i ${srcdir}/build-${CARCH}/Tests/CMakeTests/ImplicitLinkInfoTest.cmake
   plain "Start building..."
   make
+  make DESTDIR=$srcdir/dest install
 }
 
+#Enable once we can get all tests to pass
 #check() {
 #  cd "${srcdir}/build-${CARCH}"
 #  make test
 #}
 
-package() {
-  cd "${srcdir}/build-${CARCH}"
-  make DESTDIR=$pkgdir install
+
+package_cmake() {
+  cd "${srcdir}/dest"
+  
+  install -d  $pkgdir/usr/bin/
+  install -d  $pkgdir/usr/share/aclocal
+  install -d  $pkgdir/usr/share/${_realname}-$pkgver
+  
+  cp -r usr/bin/* $pkgdir/usr/bin/
+  cp -r usr/share/aclocal/* $pkgdir/usr/share/aclocal/
+  cp -r usr/share/cmake-$pkgver/* $pkgdir/usr/share/cmake-$pkgver/
 
   install -Dm644 ${srcdir}/${pkgname}-${pkgver}/Copyright.txt \
     "${pkgdir}"/usr/share/licenses/${pkgname}/LICENSE
 }
+
+package_cmake-vim() {
+  pkgdesc="A cross-platform open-source make system (vim mode)"
+  cd "${srcdir}/dest"
+  vimpath="${pkgdir}/usr/share/vim/vimfiles"
+  install -d "${vimpath}"/indent
+  install -d "${vimpath}"/syntax
+
+  cp -r "${srcdir}/dest/usr/share/${_realname}-$pkgver/editors/vim/indent/cmake.vim" "${vimpath}/indent/"
+  cp -r "${srcdir}/dest/usr/share/${_realname}-$pkgver/editors/vim/syntax/cmake.vim" "${vimpath}/syntax/"
+}
+
+package_cmake-emacs() {
+  pkgdesc="A cross-platform open-source make system (Emacs mode)"
+
+  cd "${srcdir}/dest"
+
+  install -d  ${pkgdir}/usr/share/${_realname}-$pkgver/editors/emacs/
+  install -d "${pkgdir}/usr"/share/emacs/site-lisp/
+  cp "usr/share/${_realname}-$pkgver/editors/emacs/cmake-mode.el" "${pkgdir}/usr"/share/emacs/site-lisp/
+
+  /usr/bin/emacs -batch -f batch-byte-compile \
+    "${pkgdir}/usr"/share/emacs/site-lisp/cmake-mode.el
+}
+
