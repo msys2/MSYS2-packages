@@ -1,0 +1,55 @@
+# Maintainer: Peter Budai <peterbudai@hotmail.com>
+
+pkgname=("libb2" "libb2-devel")
+pkgver=0.98.1
+pkgrel=1
+pkgdesc="C library providing BLAKE2b, BLAKE2s, BLAKE2bp, BLAKE2sp "
+arch=('i686' 'x86_64')
+url="https://blake2.net"
+license=('CC0')
+source=("https://github.com/BLAKE2/$pkgname/archive/v$pkgver.tar.gz"
+        "libb2-msys.patch")
+sha256sums=('10053dbc2fa342516b780a6bbf6e7b2a2360b8d49c5ac426936bf3df82526732'
+            '0d2ea44904fbd054afbb89a2dab28b6b308f24b218f79aa178daba31b985da7f')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  
+  patch -p1 -i ${srcdir}/libb2-msys.patch
+  autoreconf -fiv
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  ./configure \
+      --build=${CHOST} \
+      --prefix=/usr \
+      --enable-native=no \
+      --enable-fat=yes
+  
+  make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+check() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make check
+}
+
+package_libb2() {
+  groups=('libraries')
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+}
+
+package_libb2-devel() {
+  pkgdesc="libb2 headers and libraries"
+  groups=('development')
+  options=('staticlibs')
+
+  mkdir -p ${pkgdir}/usr
+
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
