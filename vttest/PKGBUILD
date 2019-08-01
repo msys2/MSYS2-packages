@@ -1,0 +1,116 @@
+# Maintainer: J. Peter Mugaas <jpmugaas@suddenlink.net>
+
+pkgbase=vttest
+pkgname=("${pkgbase}")
+_basever=
+_date=20190710
+pkgver=${_date}
+pkgrel=1
+pkgdesc="test VT-type and X terminals and emulators"
+arch=('i686' 'x86_64')
+url="https://invisible-island.net/${pkgbas}/${pkgbas}.html"
+license=('MIT')
+makedepends=('groff')
+source=("${pkgbase}-${pkgver}.tar.gz"::"https://invisible-mirror.net/archives/${pkgbase}/${pkgbase}-${_date}.tgz")
+sha256sums=('048b4078003c588ad2ee3202468576df7dee16914df0f663fc6dd5bb49526303')
+
+prepare() {
+  cd ${srcdir}/${pkgbase}-${_date}
+}
+
+build() {
+  cd ${srcdir}/${pkgbase}-${_date}
+
+  ./configure \
+    --build=${CHOST} \
+    --with-install-prefix=/usr \
+    --without-ada \
+    --with-shared \
+    --with-cxx-shared \
+    --with-normal \
+    --without-debug \
+    --disable-relink \
+    --disable-rpath \
+    --with-ticlib \
+    --without-termlib \
+    --enable-widec \
+    --enable-ext-colors \
+    --enable-ext-mouse \
+    --enable-sp-funcs \
+    --with-wrap-prefix=ncwrap_ \
+    --enable-sigwinch \
+    --disable-term-driver \
+    --enable-colorfgbg \
+    --enable-tcap-names \
+    --disable-termcap \
+    --disable-mixed-case \
+    --with-pkg-config \
+    --enable-pc-files \
+    --with-manpage-format=normal \
+    --with-manpage-aliases \
+    --with-default-terminfo-dir=/usr/share/terminfo \
+    --enable-echo \
+    --mandir=/usr/share/man \
+    --includedir=/usr/include/ncursesw \
+    --with-build-cflags=-D_XOPEN_SOURCE_EXTENDED \
+    --with-pkg-config-libdir=/usr/lib/pkgconfig
+
+  make
+  
+}
+
+package() {
+  cd ${srcdir}/${pkgbase}-${_date}
+  make DESTDIR=${pkgdir} install
+}
+
+package_ncurses() {
+  depends=('msys2-runtime' 'gcc-libs')
+  groups=('base')
+
+  mkdir -p ${pkgdir}/usr
+  cp -rf $srcdir/dest/usr/bin ${pkgdir}/usr/
+  rm -f ${pkgdir}/usr/bin/*-config
+  mkdir -p ${pkgdir}/usr/lib
+  cp -rf $srcdir/dest/usr/lib/terminfo ${pkgdir}/usr/lib/
+  cp -rf $srcdir/dest/usr/share ${pkgdir}/usr/
+
+  # install license, rip it from the readme
+  cd ${srcdir}/$pkgname-${_basever}-${_date}
+  install -dm755 ${pkgdir}/usr/share/licenses/$pkgname
+  grep -B 100 '$Id' README > ${pkgdir}/usr/share/licenses/${pkgname}/license.txt
+}
+
+package_ncurses-devel() {
+  groups=('development')
+  options=('staticlibs')
+  depends=("ncurses=$pkgver")
+  pkgdesc="NCURSES headers and libraries"
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f $srcdir/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  cp -rf $srcdir/dest/usr/include ${pkgdir}/usr/
+  cp -rf $srcdir/dest/usr/lib ${pkgdir}/usr/
+  rm -rf ${pkgdir}/usr/lib/terminfo
+
+  cp -rf ${pkgdir}/usr/include/ncursesw ${pkgdir}/usr/include/ncurses
+  cp -f ${pkgdir}/usr/include/ncursesw/*.h ${pkgdir}/usr/include
+
+  cp -f ${pkgdir}/usr/lib/libncursesw.a ${pkgdir}/usr/lib/libncurses.a
+  cp -f ${pkgdir}/usr/lib/libncursesw.dll.a ${pkgdir}/usr/lib/libncurses.dll.a
+  cp -f ${pkgdir}/usr/lib/libncursesw.a ${pkgdir}/usr/lib/libcurses.a
+  cp -f ${pkgdir}/usr/lib/libncursesw.dll.a ${pkgdir}/usr/lib/libcurses.dll.a
+
+  cp -f ${pkgdir}/usr/lib/libpanelw.a ${pkgdir}/usr/lib/libpanel.a
+  cp -f ${pkgdir}/usr/lib/libpanelw.dll.a ${pkgdir}/usr/lib/libpanel.dll.a
+
+  cp -f ${pkgdir}/usr/lib/libmenuw.a ${pkgdir}/usr/lib/libmenu.a
+  cp -f ${pkgdir}/usr/lib/libmenuw.dll.a ${pkgdir}/usr/lib/libmenu.dll.a
+
+  cp -f ${pkgdir}/usr/lib/pkgconfig/formw.pc ${pkgdir}/usr/lib/pkgconfig/form.pc
+  cp -f ${pkgdir}/usr/lib/pkgconfig/menuw.pc ${pkgdir}/usr/lib/pkgconfig/menu.pc
+  cp -f ${pkgdir}/usr/lib/pkgconfig/ncurses++w.pc ${pkgdir}/usr/lib/pkgconfig/ncurses++.pc
+  cp -f ${pkgdir}/usr/lib/pkgconfig/ncursesw.pc ${pkgdir}/usr/lib/pkgconfig/ncurses.pc
+  cp -f ${pkgdir}/usr/lib/pkgconfig/panelw.pc ${pkgdir}/usr/lib/pkgconfig/panel.pc
+  cp -f ${pkgdir}/usr/lib/pkgconfig/ticw.pc ${pkgdir}/usr/lib/pkgconfig/tic.pc
+}
