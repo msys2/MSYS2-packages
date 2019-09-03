@@ -4,6 +4,7 @@ setlocal
 set "WD=%__CD__%"
 if NOT EXIST "%WD%msys-2.0.dll" set "WD=%~dp0usr\bin\"
 set "LOGINSHELL=bash"
+set /a shiftCounter=0
 
 rem To activate windows native symlinks uncomment next line
 rem set MSYS=winsymlinks:nativestrict
@@ -34,19 +35,19 @@ if "x%~1" == "x/?" (
   exit /b %ERRORLEVEL%
 )
 rem Shell types
-if "x%~1" == "x-msys" shift& set MSYSTEM=MSYS& goto :checkparams
-if "x%~1" == "x-msys2" shift& set MSYSTEM=MSYS& goto :checkparams
-if "x%~1" == "x-mingw32" shift& set MSYSTEM=MINGW32& goto :checkparams
-if "x%~1" == "x-mingw64" shift& set MSYSTEM=MINGW64& goto :checkparams
-if "x%~1" == "x-mingw" shift& (if exist "%WD%..\..\mingw64" (set MSYSTEM=MINGW64) else (set MSYSTEM=MINGW32))& goto :checkparams
+if "x%~1" == "x-msys" shift& set /a shiftCounter+=1& set MSYSTEM=MSYS& goto :checkparams
+if "x%~1" == "x-msys2" shift& set /a shiftCounter+=1& set MSYSTEM=MSYS& goto :checkparams
+if "x%~1" == "x-mingw32" shift& set /a shiftCounter+=1& set MSYSTEM=MINGW32& goto :checkparams
+if "x%~1" == "x-mingw64" shift& set /a shiftCounter+=1& set MSYSTEM=MINGW64& goto :checkparams
+if "x%~1" == "x-mingw" shift& set /a shiftCounter+=1& (if exist "%WD%..\..\mingw64" (set MSYSTEM=MINGW64) else (set MSYSTEM=MINGW32))& goto :checkparams
 rem Console types
-if "x%~1" == "x-mintty" shift& set MSYSCON=mintty.exe& goto :checkparams
-if "x%~1" == "x-conemu" shift& set MSYSCON=conemu& goto :checkparams
-if "x%~1" == "x-defterm" shift& set MSYSCON=defterm& goto :checkparams
+if "x%~1" == "x-mintty" shift& set /a shiftCounter+=1& set MSYSCON=mintty.exe& goto :checkparams
+if "x%~1" == "x-conemu" shift& set /a shiftCounter+=1& set MSYSCON=conemu& goto :checkparams
+if "x%~1" == "x-defterm" shift& set /a shiftCounter+=1& set MSYSCON=defterm& goto :checkparams
 rem Other parameters
-if "x%~1" == "x-full-path" shift& set MSYS2_PATH_TYPE=inherit& goto :checkparams
-if "x%~1" == "x-use-full-path" shift& set MSYS2_PATH_TYPE=inherit& goto :checkparams
-if "x%~1" == "x-here" shift& set CHERE_INVOKING=enabled_from_arguments& goto :checkparams
+if "x%~1" == "x-full-path" shift& set /a shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
+if "x%~1" == "x-use-full-path" shift& set /a shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
+if "x%~1" == "x-here" shift& set /a shiftCounter+=1& set CHERE_INVOKING=enabled_from_arguments& goto :checkparams
 if "x%~1" == "x-where" (
   if "x%~2" == "x" (
     echo Working directory is not specified for -where parameter. 1>&2
@@ -57,20 +58,18 @@ if "x%~1" == "x-where" (
     exit /b 2
   )
   set CHERE_INVOKING=enabled_from_arguments
-)& shift& shift& goto :checkparams
-if "x%~1" == "x-no-start" shift& set MSYS2_NOSTART=yes& goto :checkparams
+)& shift& shift& set /a shiftCounter+=2& goto :checkparams
+if "x%~1" == "x-no-start" shift& set /a shiftCounter+=1& set MSYS2_NOSTART=yes& goto :checkparams
 if "x%~1" == "x-shell" (
   if "x%~2" == "x" (
     echo Shell not specified for -shell parameter. 1>&2
     exit /b 2
   )
   set LOGINSHELL="%~2"
-)& shift& shift& goto :checkparams
+)& shift& shift& set /a shiftCounter+=2& goto :checkparams
 
 rem Collect remaining command line arguments to be passed to shell
-set SHELL_ARGS=
-:collectparams
-if not "x%~1" == "x" set SHELL_ARGS=%SHELL_ARGS% %1& shift& goto :collectparams
+for /f "tokens=%shiftCounter%,*" %%i in ("%*") do set SHELL_ARGS=%%j
 
 rem Setup proper title
 if "%MSYSTEM%" == "MINGW32" (
