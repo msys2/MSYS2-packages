@@ -1,10 +1,12 @@
 # Maintainer: Martell Malone <Martell Malone at g mail dot com>
 
-pkgname=ninja
+_realname=ninja
+pkgname=("${_realname}" "${_realname}-vim" "${_realname}-emacs")
 pkgver=1.9.0
-pkgrel=1
-pkgdesc="Ninja is a small build system with a focus on speed (mingw-w64)"
-arch=('any')
+pkgrel=2
+_descr="Ninja is a small build system with a focus on speed"
+pkgdesc="${_descr}"
+arch=('i686' 'x86_64')
 url="https://ninja-build.org"
 license=('Apache')
 depends=()
@@ -22,9 +24,39 @@ build() {
   /usr/bin/python3 configure.py --bootstrap
 }
 
-package() {
+package_ninja() {
+  optdepends=("ninja-vim: ninja syntax support for vim"
+              "ninja-emacs: ninja mode for emacs")
   mkdir -p "${pkgdir}"/usr/bin
   mv "${srcdir}/ninja-${pkgver}/ninja.exe" "${pkgdir}"/usr/bin/
   mkdir -p "${pkgdir}"/usr/lib
   mv "${srcdir}/ninja-${pkgver}/build/libninja.a" "${pkgdir}"/usr/lib/
+  mkdir -p "${pkgdir}"/etc/bash-completion.d
+  cp  "${srcdir}/ninja-${pkgver}/misc/bash-completion" "${pkgdir}"/etc/bash-completion.d/ninja
+  mkdir -p "${pkgdir}"/usr/share/zsh/site-functions
+  cp  "${srcdir}/ninja-${pkgver}/misc/zsh-completion" "${pkgdir}"/usr/share/zsh/site-functions/_ninja
+
 }
+
+package_ninja-vim() {
+  pkgdesc="${_descr} (vim mode)"
+  depends=("ninja=$pkgver" 'vim')
+ 
+  vimpath="${pkgdir}/usr/share/vim/vimfiles"
+  install -d "${vimpath}"/syntax
+
+  cp -r "${srcdir}/${_realname}-$pkgver/misc/ninja.vim" "${vimpath}/syntax/"
+}
+
+package_ninja-emacs() {
+  pkgdesc="${_descr} (Emacs mode)"
+  depends=("ninja=$pkgver" 'emacs')
+
+  install -d  ${pkgdir}/usr/share/${_realname}-$pkgver/editors/emacs/
+  install -d "${pkgdir}/usr"/share/emacs/site-lisp/
+  cp "${srcdir}/${_realname}-$pkgver/misc/ninja-mode.el" "${pkgdir}/usr"/share/emacs/site-lisp/
+
+  /usr/bin/emacs -batch -f batch-byte-compile \
+    "${pkgdir}/usr"/share/emacs/site-lisp/ninja-mode.el
+}
+
