@@ -599,8 +599,8 @@ kExitCode EnumerateLockingProcesses(Arguments* args, GlobalState* state) {
   return (kSuccess);
 }
 
-/* NYI: http://processhacker.sourceforge.net/forums/viewtopic.php?f=8&t=1584
-        http://msdn.microsoft.com/en-us/library/windows/desktop/aa813708.aspx
+/* NYI: https://processhacker.sourceforge.io/forums/viewtopic.php?f=8&t=1584
+        https://msdn.microsoft.com/en-us/library/windows/desktop/aa813708.aspx
 ssize_t GetHandlesForProcess(DWORD processId) {
     HANDLE proc_handle = OpenProcess (PROCESS_QUERY_INFORMATION |
 PROCESS_VM_READ, FALSE, processId);
@@ -799,9 +799,9 @@ kExitCode GraphicalInterfaceInit(Arguments* args, GraphicalInterfaceState* p_if_
 //      HRSRC splash_jpg;
 //      HBITMAP splash_jpg_bitmap;
 //    } GraphicalInterfaceState;
-    /* http://www.codeproject.com/Articles/3537/Loading-JPG-PNG-resources-using-GDI
-       http://stackoverflow.com/questions/9240188/how-to-load-a-custom-binary-resource-in-a-vc-static-library-as-part-of-a-dll
-       http://www.codeproject.com/Articles/15523/Own-thread-Win-splash-screen .. http://www.codeproject.com/Messages/3913756/Added-code-to-getImage-from-resource.aspx
+    /* https://www.codeproject.com/Articles/3537/Loading-JPG-PNG-resources-using-GDI
+       https://stackoverflow.com/questions/9240188/how-to-load-a-custom-binary-resource-in-a-vc-static-library-as-part-of-a-dll
+       https://www.codeproject.com/Articles/15523/Own-thread-Win-splash-screen .. http://www.codeproject.com/Messages/3913756/Added-code-to-getImage-from-resource.aspx
        
     */
 //  GraphicalInterfaceState* p_if_gui_state = &p_if_state->gui;
@@ -810,7 +810,7 @@ kExitCode GraphicalInterfaceInit(Arguments* args, GraphicalInterfaceState* p_if_
   gdi_plus_statup_input.GdiplusVersion = 1;
   gdi_plus_statup_input.DebugEventCallback = NULL;
 /*
-  http://msdn.microsoft.com/en-us/library/windows/desktop/ms534067(v=vs.85).aspx
+  https://msdn.microsoft.com/en-us/library/windows/desktop/ms534067(v=vs.85).aspx
   
   Boolean value that specifies whether to suppress the GDI+ background thread. If you set this member to
   TRUE, GdiplusStartup returns (in its output parameter) a pointer to a hook function and a pointer to an
