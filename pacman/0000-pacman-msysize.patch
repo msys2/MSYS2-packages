@@ -11,9 +11,9 @@ diff -Naur pacman-5.1.0-orig/configure.ac pacman-5.1.0/configure.ac
 -		[set the full path to ldconfig]),
 -	[LDCONFIG=$withval], [LDCONFIG=/sbin/ldconfig])
 -
- # Help line for selecting a crypto library
- AC_ARG_WITH(crypto,
- 	AS_HELP_STRING([--with-crypto={openssl|nettle}],
+ # Help line for determining whether file is seccomp-enabled
+ AC_ARG_WITH(file-seccomp,
+ 	AS_HELP_STRING([--with-file-seccomp={yes|no|auto}],
 @@ -520,9 +514,6 @@
  # Set shell used by install scriptlets
  AC_SUBST(SCRIPTLET_SHELL)
@@ -272,7 +272,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/staticlibs.sh.in pacman-5.1
 @@ -35,9 +35,9 @@
  		msg2 "$(gettext "Removing static library files...")"
  		local l
- 		while read -rd '' l; do
+ 		while IFS= read -rd '' l; do
 -			if [[ -f "${l%.a}.so" || -h "${l%.a}.so" ]]; then
 +			if [[ -f "${l%.a}.dll.a" || -h "${l%.a}.dll.a" ]]; then
  				rm "$l"
@@ -294,7 +294,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 -
  source_files() {
  	LANG=C readelf "$1" --debug-dump | \
- 		awk '/DW_AT_name +:/{name=$8}/DW_AT_comp_dir +:/{print $8 "/" name}'
+ 		awk '/DW_AT_name +:/{name=$8}/DW_AT_comp_dir +:/{{if (name == "<artificial>") next}{if (name !~ /^[<\/]/) {printf "%s/", $8}}{print name}}'
 @@ -43,52 +39,54 @@
  strip_file() {
  	local binary=$1; shift
@@ -317,7 +317,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 -
 -		# copy source files to debug directory
 -		local f t
--		while read -r t; do
+-		while IFS= read -r t; do
 -			f=${t/${dbgsrcdir}/"$srcdir"}
 -			mkdir -p "${dbgsrc/"$dbgsrcdir"/}${t%/*}"
 -			cp -- "$f" "${dbgsrc/"$dbgsrcdir"/}$t"
@@ -329,7 +329,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 -		objcopy --add-gnu-debuglink="$dbgdir/${binary#/}.debug" "$binary"
 -
 -		# create any needed hardlinks
--		while read -rd '' file ; do
+-		while IFS= read -rd '' file ; do
 -			if [[ "${binary}" -ef "${file}" && ! -f "$dbgdir/${file}.debug" ]]; then
 -				mkdir -p "$dbgdir/${file%/*}"
 -				ln "$dbgdir/${binary}.debug" "$dbgdir/${file}.debug"
@@ -349,7 +349,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 -			ln -s "$target" "$dbgdir/.build-id/${bid:0:2}/${bid:2}.debug"
 +			# copy source files to debug directory
 +			local f t
-+			while read -r t; do
++			while IFS= read -r t; do
 +				f=${t/${dbgsrcdir}/"$srcdir"}
 +				mkdir -p "${dbgsrc/"$dbgsrcdir"/}${t%/*}"
 +				cp -- "$f" "${dbgsrc/"$dbgsrcdir"/}$t"
@@ -378,7 +378,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 +			# it's pointing), and its contents pass the CRC32 check
 +
 +			# create any needed hardlinks
-+			while read -rd '' file ; do
++			while IFS= read -rd '' file ; do
 +				if [[ "${binary}" -ef "${file}" && ! -f "$dbgdir/${file}.debug" ]]; then
 +					mkdir -p "$dbgdir/${file%/*}"
 +					ln "$dbgdir/${binary}.debug" "$dbgdir/${file}.debug"
@@ -404,14 +404,14 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
  		fi
  
  		local binary strip_flags
--		find . -type f -perm -u+w -print0 2>/dev/null | while read -rd '' binary ; do
+-		find . -type f -perm -u+w -print0 2>/dev/null | while IFS= read -rd '' binary ; do
 +		# *.so: Apache2 modules, OCaml stublibs, Ruby modules
 +		# *.oct: Octave modules
 +		# *.cmxs: OCaml natdynlink modules: http://gallium.inria.fr/~frisch/ndl.txt
 +		find * -type f ! -name '*.dll.a' ! -name '*.lib' \
 +			-a \( -name '*.a' -o -name '*.dll' -o -name '*.exe' -o -name '*.so' -o -name '*.so.*' -o -name '*.oct' -o -name '*.cmxs' \) -print0 \
 +			-o -type f -executable ! -name '*.dll' ! -name '*.exe' ! -name '*.so' ! -name '*.so.[0-9]*' ! -name '*.oct' ! -name '*.cmxs' ! -name '*.a' ! -name '*.la' ! -name '*.lib' ! -name '*.exe.manifest' ! -name '*.exe.config' ! -name '*.dll.config' ! -name '*.mdb' ! -name '*-config' ! -name '*.csh' ! -name '*.sh' ! -name '*.pl' ! -name '*.pm' ! -name '*.py' ! -name '*.rb' ! -name '*.tcl' -print0 | \
-+		while read -d $'\0' binary
++		while IFS= read -d $'\0' binary
 +		do
 +			# Skip thin archives from stripping
 +			case "${binary##*/}" in
@@ -483,14 +483,14 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/util/compress.sh.in pacman-5.1.0
 --- pacman-5.1.0-orig/scripts/libmakepkg/util/compress.sh.in	2018-03-18 05:51:17.000000000 +0300
 +++ pacman-5.1.0/scripts/libmakepkg/util/compress.sh.in	2018-06-21 13:37:44.296861300 +0300
 @@ -36,7 +36,7 @@
- 	case "$filename" in
- 		*tar.gz)  ${COMPRESSGZ[@]:-gzip -c -f -n} ;;
- 		*tar.bz2) ${COMPRESSBZ2[@]:-bzip2 -c -f} ;;
--		*tar.xz)  ${COMPRESSXZ[@]:-xz -c -z -} ;;
-+		*tar.xz)  ${COMPRESSXZ[@]:-xz -c -z -T0 -} ;;
- 		*tar.lrz) ${COMPRESSLRZ[@]:-lrzip -q} ;;
- 		*tar.lzo) ${COMPRESSLZO[@]:-lzop -q} ;;
- 		*tar.Z)   ${COMPRESSZ[@]:-compress -c -f} ;;
+ 	case "$ext" in
+ 		*.tar.gz)  ${COMPRESSGZ[@]:-gzip -c -f -n} ;;
+ 		*.tar.bz2) ${COMPRESSBZ2[@]:-bzip2 -c -f} ;;
+-		*.tar.xz)  ${COMPRESSXZ[@]:-xz -c -z -} ;;
++		*.tar.xz)  ${COMPRESSXZ[@]:-xz -c -z -T0 -} ;;
+ 		*.tar.zst) ${COMPRESSZST[@]:-zstd -c -z -q -} ;;
+ 		*.tar.lrz) ${COMPRESSLRZ[@]:-lrzip -q} ;;
+ 		*.tar.lzo) ${COMPRESSLZO[@]:-lzop -q} ;;
 diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/util/pkgbuild.sh.in pacman-5.1.0/scripts/libmakepkg/util/pkgbuild.sh.in
 --- pacman-5.1.0-orig/scripts/libmakepkg/util/pkgbuild.sh.in	2018-05-12 16:15:04.000000000 +0300
 +++ pacman-5.1.0/scripts/libmakepkg/util/pkgbuild.sh.in	2018-06-21 12:53:58.872056200 +0300
@@ -507,9 +507,9 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/util/pkgbuild.sh.in pacman-5.1.0
  	else
  		printf "%s\n" "$pkgver-$pkgrel"
  	fi
-diff -Naur pacman-5.1.0-orig/scripts/library/utils_fixed_path.sh pacman-5.1.0/scripts/library/utils_fixed_path.sh
---- pacman-5.1.0-orig/scripts/library/utils_fixed_path.sh	1970-01-01 03:00:00.000000000 +0300
-+++ pacman-5.1.0/scripts/library/utils_fixed_path.sh	2018-06-21 12:53:58.872056200 +0300
+diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/utils_fixed_path.sh.in pacman-5.1.0/scripts/libmakepkg/utils_fixed_path.sh.in
+--- pacman-5.1.0-orig/scripts/libmakepkg/utils_fixed_path.sh.in	1970-01-01 03:00:00.000000000 +0300
++++ pacman-5.1.0/scripts/libmakepkg/utils_fixed_path.sh.in	2018-06-21 12:53:58.872056200 +0300
 @@ -0,0 +1,34 @@
 +if [[ -n "$MSYSTEM" ]]; then
 +  readonly -a UTILS_NAME=('bsdtar'
@@ -548,50 +548,36 @@ diff -Naur pacman-5.1.0-orig/scripts/library/utils_fixed_path.sh pacman-5.1.0/sc
 diff -Naur pacman-5.1.0-orig/scripts/Makefile.am pacman-5.1.0/scripts/Makefile.am
 --- pacman-5.1.0-orig/scripts/Makefile.am	2018-05-14 03:02:18.000000000 +0300
 +++ pacman-5.1.0/scripts/Makefile.am	2018-06-21 13:03:17.873838900 +0300
-@@ -38,7 +38,8 @@
- 	library/output_format.sh \
- 	library/human_to_size.sh \
- 	library/size_to_human.sh \
--	library/term_colors.sh
-+	library/term_colors.sh \
-+	library/utils_fixed_path.sh
- 
- libmakepkgdir = $(datarootdir)/makepkg
- 
-@@ -196,6 +197,7 @@
- makepkg: \
- 	$(srcdir)/makepkg.sh.in \
- 	$(srcdir)/wrapper.sh.in \
-+	$(srcdir)/library/utils_fixed_path.sh \
- 	$(LIBMAKEPKG_IN)
- 
- makepkg-template: \
-@@ -208,7 +210,8 @@
- 
- pacman-db-upgrade: \
- 	$(srcdir)/pacman-db-upgrade.sh.in \
--	$(srcdir)/library/output_format.sh
-+	$(srcdir)/library/output_format.sh \
-+	$(srcdir)/library/utils_fixed_path.sh
- 
- pacman-key: \
- 	$(srcdir)/pacman-key.sh.in \
-@@ -216,11 +219,13 @@
- 
- pkgdelta: \
- 	$(srcdir)/pkgdelta.sh.in \
--	$(srcdir)/library/output_format.sh
-+	$(srcdir)/library/output_format.sh \
-+	$(srcdir)/library/utils_fixed_path.sh
- 
- repo-add: \
- 	$(srcdir)/repo-add.sh.in \
--	$(srcdir)/library/output_format.sh
-+	$(srcdir)/library/output_format.sh \
-+	$(srcdir)/library/utils_fixed_path.sh
- 
- repo-remove: $(srcdir)/repo-add.sh.in
- 	$(AM_V_at)$(RM) repo-remove
+@@ -56,12 +56,10 @@
+ 	libmakepkg/executable/ccache.sh \
+ 	libmakepkg/executable/checksum.sh \
+ 	libmakepkg/executable/distcc.sh \
+-	libmakepkg/executable/fakeroot.sh \
+ 	libmakepkg/executable/gpg.sh \
+ 	libmakepkg/executable/gzip.sh \
+ 	libmakepkg/executable/pacman.sh \
+ 	libmakepkg/executable/strip.sh \
+-	libmakepkg/executable/sudo.sh \
+ 	libmakepkg/executable/vcs.sh \
+ 	libmakepkg/buildenv.sh \
+ 	libmakepkg/buildenv/buildflags.sh \
+@@ -124,6 +124,7 @@
+ 	libmakepkg/tidy/staticlibs.sh \
+ 	libmakepkg/tidy/strip.sh \
+ 	libmakepkg/tidy/zipman.sh \
++	libmakepkg/utils_fixed_path.sh \
+ 	libmakepkg/util.sh \
+ 	libmakepkg/util/compress.sh \
+ 	libmakepkg/util/config.sh \
+@@ -246,7 +246,7 @@
+ 	$(MKDIR_P) $(DESTDIR)$(bashcompdir)
+ 	$(INSTALL_DATA) completion/bash_completion $(DESTDIR)/$(bashcompdir)/pacman
+ 	for completion in makepkg pacman-key; do \
+-	    $(LN_S) pacman $(DESTDIR)/$(bashcompdir)/$$completion; \
++	    $(LN_S) $(DESTDIR)/$(bashcompdir)/pacman $(DESTDIR)/$(bashcompdir)/$$completion; \
+ 	done
+ 	$(MKDIR_P) $(DESTDIR)$(datarootdir)/zsh/site-functions/
+ 	$(INSTALL_DATA) completion/zsh_completion $(DESTDIR)$(datarootdir)/zsh/site-functions/_pacman
 diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.sh.in
 --- pacman-5.1.0-orig/scripts/makepkg.sh.in	2018-05-23 08:27:19.000000000 +0300
 +++ pacman-5.1.0/scripts/makepkg.sh.in	2018-06-21 13:21:37.158378000 +0300
@@ -610,7 +596,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  #   gettext, gpg, grep, gzip, sed, tput (ncurses), xz
  
  # gettext initialization
-@@ -67,7 +67,6 @@
+@@ -60,7 +60,6 @@
  GENINTEG=0
  HOLDVER=0
  IGNOREARCH=0
@@ -618,16 +604,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  INSTALL=0
  LOGGING=0
  NEEDED=0
-@@ -99,6 +98,8 @@
- 
- shopt -s extglob
- 
-+m4_include(library/utils_fixed_path.sh)
-+
- ### SUBROUTINES ###
- 
- # Import libmakepkg
-@@ -113,10 +114,9 @@
+@@ -106,10 +105,9 @@
  trap_exit() {
  	local signal=$1; shift
  
@@ -641,7 +618,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  	[[ -n $srclinks ]] && rm -rf "$srclinks"
  
  	# unset the trap for this signal, and then call the default handler
-@@ -131,17 +131,12 @@
+@@ -124,11 +122,6 @@
  clean_up() {
  	local EXIT_CODE=$?
  
@@ -650,8 +627,10 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 -		return 0
 -	fi
 -
- 	if (( (EXIT_CODE == E_OK || EXIT_CODE == E_INSTALL_FAILED) && CLEANUP )); then
- 		local pkg file
+ 	if [[ -p $logpipe ]]; then
+ 		rm "$logpipe"
+ 	fi
+@@ -138,7 +131,7 @@
  
  		# If it's a clean exit and -c/--clean has been passed...
  		msg "$(gettext "Cleaning up...")"
@@ -660,50 +639,57 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  		if [[ -n $pkgbase ]]; then
  			local fullver=$(get_full_version)
  			# Can't do this unless the BUILDSCRIPT has been sourced.
-@@ -179,11 +174,6 @@
- 	remove_deps
+@@ -180,11 +173,6 @@
+ 	fi
  }
  
 -enter_fakeroot() {
 -	msg "$(gettext "Entering %s environment...")" "fakeroot"
--	fakeroot -- $0 -F "${ARGLIST[@]}" || exit $?
+-	fakeroot -- bash -$- "${BASH_SOURCE[0]}" -F "${ARGLIST[@]}" || exit $?
 -}
 -
  # Automatically update pkgver variable if a pkgver() function is provided
  # Re-sources the PKGBUILD afterwards to allow for other variables that use $pkgver
  update_pkgver() {
-@@ -249,13 +249,6 @@
- 	else
+@@ -229,11 +217,6 @@
  		cmd=("$PACMAN_PATH" "$@")
- 	fi
--	if [[ $1 != -@(T|Q)*([[:alpha:]]) ]]; then
+ 	else
+ 		cmd=("$PACMAN_PATH" "${PACMAN_OPTS[@]}" "$@")
 -		if type -p sudo >/dev/null; then
 -			cmd=(sudo "${cmd[@]}")
 -		else
 -			cmd=(su root -c "$(printf '%q ' "${cmd[@]}")")
 -		fi
--	fi
- 	"${cmd[@]}"
- }
+ 		local lockfile="$(pacman-conf DBPath)/db.lck"
+ 		while [[ -f $lockfile ]]; do
+ 			local timer=0
+@@ -432,7 +415,7 @@
  
-@@ -510,7 +502,7 @@
+ 		$pkgfunc &>"$logpipe"
  
- 	sodepends=0;
+-		wait -f $teepid
++		wait $teepid
+ 		rm "$logpipe"
+ 	else
+ 		"$pkgfunc"
+@@ -460,7 +443,7 @@
+ 
+ 	sodepends=0
  	for d in "${depends[@]}"; do
 -		if [[ $d = *.so ]]; then
 +		if [[ $d = *.dll ]]; then
- 			sodepends=1;
- 			break;
+ 			sodepends=1
+ 			break
  		fi
-@@ -521,28 +513,33 @@
- 		return;
+@@ -471,28 +454,33 @@
+ 		return 0
  	fi
  
--	local libdeps filename soarch sofile soname soversion;
-+	local libdeps filename soarch sofile soname;
- 	declare -A libdeps;
+-	local libdeps filename soarch sofile soname soversion
++	local libdeps filename soarch sofile soname
+ 	declare -A libdeps
  
- 	while read -r filename; do
+ 	while IFS= read -rd '' filename; do
 -		# get architecture of the file; if soarch is empty it's not an ELF binary
 -		soarch=$(LC_ALL=C readelf -h "$filename" 2>/dev/null | sed -n 's/.*Class.*ELF\(32\|64\)/\1/p')
 +		# get architecture of the file; if soarch is empty it's not an binary
@@ -739,8 +725,8 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 +				libdeps[$soname]="${soarch}"
  			fi
  		done
- 	done < <(find "$pkgdir" -type f -perm -u+x)
-@@ -550,7 +547,7 @@
+ 	done < <(find "$pkgdir" -type f -perm -u+x -print0)
+@@ -500,7 +488,7 @@
  	local libdepends v
  	for d in "${depends[@]}"; do
  		case "$d" in
@@ -749,7 +735,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  				if [[ ${libdeps[$d]} ]]; then
  					for v in ${libdeps[$d]}; do
  						libdepends+=("$d=$v")
-@@ -575,32 +572,23 @@
+@@ -525,32 +513,23 @@
  	for p in "${provides[@]}"; do
  		missing=0
  		case "$p" in
@@ -796,16 +782,16 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  					done
  				else
  					libprovides+=("$p")
-@@ -641,7 +629,6 @@
+@@ -589,7 +568,6 @@
+ 	merge_arch_attrs
  
- 	msg2 "$(gettext "Generating %s file...")" ".PKGINFO"
  	printf "# Generated by makepkg %s\n" "$makepkg_version"
 -	printf "# using %s\n" "$(fakeroot -v)"
  
  	write_kv_pair "pkgname" "$pkgname"
  	write_kv_pair "pkgbase" "$pkgbase"
-@@ -789,7 +776,7 @@
- 	pkgdir="$pkgdirbase/$pkgbase-@DEBUGSUFFIX@"
+@@ -739,7 +717,7 @@
+ 	local pkgdir="$pkgdirbase/$pkgbase-@DEBUGSUFFIX@"
  
  	# check if we have any debug symbols to package
 -	if dir_is_empty "$pkgdir/usr/lib/debug"; then
@@ -813,41 +799,19 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  		return 0
  	fi
  
-@@ -989,21 +976,6 @@
- 		fi
- 	fi
+@@ -924,6 +902,11 @@
  
--	# check for sudo if we will need it during makepkg execution
--	if (( DEP_BIN || RMDEPS || INSTALL )); then
--		if ! type -p sudo >/dev/null; then
--			warning "$(gettext "Cannot find the %s binary. Will use %s to acquire root privileges.")" "sudo" "su"
--		fi
--	fi
--
--	# fakeroot - correct package file permissions
--	if check_buildenv "fakeroot" "y" && (( EUID > 0 )); then
--		if ! type -p fakeroot >/dev/null; then
--			error "$(gettext "Cannot find the %s binary.")" "fakeroot"
--			ret=1
--		fi
--	fi
--
- 	# gpg - package signing
- 	if [[ $SIGNPKG == 'y' ]] || { [[ -z $SIGNPKG ]] && check_buildenv "sign" "y"; }; then
- 		if ! type -p gpg >/dev/null; then
-@@ -1133,6 +1105,11 @@
- 	local restore_package_variables
- 	for pkgname in ${pkgname_backup[@]}; do
- 		pkgdir="$pkgdirbase/$pkgname"
+ run_single_packaging() {
+ 	local pkgdir="$pkgdirbase/$pkgname"
 +		# clean existing pkg directory
-+		if [[ -d $pkgdir ]]; then
++		if [[ -d "$pkgdir" ]]; then
 +			msg "$(gettext "Removing existing %s directory...")" "\$pkgdir/"
 +			rm -rf "$pkgdir"
 +		fi
- 		mkdir "$pkgdir"
- 		restore_package_variables="$(backup_package_variables)"
- 		run_package $pkgname
-@@ -1218,12 +1195,16 @@
+ 	mkdir "$pkgdir"
+ 	if [[ -n $1 ]] || (( PKGFUNC )); then
+ 		run_package $1
+@@ -1017,12 +1000,16 @@
  	gettext() {
  		printf "%s\n" "$@"
  	}
@@ -865,15 +829,15 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  OPT_LONG=('allsource' 'check' 'clean' 'cleanbuild' 'config:' 'force' 'geninteg'
            'help' 'holdver' 'ignorearch' 'install' 'key:' 'log' 'noarchive' 'nobuild'
            'nocolor' 'nocheck' 'nodeps' 'noextract' 'noprepare' 'nosign' 'packagelist'
-@@ -1257,7 +1238,6 @@
+@@ -1056,7 +1043,6 @@
  		-d|--nodeps)      NODEPS=1 ;;
  		-e|--noextract)   NOEXTRACT=1 ;;
  		-f|--force)       FORCE=1 ;;
 -		-F)               INFAKEROOT=1 ;;
  		# generating integrity checks does not depend on architecture
- 		-g|--geninteg)    GENINTEG=1 IGNOREARCH=1;;
+ 		-g|--geninteg)    BUILDPKG=0 GENINTEG=1 IGNOREARCH=1;;
  		--holdver)        HOLDVER=1 ;;
-@@ -1399,19 +1379,6 @@
+@@ -1171,19 +1157,6 @@
  	exit $E_FS_PERMISSIONS
  fi
  
@@ -890,10 +854,10 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 -	fi
 -fi
 -
- unset pkgname pkgbase pkgver pkgrel epoch pkgdesc url license groups provides
- unset md5sums replaces depends conflicts backup source install changelog build
- unset sha{1,224,256,384,512}sums makedepends optdepends options noextract validpgpkeys
-@@ -1534,35 +1501,6 @@
+ unset pkgname "${pkgbuild_schema_strings[@]}" "${pkgbuild_schema_arrays[@]}"
+ unset "${known_hash_algos[@]/%/sums}"
+ unset -f pkgver prepare build check package "${!package_@}"
+@@ -1304,29 +1277,6 @@
  	check_build_status
  fi
  
@@ -909,18 +873,12 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 -
 -	chmod 755 "$pkgdirbase"
 -	if (( ! SPLITPKG )); then
--		pkgdir="$pkgdirbase/$pkgname"
--		mkdir "$pkgdir"
--		if (( PKGFUNC )); then
--			run_package
--		fi
--		tidy_install
--		lint_package || exit $E_PACKAGE_FAILED
--		create_package
--		create_debug_package
+-		run_single_packaging
 -	else
 -		run_split_packaging
 -	fi
+-
+-	create_debug_package
 -
 -	msg "$(gettext "Leaving %s environment.")" "fakeroot"
 -	exit $E_OK
@@ -929,7 +887,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  msg "$(gettext "Making package: %s")" "$pkgbase $basever ($(date +%c))"
  
  # if we are creating a source-only package, go no further
-@@ -1586,7 +1524,7 @@
+@@ -1350,7 +1300,7 @@
  	check_source_integrity all
  	cd_safe "$startdir"
  
@@ -938,17 +896,17 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  
  	if [[ $SIGNPKG = 'y' ]]; then
  		msg "$(gettext "Signing package...")"
-@@ -1602,6 +1602,9 @@
- mkdir -p "$srcdir"
+@@ -1400,6 +1350,9 @@
  chmod a-s "$srcdir"
  cd_safe "$srcdir"
-+
-+	export MINGW_CHOST MINGW_PREFIX MINGW_PACKAGE_PREFIX
-+	export DXSDK_DIR ACLOCAL_PATH PKG_CONFIG_PATH
  
++export MINGW_CHOST MINGW_PREFIX MINGW_PACKAGE_PREFIX
++export DXSDK_DIR ACLOCAL_PATH PKG_CONFIG_PATH
++
  if (( !REPKG )); then
  	if (( NOEXTRACT && ! VERIFYSOURCE )); then
-@@ -1688,17 +1626,36 @@
+ 		warning "$(gettext "Using existing %s tree")" "\$srcdir/"
+@@ -1452,17 +1405,25 @@
  		cd_safe "$startdir"
  	fi
  
@@ -962,25 +920,14 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 +	chmod a-srwx "$pkgdirbase"
 +	chmod 755 "$pkgdirbase"
 +	if (( ! SPLITPKG )); then
-+		pkgdir="$pkgdirbase/$pkgname"
-+		# clean existing pkg directory
-+		if [[ -d $pkgdir ]]; then
-+			msg "$(gettext "Removing existing %s directory...")" "\$pkgdir/"
-+			rm -rf "$pkgdir"
-+		fi
-+		mkdir "$pkgdir"
-+		if (( PKGFUNC )); then
-+			run_package
-+		fi
-+		tidy_install
-+		lint_package || exit $E_PACKAGE_FAILED
-+		create_package
-+		create_debug_package
++		run_single_packaging
 +	else
 +		run_split_packaging
 +	fi
++
++	create_debug_package
  
- 	create_package_signatures
+ 	create_package_signatures || exit $E_PRETTY_BAD_PRIVACY
  fi
  
 -# if inhibiting archive creation, go no further
@@ -1035,15 +982,14 @@ diff -Naur pacman-5.1.0-orig/scripts/pacman-key.sh.in pacman-5.1.0/scripts/pacma
  #
  #   pacman-key - manages pacman's keyring
  #                Based on apt-key, from Debian
-@@ -53,6 +53,8 @@
+@@ -31,6 +31,7 @@
+ # Import libmakepkg
+ source "$LIBRARY"/util/message.sh
+ source "$LIBRARY"/util/parseopts.sh
++source "$LIBRARY"/utils_fixed_path.sh
  
- m4_include(library/output_format.sh)
- 
-+m4_include(library/utils_fixed_path.sh)
-+
- usage() {
- 	printf "pacman-key (pacman) %s\n" ${myver}
- 	echo
+ # Options
+ ADD=0
 @@ -231,7 +233,7 @@
  		exit 1
  	fi
@@ -1092,41 +1038,6 @@ diff -Naur pacman-5.1.0-orig/scripts/pacman-key.sh.in pacman-5.1.0/scripts/pacma
  CONFIG=${CONFIG:-@sysconfdir@/pacman.conf}
  if [[ ! -r "${CONFIG}" ]]; then
  	error "$(gettext "%s configuration file '%s' not found.")" "pacman" "$CONFIG"
-diff -Naur pacman-5.1.0-orig/scripts/pkgdelta.sh.in pacman-5.1.0/scripts/pkgdelta.sh.in
---- pacman-5.1.0-orig/scripts/pkgdelta.sh.in	2018-05-14 03:02:18.000000000 +0300
-+++ pacman-5.1.0/scripts/pkgdelta.sh.in	2018-06-21 12:53:58.902056300 +0300
-@@ -1,4 +1,4 @@
--#!/bin/bash
-+#!/usr/bin/env bash
- #
- #   pkgdelta - create delta files for use with pacman and repo-add
- #   @configure_input@
-@@ -48,6 +48,7 @@
- umask 0022
- 
- m4_include(library/output_format.sh)
-+m4_include(library/utils_fixed_path.sh)
- 
- # print usage instructions
- usage() {
-@@ -173,6 +174,17 @@
- set -- "${OPTRET[@]}"
- unset OPT_SHORT OPT_LONG OPTRET
- 
-+# determine whether we have gettext; make it a no-op if we do not
-+if ! type -p gettext >/dev/null; then
-+	gettext() {
-+		printf "%s\n" "$@"
-+	}
-+else
-+	gettext() {
-+		/usr/bin/gettext "$@"
-+	}
-+fi
-+
- # parse arguments
- while :; do
- 	case $1 in
 diff -Naur pacman-5.1.0-orig/scripts/repo-add.sh.in pacman-5.1.0/scripts/repo-add.sh.in
 --- pacman-5.1.0-orig/scripts/repo-add.sh.in	2018-05-14 03:02:18.000000000 +0300
 +++ pacman-5.1.0/scripts/repo-add.sh.in	2018-06-21 12:53:58.902056300 +0300
@@ -1137,13 +1048,13 @@ diff -Naur pacman-5.1.0-orig/scripts/repo-add.sh.in pacman-5.1.0/scripts/repo-ad
  #   repo-add - add a package to a given repo database file
  #   repo-remove - remove a package entry from a given repo database file
 @@ -46,6 +46,7 @@
+ 
+ # Import libmakepkg
+ source "$LIBRARY"/util/message.sh
++source "$LIBRARY"/utils_fixed_path.sh
+ 
+ # ensure we have a sane umask set
  umask 0022
- 
- m4_include(library/output_format.sh)
-+m4_include(library/utils_fixed_path.sh)
- 
- # print usage instructions
- usage() {
 @@ -707,9 +708,13 @@
  # PROGRAM START
  
@@ -1412,9 +1323,9 @@ diff -Naur pacman-5.1.0-orig/test/pacman/pactest.py pacman-5.1.0/test/pacman/pac
      env.pacman["manual-confirm"] = opts.manualconfirm
      env.pacman["scriptlet-shell"] = opts.scriptletshell
 -    env.pacman["ldconfig"] = opts.ldconfig
- 
-     try:
-         for i in args:
+     env.config["gpg"] = not opts.missing_gpg
+     env.config["nls"] = not opts.missing_nls
+     env.config["curl"] = not opts.missing_curl
 diff -Naur pacman-5.1.0-orig/test/pacman/pmtest.py pacman-5.1.0/test/pacman/pmtest.py
 --- pacman-5.1.0-orig/test/pacman/pmtest.py	2018-05-14 03:02:18.000000000 +0300
 +++ pacman-5.1.0/test/pacman/pmtest.py	2018-06-21 12:53:58.942056300 +0300
