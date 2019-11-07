@@ -1,7 +1,7 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=ca-certificates
-pkgver=20180409
+pkgver=20190110
 pkgrel=1
 pkgdesc='Common CA certificates'
 arch=('any')
@@ -12,27 +12,26 @@ source=("http://ftp.debian.org/debian/pool/main/c/${pkgname}/${pkgname}_${pkgver
         'update-ca-trust'
         'update-ca-trust.8')
 depends=('bash' 'openssl' 'findutils' 'coreutils' 'sed' 'p11-kit')
-makedepends=('asciidoc' 'python2' 'libxslt' 'sed' 'grep')
+makedepends=('asciidoc' 'python3' 'libxslt' 'sed' 'grep')
 install='ca-certificates.install'
-sha256sums=('7af6f5bfc619fd29cbf0258c1d95107c38ce840ad6274e343e1e0d971fc72b51'
-            '4e96bd7424062d365b75247dfc4b3b6510f09ca5161c0f7c3ce76b10edf633aa'
+sha256sums=('ee4bf0f4c6398005f5b5ca4e0b87b82837ac5c3b0280a1cb3a63c47555c3a675'
+            'aae6aa5d2bd31064eb923a00a0d37789d3e2f2aa2ef0b39c10228d8d7a3ceb30'
             '0f3e97846494ad41330352bb6b2fa0f8d264bf16d8d02f04b759ca8c26b3e092'
             'a73c6430e734178b9aa4d303709470383bc2b1cfbeb0d44fe34615df812f479d')
 
 prepare() {
-  
-  sed "s|/usr/bin/python|/usr/bin/python2|g" -i certdata2pem.py
-  cp certdata2pem.py ${srcdir}/${pkgname}/mozilla/certdata2pem.py
-  cd ${srcdir}/${pkgname}
+  sed "s|/usr/bin/python|/usr/bin/python3|g" -i certdata2pem.py
+  cp certdata2pem.py ${srcdir}/${pkgname}-${pkgver}/mozilla/certdata2pem.py
+  cd ${srcdir}/${pkgname}-${pkgver}
   cp ${srcdir}/update-ca-trust sbin/
   cp ${srcdir}/update-ca-trust.8 sbin/
 }
 
 build() {
-  cd ${srcdir}/${pkgname}/mozilla
+  cd ${srcdir}/${pkgname}-${pkgver}/mozilla
   mkdir -p legacy-{default,disable}
 
-  /usr/bin/python2 ./certdata2pem.py
+  PYTHONUTF8=1 PYTHONIOENCODING=utf-8 /usr/bin/python3 ./certdata2pem.py
 
   (
     cat <<EOF
@@ -48,9 +47,9 @@ build() {
 EOF
     cat nssckbi.h | grep -w NSS_BUILTINS_LIBRARY_VERSION | awk '{print "# " $2 " " $3}';
     echo '#';
-  ) > ${srcdir}/${pkgname}/ca-bundle.trust.crt
+  ) > ${srcdir}/${pkgname}-${pkgver}/ca-bundle.trust.crt
 
-  touch ${srcdir}/${pkgname}/ca-bundle.legacy.default.crt
+  touch ${srcdir}/${pkgname}-${pkgver}/ca-bundle.legacy.default.crt
   local NUM_LEGACY_DEFAULT=`find ./legacy-default -type f | wc -l`
   if [ $NUM_LEGACY_DEFAULT -ne 0 ]; then
      for f in ./legacy-default/*.crt; do 
@@ -65,12 +64,12 @@ EOF
        fi
        if [ -n "$targs" ]; then
           echo "legacy default flags $targs for $f" >> info.trust
-          openssl x509 -text -in "$f" -trustout $targs -setalias "$alias" >> ${srcdir}/${pkgname}/ca-bundle.legacy.default.crt
+          openssl x509 -text -in "$f" -trustout $targs -setalias "$alias" >> ${srcdir}/${pkgname}-${pkgver}/ca-bundle.legacy.default.crt
        fi
      done
   fi
 
-  touch ${srcdir}/${pkgname}/ca-bundle.legacy.disable.crt
+  touch ${srcdir}/${pkgname}-${pkgver}/ca-bundle.legacy.disable.crt
   NUM_LEGACY_DISABLE=`find ./legacy-disable -type f | wc -l`
   if [ $NUM_LEGACY_DISABLE -ne 0 ]; then
      for f in ./legacy-disable/*.crt; do 
@@ -85,7 +84,7 @@ EOF
        fi
        if [ -n "$targs" ]; then
           echo "legacy disable flags $targs for $f" >> info.trust
-          openssl x509 -text -in "$f" -trustout $targs -setalias "$alias" >> ${srcdir}/${pkgname}/ca-bundle.legacy.disable.crt
+          openssl x509 -text -in "$f" -trustout $targs -setalias "$alias" >> ${srcdir}/${pkgname}-${pkgver}/ca-bundle.legacy.disable.crt
        fi
      done
   fi
@@ -93,7 +92,7 @@ EOF
   local P11FILES=`find . -name \*.tmp-p11-kit | wc -l`
   if [ $P11FILES -ne 0 ]; then
     for p in ./*.tmp-p11-kit; do 
-      cat "$p" >> ${srcdir}/${pkgname}/ca-bundle.trust.crt
+      cat "$p" >> ${srcdir}/${pkgname}-${pkgver}/ca-bundle.trust.crt
     done
   fi
 
@@ -102,7 +101,7 @@ EOF
 
 
 package() {
-  cd ${srcdir}/${pkgname}
+  cd ${srcdir}/${pkgname}-${pkgver}
 
   mkdir -p ${pkgdir}/usr/{bin,lib,share}
   mkdir -p ${pkgdir}/etc
