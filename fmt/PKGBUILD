@@ -1,0 +1,57 @@
+# Maintainer: Beat Bolli <dev@drbeat.li>
+
+pkgname=fmt
+pkgver=6.1.1
+pkgrel=1
+pkgdesc="A small, safe and fast formatting library for C++"
+arch=('i686' 'x86_64')
+url="https://fmt.dev"
+license=('MIT')
+makedepends=(gcc cmake)
+depends=(gcc-libs)
+options=(staticlibs)
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/fmtlib/${pkgname}/archive/${pkgver}.tar.gz")
+sha256sums=('bf4e50955943c1773cc57821d6c00f7e2b9e10eb435fafdd66739d36056d504e')
+
+build() {
+  # Shared Build
+  [[ -d "build-shared" ]] && rm -rf "build-shared"
+  mkdir -p ${srcdir}/build-shared
+  cd ${srcdir}/build-shared
+  cmake \
+    -DCMAKE_INSTALL_PREFIX="/usr" \
+    -DCMAKE_INSTALL_LIBDIR="/usr/lib" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=ON \
+    -DFMT_TEST=OFF \
+    ../${pkgname}-${pkgver}
+
+  make -j1 # parallel jobs break build
+
+  # Static Build
+  [[ -d "build-static" ]] && rm -rf "build-static"
+  mkdir -p ${srcdir}/build-static
+  cd ${srcdir}/build-static
+  cmake \
+    -DCMAKE_INSTALL_PREFIX="/usr" \
+    -DCMAKE_INSTALL_LIBDIR="/usr/lib" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DFMT_TEST=OFF \
+    ../${pkgname}-${pkgver}
+
+  make -j1 # parallel jobs break build
+}
+
+package() {
+  # Shared Install
+  cd "${srcdir}/build-shared"
+  make DESTDIR=${pkgdir} install
+
+  # Static Install
+  cd "${srcdir}/build-static"
+  make DESTDIR=${pkgdir} install
+
+  # License
+  install -Dm644 "${srcdir}/${pkgname}-${pkgver}/LICENSE.rst" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.rst"
+}
