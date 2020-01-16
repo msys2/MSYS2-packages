@@ -2,75 +2,23 @@
 # Maintainer: Norbert Pfeiler <norbert.pfeiler+aur ät gmail.com>
 
 pkgname=txt2tags
-pkgver=2.6
-pkgrel=5
+pkgver=3.3
+pkgrel=1
 pkgdesc='A text formatting and conversion tool.'
 arch=('any')
 url='https://www.txt2tags.org/'
 license=('GPL')
-depends=('python2')
-optdepends=('ruby: for running t2tmake.rb'
-            'sh: for running html-update.sh'
-            'vim: for using the vim-files')
-makedepends=('gettext')
+depends=('python3')
+makedepends=('python3-setuptools')
 source=("${pkgname}-${pkgver}.tar.gz"::"https://github.com/${pkgname}/${pkgname}/archive/${pkgver}.tar.gz")
-sha256sums=('c87b911ac5cc97dd2fdb6067601cf4fbd0094a065f6b7a593142fa75e3a924c1')
+sha256sums=('d7083e3e9b02cb90b5439ab19ca279710f6e36008db79bde349a6e30c253a225')
 
 build() {
-  cd "$srcdir/$pkgname-$pkgver"
-
-  # python2 fix
-  for f in txt2tags extras/gensite; do
-    sed -i 's_#!/usr/bin/env python_#!/usr/bin/env python2_' "$f"
-  done
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  python setup.py build
 }
 
 package() {
-  cd "$srcdir/$pkgname-$pkgver"
-
-  install -d "$pkgdir/usr/share/vim/vimfiles"/{plugin,syntax,compiler,macros}
-  install -d "$pkgdir/usr/share/man"/{it,pt_BR,fr,es,ca}/man1
-  install -d "$pkgdir/usr/share/man/man1"
-
-  install -Dm755 "$pkgname" "$pkgdir/usr/bin/$pkgname"
-  install -Dm644 extras/pagemaker.vim "$pkgdir/usr/share/vim/vimfiles/syntax/pagemaker.vim"
-  install -Dm644 "extras/$pkgname.vim" "$pkgdir/usr/share/vim/vimfiles/syntax/$pkgname.vim"
-  install -Dm644 extras/gvim-menu.vim \
-    "$pkgdir/usr/share/vim/vimfiles/plugin/$pkgname-gvim-menu.vim"
-  install -Dm644 "extras/$pkgname-compiler.vim" \
-    "$pkgdir/usr/share/vim/vimfiles/compiler/$pkgname-compiler.vim"
-  install -Dm644 extras/unhtml.vim \
-    "$pkgdir/usr/share/vim/vimfiles/macros/unhtml.vim"
-
-  # installing other extra tools
-  install -m755 extras/{t2tmake.rb,gensite,html-update.sh,dynartslides} "$pkgdir/usr/bin"
-  install -Dm644 extras/txt2tags-mode.el "$pkgdir/usr/share/emacs/site-lisp/txt2tags-mode.el"
-
-  # handling man pages
-  local _lang
-  local dir
-  cd doc
-  for _lang in {"it","pt","fr","es","ca","zh"}; do
-	dir=$(find -type f -name "manpage-${_lang}.man" | grep -Po '(?<=\./)[^/]+')
-	[ -z "${dir}" ] && continue
-	pushd ${dir}
-    install -Dm644 "manpage-${_lang}.man" "$pkgname.1-${_lang}"
-    if [[ ${_lang} == "pt" ]]; then
-      cp "$pkgname.1-${_lang}" "$pkgdir/usr/share/man/pt_BR/man1/$pkgname.1"
-    else
-      install -Dm644 "$pkgname.1-${_lang}" "$pkgdir/usr/share/man/${_lang}/man1/$pkgname.1"
-    fi
-	popd
-  done
-
-  # English man page
-  install -Dm644 English/manpage.man "$pkgdir/usr/share/man/man1/$pkgname.1"
-
-  # i18n
-  cd ../po
-  for _i in *.po
-  do
-    msgfmt -o "${_i%.po}.mo" "${_i}"
-    install -Dm644 "${_i%.po}.mo" "$pkgdir/usr/share/locale/${_i%.po}/LC_MESSAGES/$pkgname.mo"
-  done
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  python setup.py install --root="${pkgdir}"
 }
