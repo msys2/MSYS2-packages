@@ -89,6 +89,11 @@ CALL :substituteparens full_cmd
 CALL :removequotes full_cmd
 for /f "tokens=%shiftCounter%,* delims=,;=	 " %%i in ("!full_cmd!") do set SHELL_ARGS=%%j
 
+rem Clean up working variables
+set arg=
+set shiftCounter=
+set full_cmd=
+
 rem Setup proper title
 if "%MSYSTEM%" == "MINGW32" (
   set "CONTITLE=MinGW x32"
