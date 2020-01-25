@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 
 set "WD=%__CD__%"
 if NOT EXIST "%WD%msys-2.0.dll" set "WD=%~dp0usr\bin\"
@@ -58,7 +58,16 @@ if "x%~1" == "x-where" (
     exit /b 2
   )
   set CHERE_INVOKING=enabled_from_arguments
-)& shift& shift& set /a shiftCounter+=2& goto :checkparams
+
+  rem Ensure parentheses in argument do not interfere with FOR IN loop below.
+  set arg="%~2"
+  CALL :substituteparens arg
+  CALL :removequotes arg
+
+  rem Increment shiftCounter by number of words in argument (as cmd.exe saw it).
+  rem (Note that this form of FOR IN loop uses same delimiters as parameters.)
+  for %%a in (!arg!) do set /a shiftCounter+=1
+)& shift& shift& set /a shiftCounter+=1& goto :checkparams
 if "x%~1" == "x-no-start" shift& set /a shiftCounter+=1& set MSYS2_NOSTART=yes& goto :checkparams
 if "x%~1" == "x-shell" (
   if "x%~2" == "x" (
@@ -66,10 +75,19 @@ if "x%~1" == "x-shell" (
     exit /b 2
   )
   set LOGINSHELL="%~2"
-)& shift& shift& set /a shiftCounter+=2& goto :checkparams
+
+  set arg="%~2"
+  CALL :substituteparens arg
+  CALL :removequotes arg
+  for %%a in (!arg!) do set /a shiftCounter+=1
+)& shift& shift& set /a shiftCounter+=1& goto :checkparams
 
 rem Collect remaining command line arguments to be passed to shell
-for /f "tokens=%shiftCounter%,*" %%i in ("%*") do set SHELL_ARGS=%%j
+rem Again, ensure that parentheses in %* do not interfere with FOR IN loop.
+set full_cmd="%*"
+CALL :substituteparens full_cmd
+CALL :removequotes full_cmd
+for /f tokens^=%shiftCounter%*^ delims^=^,^;^^^=^	^  %%i in ("!full_cmd!") do set SHELL_ARGS=%%j
 
 rem Setup proper title
 if "%MSYSTEM%" == "MINGW32" (
@@ -184,3 +202,17 @@ echo Any parameter that cannot be treated as valid option and all
 echo following parameters are passed as login shell command parameters.
 echo.
 exit /b 0
+
+:removequotes
+FOR /F "delims=" %%A IN ('echo %%%1%%') DO set %1=%%~A
+GOTO :eof
+
+:substituteparens
+SETLOCAL
+FOR /F "delims=" %%A IN ('echo %%%1%%') DO (
+    set value=%%A
+    set value=!value:^(=x!
+    set value=!value:^)=x!
+)
+ENDLOCAL & set %1=%value%
+GOTO :eof
