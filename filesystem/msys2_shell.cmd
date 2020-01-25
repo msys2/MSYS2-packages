@@ -4,7 +4,7 @@ setlocal EnableDelayedExpansion
 set "WD=%__CD__%"
 if NOT EXIST "%WD%msys-2.0.dll" set "WD=%~dp0usr\bin\"
 set "LOGINSHELL=bash"
-set /a shiftCounter=0
+set /a msys2_shiftCounter=0
 
 rem To activate windows native symlinks uncomment next line
 rem set MSYS=winsymlinks:nativestrict
@@ -35,19 +35,19 @@ if "x%~1" == "x/?" (
   exit /b %ERRORLEVEL%
 )
 rem Shell types
-if "x%~1" == "x-msys" shift& set /a shiftCounter+=1& set MSYSTEM=MSYS& goto :checkparams
-if "x%~1" == "x-msys2" shift& set /a shiftCounter+=1& set MSYSTEM=MSYS& goto :checkparams
-if "x%~1" == "x-mingw32" shift& set /a shiftCounter+=1& set MSYSTEM=MINGW32& goto :checkparams
-if "x%~1" == "x-mingw64" shift& set /a shiftCounter+=1& set MSYSTEM=MINGW64& goto :checkparams
-if "x%~1" == "x-mingw" shift& set /a shiftCounter+=1& (if exist "%WD%..\..\mingw64" (set MSYSTEM=MINGW64) else (set MSYSTEM=MINGW32))& goto :checkparams
+if "x%~1" == "x-msys" shift& set /a msys2_shiftCounter+=1& set MSYSTEM=MSYS& goto :checkparams
+if "x%~1" == "x-msys2" shift& set /a msys2_shiftCounter+=1& set MSYSTEM=MSYS& goto :checkparams
+if "x%~1" == "x-mingw32" shift& set /a msys2_shiftCounter+=1& set MSYSTEM=MINGW32& goto :checkparams
+if "x%~1" == "x-mingw64" shift& set /a msys2_shiftCounter+=1& set MSYSTEM=MINGW64& goto :checkparams
+if "x%~1" == "x-mingw" shift& set /a msys2_shiftCounter+=1& (if exist "%WD%..\..\mingw64" (set MSYSTEM=MINGW64) else (set MSYSTEM=MINGW32))& goto :checkparams
 rem Console types
-if "x%~1" == "x-mintty" shift& set /a shiftCounter+=1& set MSYSCON=mintty.exe& goto :checkparams
-if "x%~1" == "x-conemu" shift& set /a shiftCounter+=1& set MSYSCON=conemu& goto :checkparams
-if "x%~1" == "x-defterm" shift& set /a shiftCounter+=1& set MSYSCON=defterm& goto :checkparams
+if "x%~1" == "x-mintty" shift& set /a msys2_shiftCounter+=1& set MSYSCON=mintty.exe& goto :checkparams
+if "x%~1" == "x-conemu" shift& set /a msys2_shiftCounter+=1& set MSYSCON=conemu& goto :checkparams
+if "x%~1" == "x-defterm" shift& set /a msys2_shiftCounter+=1& set MSYSCON=defterm& goto :checkparams
 rem Other parameters
-if "x%~1" == "x-full-path" shift& set /a shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
-if "x%~1" == "x-use-full-path" shift& set /a shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
-if "x%~1" == "x-here" shift& set /a shiftCounter+=1& set CHERE_INVOKING=enabled_from_arguments& goto :checkparams
+if "x%~1" == "x-full-path" shift& set /a msys2_shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
+if "x%~1" == "x-use-full-path" shift& set /a msys2_shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
+if "x%~1" == "x-here" shift& set /a msys2_shiftCounter+=1& set CHERE_INVOKING=enabled_from_arguments& goto :checkparams
 if "x%~1" == "x-where" (
   if "x%~2" == "x" (
     echo Working directory is not specified for -where parameter. 1>&2
@@ -60,15 +60,15 @@ if "x%~1" == "x-where" (
   set CHERE_INVOKING=enabled_from_arguments
 
   rem Ensure parentheses in argument do not interfere with FOR IN loop below.
-  set arg="%~2"
-  call :substituteparens arg
-  call :removequotes arg
+  set msys2_arg="%~2"
+  call :substituteparens msys2_arg
+  call :removequotes msys2_arg
 
-  rem Increment shiftCounter by number of words in argument (as cmd.exe saw it).
+  rem Increment msys2_shiftCounter by number of words in argument (as cmd.exe saw it).
   rem (Note that this form of FOR IN loop uses same delimiters as parameters.)
-  for %%a in (!arg!) do set /a shiftCounter+=1
-)& shift& shift& set /a shiftCounter+=1& goto :checkparams
-if "x%~1" == "x-no-start" shift& set /a shiftCounter+=1& set MSYS2_NOSTART=yes& goto :checkparams
+  for %%a in (!msys2_arg!) do set /a msys2_shiftCounter+=1
+)& shift& shift& set /a msys2_shiftCounter+=1& goto :checkparams
+if "x%~1" == "x-no-start" shift& set /a msys2_shiftCounter+=1& set MSYS2_NOSTART=yes& goto :checkparams
 if "x%~1" == "x-shell" (
   if "x%~2" == "x" (
     echo Shell not specified for -shell parameter. 1>&2
@@ -76,23 +76,23 @@ if "x%~1" == "x-shell" (
   )
   set LOGINSHELL="%~2"
 
-  set arg="%~2"
-  call :substituteparens arg
-  call :removequotes arg
-  for %%a in (!arg!) do set /a shiftCounter+=1
-)& shift& shift& set /a shiftCounter+=1& goto :checkparams
+  set msys2_arg="%~2"
+  call :substituteparens msys2_arg
+  call :removequotes msys2_arg
+  for %%a in (!msys2_arg!) do set /a msys2_shiftCounter+=1
+)& shift& shift& set /a msys2_shiftCounter+=1& goto :checkparams
 
 rem Collect remaining command line arguments to be passed to shell
 rem Again, ensure that parentheses in %* do not interfere with FOR IN loop.
-set full_cmd="%*"
-call :substituteparens full_cmd
-call :removequotes full_cmd
-for /f "tokens=%shiftCounter%,* delims=,;=	 " %%i in ("!full_cmd!") do set SHELL_ARGS=%%j
+set msys2_full_cmd="%*"
+call :substituteparens msys2_full_cmd
+call :removequotes msys2_full_cmd
+for /f "tokens=%msys2_shiftCounter%,* delims=,;=	 " %%i in ("!msys2_full_cmd!") do set SHELL_ARGS=%%j
 
 rem Clean up working variables
-set arg=
-set shiftCounter=
-set full_cmd=
+set msys2_arg=
+set msys2_shiftCounter=
+set msys2_full_cmd=
 
 rem Setup proper title
 if "%MSYSTEM%" == "MINGW32" (
