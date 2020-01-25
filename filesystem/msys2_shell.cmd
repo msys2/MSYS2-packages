@@ -61,8 +61,8 @@ if "x%~1" == "x-where" (
 
   rem Ensure parentheses in argument do not interfere with FOR IN loop below.
   set arg="%~2"
-  CALL :substituteparens arg
-  CALL :removequotes arg
+  call :substituteparens arg
+  call :removequotes arg
 
   rem Increment shiftCounter by number of words in argument (as cmd.exe saw it).
   rem (Note that this form of FOR IN loop uses same delimiters as parameters.)
@@ -77,16 +77,16 @@ if "x%~1" == "x-shell" (
   set LOGINSHELL="%~2"
 
   set arg="%~2"
-  CALL :substituteparens arg
-  CALL :removequotes arg
+  call :substituteparens arg
+  call :removequotes arg
   for %%a in (!arg!) do set /a shiftCounter+=1
 )& shift& shift& set /a shiftCounter+=1& goto :checkparams
 
 rem Collect remaining command line arguments to be passed to shell
 rem Again, ensure that parentheses in %* do not interfere with FOR IN loop.
 set full_cmd="%*"
-CALL :substituteparens full_cmd
-CALL :removequotes full_cmd
+call :substituteparens full_cmd
+call :removequotes full_cmd
 for /f "tokens=%shiftCounter%,* delims=,;=	 " %%i in ("!full_cmd!") do set SHELL_ARGS=%%j
 
 rem Clean up working variables
