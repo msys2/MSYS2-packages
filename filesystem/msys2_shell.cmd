@@ -87,7 +87,7 @@ rem Again, ensure that parentheses in %* do not interfere with FOR IN loop.
 set full_cmd="%*"
 CALL :substituteparens full_cmd
 CALL :removequotes full_cmd
-for /f tokens^=%shiftCounter%*^ delims^=^,^;^^^=^	^  %%i in ("!full_cmd!") do set SHELL_ARGS=%%j
+for /f "tokens=%shiftCounter%,* delims=,;=	 " %%i in ("!full_cmd!") do set SHELL_ARGS=%%j
 
 rem Setup proper title
 if "%MSYSTEM%" == "MINGW32" (
