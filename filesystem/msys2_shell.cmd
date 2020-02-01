@@ -83,10 +83,7 @@ if "x%~1" == "x-shell" (
 )& shift& shift& set /a msys2_shiftCounter+=1& goto :checkparams
 
 rem Collect remaining command line arguments to be passed to shell
-rem Again, ensure that parentheses in %* do not interfere with FOR IN loop.
-set msys2_full_cmd="%*"
-call :substituteparens msys2_full_cmd
-call :removequotes msys2_full_cmd
+set msys2_full_cmd=%*
 for /f "tokens=%msys2_shiftCounter%,* delims=,;=	 " %%i in ("!msys2_full_cmd!") do set SHELL_ARGS=%%j
 
 rem Clean up working variables
