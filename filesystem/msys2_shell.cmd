@@ -83,10 +83,11 @@ if "x%~1" == "x-shell" (
 )& shift& shift& set /a msys2_shiftCounter+=1& goto :checkparams
 
 rem Collect remaining command line arguments to be passed to shell
+if %msys2_shiftCounter% equ 0 set SHELL_ARGS=%* & goto cleanvars
 set msys2_full_cmd=%*
 for /f "tokens=%msys2_shiftCounter%,* delims=,;=	 " %%i in ("!msys2_full_cmd!") do set SHELL_ARGS=%%j
 
-rem Clean up working variables
+:cleanvars
 set msys2_arg=
 set msys2_shiftCounter=
 set msys2_full_cmd=
