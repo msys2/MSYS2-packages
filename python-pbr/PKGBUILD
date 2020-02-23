@@ -2,72 +2,35 @@
 
 _realname=pbr
 pkgbase=python-${_realname}
-pkgname=(python3-${_realname} python2-${_realname})
+pkgname=(python-${_realname})
 pkgver=5.4.3
-pkgrel=1
+pkgrel=2
 pkgdesc="Python Build Reasonableness"
 arch=('any')
 url='https://pypi.python.org/pypi/pbr'
 license=('Apache')
-makedepends=('python2-setuptools' 'python3-setuptools' 'git')
-#checkdepends=('python-stestr' 'python2-stestr' 'python-testscenarios' 'python2-testscenarios'
-#              'python-testresources' 'python2-testresources' 'python-testrepository'
-#              'python2-testrepository' 'python-mock' 'python2-mock'
-#              'python-virtualenv' 'python2-virtualenv' 'python-wheel' 'python2-wheel'
-#              'python-sphinx' 'python2-sphinx')
+depends=('python3-setuptools')
+provides=("python3-${_realname}")
+conflicts=("python3-${_realname}")
+replaces=("python3-${_realname}")
 source=("$pkgbase-$pkgver.tar.gz::https://github.com/openstack-dev/pbr/archive/$pkgver.tar.gz")
 sha512sums=('83e6357130cba3ed746e2192a87c612af9822212355f105475d98908b52aabd722afcc3932cc38135009023c15b057959411e76b4c5ab9ab6a664b3d26086863')
 
 prepare() {
-  # Fix for new wheel
-  sed -e 's/wheel.install/wheel.wheelfile/' \
-      -e 's/wheel_file.zipfile/wheel_file/' \
-      -i pbr-$pkgver/pbr/tests/test_packaging.py
-
-  cd "${srcdir}"
-  for builddir in python{2,3}-build-${CARCH}; do
-    rm -rf ${builddir} | true
-    cp -r "${_realname}-${pkgver}" "${builddir}"
-  done
-
-  find python2-build-${CARCH} -name \*.py -exec sed -i '1s/python$/&2/' {} +
+  cd "${srcdir}/${_realname}-${pkgver}"
 
   export PBR_VERSION=$pkgver
 }
 
 build() {
-  for pver in {2,3}; do  
-    msg "Python ${pver} build for ${CARCH}"  
-    cd "${srcdir}/python${pver}-build-${CARCH}"
-    python${pver} setup.py build
-  done  
+  cd "${srcdir}/${_realname}-${pkgver}"
+
+  python setup.py build
 }
 
-#We have to wait to reenable this until a number of other packages are available
-#check() {
-#   msg "Python 2 test for ${CARCH}"
-#  cd "${srcdir}/python2-build-${CARCH}"
-#  PYTHON=python2 stestr2 run
+package() {
+  cd "${srcdir}/${_realname}-${pkgver}"
 
-#   msg "Python 3 test for ${CARCH}"
-#  cd "${srcdir}/python3-build-${CARCH}"
-#  stestr run
-#}
-
-package_python3-pbr() {
-  depends=('python3-setuptools')
-
-  cd "${srcdir}/python3-build-${CARCH}"
   python setup.py install -O1 --root="$pkgdir" --skip-build
   install -Dm644 LICENSE "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
-}
-
-package_python2-pbr() {
-  depends=('python2-setuptools')
-
-  cd "${srcdir}/python2-build-${CARCH}"
-  python2 setup.py install -O1 --root="$pkgdir" --skip-build
-  install -Dm644 LICENSE "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
-  
-  mv "$pkgdir"/usr/bin/pbr{,2}
 }
