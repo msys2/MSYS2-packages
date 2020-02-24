@@ -75,7 +75,8 @@ if "x%~1" == "x-shell" (
     exit /b 2
   )
   set LOGINSHELL="%~2"
-
+  call :removequotes LOGINSHELL
+  
   set msys2_arg="%~2"
   call :substituteparens msys2_arg
   call :removequotes msys2_arg
