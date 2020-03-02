@@ -1,7 +1,5 @@
-# Maintainer: Masanori Shirayama <mashir43@gmail.com>
-
 pkgname=fish
-pkgver=3.0.2
+pkgver=3.1.0
 pkgrel=1
 epoch=
 pkgdesc="a smart and user-friendly command line shell"
@@ -10,38 +8,33 @@ url="https://fishshell.com/"
 license=('GPL')
 groups=()
 depends=('bc' 'gcc-libs' 'gettext' 'libiconv' 'libpcre2_16' 'man-db' 'ncurses')
-makedepends=('doxygen' 'gcc' 'gettext-devel' 'intltool' 'libiconv-devel' 'ncurses-devel' 'pcre2-devel')
+makedepends=('doxygen' 'gcc' 'gettext-devel' 'intltool' 'libiconv-devel' 'ncurses-devel' 'pcre2-devel' 'cmake')
 optdepends=('python: for manual page completion parser and web configuration tool')
 install=fish.install
 source=("https://github.com/fish-shell/fish-shell/releases/download/${pkgver}/${pkgname}-${pkgver}.tar.gz"{,.asc}
-        01-msysize.patch
         config.fish
         msys2.fish
         perlbin.fish)
-sha256sums=('14728ccc6b8e053d01526ebbd0822ca4eb0235e6487e832ec1d0d22f1395430e'
+sha256sums=('e5db1e6839685c56f172e1000c138e290add4aa521f187df4cd79d4eab294368'
             'SKIP'
-            '1e2743177c499e890d681be685fed6f849e42cb282e13b4e56324169a43bd987'
             '983c3273e0249957ed6c40785e005739da30f31d4f029383f257f9990d38811a'
-            '0d01a03280347bce3499a603e18f4de9b2a61709b0c50595bfb58ecb335c63f3'
+            '0c01d550c50633bd120f1a91a422f1193dca835258200e6f892daf613867f87b'
             'b136a9fa94abf53e302f7a1cc28def03b58dd2326990c5f02ceb4988341a5ac6')
 validpgpkeys=('003837986104878835FA516D7A67D962D88A709A')
 
-prepare() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
-  patch -p1 -i ${srcdir}/01-msysize.patch
-  autoreconf -ivf
-}
-
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  ./configure --prefix=/usr --with-doxygen --sysconfdir=/etc
+  mkdir -p build
+  cd build
+  cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_BUILD_TYPE=Release ..
   make
 }
 
 package() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  cd "${srcdir}/${pkgname}-${pkgver}/build"
   backup=('etc/fish/config.fish' 'etc/fish/msys2.fish' 'etc/fish/perlbin.fish')
-  make DESTDIR="${pkgdir}/" install
+  rm -rf "${srcdir}/${pkgname}-${pkgver}/build/user_doc"
+  make DESTDIR="${pkgdir}" install
   install -D -m644 "${srcdir}/config.fish" "${pkgdir}/etc/fish/config.fish"
   install -D -m644 "${srcdir}/msys2.fish" "${pkgdir}/etc/fish/msys2.fish"
   install -D -m644 "${srcdir}/perlbin.fish" "${pkgdir}/etc/fish/perlbin.fish"
