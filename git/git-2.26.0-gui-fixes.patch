@@ -1,0 +1,91 @@
+--- a/git-gui/git-gui.sh	2020-03-23 02:50:46.000000000 +0300
++++ b/git-gui/git-gui.sh	2020-04-01 12:24:15.278000000 +0300
+@@ -46,12 +46,41 @@
+ 
+ ######################################################################
+ ##
++## platform detection
++
++set _iscygwin {}
++
++proc is_Cygwin {} {
++	global _iscygwin
++	if {$_iscygwin eq {}} {
++		if {$::tcl_platform(platform) eq {windows}} {
++			if {[catch {set p [exec cygpath --windir]} err]} {
++				set _iscygwin 0
++			} else {
++				set _iscygwin 1
++			}
++		} else {
++			set _iscygwin 0
++		}
++	}
++	return $_iscygwin
++}
++
++######################################################################
++##
+ ## locate our library
+ 
+ if { [info exists ::env(GIT_GUI_LIB_DIR) ] } {
+ 	set oguilib $::env(GIT_GUI_LIB_DIR)
+ } else {
+-	set oguilib {@@GITGUI_LIBDIR@@}
++	if {[is_Cygwin]} {
++		set oguilib [exec cygpath \
++			--windows \
++			--absolute \
++			@@GITGUI_LIBDIR@@]
++	} else {
++		set oguilib {@@GITGUI_LIBDIR@@}
++	}
+ }
+ set oguirel {@@GITGUI_RELATIVE@@}
+ if {$oguirel eq {1}} {
+@@ -163,7 +192,6 @@
+ set _gitexec {}
+ set _githtmldir {}
+ set _reponame {}
+-set _iscygwin {}
+ set _search_path {}
+ set _shellpath {@@SHELL_PATH@@}
+ 
+@@ -266,26 +294,6 @@
+ 	return 0
+ }
+ 
+-proc is_Cygwin {} {
+-	global _iscygwin
+-	if {$_iscygwin eq {}} {
+-		if {$::tcl_platform(platform) eq {windows}} {
+-			if {[catch {set p [exec cygpath --windir]} err]} {
+-				set _iscygwin 0
+-			} else {
+-				set _iscygwin 1
+-				# Handle MSys2 which is only cygwin when MSYSTEM is MSYS.
+-				if {[info exists ::env(MSYSTEM)] && $::env(MSYSTEM) ne "MSYS"} {
+-					set _iscygwin 0
+-				}
+-			}
+-		} else {
+-			set _iscygwin 0
+-		}
+-	}
+-	return $_iscygwin
+-}
+-
+ proc is_enabled {option} {
+ 	global enabled_options
+ 	if {[catch {set on $enabled_options($option)}]} {return 0}
+@@ -4140,7 +4148,9 @@
+ 	if {$spell_dict ne {}} {
+ 		lappend spell_cmd --master=$spell_dict
+ 	}
+-	lappend spell_cmd --mode=none
++	if {![is_Cygwin]} {
++		lappend spell_cmd --mode=none
++	}
+ 	lappend spell_cmd --encoding=utf-8
+ 	lappend spell_cmd pipe
+ 	if {$spell_dict eq {none}
