@@ -1,0 +1,87 @@
+diff -Naur libffi-3.3-orig/compile libffi-3.3/compile
+--- libffi-3.3-orig/compile	2019-11-01 12:30:05.000000000 +0300
++++ libffi-3.3/compile	2020-04-15 11:28:38.782598900 +0300
+@@ -53,7 +53,7 @@
+ 	  MINGW*)
+ 	    file_conv=mingw
+ 	    ;;
+-	  CYGWIN*)
++	  CYGWIN* | MSYS*)
+ 	    file_conv=cygwin
+ 	    ;;
+ 	  *)
+@@ -67,7 +67,7 @@
+ 	mingw/*)
+ 	  file=`cmd //C echo "$file " | sed -e 's/"\(.*\) " *$/\1/'`
+ 	  ;;
+-	cygwin/*)
++	cygwin/* | msys/*)
+ 	  file=`cygpath -m "$file" || echo "$file"`
+ 	  ;;
+ 	wine/*)
+diff -Naur libffi-3.3-orig/config.guess libffi-3.3/config.guess
+--- libffi-3.3-orig/config.guess	2019-10-31 17:49:54.000000000 +0300
++++ libffi-3.3/config.guess	2020-04-15 11:29:05.639223800 +0300
+@@ -892,6 +892,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-cygwin
++	exit ;;
+     p*:CYGWIN*:*)
+ 	echo powerpcle-unknown-cygwin
+ 	exit ;;
+diff -Naur libffi-3.3-orig/configure.host libffi-3.3/configure.host
+--- libffi-3.3-orig/configure.host	2019-11-23 02:55:36.000000000 +0300
++++ libffi-3.3/configure.host	2020-04-15 11:34:06.382013100 +0300
+@@ -6,7 +6,7 @@
+ # THIS TABLE IS SORTED.  KEEP IT THAT WAY.
+ # Most of the time we can define all the variables all at once...
+ case "${host}" in
+-  aarch64*-*-cygwin* | aarch64*-*-mingw* | aarch64*-*-win* )
++  aarch64*-*-cygwin* | aarch64*-*-msys* | aarch64*-*-mingw* | aarch64*-*-win* )
+ 	TARGET=ARM_WIN64; TARGETDIR=aarch64
+ 	MSVC=1
+ 	;;
+@@ -28,7 +28,7 @@
+ 	SOURCES="ffi.c arcompact.S"
+ 	;;
+ 
+-  arm*-*-cygwin* | arm*-*-mingw* | arm*-*-win* )
++  arm*-*-cygwin* | arm*-*-msys* | arm*-*-mingw* | arm*-*-win* )
+ 	TARGET=ARM_WIN32; TARGETDIR=arm
+ 	MSVC=1
+ 	;;
+@@ -74,8 +74,8 @@
+ 	TARGET=X86_FREEBSD; TARGETDIR=x86
+ 	;;
+ 
+-  i?86-*-cygwin* | i?86-*-mingw* | i?86-*-win* | i?86-*-os2* | i?86-*-interix* \
+-  | x86_64-*-cygwin* | x86_64-*-mingw* | x86_64-*-win* )
++  i?86-*-cygwin* | i?86-*-msys* | i?86-*-mingw* | i?86-*-win* | i?86-*-os2* | i?86-*-interix* \
++  | x86_64-*-cygwin* | x86_64-*-msys* | x86_64-*-mingw* | x86_64-*-win* )
+ 	TARGETDIR=x86
+ 	if test $ac_cv_sizeof_size_t = 4; then
+ 	  TARGET=X86_WIN32
+diff -Naur libffi-3.3-orig/testsuite/lib/target-libpath.exp libffi-3.3/testsuite/lib/target-libpath.exp
+--- libffi-3.3-orig/testsuite/lib/target-libpath.exp	2019-10-31 17:49:54.000000000 +0300
++++ libffi-3.3/testsuite/lib/target-libpath.exp	2020-04-15 11:39:08.220834800 +0300
+@@ -175,7 +175,7 @@
+   } else {
+     setenv DYLD_LIBRARY_PATH "$ld_library_path"
+   }
+-  if { [istarget *-*-cygwin*] || [istarget *-*-mingw*] } {
++  if { [istarget *-*-cygwin*] || [ istarget *-*-msys* ] || [istarget *-*-mingw*] } {
+     if { $orig_path_saved } {
+       setenv PATH "$ld_library_path:$orig_path"
+     } else {
+@@ -271,7 +271,7 @@
+ 
+     if { [ istarget *-*-darwin* ] } {
+ 	set shlib_ext "dylib"
+-    } elseif { [ istarget *-*-cygwin* ] || [ istarget *-*-mingw* ] } {
++    } elseif { [ istarget *-*-cygwin* ] || [ istarget *-*-msys* ] || [ istarget *-*-mingw* ] } {
+ 	set shlib_ext "dll"
+     } elseif { [ istarget hppa*-*-hpux* ] } {
+ 	set shlib_ext "sl"
