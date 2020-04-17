@@ -2,11 +2,11 @@
 
 pkgname=('libxml2' 'libxml2-devel' 'libxml2-python')
 pkgver=2.9.10
-pkgrel=3
+pkgrel=4
 pkgdesc="XML parsing library, version 2"
 arch=(i686 x86_64)
 license=('MIT')
-makedepends=('python2' 'python3' 'icu-devel>=59.1' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel' 'libcrypt-devel')
+makedepends=('python3' 'icu-devel>=59.1' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel' 'libcrypt-devel')
 url="http://www.xmlsoft.org/"
 source=(http://xmlsoft.org/sources/${pkgname}-${pkgver}.tar.gz
         https://www.w3.org/XML/Test/xmlts20130923.tar.gz
@@ -20,9 +20,6 @@ sha256sums=('aafee193ffb8fe0c82d4afef6ef91972cbaf5feea100edc2f262750611b4be1f'
             'bff6790eadec6d7b3affd2d3a7385ce7f80cec2cf4abbd2ed83e9cb297a614a9'
             'fbd5ddb92e3cd0ab0f1f058436ca73b677f12fa00f65d634be7ef791e3706e33'
             '19be37833b77a5c46cf266fdb4b9bcd068e301e4d26583d307ce22688ffb7587')
-
-PYTHON_SITELIB=/usr/lib/python2.7/site-packages
-PYTHON_LIB=/usr/lib/python2.7
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -57,8 +54,6 @@ prepare() {
     libxml2-cygwin-reentrant.patch \
     libxml2-2.9.1-msys2.patch 
 
-  sed -e 's|/usr/bin/python -u|/usr/bin/python2 -u|g' -e 's|/usr/bin/python$|/usr/bin/python2|g' -i python/tests/*.py
-
   autoreconf -fi
 }
 
@@ -75,12 +70,13 @@ build() {
     --enable-ipv6 \
     --with-history \
     --with-icu \
-    --with-python=/usr/bin/python2 \
+    --with-python=/usr/bin/python3 \
     --with-html-dir=/usr/share/doc \
     --with-html-subdir=libxml2/html
   make
   make DESTDIR=${srcdir}/dest install
 
+  PYTHON_SITELIB="$(python -c 'import site, sys; sys.stdout.write(site.getsitepackages()[0])')"
   mv ${srcdir}/dest${PYTHON_SITELIB}/${pkgname/lib/msys-}mod.dll ${srcdir}/dest${PYTHON_SITELIB}/${pkgname}mod.dll
   sed -i -e "s:${pkgname/lib/msys-}mod:${PN}mod:g" ${srcdir}/dest${PYTHON_SITELIB}/${pkgname}mod.la
 }
@@ -109,6 +105,7 @@ package_libxml2-devel() {
   options=('staticlibs')
   depends=("libxml2=${pkgver}" 'icu-devel>=59.1' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel')
 
+  PYTHON_SITELIB="$(python -c 'import site, sys; sys.stdout.write(site.getsitepackages()[0])')"
   mkdir -p ${pkgdir}/usr/{bin,share}
   cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
   cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
@@ -127,6 +124,7 @@ package_libxml2-python(){
   options=('staticlibs')
   install=libxml2-python.install
 
+  PYTHON_SITELIB="$(python -c 'import site, sys; sys.stdout.write(site.getsitepackages()[0])')"
   mkdir -p ${pkgdir}/${PYTHON_SITELIB}
   mkdir -p ${pkgdir}/usr/share/doc
   cp -rf ${srcdir}/dest${PYTHON_SITELIB}/* ${pkgdir}${PYTHON_SITELIB}/
