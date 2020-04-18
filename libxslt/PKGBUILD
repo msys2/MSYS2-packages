@@ -1,13 +1,13 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
-pkgname=('libxslt' 'libxslt-devel' 'libxslt-python')
+pkgname=('libxslt' 'libxslt-devel')
 pkgver=1.1.34
-pkgrel=1
+pkgrel=3
 pkgdesc="XML stylesheet transformation library"
 arch=('i686' 'x86_64')
 url="http://xmlsoft.org/XSLT/"
 license=('custom')
-makedepends=('gcc' 'python2' 'libxml2-devel' 'libgcrypt-devel')
+makedepends=('gcc' 'libxml2-devel' 'libgcrypt-devel')
 checkdepends=('docbook-xml')
 options=('!libtool')
 source=(http://xmlsoft.org/sources/${pkgname}-${pkgver}.tar.gz
@@ -18,9 +18,6 @@ sha256sums=('98b1bd46d6792925ad2dfe9a87452ea2adebf69dcb9919ffd55bf926a7f93f7f'
             '0f17e189adf57b2ff4085049555b91ac4fd0a9b11dc1e8100cfb1e1f7938e877'
             'c02cd8437064db0921c08e63245c403dad12410d2997715aa7aa36600bfaa895'
             'f57629d5f2ce0ab441dc548fa023aee09780eb2940986a44b4423ba253e190bb')
-
-PYTHON_SITELIB=/usr/lib/python2.7/site-packages
-PYTHON_LIB=/usr/lib/python2.7
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
@@ -34,7 +31,8 @@ prepare() {
 
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  sed -e 's|/usr/bin/python -u|/usr/bin/python2 -u|g' -e 's|/usr/bin/python$|/usr/bin/python2|g' -i python/tests/*.py
+
+  export lt_cv_deplibs_check_method='pass_all'
   ./configure --build=${CHOST} --host=${CHOST} --target=${CHOST} \
     --prefix=/usr \
     --sysconfdir=/etc \
@@ -45,16 +43,10 @@ build() {
     --with-debugger \
     --with-html-dir=/usr/share/doc \
     --with-html-subdir=libxslt/html \
-    --with-python=/usr/bin/python2
+    --with-python=no
 
   make
   make DESTDIR=${srcdir}/dest install
-
-#  mv ${srcdir}/dest${PYTHON_SITELIB}/${pkgname/lib/msys-}mod.dll ${srcdir}/dest${PYTHON_SITELIB}/${pkgname}mod.dll
-  sed -i -e "s:${pkgname/lib/msys-}mod:${PN}mod:g" ${srcdir}/dest${PYTHON_SITELIB}/${pkgname}mod.la
-
-#  mv ${srcdir}/dest/usr/share/doc/${pkgname}-python-${pkgver} ${srcdir}/dest/usr/share/doc/python-${pkgname}
-  # rm -f ${srcdir}/dest/usr/lib/python*/site-packages/*.a
 }
 
 check() {
@@ -83,22 +75,7 @@ package_libxslt-devel() {
   cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
   cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
   cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
-  rm -rf ${pkgdir}${PYTHON_SITELIB}
   cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
   cp -rf ${srcdir}/dest/usr/share/doc ${pkgdir}/usr/share/
   rm -rf ${pkgdir}/usr/share/doc/libxslt-python-${pkgver}
-}
-
-package_libxslt-python() {
-  pkgdesc="Libxslt python modules"
-  groups=('python-modules')
-  options=('staticlibs')
-  install=libxslt-python.install
-  depends=("libxslt=${pkgver}" 'python2')
-
-  mkdir -p ${pkgdir}/${PYTHON_SITELIB}
-  mkdir -p ${pkgdir}/usr/share/doc
-  cp -rf ${srcdir}/dest${PYTHON_SITELIB}/* ${pkgdir}${PYTHON_SITELIB}/
-  cp -rf ${srcdir}/dest/usr/share/doc/libxslt-python-${pkgver} ${pkgdir}/usr/share/doc/
-  
 }
