@@ -1,31 +1,53 @@
 # Maintainer: micbou <contact@micbou.com>
 
-pkgname=libqrencode
+pkgbase=libqrencode
+pkgname=('libqrencode' 'libqrencode-devel')
 pkgver=4.0.2
-pkgrel=2
-pkgdesc='QR Code encoding library'
+pkgrel=1
+pkgdesc="QR Code encoding library"
+conflicts=(${pkgbase}-git)
+replaces=(${pkgbase}-git)
 arch=('i686' 'x86_64')
 url='https://fukuchi.org/works/qrencode/'
 license=('LGPL')
-depends=("mingw-w64-${CARCH}-libpng")
+#depends=(libpng")
 makedepends=('autoconf' 'automake' 'libtool' 'pkg-config' 'gcc')
 source=("https://github.com/fukuchi/libqrencode/archive/v${pkgver}.tar.gz")
 sha256sums=('43091fea4752101f0fe61a957310ead10a7cb4b81e170ce61e5baa73a6291ac2')
 
 prepare() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/${pkgbase}-${pkgver}
   ./autogen.sh
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/${pkgbase}-${pkgver}
   ./configure \
-    --prefix=/usr
+    --prefix=/usr \
+    --build=${CHOST}
 
   make LDFLAGS="${LDFLAGS} -no-undefined"
+  make DESTDIR=${srcdir}/dest install
 }
 
-package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make DESTDIR=${pkgdir} install
+package_libqrencode() {
+  groups=('libraries')
+
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+
+  mkdir -p ${pkgdir}/usr/share
+  cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
+  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/COPYING "${pkgdir}/usr/share/licenses/${pkgname}/COPYING"
+}
+
+package_libqrencode-devel() {
+  pkgdesc="libqrencode headers and libraries"
+  groups=('development')
+  options=('staticlibs')
+  depends=(libqrencode=${pkgver})
+
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
 }
