@@ -1,0 +1,103 @@
+From de63ee3bb106cfc54a7155ebc3ba7b656209e8ad Mon Sep 17 00:00:00 2001
+From: Jon Turney <jon.turney@dronecode.org.uk>
+Date: Mon, 6 Jan 2020 18:11:38 +0000
+Subject: [PATCH 6/6] Move thread_local_segv_handler definition
+
+Move thread_local_segv_handler definition, to work around a problem on
+Cygwin/x86_64 with referencing thread_local variables from a different
+TU.
+
+https://gcc.gnu.org/bugzilla/show_bug.cgi?id=64697
+---
+ gdb/cp-support.c | 17 +++++++++++++++++
+ gdb/event-top.c  | 19 +------------------
+ gdb/event-top.h  |  8 +++-----
+ 3 files changed, 21 insertions(+), 23 deletions(-)
+
+diff --git a/gdb/cp-support.c b/gdb/cp-support.c
+index c1d62f1711e..e69012b25d0 100644
+--- a/gdb/cp-support.c
++++ b/gdb/cp-support.c
+@@ -1485,6 +1485,23 @@ static thread_local SIGJMP_BUF *gdb_demangle_jmp_buf;
+ 
+ static std::atomic<bool> gdb_demangle_attempt_core_dump;
+ 
++/* The SIGSEGV handler for this thread, or NULL if there is none.  GDB
++   always installs a global SIGSEGV handler, and then lets threads
++   indicate their interest in handling the signal by setting this
++   thread-local variable.  */
++
++thread_local void (*thread_local_segv_handler) (int);
++
++void
++handle_sigsegv (int sig)
++{
++  install_handle_sigsegv ();
++
++  if (thread_local_segv_handler == nullptr)
++    abort ();			/* ARI: abort */
++  thread_local_segv_handler (sig);
++}
++
+ /* Signal handler for gdb_demangle.  */
+ 
+ static void
+diff --git a/gdb/event-top.c b/gdb/event-top.c
+index 8ac6965f388..9e501ea7152 100644
+--- a/gdb/event-top.c
++++ b/gdb/event-top.c
+@@ -847,15 +847,8 @@ gdb_readline_no_editing_callback (gdb_client_data client_data)
+   ui->input_handler (gdb::unique_xmalloc_ptr<char> (result));
+ }
+ 
+-
+-/* See event-top.h.  */
+-
+-thread_local void (*thread_local_segv_handler) (int);
+-
+-static void handle_sigsegv (int sig);
+-
+ /* Install the SIGSEGV handler.  */
+-static void
++void
+ install_handle_sigsegv ()
+ {
+ #if defined (HAVE_SIGACTION)
+@@ -875,16 +868,6 @@ install_handle_sigsegv ()
+ 
+ /* Handler for SIGSEGV.  */
+ 
+-static void
+-handle_sigsegv (int sig)
+-{
+-  install_handle_sigsegv ();
+-
+-  if (thread_local_segv_handler == nullptr)
+-    abort ();
+-  thread_local_segv_handler (sig);
+-}
+-
+ 
+ 
+ /* The serial event associated with the QUIT flag.  set_quit_flag sets
+diff --git a/gdb/event-top.h b/gdb/event-top.h
+index f858626dd53..f0c9a4f8b0f 100644
+--- a/gdb/event-top.h
++++ b/gdb/event-top.h
+@@ -70,10 +70,8 @@ extern void gdb_rl_callback_handler_install (const char *prompt);
+    currently installed.  */
+ extern void gdb_rl_callback_handler_reinstall (void);
+ 
+-/* The SIGSEGV handler for this thread, or NULL if there is none.  GDB
+-   always installs a global SIGSEGV handler, and then lets threads
+-   indicate their interest in handling the signal by setting this
+-   thread-local variable.  */
+-extern thread_local void (*thread_local_segv_handler) (int);
++void handle_sigsegv (int sig);
++
++void install_handle_sigsegv ();
+ 
+ #endif
+-- 
+2.21.0
+

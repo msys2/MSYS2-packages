@@ -1,17 +1,17 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=gdb
-pkgver=8.2.1
-pkgrel=3
-_gcc_ver=9.1.0
+pkgver=9.1
+pkgrel=1
+_gcc_ver=9.3.0
 pkgdesc="GNU Debugger (MSYS2 version)"
 arch=('i686' 'x86_64')
 license=('GPL3')
 url="https://www.gnu.org/software/gdb/"
 groups=('base-devel')
-depends=("libiconv" "zlib" "expat" "python3" "libexpat" "libreadline")
+depends=("libiconv" "zlib" "expat" "python" "libexpat" "libreadline" "mpfr")
 #checkdepends=('dejagnu' 'bc')
-makedepends=("libiconv-devel" "zlib-devel" "ncurses-devel" "liblzma-devel" "libexpat-devel" "libreadline-devel")
+makedepends=("libiconv-devel" "zlib-devel" "ncurses-devel" "liblzma-devel" "mpfr-devel" "libexpat-devel" "libreadline-devel")
 options=('staticlibs' '!distcc' '!ccache')
 source=("https://ftp.gnu.org/gnu/gdb/gdb-${pkgver}.tar.xz"{,.sig}
         'gdbinit'
@@ -19,22 +19,20 @@ source=("https://ftp.gnu.org/gnu/gdb/gdb-${pkgver}.tar.xz"{,.sig}
         0002-7.8-windows-nat-cygwin.patch
         0003-Better-handling-for-realpath-failures-in-windows_mak.patch
         0004-7.8-symtab-cygwin.patch
-        0005-Remove-a-spurious-target_terminal_ours-from-windows_.patch
-        0006-PR-build-21187-Static-linking-of-libstdc-and-libgcc-.patch
-        0007-Fix-Cygwin-compilation-after-target_ops-C-conversion.patch
-        'gdb-7.11.1-msysize.patch')
+        0005-Enable-CLI-styling-by-default-on-Cygwin.patch
+        0006-Move-thread_local_segv_handler-definition.patch
+        'gdb-9.1-msysize.patch')
 validpgpkeys=('F40ADB902B24264AA42E50BF92EDB04BFF325CF3')
-sha256sums=('0a6a432907a03c5c8eaad3c3cffd50c00a40c3a5e3c4039440624bae703f2202'
+sha256sums=('699e0ec832fdd2f21c8266171ea5bf44024bd05164fdf064e4d10cc4cf0d1737'
             'SKIP'
             '2bbe7eddb1828c394d0ff99777058df79b1a596172603bb0e30d983fc1ea8785'
             '2bdd02d6dc46d1186a3fa4485922d277686ca9ff827dde6b9fa1a90e9345c953'
-            '42051344b0f3103cf4006114a223a2cbe24369145a69a298d4f389ffffddab95'
+            '295fa28ad89e7e8bde2dd846644e3a9dc92485c4b87c6d17244fb02b19e09ccb'
             '91994d62047bb76688a785c9a911f8deda6e7b7aa258aade0a6b29904a9e9b58'
-            '41a5f72e2ac5838d853b906e1611e844e164e05f18bf2be4674a3a47ca41a875'
-            '7540630512c5fec56d330ffd05a8714d3a037080e1ff049eaa3c81aaae597708'
-            'f46337e3b0750f562ad6dbd4ad28860df160e98583b541d609ad9fadaff357c9'
-            '6e257ca1d46e76b87d2166f0cb302685a58ea0aa3a26ccdc3a6a17f730946db9'
-            'bc8ecb4f7cb4213d653cd0d3811a8bfa771d8523f20fac33d7ae89b0361603b5')
+            '6d368418cb7654d7054996b4bc3d7a24ef440028fd1007b204b1429aa7e97b11'
+            '2156ad9e4b0ab528ec7ed4edf36ac2cbb6ef3092c71964edba16560d62a79878'
+            'aac0a21993be88a5414e231ead1a81b318e821869bccb73dd863dc5aab357769'
+            '85d6e7f728f103b6e87ad7fc240ed5e31469bedff7a05e361462b433344b1338')
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
@@ -43,18 +41,19 @@ prepare() {
   patch -p1 -i ${srcdir}/0002-7.8-windows-nat-cygwin.patch
   patch -p1 -i ${srcdir}/0003-Better-handling-for-realpath-failures-in-windows_mak.patch
   patch -p1 -i ${srcdir}/0004-7.8-symtab-cygwin.patch
-  patch -p1 -i ${srcdir}/0005-Remove-a-spurious-target_terminal_ours-from-windows_.patch
-  patch -p1 -i ${srcdir}/0006-PR-build-21187-Static-linking-of-libstdc-and-libgcc-.patch
-  patch -p1 -i ${srcdir}/0007-Fix-Cygwin-compilation-after-target_ops-C-conversion.patch
-  patch -p1 -i ${srcdir}/gdb-7.11.1-msysize.patch
+  patch -p1 -i ${srcdir}/0005-Enable-CLI-styling-by-default-on-Cygwin.patch
+  patch -p1 -i ${srcdir}/0006-Move-thread_local_segv_handler-definition.patch
+  patch -p1 -i ${srcdir}/gdb-9.1-msysize.patch
 
   # hack! - libiberty configure tests for header files using "$CPP $CPPFLAGS"
   sed -i "/ac_cpp=/s/\$CPPFLAGS/\$CPPFLAGS -O2/" libiberty/configure
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  ./configure \
+  [[ -d "${srcdir}/build-${CHOST}" ]] && rm -rf "${srcdir}/build-${CHOST}"
+  mkdir -p "${srcdir}/build-${CHOST}" && pushd "${srcdir}/build-${CHOST}"
+
+  ../${pkgname}-${pkgver}/configure \
     --build=${CHOST} \
     --host=${CHOST} \
     --prefix=/usr \
@@ -68,20 +67,22 @@ build() {
     --without-guile \
     --with-expat \
     --with-lzma \
+    --with-mpfr \
+    --without-libexpat-prefix \
     --with-system-readline \
     --with-libiconv-prefix=/usr \
-    --with-zlib \
+    --with-system-zlib \
     --enable-tui
   make
 }
 
 check() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/build-${CHOST}
   make check
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/build-${CHOST}
   make DESTDIR=${pkgdir} install
 
   # install "custom" system gdbinit
