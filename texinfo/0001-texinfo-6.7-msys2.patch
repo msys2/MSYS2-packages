@@ -1,0 +1,349 @@
+diff -Naur texinfo-6.7-orig/build-aux/ar-lib texinfo-6.7/build-aux/ar-lib
+--- texinfo-6.7-orig/build-aux/ar-lib	2019-08-25 20:11:44.000000000 +0300
++++ texinfo-6.7/build-aux/ar-lib	2020-04-20 18:12:12.414515000 +0300
+@@ -53,7 +53,7 @@
+ 	  MINGW*)
+ 	    file_conv=mingw
+ 	    ;;
+-	  CYGWIN*)
++	  CYGWIN*|MSYS*)
+ 	    file_conv=cygwin
+ 	    ;;
+ 	  *)
+@@ -65,7 +65,7 @@
+ 	mingw)
+ 	  file=`cmd //C echo "$file " | sed -e 's/"\(.*\) " *$/\1/'`
+ 	  ;;
+-	cygwin)
++	cygwin|msys)
+ 	  file=`cygpath -m "$file" || echo "$file"`
+ 	  ;;
+ 	wine)
+diff -Naur texinfo-6.7-orig/build-aux/compile texinfo-6.7/build-aux/compile
+--- texinfo-6.7-orig/build-aux/compile	2019-08-25 20:11:44.000000000 +0300
++++ texinfo-6.7/build-aux/compile	2020-04-20 18:01:17.789553000 +0300
+@@ -53,7 +53,7 @@
+ 	  MINGW*)
+ 	    file_conv=mingw
+ 	    ;;
+-	  CYGWIN*)
++	  CYGWIN* | MSYS*)
+ 	    file_conv=cygwin
+ 	    ;;
+ 	  *)
+@@ -67,7 +67,7 @@
+ 	mingw/*)
+ 	  file=`cmd //C echo "$file " | sed -e 's/"\(.*\) " *$/\1/'`
+ 	  ;;
+-	cygwin/*)
++	cygwin/* | msys/*)
+ 	  file=`cygpath -m "$file" || echo "$file"`
+ 	  ;;
+ 	wine/*)
+diff -Naur texinfo-6.7-orig/build-aux/config.guess texinfo-6.7/build-aux/config.guess
+--- texinfo-6.7-orig/build-aux/config.guess	2019-08-25 20:11:44.000000000 +0300
++++ texinfo-6.7/build-aux/config.guess	2020-04-20 18:01:18.039202100 +0300
+@@ -896,6 +896,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-pc-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-msys
++	exit ;;
+     prep*:SunOS:5.*:*)
+ 	echo powerpcle-unknown-solaris2"`echo "$UNAME_RELEASE"|sed -e 's/[^.]*//'`"
+ 	exit ;;
+diff -Naur texinfo-6.7-orig/build-aux/config.rpath texinfo-6.7/build-aux/config.rpath
+--- texinfo-6.7-orig/build-aux/config.rpath	2019-08-25 20:11:44.000000000 +0300
++++ texinfo-6.7/build-aux/config.rpath	2020-04-20 18:01:18.289526300 +0300
+@@ -57,7 +57,7 @@
+     aix*)
+       wl='-Wl,'
+       ;;
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       ;;
+     hpux9* | hpux10* | hpux11*)
+       wl='-Wl,'
+@@ -149,7 +149,7 @@
+ hardcode_minus_L=no
+ 
+ case "$host_os" in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -198,7 +198,7 @@
+         ld_shlibs=no
+       fi
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+       # no search path for DLLs.
+       hardcode_libdir_flag_spec='-L$libdir'
+@@ -348,7 +348,7 @@
+       ;;
+     bsdi[45]*)
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -533,7 +533,7 @@
+   bsdi[45]*)
+     library_names_spec='$libname$shrext'
+     ;;
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     shrext=.dll
+     library_names_spec='$libname.dll.a $libname.lib'
+     ;;
+diff -Naur texinfo-6.7-orig/gnulib/m4/argz.m4 texinfo-6.7/gnulib/m4/argz.m4
+--- texinfo-6.7-orig/gnulib/m4/argz.m4	2019-08-25 20:11:45.000000000 +0300
++++ texinfo-6.7/gnulib/m4/argz.m4	2020-04-20 18:01:18.509932600 +0300
+@@ -44,7 +44,7 @@
+         [if argz actually works],
+         [lt_cv_sys_argz_works],
+         [[case $host_os in #(
+-         *cygwin*)
++         *cygwin* | *msys*)
+            lt_cv_sys_argz_works=no
+            if test "$cross_compiling" != no; then
+              lt_cv_sys_argz_works="guessing no"
+diff -Naur texinfo-6.7-orig/gnulib/m4/btowc.m4 texinfo-6.7/gnulib/m4/btowc.m4
+--- texinfo-6.7-orig/gnulib/m4/btowc.m4	2019-08-25 20:11:45.000000000 +0300
++++ texinfo-6.7/gnulib/m4/btowc.m4	2020-04-20 18:01:18.732333300 +0300
+@@ -50,6 +50,8 @@
+            case "$host_os" in
+                       # Guess no on Cygwin.
+              cygwin*) gl_cv_func_btowc_nul="guessing no" ;;
++                      # Guess no on MSYS.
++             msys*)   gl_cv_func_btowc_nul="guessing no" ;;
+                       # Guess yes on native Windows.
+              mingw*)  gl_cv_func_btowc_nul="guessing yes" ;;
+                       # Guess yes otherwise.
+diff -Naur texinfo-6.7-orig/gnulib/m4/double-slash-root.m4 texinfo-6.7/gnulib/m4/double-slash-root.m4
+--- texinfo-6.7-orig/gnulib/m4/double-slash-root.m4	2019-08-25 20:11:45.000000000 +0300
++++ texinfo-6.7/gnulib/m4/double-slash-root.m4	2020-04-20 18:01:18.967718900 +0300
+@@ -16,7 +16,7 @@
+         # special semantics and is distinct from /, please report it to
+         # <bug-gnulib@gnu.org>.
+         case $host in
+-          *-cygwin | i370-ibm-openedition)
++          *-cygwin | *-msys | i370-ibm-openedition)
+             gl_cv_double_slash_root=yes ;;
+           *)
+             # Be optimistic and assume that / and // are the same when we
+diff -Naur texinfo-6.7-orig/gnulib/m4/malloc.m4 texinfo-6.7/gnulib/m4/malloc.m4
+--- texinfo-6.7-orig/gnulib/m4/malloc.m4	2019-09-19 17:18:35.000000000 +0300
++++ texinfo-6.7/gnulib/m4/malloc.m4	2020-04-20 18:10:06.815038000 +0300
+@@ -33,7 +33,7 @@
+        [case "$host_os" in
+           # Guess yes on platforms where we know the result.
+           *-gnu* | gnu* | *-musl* | freebsd* | netbsd* | openbsd* \
+-          | hpux* | solaris* | cygwin* | mingw*)
++          | hpux* | solaris* | cygwin* | msys* | mingw*)
+             ac_cv_func_malloc_0_nonnull="guessing yes" ;;
+           # If we don't know, assume the worst.
+           *) ac_cv_func_malloc_0_nonnull="guessing no" ;;
+diff -Naur texinfo-6.7-orig/gnulib/m4/printf.m4 texinfo-6.7/gnulib/m4/printf.m4
+--- texinfo-6.7-orig/gnulib/m4/printf.m4	2019-09-19 17:18:35.000000000 +0300
++++ texinfo-6.7/gnulib/m4/printf.m4	2020-04-20 18:09:17.208335600 +0300
+@@ -795,6 +795,7 @@
+            irix*)           gl_cv_func_printf_directive_ls="guessing no";;
+            solaris*)        gl_cv_func_printf_directive_ls="guessing no";;
+            cygwin*)         gl_cv_func_printf_directive_ls="guessing no";;
++           msys*)           gl_cv_func_printf_directive_ls="guessing no";;
+            beos* | haiku*)  gl_cv_func_printf_directive_ls="guessing no";;
+                             # Guess no on Android.
+            linux*-android*) gl_cv_func_printf_directive_ls="guessing no";;
+@@ -878,7 +879,7 @@
+         [
+ changequote(,)dnl
+          case "$host_os" in
+-           cygwin*)         gl_cv_func_printf_flag_grouping="guessing no";;
++           cygwin* | msys*) gl_cv_func_printf_flag_grouping="guessing no";;
+            netbsd*)         gl_cv_func_printf_flag_grouping="guessing no";;
+                             # Guess no on Android.
+            linux*-android*) gl_cv_func_printf_flag_grouping="guessing no";;
+@@ -1582,6 +1583,8 @@
+            darwin*)              gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
+                                  # Guess yes on Cygwin.
+            cygwin*)              gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
++                                 # Guess yes on MSYS.
++           msys*)                gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
+                                  # Guess yes on Solaris >= 2.6.
+            solaris2.[0-5] | solaris2.[0-5].*)
+                                  gl_cv_func_vsnprintf_zerosize_c99="guessing no";;
+diff -Naur texinfo-6.7-orig/gnulib/m4/threadlib.m4 texinfo-6.7/gnulib/m4/threadlib.m4
+--- texinfo-6.7-orig/gnulib/m4/threadlib.m4	2019-09-19 17:18:35.000000000 +0300
++++ texinfo-6.7/gnulib/m4/threadlib.m4	2020-04-20 18:07:56.984758200 +0300
+@@ -69,7 +69,7 @@
+          dnl Disable multithreading by default on Cygwin 1.5.x, because it has
+          dnl bugs that lead to endless loops or crashes. See
+          dnl <https://cygwin.com/ml/cygwin/2009-08/msg00283.html>.
+-         cygwin*)
++         cygwin* | msys*)
+                case `uname -r` in
+                  1.[0-5].*) gl_use_threads=no ;;
+                  *)         gl_use_threads=yes ;;
+diff -Naur texinfo-6.7-orig/install-info/tests/defs.in texinfo-6.7/install-info/tests/defs.in
+--- texinfo-6.7-orig/install-info/tests/defs.in	2019-08-25 20:11:45.000000000 +0300
++++ texinfo-6.7/install-info/tests/defs.in	2020-04-20 18:01:19.883357200 +0300
+@@ -67,7 +67,7 @@
+ # directories in TEXINPUTS -- except for Cygwin et al., where COMSPEC
+ # might be inherited, but : is used.
+ if test -n "$COMSPEC$ComSpec" \
+-   && uname | $EGREP -iv 'cygwin|mingw|djgpp' >/dev/null; then
++   && uname | $EGREP -iv 'cygwin|msys|mingw|djgpp' >/dev/null; then
+   path_sep=";"
+ else
+   path_sep=":"
+diff -Naur texinfo-6.7-orig/tp/Texinfo/XS/compile texinfo-6.7/tp/Texinfo/XS/compile
+--- texinfo-6.7-orig/tp/Texinfo/XS/compile	2019-09-17 20:20:38.000000000 +0300
++++ texinfo-6.7/tp/Texinfo/XS/compile	2020-04-20 18:01:20.111746700 +0300
+@@ -53,7 +53,7 @@
+ 	  MINGW*)
+ 	    file_conv=mingw
+ 	    ;;
+-	  CYGWIN*)
++	  CYGWIN* | MSYS*)
+ 	    file_conv=cygwin
+ 	    ;;
+ 	  *)
+@@ -67,7 +67,7 @@
+ 	mingw/*)
+ 	  file=`cmd //C echo "$file " | sed -e 's/"\(.*\) " *$/\1/'`
+ 	  ;;
+-	cygwin/*)
++	cygwin/* | msys/*)
+ 	  file=`cygpath -m "$file" || echo "$file"`
+ 	  ;;
+ 	wine/*)
+diff -Naur texinfo-6.7-orig/tp/Texinfo/XS/config.guess texinfo-6.7/tp/Texinfo/XS/config.guess
+--- texinfo-6.7-orig/tp/Texinfo/XS/config.guess	2019-09-17 20:20:38.000000000 +0300
++++ texinfo-6.7/tp/Texinfo/XS/config.guess	2020-04-20 18:07:10.917602100 +0300
+@@ -883,6 +883,9 @@
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-unknown-cygwin
+ 	exit ;;
++    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
++	echo x86_64-unknown-cygwin
++	exit ;;
+     prep*:SunOS:5.*:*)
+ 	echo powerpcle-unknown-solaris2"`echo "$UNAME_RELEASE"|sed -e 's/[^.]*//'`"
+ 	exit ;;
+diff -Naur texinfo-6.7-orig/tp/Texinfo/XS/config.rpath texinfo-6.7/tp/Texinfo/XS/config.rpath
+--- texinfo-6.7-orig/tp/Texinfo/XS/config.rpath	2019-09-19 17:24:29.000000000 +0300
++++ texinfo-6.7/tp/Texinfo/XS/config.rpath	2020-04-20 18:01:20.573497200 +0300
+@@ -57,7 +57,7 @@
+     aix*)
+       wl='-Wl,'
+       ;;
+-    mingw* | cygwin* | pw32* | os2* | cegcc*)
++    mingw* | cygwin* | msys* | pw32* | os2* | cegcc*)
+       ;;
+     hpux9* | hpux10* | hpux11*)
+       wl='-Wl,'
+@@ -149,7 +149,7 @@
+ hardcode_minus_L=no
+ 
+ case "$host_os" in
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     # FIXME: the MSVC++ port hasn't been tested in a loooong time
+     # When not using gcc, we currently assume that we are using
+     # Microsoft Visual C++.
+@@ -198,7 +198,7 @@
+         ld_shlibs=no
+       fi
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+       # no search path for DLLs.
+       hardcode_libdir_flag_spec='-L$libdir'
+@@ -348,7 +348,7 @@
+       ;;
+     bsdi[45]*)
+       ;;
+-    cygwin* | mingw* | pw32* | cegcc*)
++    cygwin* | msys* | mingw* | pw32* | cegcc*)
+       # When not using gcc, we currently assume that we are using
+       # Microsoft Visual C++.
+       # hardcode_libdir_flag_spec is actually meaningless, as there is
+@@ -533,7 +533,7 @@
+   bsdi[45]*)
+     library_names_spec='$libname$shrext'
+     ;;
+-  cygwin* | mingw* | pw32* | cegcc*)
++  cygwin* | msys* | mingw* | pw32* | cegcc*)
+     shrext=.dll
+     library_names_spec='$libname.dll.a $libname.lib'
+     ;;
+diff -Naur texinfo-6.7-orig/tp/Texinfo/XS/configure.ac texinfo-6.7/tp/Texinfo/XS/configure.ac
+--- texinfo-6.7-orig/tp/Texinfo/XS/configure.ac	2019-08-25 20:11:45.000000000 +0300
++++ texinfo-6.7/tp/Texinfo/XS/configure.ac	2020-04-20 18:01:20.794900900 +0300
+@@ -105,7 +105,7 @@
+ # variables.
+ 
+ host_needs_no_undefined=no
+-case "$host" in *-mingw32 | *-mingw64 | *-msdosdjgpp | *-cygwin )
++case "$host" in *-mingw32 | *-mingw64 | *-msdosdjgpp | *-cygwin | *-msys)
+   host_needs_no_undefined=yes ;;
+ esac     
+ AM_CONDITIONAL([HOST_NEEDS_NO_UNDEFINED],
+@@ -135,7 +135,8 @@
+     PERL_CONF_libperl=`echo $PERL_CONF_libperl \
+                | sed -e 's/^lib/-l/' \
+                      -e 's/\..*//' \
+-                     -e 's/^cygperl.*/-lperl/' `
++                     -e 's/^cygperl.*/-lperl/' \
++                     -e 's/^msys-perl.*/-lperl/' `
+     
+     lookup_perl_conf_values([[archlibexp], [privlibexp]])
+     
+diff -Naur texinfo-6.7-orig/tp/Texinfo/XS/gnulib/m4/ltoptions.m4 texinfo-6.7/tp/Texinfo/XS/gnulib/m4/ltoptions.m4
+--- texinfo-6.7-orig/tp/Texinfo/XS/gnulib/m4/ltoptions.m4	2019-09-17 20:20:32.000000000 +0300
++++ texinfo-6.7/tp/Texinfo/XS/gnulib/m4/ltoptions.m4	2020-04-20 18:01:21.243781800 +0300
+@@ -128,7 +128,7 @@
+ [enable_win32_dll=yes
+ 
+ case $host in
+-*-*-cygwin* | *-*-mingw* | *-*-pw32* | *-*-cegcc*)
++*-*-cygwin* | *-*-msys* | *-*-mingw* | *-*-pw32* | *-*-cegcc*)
+   AC_CHECK_TOOL(AS, as, false)
+   AC_CHECK_TOOL(DLLTOOL, dlltool, false)
+   AC_CHECK_TOOL(OBJDUMP, objdump, false)
+diff -Naur texinfo-6.7-orig/tp/Texinfo/XS/gnulib/m4/printf.m4 texinfo-6.7/tp/Texinfo/XS/gnulib/m4/printf.m4
+--- texinfo-6.7-orig/tp/Texinfo/XS/gnulib/m4/printf.m4	2019-09-19 17:24:30.000000000 +0300
++++ texinfo-6.7/tp/Texinfo/XS/gnulib/m4/printf.m4	2020-04-20 18:06:02.872707800 +0300
+@@ -795,6 +795,7 @@
+            irix*)           gl_cv_func_printf_directive_ls="guessing no";;
+            solaris*)        gl_cv_func_printf_directive_ls="guessing no";;
+            cygwin*)         gl_cv_func_printf_directive_ls="guessing no";;
++           msys*)           gl_cv_func_printf_directive_ls="guessing no";;
+            beos* | haiku*)  gl_cv_func_printf_directive_ls="guessing no";;
+                             # Guess no on Android.
+            linux*-android*) gl_cv_func_printf_directive_ls="guessing no";;
+@@ -878,7 +879,7 @@
+         [
+ changequote(,)dnl
+          case "$host_os" in
+-           cygwin*)         gl_cv_func_printf_flag_grouping="guessing no";;
++           cygwin* | msys*) gl_cv_func_printf_flag_grouping="guessing no";;
+            netbsd*)         gl_cv_func_printf_flag_grouping="guessing no";;
+                             # Guess no on Android.
+            linux*-android*) gl_cv_func_printf_flag_grouping="guessing no";;
+@@ -1582,6 +1583,8 @@
+            darwin*)              gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
+                                  # Guess yes on Cygwin.
+            cygwin*)              gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
++                                 # Guess yes on MSYS.
++           msys*)                gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
+                                  # Guess yes on Solaris >= 2.6.
+            solaris2.[0-5] | solaris2.[0-5].*)
+                                  gl_cv_func_vsnprintf_zerosize_c99="guessing no";;
