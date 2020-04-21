@@ -2,7 +2,7 @@
 # Maintainer: Ray Donnelly <mingw.android@gmail.com>
 
 pkgname=git
-pkgver=2.26.1
+pkgver=2.26.2
 pkgrel=1
 pkgdesc="The fast distributed version control system"
 arch=('i686' 'x86_64')
@@ -31,12 +31,12 @@ makedepends=('asciidoc'
              'libcurl-devel'
              'libiconv-devel'
              'pcre2-devel'
-             #'python2'
+             'python'
              'rsync'
              #'texinfo'
              'xmlto')
 optdepends=(#'tk: gitk and git gui'
-            'python2: various helper scripts'
+            'python: various helper scripts'
             'subversion: git svn'
             #'cvsps: git cvsimport'
             )
@@ -51,15 +51,17 @@ source=("${pkgname}-${pkgver}.tar.gz"::https://github.com/git/git/archive/v${pkg
         git-2.3.5-mingw-pwd.patch
         git-2.8.2-Cygwin-Allow-DOS-paths.patch
         git-tcsh-completion-fixes.patch
-        git-zsh-completion-fixes.patch)
-sha256sums=('afb921d44f80953005b4e35c6eb9bc98dd86739f04715080751345475774c194'
+        git-zsh-completion-fixes.patch
+        git-p4-python.patch)
+sha256sums=('21b48d1e7e03d0b325967e31a30f4fa878e4fbb6dac6e997b5dc3f41f950a6d3'
             'c5e735d829e11f79e2d508b663d0924030498f48fc716881031fb975dbf187a5'
             '2c0301076a7b60b5be2491433560f6f87c510ec64d2d8f9db5a75c1295893885'
             '340d289f8a9d82975b34bd635e8c734c0c8529d5ac1ad9bbc8a77ed752502b02'
             'f67412f829e026b677d4c3ceacfb21da0549ad4636fb07c283e52c3fd5aa3e22'
             '905e35e145be34f6affad830155a193d869da4898e46726f36cef2e89c073d23'
             'b28b3e13de08911f027d19a557967fc21128318a8d6ca74b20b26ee997a9b992'
-            '261438a4bedd5563c702533c34792581ccfa46db873ca3e105e6c1ab803a3107')
+            '261438a4bedd5563c702533c34792581ccfa46db873ca3e105e6c1ab803a3107'
+            '0d19345aaeaeb374f8bfc30b823e8f53cb128c56b68c6504bbdd8766c03d1df9')
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
@@ -72,6 +74,7 @@ prepare() {
   patch -p1 -i "${srcdir}"/git-2.8.2-Cygwin-Allow-DOS-paths.patch
   patch -p1 -i "${srcdir}"/git-tcsh-completion-fixes.patch
   patch -p1 -i "${srcdir}"/git-zsh-completion-fixes.patch
+  patch -p1 -i "${srcdir}"/git-p4-python.patch
   
 
   local _arch=
@@ -86,10 +89,11 @@ prepare() {
 }
 
 build() {
-  export PYTHON_PATH='/usr/bin/python2'
+  export PYTHON_PATH='/usr/bin/python'
   cd "${srcdir}/${pkgname}-${pkgver}"
 
-  ./configure --build=${CHOST} \
+  ./configure \
+    --build=${CHOST} \
     --prefix=/usr \
     --sysconfdir=/etc \
     --libexecdir=/usr/lib \
@@ -105,7 +109,7 @@ build() {
 }
 
 check() {
-  export PYTHON_PATH='/usr/bin/python2'
+  export PYTHON_PATH='/usr/bin/python'
   cd "${srcdir}/${pkgname}-${pkgver}"
   local jobs
   jobs=$(expr "$MAKEFLAGS" : '.*\(-j[0-9]*\).*')
@@ -122,7 +126,7 @@ check() {
 }
 
 package() {
-  export PYTHON_PATH='/usr/bin/python2'
+  export PYTHON_PATH='/usr/bin/python'
   cd "${srcdir}/${pkgname}-${pkgver}"
   make INSTALLDIRS=vendor DESTDIR="$pkgdir" install
   make INSTALLDIRS=vendor DESTDIR="${pkgdir}" install-man
@@ -141,12 +145,12 @@ package() {
   # the rest of the contrib stuff
   cp -a ./contrib/* ${pkgdir}/usr/share/git/
 
-  # scripts are for python 2.x
-  sed -i 's|#![ ]*/usr/bin/env python$|#!/usr/bin/env python2|' \
-    $(find "$pkgdir" -name '*.py') \
+  # scripts are for python
+  sed -i 's|#![ ]*/usr/bin/env python$|#!/usr/bin/python|' \
+    $(find "${pkgdir}" -name '*.py') \
     "${pkgdir}"/usr/lib/git-core/git-p4 \
     "${pkgdir}"/usr/share/git/remote-helpers/git-remote-bzr \
     "${pkgdir}"/usr/share/git/remote-helpers/git-remote-hg
-  sed -i 's|#![ ]*/usr/bin/python$|#!/usr/bin/python2|' \
+  sed -i 's|#![ ]*/usr/bin/python$|#!/usr/bin/python|' \
     "${pkgdir}"/usr/share/git/svn-fe/svnrdump_sim.py
 }
