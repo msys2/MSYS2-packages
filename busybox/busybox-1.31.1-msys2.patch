@@ -1,0 +1,747 @@
+diff -Naur busybox-1.31.1-orig/coreutils/date.c busybox-1.31.1/coreutils/date.c
+--- busybox-1.31.1-orig/coreutils/date.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/coreutils/date.c	2020-04-29 20:17:14.678630100 +0300
+@@ -139,7 +139,7 @@
+ 
+ #include "libbb.h"
+ #include "common_bufsiz.h"
+-#if ENABLE_FEATURE_DATE_NANO
++#if ENABLE_FEATURE_DATE_NANO && defined(HAVE_SYS_SYSCALL_H)
+ # include <sys/syscall.h>
+ #endif
+ 
+@@ -272,10 +272,13 @@
+ #endif
+ 	} else {
+ #if ENABLE_FEATURE_DATE_NANO
++# ifdef HAVE_SYS_SYSCALL_H
+ 		/* libc has incredibly messy way of doing this,
+ 		 * typically requiring -lrt. We just skip all this mess */
+ 		syscall(__NR_clock_gettime, CLOCK_REALTIME, &ts);
+-#else
++# else
++		clock_gettime(CLOCK_REALTIME, &ts);
++# endif
+ 		time(&ts.tv_sec);
+ #endif
+ 	}
+diff -Naur busybox-1.31.1-orig/coreutils/du.c busybox-1.31.1/coreutils/du.c
+--- busybox-1.31.1-orig/coreutils/du.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/coreutils/du.c	2020-04-29 20:15:37.413377400 +0300
+@@ -172,6 +172,10 @@
+ 		}
+ 	}
+ 
++	if (DEV_BSIZE > 512) {
++		sum *= DEV_BSIZE / 512;
++	}
++
+ 	if (!(option_mask32 & OPT_l_hardlinks)
+ 	 && statbuf.st_nlink > 1
+ 	) {
+diff -Naur busybox-1.31.1-orig/coreutils/ls.c busybox-1.31.1/coreutils/ls.c
+--- busybox-1.31.1-orig/coreutils/ls.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/coreutils/ls.c	2020-04-29 20:15:37.980872400 +0300
+@@ -742,6 +742,9 @@
+ #endif
+ 	cur->dn_ino    = statbuf.st_ino   ;
+ 	cur->dn_blocks = statbuf.st_blocks;
++	if (DEV_BSIZE > 512) {
++		cur->dn_blocks *= DEV_BSIZE / 512;
++	}
+ 	cur->dn_nlink  = statbuf.st_nlink ;
+ 	cur->dn_uid    = statbuf.st_uid   ;
+ 	cur->dn_gid    = statbuf.st_gid   ;
+diff -Naur busybox-1.31.1-orig/coreutils/stat.c busybox-1.31.1/coreutils/stat.c
+--- busybox-1.31.1-orig/coreutils/stat.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/coreutils/stat.c	2020-04-29 20:15:38.559936200 +0300
+@@ -376,7 +376,7 @@
+ 		printf(pformat, (unsigned long long) statbuf->st_size);
+ 	} else if (m == 'B') {
+ 		strcat(pformat, "lu");
+-		printf(pformat, (unsigned long) 512); //ST_NBLOCKSIZE
++		printf(pformat, (unsigned long) DEV_BSIZE);
+ 	} else if (m == 'b') {
+ 		strcat(pformat, "llu");
+ 		printf(pformat, (unsigned long long) statbuf->st_blocks);
+diff -Naur busybox-1.31.1-orig/include/libbb.h busybox-1.31.1/include/libbb.h
+--- busybox-1.31.1-orig/include/libbb.h	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/include/libbb.h	2020-04-29 20:15:39.688914800 +0300
+@@ -12,6 +12,20 @@
+ 
+ #include "platform.h"
+ 
++#ifdef HAVE_INCOMPATIBLE_ITOA
++/* Hide itoa(int, char *, int) */
++# define itoa do_not_use_itoa
++/* Hide utoa(unsigned, char *, int) */
++# define utoa do_not_use_utoa
++#endif
++#include <stdlib.h>
++#ifdef HAVE_INCOMPATIBLE_ITOA
++# undef itoa
++# undef utoa
++# define itoa bb_itoa
++# define utoa bb_utoa
++#endif
++
+ #include <ctype.h>
+ #include <dirent.h>
+ #include <errno.h>
+@@ -27,9 +41,11 @@
+ # define sigemptyset(s)   __sigemptyset(s)
+ # define sigisemptyset(s) __sigisemptyset(s)
+ #endif
++#ifdef __CYGWIN__
++# define sigisemptyset(s)  (!*(s))
++#endif
+ #include <stdint.h>
+ #include <stdio.h>
+-#include <stdlib.h>
+ #include <stdarg.h>
+ #include <stddef.h>
+ #include <string.h>
+@@ -53,6 +69,13 @@
+ #include <termios.h>
+ #include <time.h>
+ #include <sys/param.h>
++#ifndef DEV_BSIZE
++# ifdef S_BLKSIZE
++#  define DEV_BSIZE S_BLKSIZE
++# else
++#  define DEV_BSIZE 512
++# endif
++#endif
+ #include <pwd.h>
+ #include <grp.h>
+ #if ENABLE_FEATURE_SHADOWPASSWDS
+@@ -79,6 +102,9 @@
+  * of struct sysinfo (only in some toolchanins), which breaks build.
+  * Include sys/sysinfo.h only in those files which need it.
+  */
++#ifdef __CYGWIN__
++#include <sys/sysinfo.h>
++#endif
+ #if ENABLE_SELINUX
+ # include <selinux/selinux.h>
+ # include <selinux/context.h>
+@@ -134,7 +160,7 @@
+ #ifndef _PATH_GSHADOW
+ #define _PATH_GSHADOW "/etc/gshadow"
+ #endif
+-#if defined __FreeBSD__ || defined __OpenBSD__
++#if defined __FreeBSD__ || defined __OpenBSD__ || defined __CYGWIN__
+ # include <netinet/in.h>
+ # include <arpa/inet.h>
+ #elif defined __APPLE__
+diff -Naur busybox-1.31.1-orig/include/platform.h busybox-1.31.1/include/platform.h
+--- busybox-1.31.1-orig/include/platform.h	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/include/platform.h	2020-04-29 20:31:57.357589600 +0300
+@@ -376,7 +390,15 @@
+ #endif
+ 
+ #if defined(__CYGWIN__)
++# define GETADDRINFO_IGNORES_RESOLV_SERVER
++# define HAVE_INCOMPATIBLE_ITOA 1
++# define KERNEL_HZ_EQUAL_SC_CLK_TCK
++# define KEYBOARD_ESC_POLL_TIMEOUT 600  /* Windows console requires longer timeout. */
++# define MAN_FORMATTING_COMMAND "tbl | nroff -Tascii -mandoc 2>&1"
+ # define MAXSYMLINKS SYMLOOP_MAX
++# define NO_ROOT_UID_CHECK
++# define NO_SOCKOPT_IP_MULTICAST_IF
++# define TRACEROUTE_ONE_SOCKET_ONLY
+ #endif
+ 
+ #if defined(ANDROID) || defined(__ANDROID__)
+@@ -394,11 +416,14 @@
+ #define HAVE_CLEARENV 1
+ #define HAVE_FDATASYNC 1
+ #define HAVE_DPRINTF 1
++#define HAVE_IN_PKTINFO_IPI_SPEC_DST 1 /* struct in_pktinfo.ipi_spec_dst */
+ #define HAVE_MEMRCHR 1
+ #define HAVE_MKDTEMP 1
+ #define HAVE_TTYNAME_R 1
+ #define HAVE_PTSNAME_R 1
++#define HAVE_RES_STATE_U_EXT_NSADDRS 1 /* resolv.h: _res._u._ext.nsaddrs */
+ #define HAVE_SETBIT 1
++#define HAVE_SETHOSTNAME 1
+ #define HAVE_SIGHANDLER_T 1
+ #define HAVE_STPCPY 1
+ #define HAVE_MEMPCPY 1
+@@ -407,6 +432,7 @@
+ #define HAVE_STRSEP 1
+ #define HAVE_STRSIGNAL 1
+ #define HAVE_STRVERSCMP 1
++#define HAVE_SYS_SYSCALL_H 1
+ #define HAVE_VASPRINTF 1
+ #define HAVE_USLEEP 1
+ #define HAVE_UNLOCKED_STDIO 1
+@@ -415,6 +441,9 @@
+ #define HAVE_XTABS 1
+ #define HAVE_MNTENT_H 1
+ #define HAVE_NET_ETHERNET_H 1
++#define HAVE_STRUCT_ICMP
++#define HAVE_NETINET_ICMP6_H
++#define HAVE_STRUCT_IPHDR
+ #define HAVE_SYS_STATFS_H 1
+ #define HAVE_PRINTF_PERCENTM 1
+ 
+@@ -450,9 +479,14 @@
+ #if defined(__CYGWIN__)
+ # undef HAVE_CLEARENV
+ # undef HAVE_FDPRINTF
+-# undef HAVE_MEMRCHR
+-# undef HAVE_PTSNAME_R
++# undef HAVE_IN_PKTINFO_IPI_SPEC_DST
++# undef HAVE_SETHOSTNAME
+ # undef HAVE_STRVERSCMP
++# undef HAVE_RES_STATE_U_EXT_NSADDRS
++# undef HAVE_STRUCT_ICMP
++# undef HAVE_NETINET_ICMP6_H
++# undef HAVE_STRUCT_IPHDR
++# undef HAVE_SYS_SYSCALL_H
+ # undef HAVE_UNLOCKED_LINE_OPS
+ #endif
+ 
+diff -Naur busybox-1.31.1-orig/libbb/in_ether.c busybox-1.31.1/libbb/in_ether.c
+--- busybox-1.31.1-orig/libbb/in_ether.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/libbb/in_ether.c	2020-04-29 19:28:33.325849100 +0300
+@@ -10,6 +10,11 @@
+ #include <net/if_arp.h>
+ #include <net/ethernet.h>
+ 
++/* Octets in one Ethernet addr, from <linux/if_ether.h> */
++#ifndef ETH_ALEN
++#define ETH_ALEN     6
++#endif
++
+ /* Convert Ethernet address from "XX[:]XX[:]XX[:]XX[:]XX[:]XX" to sockaddr.
+  * Return nonzero on error.
+  */
+diff -Naur busybox-1.31.1-orig/libbb/read_key.c busybox-1.31.1/libbb/read_key.c
+--- busybox-1.31.1-orig/libbb/read_key.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/libbb/read_key.c	2020-04-29 20:15:41.665639600 +0300
+@@ -9,6 +9,10 @@
+  */
+ #include "libbb.h"
+ 
++#ifndef KEYBOARD_ESC_POLL_TIMEOUT
++# define KEYBOARD_ESC_POLL_TIMEOUT 50
++#endif
++
+ int64_t FAST_FUNC read_key(int fd, char *buffer, int timeout)
+ {
+ 	struct pollfd pfd;
+@@ -170,7 +174,7 @@
+ 				 * so if we block for long it's not really an escape sequence.
+ 				 * Timeout is needed to reconnect escape sequences
+ 				 * split up by transmission over a serial console. */
+-				if (safe_poll(&pfd, 1, 50) == 0) {
++				if (safe_poll(&pfd, 1, KEYBOARD_ESC_POLL_TIMEOUT) == 0) {
+ 					/* No more data!
+ 					 * Array is sorted from shortest to longest,
+ 					 * we can't match anything later in array -
+diff -Naur busybox-1.31.1-orig/libbb/udp_io.c busybox-1.31.1/libbb/udp_io.c
+--- busybox-1.31.1-orig/libbb/udp_io.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/libbb/udp_io.c	2020-04-29 20:15:42.227240900 +0300
+@@ -8,10 +8,20 @@
+  */
+ #include "libbb.h"
+ 
++#ifndef HAVE_IN_PKTINFO_IPI_SPEC_DST
++# undef IP_PKTINFO
++# undef IP6_PKTINFO
++#endif
++
+ #if defined(IPV6_PKTINFO) && !defined(IPV6_RECVPKTINFO)
+ # define IPV6_RECVPKTINFO IPV6_PKTINFO
+ #endif
+ 
++#ifndef HAVE_IN_PKTINFO_IPI_SPEC_DST
++# undef IP_PKTINFO
++# undef IP6_PKTINFO
++#endif
++
+ /*
+  * This asks kernel to let us know dst addr/port of incoming packets
+  * We don't check for errors here. Not supported == won't be used
+diff -Naur busybox-1.31.1-orig/networking/hostname.c busybox-1.31.1/networking/hostname.c
+--- busybox-1.31.1-orig/networking/hostname.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/networking/hostname.c	2020-04-29 20:15:43.648288100 +0300
+@@ -49,6 +49,7 @@
+ 
+ static void do_sethostname(char *s, int isfile)
+ {
++#ifdef HAVE_SETHOSTNAME
+ //	if (!s)
+ //		return;
+ 	if (isfile) {
+@@ -63,6 +64,11 @@
+ //			bb_error_msg_and_die(bb_msg_perm_denied_are_you_root);
+ 		bb_perror_msg_and_die("sethostname");
+ 	}
++#else
++	(void)s; (void)isfile;
++	errno = ENOSYS;
++	bb_perror_msg_and_die("sethostname");
++#endif
+ }
+ 
+ /* Manpage circa 2009:
+diff -Naur busybox-1.31.1-orig/networking/ip_icmp_missing.h busybox-1.31.1/networking/ip_icmp_missing.h
+--- busybox-1.31.1-orig/networking/ip_icmp_missing.h	1970-01-01 03:00:00.000000000 +0300
++++ busybox-1.31.1/networking/ip_icmp_missing.h	2020-04-29 20:15:44.220769300 +0300
+@@ -0,0 +1,162 @@
++/* vi: set sw=4 ts=4: */
++/*
++ * Declarations from <netinet/ip.h>, <netinet/ip_icmp.h>, <netinet/ip_icmp6.h>
++ * missing on some platforms (Bionic, Cygwin)
++ *
++ * Licensed under GPLv2 or later, see file LICENSE in this source tree.
++ */
++
++#ifndef IP_ICMP_MISSING_H
++#define IP_ICMP_MISSING_H
++#ifndef LIBBB_H
++# error libbbb.h must be included first
++#endif
++
++
++// <netinet/ip.h>
++
++#ifndef HAVE_STRUCT_IPHDR
++
++struct iphdr {
++	unsigned ihl:4;
++	unsigned version:4;
++	uint8_t  tos;
++	uint16_t tot_len;
++	uint16_t id;
++	uint16_t frag_off;
++	uint8_t  ttl;
++	uint8_t  protocol;
++	uint16_t check;
++	uint32_t saddr;
++	uint32_t daddr;
++};
++
++#endif // HAVE_STRUCT_IPHDR
++
++#ifndef MAX_IPOPTLEN
++# define MAX_IPOPTLEN   40
++#endif
++
++// <netinet/ip_icmp.h>
++
++#ifndef ICMP_ECHOREPLY     // __CYGWIN__
++# define ICMP_ECHOREPLY       0
++#endif
++#ifndef ICMP_DEST_UNREACH  // __BIONIC__ || __CYGWIN
++# define ICMP_DEST_UNREACH    3
++# define ICMP_SOURCE_QUENCH   4
++# define ICMP_REDIRECT        5
++# define ICMP_ECHO            8
++# define ICMP_TIME_EXCEEDED  11
++# define ICMP_PARAMETERPROB  12
++# define ICMP_TIMESTAMP      13
++# define ICMP_TIMESTAMPREPLY 14
++# define ICMP_INFO_REQUEST   15
++# define ICMP_INFO_REPLY     16
++# define ICMP_ADDRESS        17
++# define ICMP_ADDRESSREPLY   18
++#endif
++
++#ifndef ICMP_MINLEN
++# define ICMP_MINLEN          8
++#endif
++
++#ifndef ICMP_UNREACH
++# define ICMP_UNREACH         3
++# define ICMP_TIMXCEED       11
++
++# define ICMP_UNREACH_NET                0
++# define ICMP_UNREACH_HOST               1
++# define ICMP_UNREACH_PROTOCOL           2
++# define ICMP_UNREACH_PORT               3
++# define ICMP_UNREACH_NEEDFRAG           4
++# define ICMP_UNREACH_SRCFAIL            5
++# define ICMP_UNREACH_NET_UNKNOWN        6
++# define ICMP_UNREACH_HOST_UNKNOWN       7
++# define ICMP_UNREACH_ISOLATED           8
++# define ICMP_UNREACH_NET_PROHIB         9
++# define ICMP_UNREACH_HOST_PROHIB        10
++# define ICMP_UNREACH_TOSNET             11
++# define ICMP_UNREACH_TOSHOST            12
++# define ICMP_UNREACH_FILTER_PROHIB      13
++# define ICMP_UNREACH_HOST_PRECEDENCE    14
++# define ICMP_UNREACH_PRECEDENCE_CUTOFF  15
++
++# define ICMP_TIMXCEED_INTRANS  0
++# define ICMP_TIMXCEED_REASS    1
++#endif
++
++#ifndef HAVE_STRUCT_ICMP
++
++struct icmp {
++	uint8_t  icmp_type;
++	uint8_t  icmp_code;
++	uint16_t icmp_cksum;
++	union {
++		struct ih_idseq {
++			uint16_t icd_id;
++			uint16_t icd_seq;
++		} ih_idseq;
++		struct ih_pmtu {
++			uint16_t ipm_void;
++			uint16_t ipm_nextmtu;
++		} ih_pmtu;
++	} icmp_hun;
++# define icmp_id      icmp_hun.ih_idseq.icd_id
++# define icmp_seq     icmp_hun.ih_idseq.icd_seq
++# define icmp_nextmtu icmp_hun.ih_pmtu.ipm_nextmtu
++	union {
++		uint32_t _unused[3];
++		struct id_ip {
++			struct ip idi_ip;
++		} id_ip;
++		uint8_t id_data[1];
++	} icmp_dun;
++# define icmp_ip   icmp_dun.id_ip.idi_ip
++# define icmp_data icmp_dun.id_data
++};
++
++#endif // HAVE_STRUCT_ICMP
++
++// <netinet/ip_icmp6.h>
++
++#ifndef HAVE_NETINET_ICMP6_H
++
++struct icmp6_hdr {
++	uint8_t  icmp6_type;
++	uint8_t  icmp6_code;
++	uint16_t icmp6_cksum;
++	union {
++		uint32_t icmp6_un_data32[1];
++		uint16_t icmp6_un_data16[2];
++		uint8_t  icmp6_un_data8[4];
++	} icmp6_dataun;
++};
++
++#define icmp6_data16    icmp6_dataun.icmp6_un_data16
++#define icmp6_data8     icmp6_dataun.icmp6_un_data8
++#define icmp6_id        icmp6_data16[0]
++#define icmp6_seq       icmp6_data16[1]
++
++#define ICMP6_DST_UNREACH           1
++#define ICMP6_PACKET_TOO_BIG        2
++#define ICMP6_TIME_EXCEEDED         3
++#define ICMP6_PARAM_PROB            4
++
++#define ICMP6_ECHO_REQUEST        128
++#define ICMP6_ECHO_REPLY          129
++#define MLD_LISTENER_QUERY        130
++#define MLD_LISTENER_REPORT       131
++#define MLD_LISTENER_REDUCTION    132
++
++#define ICMP6_DST_UNREACH_NOROUTE   0
++#define ICMP6_DST_UNREACH_ADMIN     1
++#define ICMP6_DST_UNREACH_ADDR      3
++#define ICMP6_DST_UNREACH_NOPORT    4
++#define ICMP6_TIME_EXCEED_TRANSIT   0
++
++#define ND_REDIRECT               137
++
++#endif // HAVE_NETINET_ICMP6_H
++
++#endif // IP_ICMP_MISSING_H
+diff -Naur busybox-1.31.1-orig/networking/nslookup.c busybox-1.31.1/networking/nslookup.c
+--- busybox-1.31.1-orig/networking/nslookup.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/networking/nslookup.c	2020-04-29 20:15:44.514947800 +0300
+@@ -147,16 +147,27 @@
+ 	char *server;
+ 	struct sockaddr *sa;
+ 
+-#if ENABLE_FEATURE_IPV6
++#if ENABLE_FEATURE_IPV6 && defined(HAVE_RES_STATE_U_EXT_NSADDRS)
+ 	sa = (struct sockaddr*)_res._u._ext.nsaddrs[0];
+ 	if (!sa)
+ #endif
+-		sa = (struct sockaddr*)&_res.nsaddr_list[0];
++		sa = (_res.nscount > 0 ? (struct sockaddr*)&_res.nsaddr_list[0] : NULL);
++
++	if (!sa) {
++		printf("Server: [unknown]\n\n");
++		return;
++	}
++
+ 	server = xmalloc_sockaddr2dotted_noport(sa);
+ 
+ 	print_host(server, "Server:");
+ 	if (ENABLE_FEATURE_CLEAN_UP)
+ 		free(server);
++
++#ifdef GETADDRINFO_IGNORES_RESOLV_SERVER
++	bb_error_msg("warning: this server config is possibly ignored");
++#endif
++
+ 	bb_putchar('\n');
+ }
+ 
+@@ -177,7 +188,7 @@
+ 		/* struct copy */
+ 		_res.nsaddr_list[0] = lsa->u.sin;
+ 	}
+-#if ENABLE_FEATURE_IPV6
++#if ENABLE_FEATURE_IPV6 && defined(HAVE_RES_STATE_U_EXT_NSADDRS)
+ 	/* Hoped libc can cope with IPv4 address there too.
+ 	 * No such luck, glibc 2.4 segfaults even with IPv6,
+ 	 * maybe I misunderstand how to make glibc use IPv6 addr?
+diff -Naur busybox-1.31.1-orig/networking/ping.c busybox-1.31.1/networking/ping.c
+--- busybox-1.31.1-orig/networking/ping.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/networking/ping.c	2020-04-29 20:25:06.178811400 +0300
+@@ -119,25 +119,11 @@
+ //usage:       "round-trip min/avg/max = 20.1/20.1/20.1 ms\n"
+ 
+ #include <net/if.h>
++#include <netinet/ip.h>
+ #include <netinet/ip_icmp.h>
+ #include "libbb.h"
+ #include "common_bufsiz.h"
+-
+-#ifdef __BIONIC__
+-/* should be in netinet/ip_icmp.h */
+-# define ICMP_DEST_UNREACH    3  /* Destination Unreachable  */
+-# define ICMP_SOURCE_QUENCH   4  /* Source Quench    */
+-# define ICMP_REDIRECT        5  /* Redirect (change route)  */
+-# define ICMP_ECHO            8  /* Echo Request      */
+-# define ICMP_TIME_EXCEEDED  11  /* Time Exceeded    */
+-# define ICMP_PARAMETERPROB  12  /* Parameter Problem    */
+-# define ICMP_TIMESTAMP      13  /* Timestamp Request    */
+-# define ICMP_TIMESTAMPREPLY 14  /* Timestamp Reply    */
+-# define ICMP_INFO_REQUEST   15  /* Information Request    */
+-# define ICMP_INFO_REPLY     16  /* Information Reply    */
+-# define ICMP_ADDRESS        17  /* Address Mask Request    */
+-# define ICMP_ADDRESSREPLY   18  /* Address Mask Reply    */
+-#endif
++#include "ip_icmp_missing.h"
+ 
+ /* Some operating systems, like GNU/Hurd, don't define SOL_RAW, but do have
+  * IPPROTO_RAW. Since the IPPROTO definitions are also valid to use for
+@@ -148,6 +134,7 @@
+ #endif
+ 
+ #if ENABLE_PING6
++#ifdef HAVE_NETINET_ICMP6_H
+ # include <netinet/icmp6.h>
+ /* I see RENUMBERED constants in bits/in.h - !!?
+  * What a fuck is going on with libc? Is it a glibc joke? */
+@@ -156,6 +143,7 @@
+ #  define IPV6_HOPLIMIT IPV6_2292HOPLIMIT
+ # endif
+ #endif
++#endif
+ 
+ enum {
+ 	DEFDATALEN = 56,
+@@ -721,9 +709,11 @@
+ 
+ 	pingaddr.sin = lsa->u.sin;
+ 	if (source_lsa) {
++#ifndef NO_SOCKOPT_IP_MULTICAST_IF
+ 		if (setsockopt(pingsock, IPPROTO_IP, IP_MULTICAST_IF,
+ 				&source_lsa->u.sa, source_lsa->len))
+ 			bb_error_msg_and_die("can't set multicast source interface");
++#endif
+ 		xbind(pingsock, &source_lsa->u.sa, source_lsa->len);
+ 	}
+ 
+diff -Naur busybox-1.31.1-orig/networking/traceroute.c busybox-1.31.1/networking/traceroute.c
+--- busybox-1.31.1-orig/networking/traceroute.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/networking/traceroute.c	2020-04-29 20:22:25.481038700 +0300
+@@ -305,7 +305,7 @@
+ #include <netinet/udp.h>
+ #include <netinet/ip.h>
+ #include <netinet/ip_icmp.h>
+-#if ENABLE_FEATURE_IPV6
++#if ENABLE_TRACEROUTE6
+ # include <netinet/ip6.h>
+ # include <netinet/icmp6.h>
+ # ifndef SOL_IPV6
+@@ -317,6 +317,7 @@
+ #endif
+ 
+ #include "libbb.h"
++#include "ip_icmp_missing.h"
+ #include "inet_common.h"
+ 
+ #ifndef IPPROTO_ICMP
+@@ -334,6 +335,11 @@
+ # define SOL_RAW IPPROTO_RAW
+ #endif
+ 
++#ifdef TRACEROUTE_ONE_SOCKET_ONLY
++# if !(ENABLE_FEATURE_TRACEROUTE_USE_ICMP && !ENABLE_TRACEROUTE6)
++#  error (FEATURE_TRACEROUTE_USE_ICMP && !TRACEROUTE6) is required on this platform
++# endif
++#endif
+ 
+ #define OPT_STRING \
+ 	"FIlnrdvxt:i:m:p:q:s:w:z:f:" \
+@@ -364,7 +370,11 @@
+ enum {
+ 	SIZEOF_ICMP_HDR = 8,
+ 	rcvsock = 3, /* receive (icmp) socket file descriptor */
++#ifndef TRACEROUTE_ONE_SOCKET_ONLY
+ 	sndsock = 4, /* send (udp/icmp) socket file descriptor */
++#else
++	sndsock = rcvsock, /* use one (icmp) socket file descriptor */
++#endif
+ };
+ 
+ /* Data section of the probe packet */
+@@ -604,7 +614,6 @@
+ 	 || type == ICMP_ECHOREPLY
+ 	) {
+ 		const struct ip *hip;
+-		const struct udphdr *up;
+ 
+ 		hip = &icp->icmp_ip;
+ 		hlen = hip->ip_hl << 2;
+@@ -627,7 +636,11 @@
+ 			) {
+ 				return (type == ICMP_TIMXCEED ? -1 : code + 1);
+ 			}
+-		} else {
++		}
++#ifndef TRACEROUTE_ONE_SOCKET_ONLY
++		else {
++			const struct udphdr *up;
++
+ 			up = (struct udphdr *)((char *)hip + hlen);
+ 			if (hlen + 12 <= read_len
+ 			 && hip->ip_p == IPPROTO_UDP
+@@ -640,6 +653,7 @@
+ 				return (type == ICMP_TIMXCEED ? -1 : code + 1);
+ 			}
+ 		}
++#endif
+ 	}
+ #if ENABLE_FEATURE_TRACEROUTE_VERBOSE
+ 	if (verbose) {
+@@ -855,6 +869,12 @@
+ 	);
+ 	argv += optind;
+ 
++#ifdef TRACEROUTE_ONE_SOCKET_ONLY
++	if (op & (OPT_USE_ICMP|OPT_PORT))
++		bb_error_msg("warning: -I and -p have no effect (ICMP is always used instead of UDP)");
++	op |= OPT_USE_ICMP;
++	option_mask32 |= OPT_USE_ICMP;
++#endif
+ #if 0 /* IGNORED */
+ 	if (op & OPT_IP_CHKSUM)
+ 		bb_error_msg("warning: ip checksums disabled");
+@@ -869,6 +889,7 @@
+ 		port = xatou16(port_str);
+ 	if (op & OPT_NPROBES)
+ 		nprobes = xatou_range(nprobes_str, 1, INT_MAX);
++#ifndef NO_ROOT_UID_CHECK
+ 	if (op & OPT_SOURCE) {
+ 		/*
+ 		 * set the ip source address of the outbound
+@@ -877,6 +898,7 @@
+ 		if (getuid() != 0)
+ 			bb_error_msg_and_die(bb_msg_you_must_be_root);
+ 	}
++#endif
+ 	if (op & OPT_WAITTIME)
+ 		waittime = xatou_range(waittime_str, 1, 24 * 60 * 60);
+ 	if (op & OPT_PAUSE_MS)
+@@ -939,10 +961,12 @@
+ 	} else
+ #endif
+ 	{
++#ifndef TRACEROUTE_ONE_SOCKET_ONLY
+ 		if (op & OPT_USE_ICMP)
+ 			xmove_fd(xsocket(AF_INET, SOCK_RAW, IPPROTO_ICMP), sndsock);
+ 		else
+ 			xmove_fd(xsocket(AF_INET, SOCK_DGRAM, 0), sndsock);
++#endif
+ 	}
+ 
+ #ifdef SO_SNDBUF
+@@ -1000,10 +1024,12 @@
+ 		len_and_sockaddr *source_lsa = xdotted2sockaddr(source, 0);
+ #endif
+ 		/* Ping4 does this (why?) */
++#ifndef NO_SOCKOPT_IP_MULTICAST_IF
+ 		if (af == AF_INET)
+ 			if (setsockopt(sndsock, IPPROTO_IP, IP_MULTICAST_IF,
+ 					&source_lsa->u.sa, source_lsa->len))
+ 				bb_error_msg_and_die("can't set multicast source interface");
++#endif
+ //TODO: we can query source port we bound to,
+ // and check it in replies... if we care enough
+ 
+diff -Naur busybox-1.31.1-orig/procps/top.c busybox-1.31.1/procps/top.c
+--- busybox-1.31.1-orig/procps/top.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/procps/top.c	2020-04-29 20:15:47.071108500 +0300
+@@ -324,7 +324,7 @@
+ 		 */
+ 		while (1) {
+ 			cpu_jif = xrealloc_vector(cpu_jif, 1, num_cpus);
+-			if (read_cpu_jiffy(fp, &cpu_jif[num_cpus]) <= 4)
++			if (read_cpu_jiffy(fp, &cpu_jif[num_cpus]) < 4)
+ 				break;
+ 			num_cpus++;
+ 		}
+diff -Naur busybox-1.31.1-orig/shell/ash.c busybox-1.31.1/shell/ash.c
+--- busybox-1.31.1-orig/shell/ash.c	2019-10-21 17:54:40.000000000 +0300
++++ busybox-1.31.1/shell/ash.c	2020-04-29 20:18:17.969474000 +0300
+@@ -181,6 +181,9 @@
+ #include <sys/times.h>
+ #include <sys/utsname.h> /* for setting $HOSTNAME */
+ #include "busybox.h" /* for applet_names */
++#ifdef __CYGWIN__
++#include <sys/cygwin.h>
++#endif
+ #if ENABLE_FEATURE_SH_EMBEDDED_SCRIPTS
+ # include "embedded_scripts.h"
+ #else
+@@ -2840,9 +2843,23 @@
+ 	char c;
+ 	struct stat statb;
+ 	int flags;
++#ifdef __CYGWIN__
++	char posixpath[PATH_MAX];
++#endif
+ 
+ 	flags = cdopt();
+ 	dest = *argptr;
++
++#ifdef __CYGWIN__
++	if (dest && *dest && dest[1]) {
++		// Convert X:\SOME\DIR -> /cygdrive/x/SOME/DIR
++		if (cygwin_conv_path(CCP_WIN_A_TO_POSIX | CCP_RELATIVE, dest,
++				posixpath, sizeof(posixpath)) < 0)
++			ash_msg_and_raise_error("can't normalize %s", dest);
++		dest = posixpath;
++	}
++#endif
++
+ 	if (!dest)
+ 		dest = bltinlookup("HOME");
+ 	else if (LONE_DASH(dest)) {
+diff -Naur busybox-1.31.1-orig/shell/shell_common.c busybox-1.31.1/shell/shell_common.c
+--- busybox-1.31.1-orig/shell/shell_common.c	2019-06-10 13:50:53.000000000 +0300
++++ busybox-1.31.1/shell/shell_common.c	2020-04-29 19:28:33.325849100 +0300
+@@ -328,6 +328,9 @@
+ static const struct limits limits_tbl[] = {
+ 	{ RLIMIT_CORE,		9,	"core file size (blocks)" }, // -c
+ 	{ RLIMIT_DATA,		10,	"data seg size (kb)" },      // -d
++#ifndef RLIMIT_NICE
++#define RLIMIT_NICE 13
++#endif
+ 	{ RLIMIT_NICE,		0,	"scheduling priority" },     // -e
+ 	{ RLIMIT_FSIZE,		9,	"file size (blocks)" },      // -f
+ #define LIMIT_F_IDX     3
