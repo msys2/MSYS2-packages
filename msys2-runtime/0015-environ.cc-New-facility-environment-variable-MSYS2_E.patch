@@ -1,7 +1,7 @@
-From 886bfa8b7aa5fd5f9b5807153209ae880144a6de Mon Sep 17 00:00:00 2001
+From 485cb16802426b776bc8bb221ac9c97d179f20d4 Mon Sep 17 00:00:00 2001
 From: Ray Donnelly <mingw.android@gmail.com>
 Date: Sun, 10 Apr 2016 21:47:41 +0100
-Subject: [PATCH 15/16] environ.cc: New facility/environment variable
+Subject: [PATCH 15/N] environ.cc: New facility/environment variable
  MSYS2_ENV_CONV_EXCL
 
 Works very much like MSYS2_ARG_CONV_EXCL. In fact it uses the same
@@ -25,7 +25,7 @@ it to another absolute path, R_HOME, forming an invalid path.
  5 files changed, 49 insertions(+), 21 deletions(-)
 
 diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
-index 508edea2b..d57fcaf9d 100644
+index adc8884..4b03836 100644
 --- a/winsup/cygwin/environ.cc
 +++ b/winsup/cygwin/environ.cc
 @@ -1179,6 +1179,10 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
@@ -45,7 +45,8 @@ index 508edea2b..d57fcaf9d 100644
  #ifdef __MSYS__
 -      /* Don't pass timezone environment to non-msys applications */
 -      if (!keep_posix && ascii_strncasematch(*srcp, "TZ=", 3))
--        {
++      if (!keep_posix)
+         {
 -          const char *v = *srcp + 3;
 -          if (*v == ':')
 -            goto next1;
@@ -53,8 +54,6 @@ index 508edea2b..d57fcaf9d 100644
 -            if (!isalpha(*v) && !isdigit(*v) &&
 -                *v != '-' && *v != '+' && *v != ':')
 -              goto next1;
-+      if (!keep_posix)
-+        {
 +          /* Don't pass timezone environment to non-msys applications */
 +          if (ascii_strncasematch(*srcp, "TZ=", 3))
 +            {
@@ -86,7 +85,7 @@ index 508edea2b..d57fcaf9d 100644
  	    p = cstrdup1(win_arg);
  	    if (win_arg != *srcp)
 diff --git a/winsup/cygwin/miscfuncs.cc b/winsup/cygwin/miscfuncs.cc
-index b5dfffc7d..b1c98f7b3 100644
+index 0bbf497..b011f2d 100644
 --- a/winsup/cygwin/miscfuncs.cc
 +++ b/winsup/cygwin/miscfuncs.cc
 @@ -308,6 +308,27 @@ NT_readline::gets ()
@@ -118,7 +117,7 @@ index b5dfffc7d..b1c98f7b3 100644
  void * __reg1
  __import_address (void *imp)
 diff --git a/winsup/cygwin/miscfuncs.h b/winsup/cygwin/miscfuncs.h
-index b983e6d81..928de89bf 100644
+index d1e519f..fa6cc91 100644
 --- a/winsup/cygwin/miscfuncs.h
 +++ b/winsup/cygwin/miscfuncs.h
 @@ -88,6 +88,8 @@ void backslashify (const char *, char *, bool);
@@ -131,10 +130,10 @@ index b983e6d81..928de89bf 100644
  extern inline void
  transform_chars (PUNICODE_STRING upath, USHORT start_idx)
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index 8d9e6fe11..ad152e461 100644
+index 9eeb011..602882f 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
-@@ -3621,7 +3621,6 @@ arg_heuristic_with_exclusions (char const * const arg, char const * exclusions,
+@@ -3596,7 +3596,6 @@ arg_heuristic_with_exclusions (char const * const arg, char const * exclusions,
      return arg_result;
    }
  
@@ -143,11 +142,11 @@ index 8d9e6fe11..ad152e461 100644
      {
        /* Since we've got regex linked we should maybe switch to that, but
 diff --git a/winsup/cygwin/spawn.cc b/winsup/cygwin/spawn.cc
-index 2e9f20465..de847549d 100644
+index 77b75da..bdf83c0 100644
 --- a/winsup/cygwin/spawn.cc
 +++ b/winsup/cygwin/spawn.cc
-@@ -261,8 +261,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
-   int res = -1;
+@@ -278,8 +278,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+       }
  
    /* Environment variable MSYS2_ARG_CONV_EXCL contains a list
 -     of ';' separated argument prefixes to pass un-modified..
@@ -156,7 +155,7 @@ index 2e9f20465..de847549d 100644
       A value of * means don't convert any arguments. */
    char* msys2_arg_conv_excl_env = getenv("MSYS2_ARG_CONV_EXCL");
    char* msys2_arg_conv_excl = NULL;
-@@ -271,14 +270,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+@@ -288,14 +287,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
      {
        msys2_arg_conv_excl = (char*)alloca (strlen(msys2_arg_conv_excl_env)+1);
        strcpy (msys2_arg_conv_excl, msys2_arg_conv_excl_env);
@@ -173,5 +172,5 @@ index 2e9f20465..de847549d 100644
  
    /* Check if we have been called from exec{lv}p or spawn{lv}p and mask
 -- 
-2.22.0
+2.26.2
 
