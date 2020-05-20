@@ -1,0 +1,61 @@
+From 31583e2b308d80d6514a091e973d7c868a9e7f5f Mon Sep 17 00:00:00 2001
+From: Eli Schwartz <eschwartz@archlinux.org>
+Date: Wed, 19 Jun 2019 17:53:57 -0400
+Subject: [pacman-dev] [PATCH] build: add libintl dependency to meson and the
+ .pc file
+
+In order to use gettext on systems where it is not part of libc, the
+correct linker flags are needed in libalpm.pc (for static compilation).
+This has never been the case.
+
+The new meson build system currently only checks for ngettext in libc,
+but does not fall back to searching for the existence of -lintl; add it
+to the libalpm dependencies.
+
+Signed-off-by: Eli Schwartz <eschwartz@archlinux.org>
+---
+ lib/libalpm/libalpm.pc.in | 2 +-
+ meson.build               | 8 ++++++--
+ 2 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/lib/libalpm/libalpm.pc.in b/lib/libalpm/libalpm.pc.in
+index 126a6e6a..da7f96aa 100644
+--- a/lib/libalpm/libalpm.pc.in
++++ b/lib/libalpm/libalpm.pc.in
+@@ -10,4 +10,4 @@ Version: @LIB_VERSION@
+ Requires.private: libarchive @pc_crypto@ @pc_libcurl@ @pc_gpgme@
+ Cflags: -I${includedir} @LFS_CFLAGS@
+ Libs: -L${libdir} -lalpm
+-Libs.private: @LIBS@ @pc_gpgme_libs@
++Libs.private: @LIBS@ @pc_gpgme_libs@ @LIBINTL@
+diff --git a/meson.build b/meson.build
+index 62d45966..bf2454c7 100644
+--- a/meson.build
++++ b/meson.build
+@@ -77,9 +77,13 @@ conf.set_quoted('CACHEDIR', join_paths(LOCALSTATEDIR, 'cache/pacman/pkg/'))
+ conf.set_quoted('HOOKDIR', join_paths(SYSCONFDIR, 'pacman.d/hooks/'))
+ conf.set_quoted('ROOTDIR', ROOTDIR)
+ 
++libintl = dependency('', required: false)
+ if get_option('i18n')
+   if not cc.has_function('ngettext')
+-    error('ngettext not found but NLS support requested')
++    libintl = cc.find_library('intl', required : false, static: get_option('buildstatic'))
++    if not libintl.found()
++      error('ngettext not found but NLS support requested')
++    endif
+   endif
+   conf.set('ENABLE_NLS', 1)
+ endif
+@@ -303,7 +307,7 @@ libcommon = static_library(
+   include_directories : includes,
+   install : false)
+ 
+-alpm_deps = [crypto_provider, libarchive, libcurl, gpgme]
++alpm_deps = [crypto_provider, libarchive, libcurl, libintl, gpgme]
+ 
+ libalpm_a = static_library(
+   'alpm_objlib',
+-- 
+2.26.2
+

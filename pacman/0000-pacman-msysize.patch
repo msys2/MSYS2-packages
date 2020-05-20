@@ -4,7 +4,7 @@ diff -Naur pacman-5.1.0-orig/configure.ac pacman-5.1.0/configure.ac
 @@ -114,12 +114,6 @@
  		[set the full path to the shell used to run install scriptlets]),
  	[SCRIPTLET_SHELL=$withval], [SCRIPTLET_SHELL=/bin/sh])
- 
+
 -# Help line for ldconfig path
 -AC_ARG_WITH(ldconfig,
 -	AS_HELP_STRING([--with-ldconfig=path],
@@ -21,8 +21,8 @@ diff -Naur pacman-5.1.0-orig/configure.ac pacman-5.1.0/configure.ac
 -# Set ldconfig path
 -AC_SUBST(LDCONFIG)
 -AC_DEFINE_UNQUOTED([LDCONFIG], "$LDCONFIG", [The full path to ldconfig])
- 
- 
+
+
  # Configuration files
 diff -Naur pacman-5.1.0-orig/lib/libalpm/add.c pacman-5.1.0/lib/libalpm/add.c
 --- pacman-5.1.0-orig/lib/libalpm/add.c	2018-05-14 03:02:18.000000000 +0300
@@ -32,13 +32,13 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/add.c pacman-5.1.0/lib/libalpm/add.c
  					entrymode & mask);
  		}
 +#ifndef __MSYS__
- 
+
  #if 0
  		/* Disable this warning until our user management in packages has improved.
 @@ -278,6 +279,7 @@
  		}
  #endif
- 
+
 +#endif
  		_alpm_log(handle, ALPM_LOG_DEBUG, "extract: skipping dir extraction of %s\n",
  				filename);
@@ -54,7 +54,7 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/add.c pacman-5.1.0/lib/libalpm/add.c
 +	int ret = 0;
  	alpm_list_t *targ;
  	alpm_trans_t *trans = handle->trans;
- 
+
 @@ -679,18 +684,22 @@
  			/* something screwed up on the commit, abort the trans */
  			trans->state = STATE_INTERRUPTED;
@@ -65,17 +65,17 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/add.c pacman-5.1.0/lib/libalpm/add.c
 +#endif
  			ret = -1;
  		}
- 
+
  		pkg_current++;
  	}
- 
+
 +#ifndef __MSYS__
  	if(!skip_ldconfig) {
  		/* run ldconfig if it exists */
  		_alpm_ldconfig(handle);
  	}
 +#endif
- 
+
  	return ret;
  }
 diff -Naur pacman-5.1.0-orig/lib/libalpm/alpm.h pacman-5.1.0/lib/libalpm/alpm.h
@@ -94,14 +94,14 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/alpm.h pacman-5.1.0/lib/libalpm/alpm.h
 + */
 +int alpm_pkg_is_core_package(const alpm_pkg_t *pkg);
 +#endif
- 
+
  /** Add a package to the transaction.
   * If the package was loaded by alpm_pkg_load(), it will be freed upon
 diff -Naur pacman-5.1.0-orig/lib/libalpm/package.c pacman-5.1.0/lib/libalpm/package.c
 --- pacman-5.1.0-orig/lib/libalpm/package.c	2018-05-14 03:02:18.000000000 +0300
 +++ pacman-5.1.0/lib/libalpm/package.c	2018-06-21 12:59:13.842497200 +0300
 @@ -805,3 +805,19 @@
- 
+
  	return 0;
  }
 +
@@ -133,17 +133,17 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/remove.c pacman-5.1.0/lib/libalpm/remov
 +#endif
  			ret = -1;
  		}
- 
+
  		targ_count++;
  	}
- 
+
 +#ifndef __MSYS__
  	if(run_ldconfig) {
  		/* run ldconfig if it exists */
  		_alpm_ldconfig(handle);
  	}
 +#endif
- 
+
  	return ret;
  }
 diff -Naur pacman-5.1.0-orig/lib/libalpm/sync.c pacman-5.1.0/lib/libalpm/sync.c
@@ -151,7 +151,7 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/sync.c pacman-5.1.0/lib/libalpm/sync.c
 +++ pacman-5.1.0/lib/libalpm/sync.c	2018-06-21 12:53:58.852056200 +0300
 @@ -200,7 +200,12 @@
  }
- 
+
  /** Search for packages to upgrade and add them to the transaction. */
 +#ifdef __MSYS__
 +static
@@ -165,7 +165,7 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/sync.c pacman-5.1.0/lib/libalpm/sync.c
 @@ -214,6 +219,13 @@
  	for(i = _alpm_db_get_pkgcache(handle->db_local); i; i = i->next) {
  		alpm_pkg_t *lpkg = i->data;
- 
+
 +#ifdef __MSYS__
 +		/* Skip regular packages in core update, and core packages in regular update */
 +		if(core_update != alpm_pkg_is_core_package(lpkg)) {
@@ -179,7 +179,7 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/sync.c pacman-5.1.0/lib/libalpm/sync.c
 @@ -255,6 +267,18 @@
  	return 0;
  }
- 
+
 +#ifdef __MSYS__
 +int SYMEXPORT alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade)
 +{
@@ -201,17 +201,17 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/util.c pacman-5.1.0/lib/libalpm/util.c
 @@ -743,6 +743,7 @@
  	return retval;
  }
- 
+
 +#ifndef __MSYS__
  /** Run ldconfig in a chroot.
   * @param handle the context handle
   * @return 0 on success, 1 on error
 @@ -766,6 +767,7 @@
- 
+
  	return 0;
  }
 +#endif
- 
+
  /** Helper function for comparing strings using the alpm "compare func"
   * signature.
 diff -Naur pacman-5.1.0-orig/lib/libalpm/version.c pacman-5.1.0/lib/libalpm/version.c
@@ -220,7 +220,7 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/version.c pacman-5.1.0/lib/libalpm/vers
 @@ -50,7 +50,11 @@
  	/* se points to version terminator */
  	se = strrchr(s, '-');
- 
+
 +#ifdef __MSYS__
 +	if(*s == '~') {
 +#else
@@ -232,7 +232,7 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/version.c pacman-5.1.0/lib/libalpm/vers
 @@ -250,7 +254,7 @@
  		return 0;
  	}
- 
+
 -	/* Parse both versions into [epoch:]version[-release] triplets. We probably
 +	/* Parse both versions into [epoch:|~]version[-release] triplets. We probably
  	 * don't need epoch and release to support all the same magic, but it is
@@ -248,7 +248,7 @@ diff -Naur pacman-5.1.0-orig/Makefile.am pacman-5.1.0/Makefile.am
 -		--ldconfig $(LDCONFIG) \
  		--bindir $(top_builddir)/src/pacman \
  		--bindir $(top_builddir)/scripts
- 
+
 diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/lint_package/build_references.sh.in pacman-5.1.0/scripts/libmakepkg/lint_package/build_references.sh.in
 --- pacman-5.1.0-orig/scripts/libmakepkg/lint_package/build_references.sh.in	2018-03-18 05:51:17.000000000 +0300
 +++ pacman-5.1.0/scripts/libmakepkg/lint_package/build_references.sh.in	2018-06-21 13:23:05.248501400 +0300
@@ -286,8 +286,8 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 +++ pacman-5.1.0/scripts/libmakepkg/tidy/strip.sh.in	2018-06-21 13:31:44.509228300 +0300
 @@ -31,10 +31,6 @@
  tidy_modify+=('tidy_strip')
- 
- 
+
+
 -build_id() {
 -	LANG=C readelf -n "$1" | sed -n '/Build ID/ { s/.*: //p; q; }'
 -}
@@ -298,7 +298,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 @@ -43,52 +39,54 @@
  strip_file() {
  	local binary=$1; shift
- 
+
 -	if check_option "debug" "y"; then
 -		local bid=$(build_id "$binary")
 -
@@ -344,7 +344,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 -			target="${target/..\/..\/usr\/lib\/}"
 -			target="${target/..\/usr\/}"
 -			ln -s "$target" "$dbgdir/.build-id/${bid:0:2}/${bid:2}"
- 
+
 -			target="../../${binary#./}.debug"
 -			ln -s "$target" "$dbgdir/.build-id/${bid:0:2}/${bid:2}.debug"
 +			# copy source files to debug directory
@@ -384,25 +384,25 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 +					ln "$dbgdir/${binary}.debug" "$dbgdir/${file}.debug"
 +				fi
 +			done < <(find . -type f -perm -u+w -print0 2>/dev/null)
-+			
++
  		fi
 -	fi
 +		;;
 +	esac
- 
+
  	strip $@ "$binary"
  }
 @@ -103,15 +101,84 @@
- 
+
  		if check_option "debug" "y"; then
- 
+
 -			dbgdir="$pkgdirbase/$pkgbase-@DEBUGSUFFIX@/usr/lib/debug"
 +			dbgdir="$pkgdirbase/$pkgbase-@DEBUGSUFFIX@"
  			dbgsrcdir="${DBGSRCDIR:-/usr/src/debug}"
  			dbgsrc="$pkgdirbase/$pkgbase-@DEBUGSUFFIX@$dbgsrcdir"
  			mkdir -p "$dbgdir" "$dbgsrc"
  		fi
- 
+
  		local binary strip_flags
 -		find . -type f -perm -u+w -print0 2>/dev/null | while IFS= read -rd '' binary ; do
 +		# *.so: Apache2 modules, OCaml stublibs, Ruby modules
@@ -446,7 +446,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 +				%PAR\.pm%)  continue ;;
 +				Caml1999X0[0-9][0-9])  continue ;;
 +			esac
-+			
++
 +			# Mono assemblies must not be stripped, but remove .mdb debug symbols,
 +			# and make them non-executable so they're not launched by MS .NET
 +			if LC_ALL=C file -b "${binary}" 2>&1 | grep -q "Mono/\.Net assembly"
@@ -455,7 +455,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 +				rm -f "${binary}.mdb"
 +				continue
 +			fi
-+			
++
 +			# check for .exe from non-automake Makefile which install(1) didn't fix
 +			# strip(1) used to take care of this, but not anymore
 +			case ${CHOST} in
@@ -472,7 +472,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 +				;;
 +			esac
 +			chmod 0755 "${binary}";
-+			
++
  			case "$(file -bi "$binary")" in
 +				*application/x-dosexec*) # Windows executables and dlls
 +					strip_flags="$STRIP_SHARED";;
@@ -576,13 +576,13 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  #   makepkg - make packages compatible for use with pacman
  #   @configure_input@
 @@ -27,7 +27,7 @@
- 
+
  # makepkg uses quite a few external programs during its execution. You
  # need to have at least the following installed for makepkg to function:
 -#   awk, bsdtar (libarchive), bzip2, coreutils, fakeroot, file, find (findutils),
 +#   awk, bsdtar (libarchive), bzip2, coreutils, file, find (findutils),
  #   gettext, gpg, grep, gzip, sed, tput (ncurses), xz
- 
+
  # gettext initialization
 @@ -60,7 +60,6 @@
  GENINTEG=0
@@ -595,7 +595,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 @@ -106,10 +105,9 @@
  trap_exit() {
  	local signal=$1; shift
- 
+
 -	if (( ! INFAKEROOT )); then
 -		echo
 -		error "$@"
@@ -604,12 +604,12 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 +	error "$@"
 +
  	[[ -n $srclinks ]] && rm -rf "$srclinks"
- 
+
  	# unset the trap for this signal, and then call the default handler
 @@ -124,11 +122,6 @@
  clean_up() {
  	local EXIT_CODE=$?
- 
+
 -	if (( INFAKEROOT )); then
 -		# Don't clean up when leaving fakeroot, we're not done yet.
 -		return 0
@@ -619,7 +619,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  		rm "$logpipe"
  	fi
 @@ -138,7 +131,7 @@
- 
+
  		# If it's a clean exit and -c/--clean has been passed...
  		msg "$(gettext "Cleaning up...")"
 -		rm -rf "$pkgdirbase" "$srcdir"
@@ -630,7 +630,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 @@ -180,11 +173,6 @@
  	fi
  }
- 
+
 -enter_fakeroot() {
 -	msg "$(gettext "Entering %s environment...")" "fakeroot"
 -	fakeroot -- bash -$- "${BASH_SOURCE[0]}" -F "${ARGLIST[@]}" || exit $?
@@ -652,16 +652,16 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  		while [[ -f $lockfile ]]; do
  			local timer=0
 @@ -432,7 +415,7 @@
- 
+
  		$pkgfunc &>"$logpipe"
- 
+
 -		wait -f $teepid
 +		wait $teepid
  		rm "$logpipe"
  	else
  		"$pkgfunc"
 @@ -460,7 +443,7 @@
- 
+
  	sodepends=0
  	for d in "${depends[@]}"; do
 -		if [[ $d = *.so ]]; then
@@ -672,11 +672,11 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 @@ -471,28 +454,33 @@
  		return 0
  	fi
- 
+
 -	local libdeps filename soarch sofile soname soversion
 +	local libdeps filename soarch sofile soname
  	declare -A libdeps
- 
+
  	while IFS= read -rd '' filename; do
 -		# get architecture of the file; if soarch is empty it's not an ELF binary
 -		soarch=$(LC_ALL=C readelf -h "$filename" 2>/dev/null | sed -n 's/.*Class.*ELF\(32\|64\)/\1/p')
@@ -691,7 +691,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 +				soarch=x86_64
 +			;;
 +		esac
- 
+
  		# process all libraries needed by the binary
 -		for sofile in $(LC_ALL=C readelf -d "$filename" 2>/dev/null | sed -nr 's/.*Shared library: \[(.*)\].*/\1/p')
 +		for sofile in $(LC_ALL=C objdump -x "$filename" 2>/dev/null | sed -nr 's/.*DLL Name: (.*).*/\1/p')
@@ -701,7 +701,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 -			# extract the major version: 1
 -			soversion="${sofile##*\.so\.}"
 +			soname=${sofile}
- 
+
  			if [[ ${libdeps[$soname]} ]]; then
 -				if [[ ${libdeps[$soname]} != *${soversion}-${soarch}* ]]; then
 -					libdeps[$soname]+=" ${soversion}-${soarch}"
@@ -772,23 +772,23 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  					libprovides+=("$p")
 @@ -589,7 +568,6 @@
  	merge_arch_attrs
- 
+
  	printf "# Generated by makepkg %s\n" "$makepkg_version"
 -	printf "# using %s\n" "$(fakeroot -v)"
- 
+
  	write_kv_pair "pkgname" "$pkgname"
  	write_kv_pair "pkgbase" "$pkgbase"
 @@ -739,7 +717,7 @@
  	local pkgdir="$pkgdirbase/$pkgbase-@DEBUGSUFFIX@"
- 
+
  	# check if we have any debug symbols to package
 -	if dir_is_empty "$pkgdir/usr/lib/debug"; then
 +	if dir_is_empty "$pkgdir"; then
  		return 0
  	fi
- 
+
 @@ -924,6 +902,11 @@
- 
+
  run_single_packaging() {
  	local pkgdir="$pkgdirbase/$pkgname"
 +		# clean existing pkg directory
@@ -808,9 +808,9 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 +		/usr/bin/gettext "$@"
 +	}
  fi
- 
+
  ARGLIST=("$@")
- 
+
  # Parse Command Line Options.
 -OPT_SHORT="AcCdefFghiLmop:rRsSV"
 +OPT_SHORT="AcCdefghiLmop:rRsSV"
@@ -828,7 +828,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 @@ -1171,19 +1157,6 @@
  	exit $E_FS_PERMISSIONS
  fi
- 
+
 -if (( ! INFAKEROOT )); then
 -	if (( EUID == 0 )); then
 -		error "$(gettext "Running %s as root is not allowed as it can cause permanent,\n\
@@ -848,7 +848,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 @@ -1304,29 +1277,6 @@
  	check_build_status
  fi
- 
+
 -# Run the bare minimum in fakeroot
 -if (( INFAKEROOT )); then
 -	if (( SOURCEONLY )); then
@@ -873,21 +873,21 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 -fi
 -
  msg "$(gettext "Making package: %s")" "$pkgbase $basever ($(date +%c))"
- 
+
  # if we are creating a source-only package, go no further
 @@ -1350,7 +1300,7 @@
  	check_source_integrity all
  	cd_safe "$startdir"
- 
+
 -	enter_fakeroot
 +	create_srcpackage
- 
+
  	if [[ $SIGNPKG = 'y' ]]; then
  		msg "$(gettext "Signing package...")"
 @@ -1400,6 +1350,9 @@
  chmod a-s "$srcdir"
  cd_safe "$srcdir"
- 
+
 +export MINGW_CHOST MINGW_PREFIX MINGW_PACKAGE_PREFIX
 +export DXSDK_DIR ACLOCAL_PATH PKG_CONFIG_PATH
 +
@@ -897,7 +897,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 @@ -1452,17 +1405,25 @@
  		cd_safe "$startdir"
  	fi
- 
+
 -	enter_fakeroot
 +	# if inhibiting archive creation, go no further
 +	if (( NOARCHIVE )); then
@@ -914,10 +914,10 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 +	fi
 +
 +	create_debug_package
- 
+
  	create_package_signatures || exit $E_PRETTY_BAD_PRIVACY
  fi
- 
+
 -# if inhibiting archive creation, go no further
 -if (( NOARCHIVE )); then
 -	msg "$(gettext "Package directory is ready.")"
@@ -925,7 +925,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
 -fi
 -
  msg "$(gettext "Finished making: %s")" "$pkgbase $basever ($(date +%c))"
- 
+
  install_package && exit $E_OK || exit $E_INSTALL_FAILED
 diff -Naur pacman-5.1.0-orig/scripts/pacman-db-upgrade.sh.in pacman-5.1.0/scripts/pacman-db-upgrade.sh.in
 --- pacman-5.1.0-orig/scripts/pacman-db-upgrade.sh.in	2018-05-14 03:02:18.000000000 +0300
@@ -938,7 +938,7 @@ diff -Naur pacman-5.1.0-orig/scripts/pacman-db-upgrade.sh.in pacman-5.1.0/script
  #   @configure_input@
 @@ -79,9 +79,13 @@
  # PROGRAM START
- 
+
  # determine whether we have gettext; make it a no-op if we do not
 -if ! type gettext &>/dev/null; then
 +if ! type -p gettext >/dev/null; then
@@ -951,9 +951,9 @@ diff -Naur pacman-5.1.0-orig/scripts/pacman-db-upgrade.sh.in pacman-5.1.0/script
 +		/usr/bin/gettext "$@"
  	}
  fi
- 
+
 @@ -133,7 +137,7 @@
- 
+
  # make sure pacman isn't running
  if [[ -f $lockfile ]]; then
 -	die "$(gettext "Pacman lock file was found. Cannot run while pacman is running.")"
@@ -975,13 +975,13 @@ diff -Naur pacman-5.1.0-orig/scripts/pacman-key.sh.in pacman-5.1.0/scripts/pacma
  source "$LIBRARY"/util/message.sh
  source "$LIBRARY"/util/parseopts.sh
 +source "$LIBRARY"/utils_fixed_path.sh
- 
+
  # Options
  ADD=0
 @@ -231,7 +233,7 @@
  		exit 1
  	fi
- 
+
 -	if (( (EXPORT || FINGER || LIST || VERIFY) && EUID != 0 )); then
 +	if (( EXPORT || FINGER || LIST || VERIFY )); then
  		if ! grep -q "^[[:space:]]*lock-never[[:space:]]*$" ${PACMAN_KEYRING_DIR}/gpg.conf &>/dev/null; then
@@ -999,7 +999,7 @@ diff -Naur pacman-5.1.0-orig/scripts/pacman-key.sh.in pacman-5.1.0/scripts/pacma
 @@ -508,10 +510,14 @@
  	fi
  }
- 
+
 -# PROGRAM START
 -if ! type gettext &>/dev/null; then
 +# determine whether we have gettext; make it a no-op if we do not
@@ -1013,11 +1013,11 @@ diff -Naur pacman-5.1.0-orig/scripts/pacman-key.sh.in pacman-5.1.0/scripts/pacma
 +		/usr/bin/gettext "$@"
  	}
  fi
- 
+
 @@ -569,11 +575,6 @@
  	exit 1
  fi
- 
+
 -if (( (ADD || DELETE || EDITKEY || IMPORT || IMPORT_TRUSTDB || INIT || LSIGNKEY || POPULATE || RECEIVE || REFRESH || UPDATEDB) && EUID != 0 )); then
 -	error "$(gettext "%s needs to be run as root for this operation.")" "pacman-key"
 -	exit 1
@@ -1036,16 +1036,16 @@ diff -Naur pacman-5.1.0-orig/scripts/repo-add.sh.in pacman-5.1.0/scripts/repo-ad
  #   repo-add - add a package to a given repo database file
  #   repo-remove - remove a package entry from a given repo database file
 @@ -46,6 +46,7 @@
- 
+
  # Import libmakepkg
  source "$LIBRARY"/util/message.sh
 +source "$LIBRARY"/utils_fixed_path.sh
- 
+
  # ensure we have a sane umask set
  umask 0022
 @@ -707,9 +708,13 @@
  # PROGRAM START
- 
+
  # determine whether we have gettext; make it a no-op if we do not
 -if ! type gettext &>/dev/null; then
 +if ! type -p gettext &>/dev/null; then
@@ -1058,7 +1058,7 @@ diff -Naur pacman-5.1.0-orig/scripts/repo-add.sh.in pacman-5.1.0/scripts/repo-ad
 +		/usr/bin/gettext "$@"
  	}
  fi
- 
+
 diff -Naur pacman-5.1.0-orig/scripts/wrapper.sh.in pacman-5.1.0/scripts/wrapper.sh.in
 --- pacman-5.1.0-orig/scripts/wrapper.sh.in	2018-03-18 05:51:17.000000000 +0300
 +++ pacman-5.1.0/scripts/wrapper.sh.in	2018-06-21 13:33:09.509347300 +0300
@@ -1091,7 +1091,7 @@ diff -Naur pacman-5.1.0-orig/src/pacman/check.c pacman-5.1.0/src/pacman/check.c
 @@ -75,6 +75,7 @@
  	int errors = 0;
  	mode_t fsmode;
- 
+
 +#ifndef __MSYS__
  	/* uid */
  	if(st->st_uid != archive_entry_uid(entry)) {
@@ -1101,7 +1101,7 @@ diff -Naur pacman-5.1.0-orig/src/pacman/check.c pacman-5.1.0/src/pacman/check.c
  		}
  	}
 +#endif
- 
+
  	/* mode */
  	fsmode = st->st_mode & (S_ISUID | S_ISGID | S_ISVTX | S_IRWXU | S_IRWXG | S_IRWXO);
 diff -Naur pacman-5.1.0-orig/src/pacman/pacman.c pacman-5.1.0/src/pacman/pacman.c
@@ -1114,13 +1114,13 @@ diff -Naur pacman-5.1.0-orig/src/pacman/pacman.c pacman-5.1.0/src/pacman/pacman.
 +#ifndef __MSYS__
  	uid_t myuid = getuid();
 +#endif
- 
+
  	install_segv_handler();
- 
+
 @@ -1162,11 +1164,13 @@
  		cleanup(ret);
  	}
- 
+
 +#ifndef __MSYS__
  	/* check if we have sufficient permission for the requested operation */
  	if(myuid > 0 && needs_root()) {
@@ -1128,7 +1128,7 @@ diff -Naur pacman-5.1.0-orig/src/pacman/pacman.c pacman-5.1.0/src/pacman/pacman.
  		cleanup(EXIT_FAILURE);
  	}
 +#endif
- 
+
  	if(config->sysroot && (chroot(config->sysroot) != 0 || chdir("/") != 0)) {
  		pm_printf(ALPM_LOG_ERROR,
 diff -Naur pacman-5.1.0-orig/src/pacman/sighandler.c pacman-5.1.0/src/pacman/sighandler.c
@@ -1137,13 +1137,13 @@ diff -Naur pacman-5.1.0-orig/src/pacman/sighandler.c pacman-5.1.0/src/pacman/sig
 @@ -21,6 +21,10 @@
  #include <signal.h>
  #include <unistd.h>
- 
+
 +#ifdef __MSYS__
 +#include <termios.h>
 +#endif
 +
  #include <alpm.h>
- 
+
  #include "conf.h"
 @@ -44,6 +48,9 @@
   */
@@ -1175,7 +1175,7 @@ diff -Naur pacman-5.1.0-orig/src/pacman/sync.c pacman-5.1.0/src/pacman/sync.c
 @@ -28,6 +28,12 @@
  #include <sys/stat.h>
  #include <fnmatch.h>
- 
+
 +#ifdef __MSYS__
 +#include <termios.h>
 +#include <handle.h>
@@ -1184,11 +1184,11 @@ diff -Naur pacman-5.1.0-orig/src/pacman/sync.c pacman-5.1.0/src/pacman/sync.c
 +
  #include <alpm.h>
  #include <alpm_list.h>
- 
+
 @@ -671,8 +677,75 @@
  	return ret;
  }
- 
+
 +#ifdef __MSYS__
 +static int wait_indefinitely(void)
 +{
@@ -1260,10 +1260,10 @@ diff -Naur pacman-5.1.0-orig/src/pacman/sync.c pacman-5.1.0/src/pacman/sync.c
 +#endif
  	int retval = 0;
  	alpm_list_t *i;
- 
+
 @@ -695,6 +767,14 @@
  	}
- 
+
  	if(config->op_s_upgrade) {
 +#ifdef __MSYS__
 +		if(retval = core_update(&found_core_updates)) {
@@ -1339,12 +1339,12 @@ diff -Naur pacman-5.1.0-orig/test/pacman/pmtest.py pacman-5.1.0/test/pacman/pmte
 -            os.path.join(ldconfigdir, ldconfig))
 -        ld_so_conf = open(os.path.join(etcdir, "ld.so.conf"), "w")
 -        ld_so_conf.close()
- 
+
          # Configuration file
          vprint("    Creating configuration file")
 @@ -228,19 +222,6 @@
          vprint("\tpacman %s" % self.args)
- 
+
          cmd = []
 -        if os.geteuid() != 0:
 -            fakeroot = util.which("fakeroot")
@@ -1362,7 +1362,7 @@ diff -Naur pacman-5.1.0-orig/test/pacman/pmtest.py pacman-5.1.0/test/pacman/pmte
          if pacman["gdb"]:
              cmd.extend(["libtool", "execute", "gdb", "--args"])
          if pacman["valgrind"]:
-@@ -281,8 +262,9 @@
+@@ -281,8 +262,10 @@
          # Change to the tmp dir before running pacman, so that local package
          # archives are made available more easily.
          time_start = time.time()
@@ -1370,10 +1370,11 @@ diff -Naur pacman-5.1.0-orig/test/pacman/pmtest.py pacman-5.1.0/test/pacman/pmte
 -                cwd=os.path.join(self.root, util.TMPDIR), env={'LC_ALL': 'C'})
 +        self.retcode = subprocess.call(cmd,
 +                cwd=os.path.join(self.root, util.TMPDIR),
-+                env={'LC_ALL': 'C', 'PATH': os.environ['PATH']})
++                env={'LC_ALL': 'C', 'PATH': os.environ['PATH']},
++                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
          time_end = time.time()
          vprint("\ttime elapsed: %.2fs" % (time_end - time_start))
- 
+
 diff -Naur pacman-5.1.0-orig/test/pacman/tests/ldconfig001.py pacman-5.1.0/test/pacman/tests/ldconfig001.py
 --- pacman-5.1.0-orig/test/pacman/tests/ldconfig001.py	2017-12-13 13:47:39.000000000 +0300
 +++ pacman-5.1.0/test/pacman/tests/ldconfig001.py	1970-01-01 03:00:00.000000000 +0300
