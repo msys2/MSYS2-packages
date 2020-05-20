@@ -1,0 +1,54 @@
+From 22ba7ac08035c470a3927fa53805bcdcdfe5fc21 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 19 May 2020 13:24:55 +0200
+Subject: [PATCH 22/N] Default to `disable_pcon`
+
+The pseudo console support is just a bit too buggy still:
+
+- When typing anything in an interactive Bash session before the prompt
+  is shown, frequently the keystrokes are then replayed _twice_ when the
+  prompt is active.
+
+  Even worse: it seems that under certain circumstances (e.g. when
+  spawning `less.exe` from a MINGW process), keystrokes are recorded
+  while a process is active that wants to consume them but those
+  recorded keystrokes are then replayed once the process finished (e.g.
+  the `q` keystroke to exit `less.exe` will then be misinterpreted for
+  interactive input in the Bash session).
+
+- When `vim` is called from a MINGW process, it seems that the terminal
+  loses the `onlcr` property after the `vim` process finished, i.e.
+  subsequently printed lines do not start at the beginning of the line
+  anymore, but precisely where the previous line ended.
+
+- In `vim`, when selecting text visually (via the `v` keystroke), it
+  seems that the selection is frequently reset while navigating with the
+  arrow keys.
+
+There are probably quite a few more rough edges in the pseudo console
+feature, unfortunately.
+
+In light of these issues, it makes most sense to disable the pseudo
+console support and make it opt-in rather than opt-out.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/globals.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/globals.cc b/winsup/cygwin/globals.cc
+index 942bd1c..da82320 100644
+--- a/winsup/cygwin/globals.cc
++++ b/winsup/cygwin/globals.cc
+@@ -70,7 +70,7 @@ bool pipe_byte;
+ bool reset_com;
+ bool wincmdln;
+ winsym_t allow_winsymlinks = WSYM_sysfile;
+-bool disable_pcon;
++bool disable_pcon = true;
+ 
+ bool NO_COPY in_forkee;
+ 
+-- 
+2.26.2
+
