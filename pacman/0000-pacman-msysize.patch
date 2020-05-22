@@ -1195,65 +1195,65 @@ diff -Naur pacman-5.1.0-orig/src/pacman/sync.c pacman-5.1.0/src/pacman/sync.c
 +static int kill_all_other_msys_processes() {
 +	DIR *dir;
 +	struct dirent *ent;
-+	char kill_command[PATH_MAX];
-+	char self_winpid[PATH_MAX];
++	char self_winpid[50];
 +	int found_one = 0;
 +	FILE *self = NULL;
-+	char** args = NULL;
++	size_t proc_entries = 0;
++	char **args = NULL;
++	size_t pos = 0;
 +
 +	self = fopen("/proc/self/winpid", "r");
 +	if (self == NULL)
 +		return -1;
-+	safe_fgets(self_winpid, sizeof(self_winpid), self);
-+	strtrim(self_winpid);
++	fscanf(self, "%s", self_winpid);
 +	fclose(self);
 +
-+	strcpy(kill_command, "taskkill /f");
-+
-+	dir = opendir ("/proc");
-+	if (dir != NULL) {
-+		while (ent = readdir (dir)) {
-+			FILE *fp = NULL;
-+			char winpid[PATH_MAX];
-+
-+			strcpy(winpid, "/proc/");
-+			strcat(winpid, ent->d_name);
-+			strcat(winpid, "/winpid");
-+
-+			fp = fopen(winpid, "r");
-+			if (fp != NULL) {
-+				char winpid[PATH_MAX];
-+
-+				safe_fgets(winpid, sizeof(winpid), fp);
-+				strtrim(winpid);
-+				if (strcmp(winpid, self_winpid) != 0) {
-+					strcat(kill_command, " /pid ");
-+					strcat(kill_command, winpid);
-+					found_one = 1;
-+				}
-+
-+				fclose(fp);
-+			}
-+		}
-+
-+		closedir (dir);
-+	} else {
++	dir = opendir("/proc");
++	if (dir == NULL)
 +		return -1;
++
++	while (ent = readdir(dir))
++		proc_entries++;
++	seekdir(dir, 0);
++
++	args = alloca(sizeof(char *) * (2 + (proc_entries * 2) + 1));
++	args[pos++] = "taskkill";
++	args[pos++] = "/F";
++
++	while (ent = readdir (dir)) {
++		FILE *fp = NULL;
++		char winpid_path[PATH_MAX];
++
++		strcpy(winpid_path, "/proc/");
++		strcat(winpid_path, ent->d_name);
++		strcat(winpid_path, "/winpid");
++
++		fp = fopen(winpid_path, "r");
++		if (fp != NULL) {
++			char winpid[50];
++			fscanf(fp, "%s", winpid);
++
++			if (strcmp(winpid, self_winpid) != 0) {
++				args[pos++] = "/pid";
++				char *pidarg = alloca(strlen(winpid) + 1);
++				strcpy(pidarg, winpid);
++				args[pos++] = pidarg;
++				found_one = 1;
++			}
++
++			fclose(fp);
++		}
 +	}
++	args[pos] = NULL;
++	closedir(dir);
 +
 +	if (!found_one)
 +		return 0;
 +
-+	args = wordsplit(kill_command);
-+	if (args == NULL)
-+		return -1;
-+
 +	setenv("MSYS2_ARG_CONV_EXCL", "*", 1);
 +	if (execvp(args[0], args + 1) == -1) {
-+		wordsplit_free(args);
 +		return -1;
 +	}
-+	wordsplit_free(args);
 +
 +	return 0;
 +}
