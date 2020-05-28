@@ -163,7 +163,7 @@ create_build_references() {
 create_pacman_repository() {
     local name="${1}"
     _download_previous "${name}".{db,files}{,.tar.xz}
-    repo-add "${name}.db.tar.xz" *.pkg.tar.xz
+    repo-add "${name}.db.tar.xz" *.pkg.tar.*
 }
 
 # Deployment is enabled
