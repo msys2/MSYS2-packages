@@ -1,0 +1,48 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=ExtUtils-Helpers
+pkgname=perl-${_realname}
+pkgver=0.026
+pkgrel=1
+pkgdesc="ExtUtils::Helpers - Various portability utilities for module builders"
+arch=('any')
+url="https://metacpan.org/${_realname}/"
+groups=('perl-modules')
+license=('PerlArtistic' 'GPL')
+depends=('perl')
+options=('!emptydirs')
+source=("https://www.cpan.org/authors/id/L/LE/LEONT/${_realname}-${pkgver}.tar.gz"
+        01-msysize.patch)
+sha256sums=('de901b6790a4557cf4ec908149e035783b125bf115eb9640feb1bc1c24c33416'
+            '23a3bbda628f0a767120d96726a22b9afbd3eeb27ac1f34a4b71095bea22d635')
+
+prepare() {
+  cd "${srcdir}/${_realname}-${pkgver}"
+  patch -p1 -i ${srcdir}/01-msysize.patch
+}
+
+build() {
+  ( export PERL_MM_USE_DEFAULT=1 PERL5LIB=""                 \
+      PERL_AUTOINSTALL=--skipdeps                            \
+      PERL_MM_OPT="INSTALLDIRS=vendor DESTDIR='$pkgdir'"     \
+      PERL_MB_OPT="--installdirs vendor --destdir '$pkgdir'" \
+      MODULEBUILDRC=/dev/null
+
+    cd "${srcdir}/${_realname}-${pkgver}"
+    /usr/bin/perl Makefile.PL
+    make
+  )
+}
+
+check() {
+  cd "${srcdir}/${_realname}-${pkgver}"
+  ( export PERL_MM_USE_DEFAULT=1 PERL5LIB=""
+    make test
+  )
+}
+
+package() {
+  cd ${_realname}-${pkgver}
+  make DESTDIR="${pkgdir}" install
+  find "$pkgdir" -name .packlist -o -name perllocal.pod -delete
+}
