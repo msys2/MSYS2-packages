@@ -5,8 +5,7 @@
 PKGEXT='.pkg.tar.xz'
 pkgname=pacman
 pkgver=5.2.1
-pkgrel=8
-contrib_ver=1.2.0
+pkgrel=9
 pkgdesc="A library-based package manager with dependency support (MSYS2 port)"
 arch=('i686' 'x86_64')
 url="https://www.archlinux.org/pacman/"
@@ -27,13 +26,9 @@ depends=('bash>=4.2.045'
          'bzip2'
          'xz'
          'zstd')
-optdepends=('diffutils' 'vim')
 checkdepends=('python2')
 makedepends=('asciidoc'
-             'autoconf'
-             'automake-wrapper'
              'doxygen'
-             'libtool'
              'git'
              'meson'
              'gettext-devel'
@@ -43,16 +38,12 @@ makedepends=('asciidoc'
              'libgpgme-devel'
              'libsqlite-devel'
              'libunistring-devel')
-provides=('pacman-contrib')
-conflicts=('pacman-contrib')
-replaces=('pacman-contrib')
 # options=('!strip' 'debug')
 backup=("etc/pacman.conf"
         "etc/makepkg.conf"
         "etc/makepkg_mingw32.conf"
         "etc/makepkg_mingw64.conf")
 source=(https://sources.archlinux.org/other/pacman/${pkgname}-${pkgver}.tar.gz{,.sig}
-        https://git.archlinux.org/pacman-contrib.git/snapshot/${pkgname}-contrib-${contrib_ver}.tar.gz
         "pacman.conf"
         "makepkg.conf"
         "makepkg_clang32.conf"
@@ -79,13 +70,10 @@ source=(https://sources.archlinux.org/other/pacman/${pkgname}-${pkgver}.tar.gz{,
         "0016-excise-fakeroot.patch"
         "0017-excise-sudo.patch"
         "0018-use-msys-tools.patch"
-        "0100-contrib.patch"
-        "0101-contrib-pactree-gpgdir.patch"
         Doxyfile.in)
 validpgpkeys=('6645B0A8C7005E78DB1D7864F99FFE0FEAE999BD')
 sha256sums=('1930c407265fd039cb3a8e6edc82f69e122aa9239d216d9d57b9d1b9315af312'
             'SKIP'
-            '317f53819e35647a19138cb0d68e16206af4a80f52115a7cd622c4a367f914b7'
             '7849538ac2b89f4e9881ad5db78a2aa37a2ddb936f87a0ede1c2322e515918fe'
             '822af13248f04690377cd193370f33ac2f00a41234ead9cf3b7e5d5aba8bd0c5'
             '4469ac36c628d123c46feacc34db7ab763a7bfcfb860461846200c68a7d62e2e'
@@ -112,8 +100,6 @@ sha256sums=('1930c407265fd039cb3a8e6edc82f69e122aa9239d216d9d57b9d1b9315af312'
             'd6b6accddc890aff38b5ded3300e9dde35e1d7ed3f767e1655772e2cc7871739'
             '8346a5799be41bd3524fa6fdc57b6175d9d6a00b366f99bd5cd7fa3d43d0ae98'
             '7f60108a372718cfec5d883167a33983be7c5df33fc48bfc21f664449ac7a0a4'
-            '78a314a11377f7c9eb7bcd5f103a32734f2df0b3696df50bd38c7f6c754154d0'
-            '4ff3f10a99e894f3ae8576227f60bff7e21a1d7a775f89d936e43501693e9618'
             '8cc0a7b1a3390a8990cef242ac4a84d4eb03f367bc2a01c883908ff7c8d59427')
 
 prepare() {
@@ -138,11 +124,6 @@ prepare() {
   patch -p1 -i ${srcdir}/0018-use-msys-tools.patch
 
   cp ${srcdir}/Doxyfile.in doc/
-
-  cd ${srcdir}/${pkgname}-contrib-${contrib_ver}
-  patch -p1 -i ${srcdir}/0100-contrib.patch
-  patch -p1 -i ${srcdir}/0101-contrib-pactree-gpgdir.patch
-  ./autogen.sh
 }
 
 build() {
@@ -165,15 +146,6 @@ build() {
     -Dpkg-ext=.pkg.tar.xz \
     -Dscriptlet-shell=/usr/bin/bash
   ninja -v -C build-${CARCH}
-
-  cd ${srcdir}/${pkgname}-contrib-${contrib_ver}
-  ./configure \
-    --prefix=/usr \
-    --sysconfdir=/etc \
-    --localstatedir=/var \
-    --disable-git-version
-
-  make
 }
 
 check() {
@@ -184,9 +156,6 @@ check() {
 package() {
   cd ${srcdir}/${pkgname}-${pkgver}
   DESTDIR=${pkgdir} ninja -C build-${CARCH} install
-
-  cd ${srcdir}/${pkgname}-contrib-${contrib_ver}
-  make -j1 DESTDIR=${pkgdir} install
 
   # install Arch specific stuff
   install -dm755 ${pkgdir}/etc
