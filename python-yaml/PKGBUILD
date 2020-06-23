@@ -1,0 +1,44 @@
+# Maintainer: Alexandre Ferreira < alex.jorge.m [at] gmail.com >
+
+_pyname=PyYAML
+_realname=yaml
+pkgbase=python-${_realname}
+pkgname=("python-${_realname}")
+pkgver=5.3.1
+pkgrel=1
+pkgdesc='Python bindings for YAML, using fast libYAML library'
+arch=('i686' 'x86_64')
+url='https://pyyaml.org/'
+license=('MIT')
+depends=('python' 'libyaml')
+makedepends=('cython' 'python-setuptools' 'libyaml-devel' 'libcrypt-devel')
+options=('staticlibs' 'strip' '!debug')
+source=("https://pyyaml.org/download/pyyaml/${_pyname}-${pkgver}.tar.gz")
+install=python-yaml.install
+sha512sums=('87372877d396bd06cdb6b9052ef8822ef0589a211659bf27d7a1c4deca8429cb39e120a23e5d590d7adc0f8059ce1c8af42409bebd7c6d504d49dc8504d5683a')
+
+prepare() {
+  # Force cython rebuild
+  rm ${_pyname}-${pkgver}/ext/_yaml.c
+  rm -rf python-build-${CARCH} | true
+  cp -r "${_pyname}-${pkgver}" "python-build-${CARCH}"
+}
+
+build() {  
+  msg "Python build for ${CARCH}"  
+  cd "${srcdir}/python-build-${CARCH}"
+  /usr/bin/python setup.py --with-libyaml build
+}
+
+check() {
+  msg "Python test for ${CARCH}"
+  cd "${srcdir}/python-build-${CARCH}"
+  /usr/bin/python setup.py test
+}
+
+package() {
+  cd "${srcdir}/python-build-${CARCH}"
+  /usr/bin/python setup.py --with-libyaml install --root="${pkgdir}" --optimize=1 --skip-build
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/python-${_realname}/COPYING"
+  install -Dm644 CHANGES README -t "${pkgdir}/usr/share/doc/python-${_realname}"
+}
