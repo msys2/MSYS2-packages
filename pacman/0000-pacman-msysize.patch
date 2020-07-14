@@ -295,7 +295,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
  source_files() {
  	LANG=C readelf "$1" --debug-dump | \
  		awk '/DW_AT_name +:/{name=$8}/DW_AT_comp_dir +:/{{if (name == "<artificial>") next}{if (name !~ /^[<\/]/) {printf "%s/", $8}}{print name}}'
-@@ -43,52 +39,54 @@
+@@ -43,55 +39,57 @@
  strip_file() {
  	local binary=$1; shift
 
@@ -316,11 +316,14 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 -		fi
 -
 -		# copy source files to debug directory
--		local f t
+-		local file dest t
 -		while IFS= read -r t; do
--			f=${t/${dbgsrcdir}/"$srcdir"}
--			mkdir -p "${dbgsrc/"$dbgsrcdir"/}${t%/*}"
--			cp -- "$f" "${dbgsrc/"$dbgsrcdir"/}$t"
+-			file=${t/${dbgsrcdir}/"$srcdir"}
+-			dest="${dbgsrc/"$dbgsrcdir"/}$t"
+-			if ! [[ -f $dest ]]; then
+-				mkdir -p "${dest%/*}"
+-				cp -- "$file" "$dest"
+-			fi
 -		done < <(source_files "$binary")
 -
 -		# copy debug symbols to debug directory
@@ -348,11 +351,14 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 -			target="../../${binary#./}.debug"
 -			ln -s "$target" "$dbgdir/.build-id/${bid:0:2}/${bid:2}.debug"
 +			# copy source files to debug directory
-+			local f t
++			local file dest t
 +			while IFS= read -r t; do
-+				f=${t/${dbgsrcdir}/"$srcdir"}
-+				mkdir -p "${dbgsrc/"$dbgsrcdir"/}${t%/*}"
-+				cp -- "$f" "${dbgsrc/"$dbgsrcdir"/}$t"
++				file=${t/${dbgsrcdir}/"$srcdir"}
++				dest="${dbgsrc/"$dbgsrcdir"/}$t"
++				if ! [[ -f $dest ]]; then
++					mkdir -p "${dest%/*}"
++					cp -- "$file" "$dest"
++				fi
 +			done < <(source_files "$binary")
 +
 +			# copy debug symbols to debug directory
@@ -473,7 +479,7 @@ diff -Naur pacman-5.1.0-orig/scripts/libmakepkg/tidy/strip.sh.in pacman-5.1.0/sc
 +			esac
 +			chmod 0755 "${binary}";
 +
- 			case "$(file -bi "$binary")" in
+ 			case "$(@FILECMD@ -bi "$binary")" in
 +				*application/x-dosexec*) # Windows executables and dlls
 +					strip_flags="$STRIP_SHARED";;
  				*application/x-sharedlib*)  # Libraries (.so)
@@ -728,7 +734,7 @@ diff -Naur pacman-5.1.0-orig/scripts/makepkg.sh.in pacman-5.1.0/scripts/makepkg.
  		missing=0
  		case "$p" in
 -			*.so)
--				mapfile -t filename < <(find "$pkgdir" -type f -name $p\*)
+-				mapfile -t filename < <(find "$pkgdir" -type f -name $p\* | LC_ALL=C sort)
 +			*.dll)
 +				mapfile -t filename < <(find "$pkgdir" -type f -name $p)
  				if [[ $filename ]]; then
