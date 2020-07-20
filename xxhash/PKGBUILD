@@ -1,0 +1,52 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgbase=xxhash
+pkgname=("xxhash" "libxxhash" "libxxhash-devel")
+pkgver=0.7.4
+pkgrel=1
+pkgdesc="Extremely fast non-cryptographic hash algorithm"
+arch=('i686' 'x86_64')
+url="https://github.com/Cyan4973/xxHash"
+license=('BSD')
+makedepends=("gcc"
+             "cmake")
+source=("${pkgname}-${pkgver}.tar.gz::https://codeload.github.com/Cyan4973/xxHash/tar.gz/v${pkgver}")
+sha256sums=('4d9706c9da4fbdf901598f5e3b71db0eddd4ac962e827a73ebf75d66dfd820fe')
+
+build() {
+  [[ -d "${srcdir}/build-${CARCH}" ]] && rm -rf "${srcdir}/build-${CARCH}"
+  mkdir -p "${srcdir}/build-${CARCH}" && cd "${srcdir}/build-${CARCH}"
+
+  cmake \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    "../${pkgname}-${pkgver}/cmake_unofficial"
+
+  make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+package_xxhash() {
+  depends=("libxxhash=${pkgver}")
+  cd "${srcdir}/dest"
+  mkdir -p ${pkgdir}/usr/bin
+  cp usr/bin/*.exe ${pkgdir}/usr/bin/
+}
+
+package_libxxhash() {
+  groups=("libraries")
+  cd "${srcdir}/dest"
+  mkdir -p ${pkgdir}/usr/bin
+  cp usr/bin/*.dll ${pkgdir}/usr/bin/
+  install -Dm644 ${srcdir}/${pkgbase}-${pkgver}/LICENSE ${pkgdir}/usr/share/licenses/${pkgname}/LICENSE
+}
+
+package_libxxhash-devel() {
+  pkgdesc="Development headers and library for xxhash"
+  depends=("libxxhash=${pkgver}")
+  options=('staticlibs')
+  groups=("development")
+  cd "${srcdir}/dest/usr"
+  mkdir -p ${pkgdir}/usr
+  cp -rf {include,lib,share} ${pkgdir}/usr/
+}
