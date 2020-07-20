@@ -2,7 +2,7 @@
 
 _pkgname=znc
 pkgname=${_pkgname}-git
-pkgver=r5233.efe64008
+pkgver=r5318.1c9cb3f8
 pkgrel=1
 pkgdesc='An IRC bouncer with modules & scripts support'
 url='https://znc.in/'
@@ -11,7 +11,8 @@ arch=('i686' 'x86_64')
 provides=('znc')
 conflicts=('znc')
 depends=('openssl' 'icu')
-makedepends=('cyrus-sasl'
+makedepends=('cmake'
+             'cyrus-sasl'
              'gettext-devel'
              'git'
              'icu-devel'
@@ -26,9 +27,9 @@ optdepends=('tcl: modtcl module'
             'perl: modperl module'
             'cyrus-sasl: cyrusauth module')
 source=('znc::git+https://github.com/znc/znc#branch=master'
-        'znc-configure-msys2.patch')
+        'znc-msysize.patch')
 sha256sums=('SKIP'
-            '8371060182875ee36ac82c86a398ed8b1283c4e4b872bee4994d004fa8a808c3')
+            '9a748a69df8dbd143dd3a307570fb28205ee5344861690b5a1b37adb56d0652c')
 
 pkgver() {
   cd "${srcdir}/${_pkgname}"
@@ -38,23 +39,29 @@ pkgver() {
 prepare() {
   cd "${srcdir}/${_pkgname}"
 
-  patch -p1 -i ${srcdir}/znc-configure-msys2.patch
+  patch -p1 -i ${srcdir}/znc-msysize.patch
   git submodule update --init --recursive
-  ./autogen.sh
+  #./autogen.sh
 }
 
 build() {
-  cd "${srcdir}/znc"
-  ./configure --prefix=/usr \
-    --enable-cyrus \
-    --disable-tcl \
-    --enable-perl \
-    --enable-python
+  [[ -d "${srcdir}/build-${CARCH}" ]] && rm -rf "${srcdir}/build-${CARCH}"
+  mkdir -p "${srcdir}/build-${CARCH}" && cd "${srcdir}/build-${CARCH}"
+
+  cmake \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DWANT_CYRUS=ON \
+    -DWANT_PERL=ON \
+    -DWANT_PYTHON=ON \
+    -DWANT_I18N=OFF \
+    ../znc
   make
 }
 
 package() {
-  cd "${srcdir}/znc"
+  cd "${srcdir}/build-${CARCH}"
   make DESTDIR="${pkgdir}" install
-  install -Dm644 LICENSE ${pkgdir}/usr/share/licenses/${_pkgname}/LICENSE
+  install -Dm644 ${srcdir}/znc/LICENSE ${pkgdir}/usr/share/licenses/${_pkgname}/LICENSE
 }
