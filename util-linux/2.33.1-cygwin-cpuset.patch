@@ -1,0 +1,33 @@
+--- origsrc/util-linux-2.33.1/lib/cpuset.c	2018-06-04 00:57:02.792445800 -0700
++++ src/util-linux-2.33.1/lib/cpuset.c	2020-01-11 00:37:39.126054200 -0800
+@@ -20,7 +20,9 @@
+ #include <errno.h>
+ #include <string.h>
+ #include <ctype.h>
++#ifndef __CYGWIN__
+ #include <sys/syscall.h>
++#endif
+
+ #include "cpuset.h"
+ #include "c.h"
+@@ -60,7 +60,7 @@ static const char *nexttoken(const char
+  */
+ int get_max_number_of_cpus(void)
+ {
+-#ifdef SYS_sched_getaffinity
++#if defined(SYS_sched_getaffinity) || defined(__CYGWIN__)
+ 	int n, cpus = 2048;
+ 	size_t setsize;
+ 	cpu_set_t *set = cpuset_alloc(cpus, &setsize, NULL);
+@@ -72,7 +72,11 @@ int get_max_number_of_cpus(void)
+ 		CPU_ZERO_S(setsize, set);
+ 
+ 		/* the library version does not return size of cpumask_t */
++#if defined(__CYGWIN__)
++		n = __sched_getaffinity_sys(0, setsize, set);
++#else
+ 		n = syscall(SYS_sched_getaffinity, 0, setsize, set);
++#endif
+ 
+ 		if (n < 0 && errno == EINVAL && cpus < 1024 * 1024) {
+ 			cpuset_free(set);
