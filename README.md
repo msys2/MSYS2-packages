@@ -5,8 +5,6 @@
   -->
   <a title="GitHub Actions" href="https://github.com/msys2/MSYS2-packages/actions?query=workflow%3Amain"><img alt="'main' workflow Status" src="https://img.shields.io/github/workflow/status/msys2/MSYS2-packages/main?longCache=true&style=flat-square&label=build&logo=github"></a><!--
   -->
-  <a title="AppVeyor" href="https://ci.appveyor.com/project/Alexpux/MSYS2-packages"><img src="https://img.shields.io/appveyor/ci/Alexpux/MSYS2-packages/master.svg?logo=appveyor&logoColor=e8ecef&style=flat-square"></a><!--
-  -->
 </p>
 
 # MSYS2-packages
