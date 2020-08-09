@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # AppVeyor and Drone Continuous Integration for MSYS2
 # Author: Renato Silva <br.renatosilva@gmail.com>
 # Author: Qian Hong <fracting@gmail.com>
@@ -12,6 +14,8 @@ git_config user.email 'ci@msys2.org'
 git_config user.name  'MSYS2 Continuous Integration'
 git remote add upstream 'https://github.com/MSYS2/MSYS2-packages'
 git fetch --quiet upstream
+# So that makepkg auto-fetches keys from validpgpkeys
+mkdir -p ~/.gnupg && echo -e "keyserver keyserver.ubuntu.com\nkeyserver-options auto-key-retrieve" > ~/.gnupg/gpg.conf
 
 # Detect
 list_commits  || failure 'Could not detect added commits'
@@ -25,8 +29,8 @@ message 'Building packages' "${packages[@]}"
 execute 'Updating system' update_system
 execute 'Approving recipe quality' check_recipe_quality
 for package in "${packages[@]}"; do
-    execute 'Building binary' makepkg --noconfirm --noprogressbar --skippgpcheck --nocheck --syncdeps --rmdeps --cleanbuild
-    execute 'Building source' makepkg --noconfirm --noprogressbar --skippgpcheck --allsource
+    execute 'Building binary' makepkg --noconfirm --noprogressbar --nocheck --syncdeps --rmdeps --cleanbuild
+    execute 'Building source' makepkg --noconfirm --noprogressbar --allsource
     execute 'Installing' yes:pacman --noprogressbar --upgrade *.pkg.tar.*
     execute 'Checking dll depencencies' list_dll_deps ./pkg
     deploy_enabled && mv "${package}"/*.pkg.tar.* artifacts
