@@ -15,7 +15,7 @@ git_config user.name  'MSYS2 Continuous Integration'
 git remote add upstream 'https://github.com/MSYS2/MSYS2-packages'
 git fetch --quiet upstream
 # So that makepkg auto-fetches keys from validpgpkeys
-mkdir -p ~/.gnupg && echo -e "keyserver keyserver.ubuntu.com\nkeyserver-options auto-key-retrieve" > ~/.gnupg/gpg.conf
+[ ! -e ~/.gnupg/gpg.conf ] && mkdir -p ~/.gnupg && echo -e "keyserver keyserver.ubuntu.com\nkeyserver-options auto-key-retrieve" > ~/.gnupg/gpg.conf
 
 # Detect
 list_commits  || failure 'Could not detect added commits'
