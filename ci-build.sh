@@ -9,7 +9,7 @@ set -e
 # Configure
 cd "$(dirname "$0")"
 source 'ci-library.sh'
-deploy_enabled && mkdir artifacts
+mkdir artifacts
 git_config user.email 'ci@msys2.org'
 git_config user.name  'MSYS2 Continuous Integration'
 git remote add upstream 'https://github.com/MSYS2/MSYS2-packages'
@@ -33,8 +33,8 @@ for package in "${packages[@]}"; do
     execute 'Building source' makepkg --noconfirm --noprogressbar --allsource
     execute 'Installing' yes:pacman --noprogressbar --upgrade *.pkg.tar.*
     execute 'Checking dll depencencies' list_dll_deps ./pkg
-    deploy_enabled && mv "${package}"/*.pkg.tar.* artifacts
-    deploy_enabled && mv "${package}"/*.src.tar.gz artifacts
+    mv "${package}"/*.pkg.tar.* artifacts
+    mv "${package}"/*.src.tar.gz artifacts
     unset package
 done
 
