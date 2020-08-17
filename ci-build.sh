@@ -31,7 +31,7 @@ execute 'Approving recipe quality' check_recipe_quality
 for package in "${packages[@]}"; do
     execute 'Building binary' makepkg --noconfirm --noprogressbar --nocheck --syncdeps --rmdeps --cleanbuild
     execute 'Building source' makepkg --noconfirm --noprogressbar --allsource
-    execute 'Installing' yes:pacman --noprogressbar --upgrade *.pkg.tar.*
+    grep -qFx "$(<../ci-dont-install-list.txt)" <<< "${package}" || execute 'Installing' yes:pacman --noprogressbar --upgrade *.pkg.tar.*
     execute 'Checking dll depencencies' list_dll_deps ./pkg
     mv "${package}"/*.pkg.tar.* artifacts
     mv "${package}"/*.src.tar.gz artifacts
