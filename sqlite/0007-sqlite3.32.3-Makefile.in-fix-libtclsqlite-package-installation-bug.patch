@@ -1,0 +1,43 @@
+From 64fe648e9cb54a0ee8ee9e9d7feefebcb2381adb Mon Sep 17 00:00:00 2001
+From: Jannick <thirdedition@gmx.net>
+Date: Sat, 8 Aug 2020 14:09:51 +0200
+Subject: [PATCH] Makefile.in: fix libtclsqlite package installation bug
+
+The shared object of libtclsqlite3 referenced by pkgIndex.tcl is NOT
+placed next to pkgIndex.tcl after installation by libtool.
+
+- using the flag -module instructs libtool to place the shared object
+  libtclsqlite3 in TCLLIBDIR upon installation.
+- paste the shared library name from the libtool file 'libtclsqlite3.la'
+  into 'pkgIndex.tcl'.
+---
+ Makefile.in | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/Makefile.in b/Makefile.in
+index f92741f..589c9f6 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -644,7 +644,7 @@ libsqlite3.la:	$(LIBOBJ)
+ 		${ALLOWRELEASE} -rpath "$(libdir)" -version-info "8:6:8"
+
+ libtclsqlite3.la:	tclsqlite.lo libsqlite3.la
+-	$(LTLINK) -no-undefined -o $@ tclsqlite.lo \
++	$(LTLINK) -module -no-undefined -o $@ tclsqlite.lo \
+ 		libsqlite3.la @TCL_STUB_LIB_SPEC@ $(TLIBS) \
+ 		-rpath "$(TCLLIBDIR)" \
+ 		-version-info "8:6:8" \
+@@ -1434,8 +1434,8 @@ install:	sqlite3$(TEXE) lib_install sqlite3.h sqlite3.pc ${HAVE_TCL:1=tcl_instal
+ 	$(INSTALL) -d $(DESTDIR)$(pkgconfigdir)
+ 	$(INSTALL) -m 0644 sqlite3.pc $(DESTDIR)$(pkgconfigdir)
+
+-pkgIndex.tcl:
+-	echo 'package ifneeded sqlite3 $(RELEASE) [list load [file join $$dir libtclsqlite3[info sharedlibextension]] sqlite3]' > $@
++pkgIndex.tcl: libtclsqlite3.la
++	echo 'package ifneeded sqlite3 $(RELEASE) [list load [file join $$dir '`source ./$< && echo $$dlname`'] sqlite3]' > $@
+ tcl_install:	lib_install libtclsqlite3.la pkgIndex.tcl
+ 	$(INSTALL) -d $(DESTDIR)$(TCLLIBDIR)
+ 	$(LTINSTALL) libtclsqlite3.la $(DESTDIR)$(TCLLIBDIR)
+--
+2.28.0.windows.1
+
