@@ -4,7 +4,7 @@
 pkgbase="sqlite"
 pkgname=('sqlite' 'libsqlite' 'libsqlite-devel' 'sqlite-doc'
         'tcl-sqlite'
-         #'sqlite-extensions'
+         'sqlite-extensions'
          )
 _amalgamationver=3320300
 pkgver=3.32.3
@@ -20,14 +20,17 @@ source=(https://www.sqlite.org/2020/sqlite-src-${_amalgamationver}.zip
         LICENSE
         0001-sqlite3.32.3-configure.ac-fix-OS-recognition-on-MSYS2.patch
         0002-sqlite3.32.3-Makefile.in-fix-rule-compiling-rbu.exe.patch
-        0007-sqlite3.32.3-Makefile.in-fix-libtclsqlite-package-installation-bug.patch)
+        0007-sqlite3.32.3-Makefile.in-fix-libtclsqlite-package-installation-bug.patch
+        Makefile.ext.in README.md.in)
 options=('!libtool' '!emptydirs' '!debug' 'strip')
 sha256sums=('9312f0865d3692384d466048f746d18f88e7ffd1758b77d4f07904e03ed5f5b9'
             '36920536daf7f8b19c2e646dc79db62e13cc1a992f562ba9a11fa7c191f24a4e'
             '0b76663a90e034f3d7f2af5bfada4cedec5ebc275361899eccc5c18e6f01ff1f'
             '589b7182343dba3dd8225c13ff1d7d275e5f714e7793bac1c88f7cfdd569d9e0'
             'b717c73804be44b82048d90bbb8e0c61ff081339a5757194e9769bd4d9c048e5'
-            '12507108d633a6b0a01534e30bcc807a4dcd5c8f955e6336b9ebe505a986fce0')
+            '12507108d633a6b0a01534e30bcc807a4dcd5c8f955e6336b9ebe505a986fce0'
+            '572fe2e1492de5643018bcbb2ba7d69747d20a2b021c32cec868b87c92ccb18f'
+            'ef3a1faa02a88e05539d160d51679f164dfa23cc5a637ff36bc504bf04d6d7a6')
 
 _sqlite_tools="sqlite3.exe sqldiff.exe rbu.exe"
 
@@ -49,70 +52,8 @@ apply_patch_with_msg_p2() {
 }
 
 
-del_file_exists() {
-  for _fname in "$@"
-  do
-    if [ -f $_fname ]; then
-      rm -rf $_fname
-    fi
-  done
-}
-# =========================================== #
-
-_PKG_EXTENSIONS_DLL=(usr/bin/msys-sqlite3amatch-0.dll
-                     usr/bin/msys-sqlite3anycollseq-0.dll
-                     usr/bin/msys-sqlite3carray-0.dll
-                     usr/bin/msys-sqlite3closure-0.dll
-                     usr/bin/msys-sqlite3completion-0.dll
-                     usr/bin/msys-sqlite3csv-0.dll
-                     usr/bin/msys-sqlite3eval-0.dll
-                     usr/bin/msys-sqlite3fileio-0.dll
-                     usr/bin/msys-sqlite3fuzzer-0.dll
-                     usr/bin/msys-sqlite3ieee754-0.dll
-                     usr/bin/msys-sqlite3memvfs-0.dll
-                     usr/bin/msys-sqlite3nextchar-0.dll
-                     usr/bin/msys-sqlite3percentile-0.dll
-                     usr/bin/msys-sqlite3regexp-0.dll
-                     usr/bin/msys-sqlite3remember-0.dll
-                     usr/bin/msys-sqlite3vtshim-0.dll
-                     usr/bin/msys-sqlite3completion-0.dll
-                     usr/bin/msys-sqlite3rot13-0.dll
-                     usr/bin/msys-sqlite3series-0.dll
-                     usr/bin/msys-sqlite3stmt-0.dll
-                     usr/bin/msys-sqlite3completion-0.dll
-                     usr/bin/msys-sqlite3sha1-0.dll
-                     usr/bin/msys-sqlite3shathree-0.dll
-                     usr/bin/msys-sqlite3showauth-0.dll
-                     usr/bin/msys-sqlite3spellfix-0.dll
-                     usr/bin/msys-sqlite3totype-0.dll
-                     usr/bin/msys-sqlite3unionvtab-0.dll
-                     usr/bin/msys-sqlite3vtshim-0.dll
-                     usr/bin/msys-sqlite3vfsstat-0.dll
-                     usr/bin/msys-sqlite3wholenumber-0.dll)
-_PKG_RBU_DLL=(usr/bin/msys-sqlite3rbu-0.dll)
-_PKG_RBU_EXE=(usr/bin/rbu.exe)
-_PKG_VFSLOG_DLL=(usr/bin/msys-sqlite3vfslog-0.dll)
-_PKG_ICU_DLL=(usr/bin/msys-sqlite3icu-0.dll)
-_PKG_COMPRESSION_DLL=(usr/bin/msys-sqlite3compress-0.dll)
-_PKG_TCL=(usr/lib/sqlite${pkgver}/pkgIndex.tcl
-          usr/lib/sqlite${pkgver}/libsqlite${pkgver}.dll
-          usr/share/man/mann/sqlite3.n)
 
 prepare() {
-  cd "${srcdir}"/sqlite-autoconf-${_amalgamationver}
-  del_file_exists , README README.first \
-    appendvfs.c  amatch.c anycollseq.c blobio.c btreeinfo.c \
-    carray.c closure.c compress.c completion.c csv.c dbdump.c eval.c explain.c \
-    fileio.c fossildelta.c fuzzer.c icu.c ieee754.c json1.c \
-    memstat.c memtrace.c memvfs.c mmapwarm.c \
-    nextchar.c normalize.c percentile.c prefixes.c \
-    rbu.c regexp.c remember.c rot13.c \
-    scrub.c series.c sha1.c shathree.c showauth.c spaceanal.tcl spellfix.c \
-    sqlar.c sqldiff.c sqlite3rbu.c sqlite3rbu.h stmt.c \
-    templatevtab.c totype.c unionvtab.c \
-    vfslog.c vfsstat.c vtshim.c vtablog.c wholenumber.c \
-    zipfile.c zorder.c
-
 
   msg2 "Preparing sqlite package..."
   cd "${srcdir}"/sqlite-src-${_amalgamationver}
@@ -161,6 +102,9 @@ build() {
   make -j all ${_sqlite_tools}
   make check
 
+  msg2 "Building sqlite extensions..."
+  ./config.status --file=ext/misc/Makefile:../Makefile.ext.in 2> /dev/null
+  make -j -C ext/misc
 }
 
 _install_license() {
@@ -174,9 +118,10 @@ package_sqlite() {
   provides=("sqlite3=${pkgver}")
   replaces=("sqlite3")
   replaces+=('sqlite-icu' 'sqlite-rbu')
+  optdepends=('sqlite-extensions: various extensions for SQLite')
 
   mkdir -p ${pkgdir}/usr/bin
-  cd build-${_amalgamationver}-${MSYSTEM_CHOST}
+  cd build-${_amalgamationver}-${MSYSTEM_CHOST}/.libs
   cp -v ${_sqlite_tools}  ${pkgdir}/usr/bin/
 
   # documentation from TEA directory
@@ -227,17 +172,22 @@ package_sqlite-doc() {
 }
 
 
-#package_sqlite-extensions() {
-#  pkgdesc="various extensions for SQLite"
-#  depends=("sqlite=${pkgver}")
-#  # sqlite 3.32.3: The replaced packages are merged into 'sqlite-extensions'.
-#  replaces=('sqlite-compress' 'sqlite-vfslog')
-#
-#  cd build-${_amalgamationver}-${MSYSTEM_CHOST}
-#  make -C ext/misc install DESTDIR=${pkgdir}
-#
-#  _install_license
-#}
+package_sqlite-extensions() {
+  pkgdesc="Various extensions for the SQL database engine ${pkgver}"
+  depends=("sqlite=${pkgver}" "libsqlite=${pkgver}" 'zlib')
+  # sqlite 3.32.3: The replaced packages are merged into 'sqlite-extensions'.
+  replaces=('sqlite-compress' 'sqlite-vfslog')
+
+  cd build-${_amalgamationver}-${MSYSTEM_CHOST}
+  make -C ext/misc install DESTDIR=${pkgdir}
+
+  mkdir -p "${pkgdir}/usr/share/sqlite/extensions/"
+  cat "${srcdir}/README.md.in" |         \
+    sed -e "s|@VERSION@|${pkgver}|g;"    \
+    > "${pkgdir}/usr/share/sqlite/extensions/README.md"
+
+  _install_license
+}
 
 package_tcl-sqlite() {
   pkgdesc="Tcl bindings for SQLite"
