@@ -1,0 +1,64 @@
+# Makefile template to generate sqlite extensions
+# in sub-folder ext/misc of sqlite-src-xxxxx package.
+
+# define MSYSTEM-depending variables
+ifeq ($(MSYSTEM),MSYS)
+  DLL_PREFIX   = msys-sqlite3
+  DLL_SUFFIX   = -0
+  extdir       = $(prefix)/bin
+else ifeq ($(MSYSTEM),MINGW64)
+  DLL_PREFIX   =
+  DLL_SUFFIX   =
+  extdir       = $(datadir)/sqlite/extensions
+else ifeq ($(MSYSTEM),MINGW32)
+  DLL_PREFIX   =
+  DLL_SUFFIX   =
+  extdir       = $(datadir)/sqlite/extensions
+else
+  $(error Unknown system MYSTEM=$(MSYSTEM))
+endif
+
+srcdir          = @srcdir@
+top_srcdir      = @top_srcdir@
+top_builddir    = @top_builddir@
+
+vpath           %.c $(srcdir)
+vpath           %.in ../$(top_srcdir)
+
+PACKAGE_VERSION = @PACKAGE_VERSION@
+prefix          = @prefix@
+datadir         = @datadir@
+docdir          = $(datadir)/sqlite/extensions
+
+# c-source for each of which an extension is built
+CSRCS           = $(filter-out $(addprefix $(srcdir)/,$(CSRCS_IGNORE)),$(wildcard $(srcdir)/*.c))
+# c-sources not to compile as standalone sqlite-extensions
+CSRCS_IGNORE    = memtrace.c json1.c
+
+DLLS            = $(patsubst %.c,$(DLL_PREFIX)%$(DLL_SUFFIX).dll,$(notdir $(CSRCS)))
+
+CC              = @CC@
+CPPFLAGS        = -I$(top_builddir) -I$(top_srcdir)/src
+CFLAGS          = -pedantic
+LIBS            = -Wl,--no-undefined -L$(top_builddir)/.libs -lsqlite3 -lz
+
+.PHONY        : all
+all           : $(DLLS)
+
+$(DLL_PREFIX)%$(DLL_SUFFIX).dll: %.c
+	$(CC) -shared $(CPPFLAGS) $(CFLAGS) -o $@ $< $(LIBS)
+
+
+.PHONY: clean install install-dlls install-c-files
+clean:
+	-rm -f $(DLLS) 2> /dev/nul
+
+install: install-dlls install-c-files
+
+install-dlls: $(DLLS)
+	mkdir -p $(DESTDIR)$(extdir)
+	cp -vp $^ $(DESTDIR)$(extdir)
+
+install-c-files: $(CSRCS)
+	mkdir -p $(DESTDIR)$(docdir)
+	cp -vp $^ $(DESTDIR)$(docdir)
