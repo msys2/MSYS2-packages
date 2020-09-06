@@ -1,0 +1,165 @@
+diff --git a/peflags.c b/peflags.c
+index 4d22e4a..358199a 100644
+--- a/peflags.c
++++ b/peflags.c
+@@ -112,7 +112,7 @@ static const symbolic_flags_t pe_symbolic_flags[] = {
+ /*CF(0x0004, reserved_0x0004),*/
+ /*CF(0x0008, reserved_0x0008),*/
+ /*CF(0x0010, unspec_0x0010),*/
+-/*CF(0x0020, unspec_0x0020),*/
++  CF(0x0020, high-entropy-va),
+   CF(0x0040, dynamicbase),
+   CF(0x0080, forceinteg),
+   CF(0x0100, nxcompat),
+@@ -180,30 +180,31 @@ sizeof_values_t sizeof_vals[5] = {
+ #define pulong(struct, offset)		(PULONG)((PBYTE)(struct)+(offset))
+ 
+ static struct option long_options[] = {
+-  {"dynamicbase",  optional_argument, NULL, 'd'},
+-  {"forceinteg",   optional_argument, NULL, 'f'},
+-  {"nxcompat",     optional_argument, NULL, 'n'},
+-  {"no-isolation", optional_argument, NULL, 'i'},
+-  {"no-seh",       optional_argument, NULL, 's'},
+-  {"no-bind",      optional_argument, NULL, 'b'},
+-  {"wdmdriver",    optional_argument, NULL, 'W'},
+-  {"tsaware",      optional_argument, NULL, 't'},
+-  {"wstrim",       optional_argument, NULL, 'w'},
+-  {"bigaddr",      optional_argument, NULL, 'l'},
+-  {"sepdbg",       optional_argument, NULL, 'S'},
+-  {"stack-reserve",optional_argument, NULL, 'x'},
+-  {"stack-commit", optional_argument, NULL, 'X'},
+-  {"heap-reserve", optional_argument, NULL, 'y'},
+-  {"heap-commit",  optional_argument, NULL, 'Y'},
+-  {"cygwin-heap",  optional_argument, NULL, 'z'},
+-  {"filelist",     no_argument, NULL, 'T'},
+-  {"verbose",      no_argument, NULL, 'v'},
+-  {"help",         no_argument, NULL, 'h'},
+-  {"version",      no_argument, NULL, 'V'},
++  {"dynamicbase",     optional_argument, NULL, 'd'},
++  {"high-entropy-va", optional_argument, NULL, 'e'},
++  {"forceinteg",      optional_argument, NULL, 'f'},
++  {"nxcompat",        optional_argument, NULL, 'n'},
++  {"no-isolation",    optional_argument, NULL, 'i'},
++  {"no-seh",          optional_argument, NULL, 's'},
++  {"no-bind",         optional_argument, NULL, 'b'},
++  {"wdmdriver",       optional_argument, NULL, 'W'},
++  {"tsaware",         optional_argument, NULL, 't'},
++  {"wstrim",          optional_argument, NULL, 'w'},
++  {"bigaddr",         optional_argument, NULL, 'l'},
++  {"sepdbg",          optional_argument, NULL, 'S'},
++  {"stack-reserve",   optional_argument, NULL, 'x'},
++  {"stack-commit",    optional_argument, NULL, 'X'},
++  {"heap-reserve",    optional_argument, NULL, 'y'},
++  {"heap-commit",     optional_argument, NULL, 'Y'},
++  {"cygwin-heap",     optional_argument, NULL, 'z'},
++  {"filelist",        no_argument, NULL, 'T'},
++  {"verbose",         no_argument, NULL, 'v'},
++  {"help",            no_argument, NULL, 'h'},
++  {"version",         no_argument, NULL, 'V'},
+   {NULL, no_argument, NULL, 0}
+ };
+ static const char *short_options
+-	= "d::f::n::i::s::b::W::t::w::l::S::x::X::y::Y::z::T:vhV";
++	= "d::e::f::n::i::s::b::W::t::w::l::S::x::X::y::Y::z::T:vhV";
+ 
+ static void short_usage (FILE *f);
+ static void help (FILE *f);
+@@ -699,6 +700,11 @@ parse_args (int argc, char *argv[])
+ 	                         optarg,
+ 	                         IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE);
+ 	  break;
++	case 'e':
++	  handle_pe_flag_option (long_options[option_index].name,
++	                         optarg,
++	                         IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA);
++	  break;
+ 	case 'n':
+ 	  handle_pe_flag_option (long_options[option_index].name,
+ 	                         optarg,
+@@ -1067,45 +1073,47 @@ help (FILE *f)
+ "given, the specified value will be overwritten; if no argument is given, the\n"
+ "numerical value will be displayed in decimal and hexadecimal notation.\n" 
+ "\n"
+-"  -d, --dynamicbase  [BOOL]   Image base address may be relocated using\n"
+-"                              address space layout randomization (ASLR).\n"
+-"  -f, --forceinteg   [BOOL]   Code integrity checks are enforced.\n"
+-"  -n, --nxcompat     [BOOL]   Image is compatible with data execution\n"
+-"                              prevention (DEP).\n"
+-"  -i, --no-isolation [BOOL]   Image understands isolation but do not isolate\n"
+-"                              the image.\n"
+-"  -s, --no-seh       [BOOL]   Image does not use structured exception handling\n"
+-"                              (SEH). No SE handler may be called in this image.\n"
+-"  -b, --no-bind      [BOOL]   Do not bind this image.\n"
+-"  -W, --wdmdriver    [BOOL]   Driver uses the WDM model.\n"
+-"  -t, --tsaware      [BOOL]   Image is Terminal Server aware.\n"
+-"  -w, --wstrim       [BOOL]   Aggressively trim the working set.\n"
+-"  -l, --bigaddr      [BOOL]   The application can handle addresses larger\n"
+-"                              than 2 GB.\n"
+-"  -S, --sepdbg       [BOOL]   Debugging information was removed and stored\n"
+-"                              separately in another file.\n"
+-"  -x, --stack-reserve [NUM]   Reserved stack size of the process in bytes.\n"
+-"  -X, --stack-commit  [NUM]   Initial commited portion of the process stack\n"
+-"                              in bytes.\n"
+-"  -y, --heap-reserve  [NUM]   Reserved heap size of the default application\n"
+-"                              heap in bytes.  Note that this value has no\n"
+-"                              significant meaning to Cygwin applications.\n"
+-"                              See the -z, --cygwin-heap option instead.\n"
+-"  -Y, --heap-commit   [NUM]   Initial commited portion of the default\n"
+-"                              application heap in bytes.  Note that this value\n"
+-"                              has no significant meaning to Cygwin applications.\n"
+-"                              See the -z, --cygwin-heap option instead.\n"
+-"  -z, --cygwin-heap   [NUM]   Initial reserved heap size of the Cygwin\n"
+-"                              application heap in Megabytes.  This value is\n"
+-"                              only evaluated starting with Cygwin 1.7.10.\n"
+-"                              Useful values are between 4 and 2048.  If 0,\n"
+-"                              Cygwin uses the default heap size of 384 Megs.\n"
+-"                              Has no meaning for non-Cygwin applications.\n"
+-"  -T, --filelist FILE         Indicate that FILE contains a list\n"
+-"                              of PE files to process\n"
+-"  -v, --verbose               Display diagnostic information\n"
+-"  -V, --version               Display version information\n"
+-"  -h, --help                  Display this help\n"
++"  -d, --dynamicbase     [BOOL] Image base address may be relocated using\n"
++"                               address space layout randomization (ASLR).\n"
++"  -e, --high-entropy-va [BOOL] Image is compatible with 64-bit address space\n"
++"                               layout randomization (ASLR).\n"
++"  -f, --forceinteg      [BOOL] Code integrity checks are enforced.\n"
++"  -n, --nxcompat        [BOOL] Image is compatible with data execution\n"
++"                               prevention (DEP).\n"
++"  -i, --no-isolation    [BOOL] Image understands isolation but do not isolate\n"
++"                               the image.\n"
++"  -s, --no-seh          [BOOL] Image does not use structured exception handling\n"
++"                               (SEH). No SE handler may be called in this image.\n"
++"  -b, --no-bind         [BOOL] Do not bind this image.\n"
++"  -W, --wdmdriver       [BOOL] Driver uses the WDM model.\n"
++"  -t, --tsaware         [BOOL] Image is Terminal Server aware.\n"
++"  -w, --wstrim          [BOOL] Aggressively trim the working set.\n"
++"  -l, --bigaddr         [BOOL] The application can handle addresses larger\n"
++"                               than 2 GB.\n"
++"  -S, --sepdbg          [BOOL] Debugging information was removed and stored\n"
++"                               separately in another file.\n"
++"  -x, --stack-reserve    [NUM] Reserved stack size of the process in bytes.\n"
++"  -X, --stack-commit     [NUM] Initial commited portion of the process stack\n"
++"                               in bytes.\n"
++"  -y, --heap-reserve     [NUM] Reserved heap size of the default application\n"
++"                               heap in bytes.  Note that this value has no\n"
++"                               significant meaning to Cygwin applications.\n"
++"                               See the -z, --cygwin-heap option instead.\n"
++"  -Y, --heap-commit      [NUM] Initial commited portion of the default\n"
++"                               application heap in bytes.  Note that this value\n"
++"                               has no significant meaning to Cygwin applications\n"
++"                               See the -z, --cygwin-heap option instead.\n"
++"  -z, --cygwin-heap      [NUM] Initial reserved heap size of the Cygwin\n"
++"                               application heap in Megabytes.  This value is\n"
++"                               only evaluated starting with Cygwin 1.7.10.\n"
++"                               Useful values are between 4 and 2048.  If 0,\n"
++"                               Cygwin uses the default heap size of 384 Megs.\n"
++"                               Has no meaning for non-Cygwin applications.\n"
++"  -T, --filelist FILE          Indicate that FILE contains a list\n"
++"                               of PE files to process\n"
++"  -v, --verbose                Display diagnostic information\n"
++"  -V, --version                Display version information\n"
++"  -h, --help                   Display this help\n"
+ "\n"
+ "BOOL: may be 1, true, or yes - indicates that the flag should be set\n"
+ "          if 0, false, or no - indicates that the flag should be cleared\n"
