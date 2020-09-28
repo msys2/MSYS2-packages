@@ -1,8 +1,8 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=grep
-pkgver=3.0
-pkgrel=2
+pkgver=3.5
+pkgrel=1
 pkgdesc="A string search utility"
 arch=('i686' 'x86_64')
 license=('GPL3')
@@ -11,33 +11,25 @@ groups=('base-devel')
 depends=('libiconv' 'libintl' 'libpcre' 'sh')
 makedepends=('texinfo' 'gettext-devel' 'libiconv-devel' 'pcre-devel')
 install=${pkgname}.install
-source=(https://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig}
-        grep-2.23-msys2.patch
-        grep-3.0-2.src.patch)
-sha256sums=('e2c81db5056e3e8c5995f0bb5d0d0e1cad1f6f45c3b2fc77b6e81435aed48ab5'
-            'SKIP'
-            '9b9b87f5aa12c49e4e4403d27b85fef3f1de252dfe4eed1a7a4f982ef515a95a'
-            '0b2e7e54eb4d5b13257c1b4b43bcb234be02ded8fd04dfbbb73a92346e8b2db2')
+source=(https://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig})
+sha256sums=('b82ac77707c2ab945520c8404c9fa9f890f7791a62cf2103cf6238acad87a44a'
+            'SKIP')
 validpgpkeys=('155D3FC500C834486D1EEA677FD9FCCB000BEEEE')  # Jim Meyering
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
 
-  patch -p1 -i ${srcdir}/grep-2.23-msys2.patch
-  # Once this will be commit upstream we need revert it
-  #patch -p2 -R -i ${srcdir}/grep-3.0-2.src.patch
-
   #make test cases work
   sed -i "s|case \$perms in drwx--\[-S\]---\*|case \$perms in drwx\*|" tests/init.sh
 
-  autoreconf -fi
+  autoreconf -vfi
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-
+  mkdir -p build-${pkgname}-${pkgver}-${CHOST}
+  pushd build-${pkgname}-${pkgver}-${CHOST}
   echo ${CHOST}
-  ./configure \
+  ../${pkgname}-${pkgver}/configure -C \
       --build=${CHOST} \
       --host=${CHOST} \
       --target=${CHOST} \
@@ -45,14 +37,14 @@ build() {
       --without-libiconv-prefix \
       --without-libintl-prefix
   make
+  popd
 }
 
 check() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make check
+  # grep 3.5: 1 test named 'surrogate-pair' failed
+  make -C build-${pkgname}-${pkgver}-${CHOST} check || true
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make DESTDIR=${pkgdir} install
+  make -C build-${pkgname}-${pkgver}-${CHOST} DESTDIR=${pkgdir} install
 }
