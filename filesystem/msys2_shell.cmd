@@ -93,13 +93,16 @@ set msys2_arg=
 set msys2_shiftCounter=
 set msys2_full_cmd=
 
-rem Setup proper title
+rem Setup proper title and icon
 if "%MSYSTEM%" == "MINGW32" (
   set "CONTITLE=MinGW x32"
+  set "CONICON=mingw32.ico"
 ) else if "%MSYSTEM%" == "MINGW64" (
   set "CONTITLE=MinGW x64"
+  set "CONICON=mingw64.ico"
 ) else (
   set "CONTITLE=MSYS2 MSYS"
+  set "CONICON=msys2.ico"
 )
 
 if "x%MSYSCON%" == "xmintty.exe" goto startmintty
@@ -110,9 +113,9 @@ if NOT EXIST "%WD%mintty.exe" goto startsh
 set MSYSCON=mintty.exe
 :startmintty
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" --login !SHELL_ARGS!
+  start "%CONTITLE%" "%WD%mintty" -i "/%CONICON%" -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" --login !SHELL_ARGS!
 ) else (
-  "%WD%mintty" -i /msys2.ico -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" --login !SHELL_ARGS!
+  "%WD%mintty" -i "/%CONICON%" -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" --login !SHELL_ARGS!
 )
 exit /b %ERRORLEVEL%
 
@@ -122,9 +125,9 @@ call :conemudetect || (
   exit /b 1
 )
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%\%LOGINSHELL%" --login !SHELL_ARGS!
+  start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\%CONICON%" /cmd "%WD%\%LOGINSHELL%" --login !SHELL_ARGS!
 ) else (
-  "%ComEmuCommand%" /Here /Icon "%WD%..\..\msys2.ico" /cmd "%WD%\%LOGINSHELL%" --login !SHELL_ARGS!
+  "%ComEmuCommand%" /Here /Icon "%WD%..\..\%CONICON%" /cmd "%WD%\%LOGINSHELL%" --login !SHELL_ARGS!
 )
 exit /b %ERRORLEVEL%
 
