@@ -70,7 +70,7 @@ Access URLs:
 
 Contact: <mirrors@cc.uoc.gr>
 
-## Hungry
+## Hungary
 #### Quantum Mirror
 Access URLs:
 
