@@ -16,6 +16,8 @@ git remote add upstream 'https://github.com/MSYS2/MSYS2-packages'
 git fetch --quiet upstream
 # So that makepkg auto-fetches keys from validpgpkeys
 mkdir -p ~/.gnupg && echo -e "keyserver keyserver.ubuntu.com\nkeyserver-options auto-key-retrieve" > ~/.gnupg/gpg.conf
+# reduce time required to install packages by disabling pacman's disk space checking
+sed -i 's/^CheckSpace/#CheckSpace/g' /etc/pacman.conf
 
 # Detect
 list_commits  || failure 'Could not detect added commits'
@@ -26,7 +28,6 @@ define_build_order || failure 'Could not determine build order'
 
 # Build
 message 'Building packages' "${packages[@]}"
-execute 'Updating system' update_system
 execute 'Approving recipe quality' check_recipe_quality
 for package in "${packages[@]}"; do
     execute 'Building binary' makepkg --noconfirm --noprogressbar --nocheck --syncdeps --rmdeps --cleanbuild
@@ -37,10 +38,7 @@ for package in "${packages[@]}"; do
     mv "${package}"/*.src.tar.gz artifacts
     unset package
 done
+success 'All packages built successfully'
 
-# Deploy
-deploy_enabled && cd artifacts || success 'All packages built successfully'
-execute 'Generating pacman repository' create_pacman_repository "${PACMAN_REPOSITORY_NAME:-ci-build}"
-execute 'Generating build references'  create_build_references  "${PACMAN_REPOSITORY_NAME:-ci-build}"
+cd artifacts
 execute 'SHA-256 checksums' sha256sum *
-success 'All artifacts built successfully'
