@@ -2,73 +2,56 @@
 
 pkgbase=glib2
 pkgname=(glib2 glib2-devel glib2-docs)
-pkgver=2.54.3
-pkgrel=3
+pkgver=2.64.6
+pkgrel=1
 pkgdesc="Common C routines used by GTK+ and other libs"
 license=(LGPL2)
 url="https://www.gtk.org/"
 arch=('i686' 'x86_64')
-makedepends=('pkg-config' 'python3' 'libxslt-devel' 'docbook-xsl' 'pcre-devel' 'libffi-devel' 'libiconv-devel' 'gamin-devel' 'gtk-doc' 'zlib-devel')
+makedepends=('docbook-xsl'
+             'gamin-devel'
+             'gtk-doc'
+             'libffi-devel'
+             'libiconv-devel'
+             'libxslt-devel'
+             'pcre-devel'
+             'pkg-config'
+             'python3'
+             'meson'
+             'ninja'
+             'zlib-devel')
 source=(https://download.gnome.org/sources/glib/${pkgver%.*}/glib-$pkgver.tar.xz
-        2.36.3-not-win32.patch
-        2.36.4-gspawn-cygwin.patch
-        2.42.1-goption-cygwin.patch
-        2.34.3-m4macros.patch
-        2.36.3-visibility.patch
-        2.36.4-gutf8-cygwin.patch
         2.38.2-gconvert-cygwin.patch
-        2.50-gmodule-cygwin.patch
-        glib-2.38.1-msys2.patch)
-sha256sums=('963fdc6685dc3da8e5381dfb9f15ca4b5709b28be84d9d05a9bb8e446abac0a8'
-            '8f37c92212a34c392066ff5b9952994550895fd6098b01d62f49139fea5b9ec1'
-            '5a5df4d7ca0ae2be859a80731041fd9cfe6e1a338a882702d1e7d820816d8866'
-            '01bb13f685ffd77c47df4609e8ab394463275d4c58013e5aaf5f7f9b6b442a7e'
-            '9095183f944334e2d02ca67b363d43ea7508c2b02c6e91905160786e7bccbaa7'
-            '23a544c39a8596dfcd59b0226a3228d04c288c2023f6069942c3a76b8397e93b'
-            '5016c0af3a21a03fc1a979a5de21f2116edc75c88f2980e0f2ab816eff98680b'
+        2.64-gmodule-cygwin-rebased.patch)
+sha256sums=('c36ee07a70164c71f046016fe6aaacd6368333c42590bc0cba47c344ffb853f1'
             '9054ae2ba34a12bcafa7659f9f21badbfa7aa6114657ed993818cd867ba698f4'
-            '45a4d5d5fdc01c38d83f7f49a9936dfe7fbaf25e0aa791f1e5c22c89a6c49d93'
-            '3030fe15798cef54aebaf5b8c186f2bc87e49f0385198e3e4fe9ab8a57bca1c9')
+            'dc7a6691f1a19c1b5c6765446d39838331126b29cad45594c100c73da737710c')
 
 prepare() {
   cd glib-${pkgver}
 
-  # Cygwin patches
-  patch -p2 -i ${srcdir}/2.36.3-not-win32.patch
-  patch -p2 -i ${srcdir}/2.36.4-gspawn-cygwin.patch
-  patch -p2 -i ${srcdir}/2.42.1-goption-cygwin.patch
-  patch -p2 -i ${srcdir}/2.34.3-m4macros.patch
-  patch -p2 -i ${srcdir}/2.36.3-visibility.patch
-  patch -p2 -i ${srcdir}/2.36.4-gutf8-cygwin.patch
+  # https://gitlab.gnome.org/GNOME/glib/-/merge_requests/756
   patch -p2 -i ${srcdir}/2.38.2-gconvert-cygwin.patch
-  patch -p2 -i ${srcdir}/2.50-gmodule-cygwin.patch
 
-  # MSYS patches
-  patch -p1 -i ${srcdir}/glib-2.38.1-msys2.patch
-
-  libtoolize --force --copy
-  autoreconf -fi
+  # Unclear what this is about and why it's not upstrean..
+  # Rebased from cygwin 2.50-gmodule-cygwin.patch
+  patch -p1 -i ${srcdir}/2.64-gmodule-cygwin-rebased.patch
 }
 
 build() {
-  export lt_cv_deplibs_check_method='pass_all'
-  cd glib-${pkgver}
-  export CFLAGS="$CFLAGS -Wno-error=format-overflow"
-  ./configure \
-    --build=${CHOST} \
-    --host=${CHOST} \
-    --prefix=/usr \
-    --disable-libelf \
-    --with-pcre=system \
-    --with-threads=posix \
-    --enable-shared \
-    --disable-static \
-    --disable-silent-rules \
-    ac_cv_header_winsock2_h=no \
-    ac_cv_header_mswsock_h=no
-  make VERBOSE=1
+  mkdir "${srcdir}"/build && cd "${srcdir}"/build
 
-  make completiondir=/usr/share/bash-completion/completions DESTDIR="${srcdir}/dest" install
+  meson \
+    --buildtype=plain \
+     --prefix=/usr \
+     -Dfam=true \
+     -Dgtk_doc=true \
+    "../glib-${pkgver}"
+
+  meson compile
+
+  DESTDIR="${srcdir}/dest" meson install
+
   pushd ${srcdir}/dest/usr/share/gdb/auto-load/usr/lib > /dev/null
     mv libglib* msys-glib-2.0-0.dll-gdb.py
     mv libgobject* msys-gobject-2.0-0.dll-gdb.py
@@ -76,8 +59,9 @@ build() {
 }
 
 check() {
-  cd glib-${pkgver}
-  #make -k check || :
+  cd "${srcdir}"/build
+
+  # meson test
 }
 
 package_glib2() {
@@ -86,9 +70,6 @@ package_glib2() {
               'python3: for gdbus-codegen and gtester-report')
   options=('!docs' '!emptydirs')
   license=('LGPL')
-
-  #cd glib-${pkgver}
-  #make completiondir=/usr/share/bash-completion/completions DESTDIR="${pkgdir}" install
 
   mkdir -p ${pkgdir}/usr/{bin,lib,share}
   cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
@@ -142,6 +123,9 @@ package_glib2-devel() {
   rm -rf ${pkgdir}/usr/share/glib-2.0/gdb
   rm -rf ${pkgdir}/usr/share/glib-2.0/schemas
 
+  python3 -m compileall -d "/usr/share/glib-2.0/codegen" "${pkgdir}/usr/share/glib-2.0/codegen"
+  python3 -O -m compileall -d "/usr/share/glib-2.0/codegen" "${pkgdir}/usr/share/glib-2.0/codegen"
+
   #mkdir -p ${pkgdir}/usr/share/man/man1
   #cp -rf ${srcdir}/dest/usr/share/man/man1/gdbus-codegen* ${pkgdir}/usr/share/man/man1/
   #cp -rf ${srcdir}/dest/usr/share/man/man1/glib-* ${pkgdir}/usr/share/man/man1/
@@ -157,10 +141,10 @@ package_glib2-docs() {
   license=('custom')
   options=('docs' '!emptydirs')
 
+  mkdir -p ${pkgdir}/usr/share
+  cp -rf ${srcdir}/dest/usr/share/gtk-doc ${pkgdir}/usr/share
+
   cd glib-$pkgver/docs
-  make DESTDIR="${pkgdir}" install
   install -m755 -d "${pkgdir}/usr/share/licenses/glib2-docs"
   install -m644 reference/COPYING "${pkgdir}/usr/share/licenses/glib2-docs/"
-
-  rm -rf "${pkgdir}/usr/share/man"
 }
