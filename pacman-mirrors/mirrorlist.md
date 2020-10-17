@@ -87,6 +87,16 @@ Access URLs:
 
 Contact: <mirrors@piconets.com>
 
+## Netherlands
+#### NLUUG
+Access URLs:
+
+- <https://ftp.nluug.nl/pub/os/windows/msys2/builds/>
+- <ftp://ftp.nluug.nl/pub/os/windows/msys2/builds/>
+- <rsync://ftp.nluug.nl/msys2/builds/>
+
+Contact: <ftp-admin@nluug.nl>
+
 ## Russia
 #### Yandex
 Access URLs:
@@ -101,6 +111,7 @@ Contact: Unknown
 Access URLs:
 
 - <https://ftp.acc.umu.se/mirror/msys2.org/>
+- <ftp://ftp.acc.umu.se/mirror/msys2.org/>
 - <rsync://ftp.acc.umu.se/mirror/msys2.org/>
 
 Contact: <ftp-adm@acc.umu.se>
