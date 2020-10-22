@@ -1,0 +1,227 @@
+From 48205ebc8854e49ad141a1e03ab986477e28c485 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Wed, 21 Oct 2020 10:12:44 +0200
+Subject: [PATCH 30/N] squash! Do not create cygwin symlinks. Instead use deep
+ copy of files/folders.
+
+The original patch to change the symbolic link behavior to create deep
+copies instead did so in a bit of a hacky way: it used the
+`WSYM_sysfile` code path, not introducing a separate mode. This makes it
+impossible for users to ask for Cygwin's behavior (and it also poses a
+maintenance burden: for example, we had to specifically disable Cygwin's
+code to prefer to create WSL-style symlinks whenever possible instead of
+using the original Cygwin hack to use special-formed system files).
+
+Proposed new commit message when rebasing the MSYS2 patches on top of
+the next Cygwin runtime version:
+
+Instead of creating Cygwin symlinks, use deep copy by default
+
+The new `winsymlinks` mode `deepcopy` (which is made the default) lets
+calls to `symlink()` create (deep) copies of the source file/directory.
+
+This is necessary because unlike Cygwin, MSYS2 does not try to be its
+own little ecosystem that lives its life separate from regular Win32
+programs: the latter have _no idea_ about Cygwin-emulated symbolic links
+(i.e. system files whose contents start with `!<symlink>\xff\xfe` and
+the remainder consists of the NUL-terminated, UTF-16LE-encoded symlink
+target).
+
+To support Cygwin-style symlinks, the new mode `sysfile` is introduced.
+
+Co-authored-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/environ.cc |   4 ++
+ winsup/cygwin/globals.cc |   5 +-
+ winsup/cygwin/path.cc    | 137 ++++++++++++++++++++-------------------
+ 3 files changed, 77 insertions(+), 69 deletions(-)
+
+diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
+index 3d57e34..6a54ed4 100644
+--- a/winsup/cygwin/environ.cc
++++ b/winsup/cygwin/environ.cc
+@@ -87,6 +87,10 @@ set_winsymlinks (const char *buf)
+   else if (ascii_strncasematch (buf, "native", 6))
+     allow_winsymlinks = ascii_strcasematch (buf + 6, "strict")
+ 			? WSYM_nativestrict : WSYM_native;
++  else if (ascii_strncasematch (buf, "deepcopy", 8))
++    allow_winsymlinks = WSYM_deepcopy;
++  else
++    allow_winsymlinks = WSYM_sysfile;
+ }
+ 
+ /* The structure below is used to set up an array which is used to
+diff --git a/winsup/cygwin/globals.cc b/winsup/cygwin/globals.cc
+index 24999d9..abe74f2 100644
+--- a/winsup/cygwin/globals.cc
++++ b/winsup/cygwin/globals.cc
+@@ -55,7 +55,8 @@ enum winsym_t
+   WSYM_lnk,
+   WSYM_native,
+   WSYM_nativestrict,
+-  WSYM_nfs
++  WSYM_nfs,
++  WSYM_deepcopy
+ };
+ 
+ exit_states NO_COPY exit_state;
+@@ -69,7 +70,7 @@ bool ignore_case_with_glob;
+ bool pipe_byte;
+ bool reset_com;
+ bool wincmdln = true;
+-winsym_t allow_winsymlinks = WSYM_sysfile;
++winsym_t allow_winsymlinks = WSYM_deepcopy;
+ bool disable_pcon = true;
+ 
+ bool NO_COPY in_forkee;
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index aa70113..e9ed30f 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -2269,73 +2269,76 @@ symlink_worker (const char *oldpath, path_conv &win32_newpath, bool isdevice)
+ 	}
+       else
+ 	{
+-      path_conv src_path;
+-      src_path.check (oldpath, PC_SYM_NOFOLLOW, stat_suffixes);
+-      if (src_path.error)
+-        {
+-           set_errno (src_path.error);
+-           __leave;
+-        }
+-      if (!src_path.isdevice () && !src_path.is_fs_special ())
+-        {
+-           /* MSYS copy file instead make symlink */
+-
+-           char * real_oldpath;
+-           if (isabspath (oldpath))
+-             strcpy (real_oldpath = tp.c_get (), oldpath);
+-           else
+-              /* Find the real source path, relative
+-                 to the directory of the destination */
+-             {
+-                /* Determine the character position of the last path component */
+-                const char *newpath = win32_newpath.get_posix();
+-                int pos = strlen (newpath);
+-                while (--pos >= 0)
+-                  if (isdirsep (newpath[pos]))
+-                    break;
+-                /* Append the source path to the directory
+-                   component of the destination */
+-                if (pos+1+strlen(oldpath) >= MAX_PATH)
+-                  {
+-                     set_errno(ENAMETOOLONG);
+-                     __leave;
+-                  }
+-                strcpy (real_oldpath = tp.c_get (), newpath);
+-                strcpy (&real_oldpath[pos+1], oldpath);
+-             }
+-
+-           /* As a MSYS limitation, the source path must exist. */
+-		   path_conv win32_oldpath;
+-           win32_oldpath.check (real_oldpath, PC_SYM_NOFOLLOW, stat_suffixes);
+-           if (!win32_oldpath.exists ())
+-             {
+-                set_errno (ENOENT);
+-                __leave;
+-             }
+-
+-           char *w_newpath;
+-           char *w_oldpath;
+-           stpcpy (w_newpath = tp.c_get (), win32_newpath.get_win32());
+-           stpcpy (w_oldpath = tp.c_get (), win32_oldpath.get_win32());
+-           if (win32_oldpath.isdir())
+-             {
+-                char *origpath;
+-                strcpy (origpath = tp.c_get (), w_oldpath);
+-                res = recursiveCopy (w_oldpath, w_newpath, origpath);
+-             }
+-           else
+-             {
+-                if (!CopyFile (w_oldpath, w_newpath, FALSE))
+-                  {
+-                     __seterrno ();
+-                  }
+-                else
+-                  {
+-                     res = 0;
+-                  }
+-             }
+-           __leave;
+-        }
++          if (wsym_type == WSYM_deepcopy)
++	    {
++	      path_conv src_path;
++	      src_path.check (oldpath, PC_SYM_NOFOLLOW, stat_suffixes);
++	      if (src_path.error)
++		{
++		  set_errno (src_path.error);
++		  __leave;
++		}
++	      if (!src_path.isdevice () && !src_path.is_fs_special ())
++	        {
++		  /* MSYS copy file instead make symlink */
++
++		  char * real_oldpath;
++		  if (isabspath (oldpath))
++		    strcpy (real_oldpath = tp.c_get (), oldpath);
++		  else
++		    /* Find the real source path, relative
++		       to the directory of the destination */
++		    {
++		      /* Determine the character position of the last path component */
++		      const char *newpath = win32_newpath.get_posix();
++		      int pos = strlen (newpath);
++		      while (--pos >= 0)
++			if (isdirsep (newpath[pos]))
++			  break;
++		      /* Append the source path to the directory
++			 component of the destination */
++		      if (pos+1+strlen(oldpath) >= MAX_PATH)
++			{
++			  set_errno(ENAMETOOLONG);
++			  __leave;
++			}
++		      strcpy (real_oldpath = tp.c_get (), newpath);
++		      strcpy (&real_oldpath[pos+1], oldpath);
++		    }
++
++		  /* As a MSYS limitation, the source path must exist. */
++		  path_conv win32_oldpath;
++		  win32_oldpath.check (real_oldpath, PC_SYM_NOFOLLOW, stat_suffixes);
++		  if (!win32_oldpath.exists ())
++		    {
++		      set_errno (ENOENT);
++		      __leave;
++		    }
++
++		  char *w_newpath;
++		  char *w_oldpath;
++		  stpcpy (w_newpath = tp.c_get (), win32_newpath.get_win32());
++		  stpcpy (w_oldpath = tp.c_get (), win32_oldpath.get_win32());
++		  if (win32_oldpath.isdir())
++		    {
++		      char *origpath;
++		      strcpy (origpath = tp.c_get (), w_oldpath);
++		      res = recursiveCopy (w_oldpath, w_newpath, origpath);
++		    }
++		  else
++		    {
++		      if (!CopyFile (w_oldpath, w_newpath, FALSE))
++			{
++			  __seterrno ();
++			}
++		      else
++			{
++			  res = 0;
++			}
++		    }
++		  __leave;
++		}
++	    }
+ 
+ 	  /* Default technique creating a symlink. */
+ 	  buf = tp.t_get ();
+-- 
+2.28.0
+
