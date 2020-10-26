@@ -1,0 +1,97 @@
+--- cmake-3.17.3/Source/kwsys/SystemInformation.cxx.orig	2020-05-28 12:57:26.000000000 +0200
++++ cmake-3.17.3/Source/kwsys/SystemInformation.cxx	2020-06-20 15:58:53.222377800 +0200
+@@ -863,7 +863,7 @@ void SystemInformation::RunMemoryCheck()
+ // Hide implementation details in an anonymous namespace.
+ namespace {
+ // *****************************************************************************
+-#if defined(__linux) || defined(__APPLE__)
++#if defined(__linux) || defined(__APPLE__) || defined(__CYGWIN__)
+ int LoadLines(FILE* file, std::vector<std::string>& lines)
+ {
+   // Load each line in the given file into a the vector.
+@@ -893,7 +893,7 @@ int LoadLines(FILE* file, std::vector<st
+   return nRead;
+ }
+ 
+-#  if defined(__linux)
++#  if defined(__linux) || defined(__CYGWIN__)
+ // *****************************************************************************
+ int LoadLines(const char* fileName, std::vector<std::string>& lines)
+ {
+@@ -926,7 +926,7 @@ int NameValue(std::vector<std::string> c
+ }
+ #endif
+ 
+-#if defined(__linux)
++#if defined(__linux) || defined(__CYGWIN__)
+ // ****************************************************************************
+ template <typename T>
+ int GetFieldsFromFile(const char* fileName, const char** fieldNames, T* values)
+@@ -3393,7 +3393,6 @@ bool SystemInformationImplementation::Re
+     pos = buffer.find("processor\t", pos + 1);
+   }
+ 
+-#ifdef __linux
+   // Count sockets.
+   std::set<int> PhysicalIDs;
+   std::string idc = this->ExtractValueFromCpuInfoFile(buffer, "physical id");
+@@ -3414,14 +3413,6 @@ bool SystemInformationImplementation::Re
+   this->NumberOfPhysicalCPU =
+     NumberOfCoresPerSocket * (unsigned int)NumberOfSockets;
+ 
+-#else // __CYGWIN__
+-  // does not have "physical id" entries, neither "cpu cores"
+-  // this has to be fixed for hyper-threading.
+-  std::string cpucount =
+-    this->ExtractValueFromCpuInfoFile(buffer, "cpu count");
+-  this->NumberOfPhysicalCPU = this->NumberOfLogicalCPU =
+-    atoi(cpucount.c_str());
+-#endif
+   // gotta have one, and if this is 0 then we get a / by 0n
+   // better to have a bad answer than a crash
+   if (this->NumberOfPhysicalCPU <= 0) {
+@@ -3588,7 +3590,7 @@ SystemInformationImplementation::GetHost
+   GlobalMemoryStatusEx(&statex);
+   return statex.ullTotalPhys / 1024;
+ #  endif
+-#elif defined(__linux)
++#elif defined(__linux) || defined(__CYGWIN__)
+   long long memTotal = 0;
+   int ierr = GetFieldFromFile("/proc/meminfo", "MemTotal:", memTotal);
+   if (ierr) {
+@@ -3703,6 +3715,16 @@ SystemInformationImplementation::GetHost
+   GlobalMemoryStatusEx(&statex);
+   return (statex.ullTotalPhys - statex.ullAvailPhys) / 1024;
+ #  endif
++#elif defined(__CYGWIN__)
++  const char* names[3] = { "MemTotal:", "MemFree:", NULL };
++  long long values[2] = { 0 };
++  int ierr = GetFieldsFromFile("/proc/meminfo", names, values);
++  if (ierr) {
++    return ierr;
++  }
++  long long& memTotal = values[0];
++  long long& memFree = values[1];
++  return memTotal - memFree;
+ #elif defined(__linux)
+   // First try to use MemAvailable, but it only works on newer kernels
+   const char* names2[3] = { "MemTotal:", "MemAvailable:", nullptr };
+@@ -3774,7 +3765,7 @@ SystemInformationImplementation::GetProc
+     return -2;
+   }
+   return pmc.WorkingSetSize / 1024;
+-#elif defined(__linux)
++#elif defined(__linux) || defined(__CYGWIN__)
+   long long memUsed = 0;
+   int ierr = GetFieldFromFile("/proc/self/status", "VmRSS:", memUsed);
+   if (ierr) {
+@@ -3851,7 +3842,8 @@ SystemInformation::LongLong SystemInform
+ #if defined(_WIN32)
+   return GetCurrentProcessId();
+ #elif defined(__linux) || defined(__APPLE__) || defined(__OpenBSD__) ||       \
+-  defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
++  defined(__FreeBSD__) || defined(__NetBSD__) || defined(__DragonFly__) ||    \
++  defined(__CYGWIN__)
+   return getpid();
+ #else
+   return -1;

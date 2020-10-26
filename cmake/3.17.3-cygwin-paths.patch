@@ -1,0 +1,74 @@
+--- cmake-3.17.3/Source/kwsys/SystemTools.cxx.orig	2020-05-28 12:57:26.000000000 +0200
++++ cmake-3.17.3/Source/kwsys/SystemTools.cxx	2020-06-20 16:29:01.727570700 +0200
+@@ -97,19 +97,12 @@
+ #  if defined(_MSC_VER) && _MSC_VER >= 1800
+ #    define KWSYS_WINDOWS_DEPRECATED_GetVersionEx
+ #  endif
+-#elif defined(__CYGWIN__)
+-#  include <windows.h>
+-#  undef _WIN32
+ #endif
+ 
+ #if !KWSYS_CXX_HAS_ENVIRON_IN_STDLIB_H
+ extern char** environ;
+ #endif
+ 
+-#ifdef __CYGWIN__
+-#  include <sys/cygwin.h>
+-#endif
+-
+ // getpwnam doesn't exist on Windows and Cray Xt3/Catamount
+ // same for TIOCGWINSZ
+ #if defined(_WIN32) || defined(__LIBCATAMOUNT__) ||                           \
+@@ -1298,15 +1291,7 @@ bool SystemTools::PathExists(const std::
+   if (path.empty()) {
+     return false;
+   }
+-#if defined(__CYGWIN__)
+-  // Convert path to native windows path if possible.
+-  char winpath[MAX_PATH];
+-  if (SystemTools::PathCygwinToWin32(path.c_str(), winpath)) {
+-    return (GetFileAttributesA(winpath) != INVALID_FILE_ATTRIBUTES);
+-  }
+-  struct stat st;
+-  return lstat(path.c_str(), &st) == 0;
+-#elif defined(_WIN32)
++#if defined(_WIN32)
+   return (GetFileAttributesW(Encoding::ToWindowsExtendedPath(path).c_str()) !=
+           INVALID_FILE_ATTRIBUTES);
+ #else
+@@ -1328,7 +1313,7 @@ bool SystemTools::FileExists(const std::
+   if (filename.empty()) {
+     return false;
+   }
+-#if defined(__CYGWIN__)
++#if 0
+   // Convert filename to native windows path if possible.
+   char winpath[MAX_PATH];
+   if (SystemTools::PathCygwinToWin32(filename.c_str(), winpath)) {
+@@ -1445,7 +1430,7 @@ int SystemTools::Stat(const std::string&
+ #endif
+ }
+ 
+-#ifdef __CYGWIN__
++#if 0
+ bool SystemTools::PathCygwinToWin32(const char* path, char* win32_path)
+ {
+   auto itr = SystemTools::Statics->Cyg2Win32Map.find(path);
+--- cmake-3.17.3/Source/kwsys/SystemTools.hxx.in.orig	2020-05-28 12:57:26.000000000 +0200
++++ cmake-3.17.3/Source/kwsys/SystemTools.hxx.in	2020-06-20 15:44:06.462570200 +0200
+@@ -335,14 +335,6 @@ public:
+   static int Stat(const char* path, Stat_t* buf);
+   static int Stat(const std::string& path, Stat_t* buf);
+ 
+-/**
+- * Converts Cygwin path to Win32 path. Uses dictionary container for
+- * caching and calls to cygwin_conv_to_win32_path from Cygwin dll
+- * for actual translation.  Returns true on success, else false.
+- */
+-#ifdef __CYGWIN__
+-  static bool PathCygwinToWin32(const char* path, char* win32_path);
+-#endif
+ 
+   /**
+    * Return file length

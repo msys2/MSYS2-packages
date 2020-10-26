@@ -3,8 +3,8 @@
 
 _realname=cmake
 pkgname=("${_realname}" "${_realname}-emacs" "${_realname}-vim")
-pkgver=3.17.3
-pkgrel=3
+pkgver=3.18.4
+pkgrel=1
 pkgdesc="A cross-platform open-source make system"
 arch=('i686' 'x86_64')
 url="https://www.cmake.org/"
@@ -36,17 +36,23 @@ depends=('gcc-libs'
          'zlib')
 options=('staticlibs' 'strip')
 source=(https://www.cmake.org/files/v${pkgver%.*}/${pkgname}-${pkgver}.tar.gz
-        cmake-3.16.5-msys.patch
-        disable-curses-for-msys.patch
-        disable-response-files-for-msys.patch
-        3.9.3-cpuinfo.patch
-        3.15.0-cygwin-paths.patch)
-sha256sums=('0bd60d512275dc9f6ef2a2865426a184642ceb3761794e6b65bff233b91d8c40'
-            '13fa90a6b6ba3fa05e4bc2df1e11f84a8c0f3274f4a7d96af22873722151f3b9'
-            'b7e398e70b97088f88a0688e8a0794d6780d3cdb91075388a30908dc4b405eb7'
-            'ffde15cbf2cbe3f5f3f0301722d9941bfa94396f667fdc911323b8b3f69dfbc6'
-            '48995937ea5233137e1ae9c8c0e78911318caf0f35c7ab7a22d1a0f1168d723a'
-            'cbe09a39d2def9bc3176c8d60a828ec9a318c6fcf84676f1464ca854b1ee90ab')
+        perl-libs.patch
+        3.17.3-case-sensitivity.patch
+        3.17.3-opengl.patch
+        3.17.3-findtclsh.patch
+        3.17.3-cpuinfo.patch
+        3.17.3-cygwin-paths.patch
+        cmake-3.18.4-msys.patch
+        disable-response-files-for-msys.patch)
+sha256sums=('597c61358e6a92ecbfad42a9b5321ddd801fc7e7eca08441307c9138382d4f77'
+            'dae002351594910cf47d2f11956ddffc6cd9c8f755204944886b43dba0f5d291'
+            'babee378f4b767dbd16d220ad92ef5556759dc34910e01322e3f3b1dc1b605ed'
+            '081d625176342ad6f62ad2bcf141db2d4121d654749a0acf511f86fe8112d94d'
+            'f98ca4af7cd986d6222918d07117ae828ee7398f25ec5ca23a9656b216e6d0fe'
+            '95687ae482f9a312080291a341a79c122c7a293de3d4f4dff44f5b36faac099d'
+            'fc11babbc9444ec9cb52e8ac05def51d4be06605b7edefb9ea6e74a5a75280a5'
+            'c89592e6e08c20e814f36d89c3e93349384f197100e5bf88286dca01d6aa099f'
+            'ffde15cbf2cbe3f5f3f0301722d9941bfa94396f667fdc911323b8b3f69dfbc6')
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -81,11 +87,20 @@ prepare() {
     Modules/Platform/MSYS-GNU-CXX.cmake \
     Modules/Platform/MSYS-GNU-Fortran.cmake \
     Modules/Platform/MSYS-windres.cmake || true
+    
+  # Cygwin patches
   apply_patch_with_msg \
-       cmake-3.16.5-msys.patch \
-       disable-response-files-for-msys.patch \
-       3.9.3-cpuinfo.patch \
-       3.15.0-cygwin-paths.patch
+       perl-libs.patch \
+       3.17.3-case-sensitivity.patch \
+       3.17.3-opengl.patch \
+       3.17.3-findtclsh.patch \
+       3.17.3-cpuinfo.patch \
+       3.17.3-cygwin-paths.patch
+
+  # Msysize
+  apply_patch_with_msg \
+       cmake-3.18.4-msys.patch \
+       disable-response-files-for-msys.patch
 }
 
 build() {
@@ -137,12 +152,9 @@ package_cmake-vim() {
   pkgdesc="A cross-platform open-source make system (vim mode)"
   depends=("cmake=${pkgver}" 'vim')
   cd ${srcdir}/dest
-  vimpath=${pkgdir}/usr/share/vim/vimfiles
-  install -d ${vimpath}/indent
-  install -d ${vimpath}/syntax
+  install -d ${pkgdir}/usr/share
 
-  cp -r ${srcdir}/dest/usr/share/${_realname}-${pkgver}/editors/vim/indent/cmake.vim ${vimpath}/indent/
-  cp -r ${srcdir}/dest/usr/share/${_realname}-${pkgver}/editors/vim/syntax/cmake.vim ${vimpath}/syntax/
+  cp -rf usr/share/vim ${pkgdir}/usr/share/
 }
 
 package_cmake-emacs() {
@@ -150,9 +162,8 @@ package_cmake-emacs() {
   depends=(cmake=${pkgver} 'emacs')
   cd ${srcdir}/dest
 
-  install -d  ${pkgdir}/usr/share/${_realname}-${pkgver}/editors/emacs/
-  install -d ${pkgdir}/usr/share/emacs/site-lisp/
-  cp usr/share/${_realname}-${pkgver}/editors/emacs/cmake-mode.el ${pkgdir}/usr/share/emacs/site-lisp/
+  install -d ${pkgdir}/usr/share
+  cp -rf usr/share/emacs ${pkgdir}/usr/share/
 
   /usr/bin/emacs -batch -f batch-byte-compile \
     ${pkgdir}/usr/share/emacs/site-lisp/cmake-mode.el
