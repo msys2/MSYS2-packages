@@ -1,0 +1,45 @@
+From 8704cf388dbfa7de5a5ecf3bdb46375b62a040a1 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Mon, 26 Oct 2020 23:22:31 +0100
+Subject: [PATCH] Work around internal compiler error
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When compiling with `-fstack-clash-protection`, we run into this problem
+using MSYS2's GCC v9.3.0:
+
+during RTL pass: final
+sftp.c: In function ‘sftp_packet_read’:
+sftp.c:521:1: internal compiler error: in i386_pe_seh_unwind_emit, at config/i386/winnt.c:1258
+  521 | }
+        | ^
+
+Let's just not use this flag. According to
+https://gcc.gnu.org/bugzilla/show_bug.cgi?id=90458#c2, this might be the
+correct thing to do on Windows, anyway.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ CompilerChecks.cmake | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/CompilerChecks.cmake b/CompilerChecks.cmake
+index 5bdc05c..e623f58 100644
+--- a/CompilerChecks.cmake
++++ b/CompilerChecks.cmake
+@@ -85,11 +85,6 @@ if (UNIX)
+         endif()
+     endif (WITH_STACK_PROTECTOR_STRONG)
+ 
+-    check_c_compiler_flag_ssp("-fstack-clash-protection" WITH_STACK_CLASH_PROTECTION)
+-    if (WITH_STACK_CLASH_PROTECTION)
+-        list(APPEND SUPPORTED_COMPILER_FLAGS "-fstack-clash-protection")
+-    endif()
+-
+     if (PICKY_DEVELOPER)
+         add_c_compiler_flag("-Wno-error=deprecated-declarations" SUPPORTED_COMPILER_FLAGS)
+         add_c_compiler_flag("-Wno-error=tautological-compare" SUPPORTED_COMPILER_FLAGS)
+-- 
+2.29.1
+
