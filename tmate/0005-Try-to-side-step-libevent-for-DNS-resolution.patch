@@ -1,0 +1,43 @@
+From 49cd385761301a11b5250eb22b9e536c75c553c0 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 27 Oct 2020 14:05:37 +0100
+Subject: [PATCH] Try to side-step libevent for DNS resolution
+
+It is buggy on Windows.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ tmate-session.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/tmate-session.c b/tmate-session.c
+index 62493278..f1ff8752 100644
+--- a/tmate-session.c
++++ b/tmate-session.c
+@@ -88,8 +88,9 @@ static void dns_cb(int errcode, struct evutil_addrinfo *addr, void *ptr)
+ 
+ static void lookup_and_connect(void)
+ {
+-	struct evutil_addrinfo hints;
++	struct evutil_addrinfo hints, *result;
+ 	const char *tmate_server_host;
++	int s;
+ 
+ 	assert(!tmate_session.ev_dnsbase);
+ 	tmate_session.ev_dnsbase = evdns_base_new(tmate_session.ev_base, 1);
+@@ -105,6 +106,12 @@ static void lookup_and_connect(void)
+ 	tmate_server_host = options_get_string(global_options,
+ 					       "tmate-server-host");
+ 	tmate_debug("Looking up %s...", tmate_server_host);
++	s = getaddrinfo(tmate_server_host, NULL, &hints, &result);
++	if (!s) {
++		dns_cb(0, result, (void *)tmate_server_host);
++		return;
++	}
++
+ 	(void)evdns_getaddrinfo(tmate_session.ev_dnsbase, tmate_server_host, NULL,
+ 				&hints, dns_cb, (void *)tmate_server_host);
+ }
+-- 
+2.29.1
+

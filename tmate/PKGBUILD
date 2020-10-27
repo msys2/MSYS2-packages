@@ -1,0 +1,48 @@
+pkgname=tmate
+pkgver=2.4.0
+pkgrel=1
+pkgdesc="Instant Terminal Sharing http://tmate.io/"
+arch=('i686' 'x86_64')
+license=('ISC')
+url="http://tmate.io/"
+depends=('libevent' 'ncurses' 'libopenssl' 'libssh' 'zlib' 'msgpack-c')
+makedepends=('libevent-devel' 'ncurses-devel' 'openssl-devel' 'libssh-devel' 'zlib-devel' 'ruby' 'msgpack-c-devel')
+
+source=("$pkgname"::"git+https://github.com/tmate-io/tmate.git#tag=$pkgver"
+        "0001-tmux-Inherit-MSYSTEM-variable.patch"
+        "0002-configure-handle-MSYS2.patch"
+        "0003-do-not-check-directory-permissions.patch"
+        "0004-Avoid-unsupported-GCC-option.patch"
+        "0005-Try-to-side-step-libevent-for-DNS-resolution.patch")
+sha256sums=('SKIP'
+            '1914efec5861967a9a4e024cde82fbc758b414f450f952814d1ff861605e41fe'
+            'b3e80c90cd0473f12bd5ed1f7d725c36fc97f0617bd79438cd377ec55509ce71'
+            'f85d637de622440e14208f4a45f33a5ecc98f84ce5d678b8e2d3169d724ddf6b'
+            'b2d916cb542cdd6e70f4864c8eda4fcf2d16c3d3573990f3fa3b3e2200c74a5f'
+            'c60a65e8a2dfc37fb58d661cfeb211dc529bef7a89dc09198e1da9d0e0faecac')
+
+prepare() {
+  cd ${srcdir}/$pkgname
+  patch -p1 -i ${srcdir}/0001-tmux-Inherit-MSYSTEM-variable.patch
+  patch -p1 -i ${srcdir}/0002-configure-handle-MSYS2.patch
+  patch -p1 -i ${srcdir}/0003-do-not-check-directory-permissions.patch
+  patch -p1 -i ${srcdir}/0004-Avoid-unsupported-GCC-option.patch
+  patch -p1 -i ${srcdir}/0005-Try-to-side-step-libevent-for-DNS-resolution.patch
+  test -f osdep-msys.c || cp osdep-cygwin.c osdep-msys.c
+  ./autogen.sh
+}
+
+build() {
+  cd ${srcdir}/$pkgname
+  ./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
+    CPPFLAGS="${CPPFLAGS} -I/usr/include/ncursesw -D_GNU_SOURCE=1"
+  make
+}
+
+package() {
+  cd ${srcdir}/$pkgname
+  make DESTDIR=${pkgdir} install
+}
