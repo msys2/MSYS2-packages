@@ -1,23 +1,18 @@
 ---
-name: Bug report
+name: Issue
 about: Create a report to help us improve
-title: "[BUG]"
-labels: bug
-assignees: ''
-
 ---
 
-## Describe the bug
+## Describe the issue
 
-A clear and concise description of what the bug is.
+A clear and concise description of what the issue is.
 
 ## Steps to Reproduce the Problem
 
 1. Run '...'
 2. Do something '....'
-3. Catch the error
-
-Expected behavior: A clear and concise description of what you expected to happen instead.
+3. Describe what happens?
+4. What did you expect to happen instead?
 
 ## Additional Context: Operating System, Screenshots
 
