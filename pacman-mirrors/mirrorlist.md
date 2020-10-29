@@ -106,6 +106,15 @@ Access URLs:
 
 Contact: Unknown
 
+## Singapore
+#### National University of Singapore
+Access URLs:
+
+- <https://download.nus.edu.sg/mirror/msys2/>
+- <rsync://download.nus.edu.sg/msys2/>
+
+Contact: <download@nus.edu.sg>
+
 ## Sweden
 #### Umeå universitet
 Access URLs:
@@ -117,6 +126,15 @@ Access URLs:
 Contact: <ftp-adm@acc.umu.se>
 
 ## United States
+### California
+#### SourceForge
+
+Access URLs:
+
+- <https://sourceforge.net/projects/msys2/files/REPOS/>
+
+Contact: David Macek @elieux
+
 ### New York
 #### Clarkson University
 Access URLs:
@@ -133,6 +151,15 @@ Access URLs:
 
 Contact: [Dan Yeaw](mailto:dan@yeaw.me)
 
+### Oregon
+#### Oregon State University
+Access URLS:
+
+- <https://ftp.osuosl.org/pub/msys2/>
+- <rsync://rsync.osuosl.org/msys2/>
+
+Contact: <hosting-request@osuosl.org>
+
 ### Virginia
 #### James Madison University
 
@@ -142,11 +169,3 @@ Access URLs:
 
 Contact: <mirrormaster@jmu.edu>
 
-### California
-#### SourceForge
-
-Access URLs:
-
-- <https://sourceforge.net/projects/msys2/files/REPOS/>
-
-Contact: David Macek @elieux
