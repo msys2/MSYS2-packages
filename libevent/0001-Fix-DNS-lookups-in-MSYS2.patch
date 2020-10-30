@@ -1,0 +1,148 @@
+From 4cdf3fd2289d9658ecce21abf613cac389c4e732 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Thu, 29 Oct 2020 22:18:33 +0100
+Subject: [PATCH] Fix DNS lookups in MSYS2
+
+We need to use the Win32 way to obtain the name server IPs.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ evdns.c         | 21 ++++++++++++++-------
+ evutil.c        | 23 ++++++++++++++---------
+ util-internal.h |  4 ++--
+ 3 files changed, 30 insertions(+), 18 deletions(-)
+
+diff --git a/evdns.c b/evdns.c
+index a5b31a3c..cc7cad84 100644
+--- a/evdns.c
++++ b/evdns.c
+@@ -85,6 +85,11 @@
+ #include <shlobj.h>
+ #endif
+ 
++#ifdef __MSYS__
++#include <w32api/shlobj.h>
++#include <w32api/iptypes.h>
++#endif
++
+ #include "event2/dns.h"
+ #include "event2/dns_struct.h"
+ #include "event2/dns_compat.h"
+@@ -3637,7 +3642,7 @@ evdns_base_resolv_conf_parse(struct evdns_base *base, int flags, const char *con
+ static char *
+ evdns_get_default_hosts_filename(void)
+ {
+-#ifdef _WIN32
++#if defined(_WIN32) || defined(__MSYS__)
+ 	/* Windows is a little coy about where it puts its configuration
+ 	 * files.  Sure, they're _usually_ in C:\windows\system32, but
+ 	 * there's no reason in principle they couldn't be in
+@@ -3729,7 +3734,7 @@ evdns_resolv_conf_parse(int flags, const char *const filename) {
+ }
+ 
+ 
+-#ifdef _WIN32
++#if defined(_WIN32) || defined(__MSYS__)
+ /* Add multiple nameservers from a space-or-comma-separated list. */
+ static int
+ evdns_nameserver_ip_add_line(struct evdns_base *base, const char *ips) {
+@@ -3738,10 +3743,10 @@ evdns_nameserver_ip_add_line(struct evdns_base *base, const char *ips) {
+ 	int r;
+ 	ASSERT_LOCKED(base);
+ 	while (*ips) {
+-		while (isspace(*ips) || *ips == ',' || *ips == '\t')
++		while (isspace((unsigned char)*ips) || *ips == ',' || *ips == '\t')
+ 			++ips;
+ 		addr = ips;
+-		while (isdigit(*ips) || *ips == '.' || *ips == ':' ||
++		while (isdigit((unsigned char)*ips) || *ips == '.' || *ips == ':' ||
+ 		    *ips=='[' || *ips==']')
+ 			++ips;
+ 		buf = mm_malloc(ips-addr+1);
+@@ -3778,7 +3783,7 @@ load_nameservers_with_getnetworkparams(struct evdns_base *base)
+ 		status = -1;
+ 		goto done;
+ 	}
+-	if (!(fn = (GetNetworkParams_fn_t) GetProcAddress(handle, "GetNetworkParams"))) {
++	if (!(fn = (GetNetworkParams_fn_t) (void (*)(void)) GetProcAddress(handle, "GetNetworkParams"))) {
+ 		log(EVDNS_LOG_WARN, "Could not get address of function.");
+ 		status = -1;
+ 		goto done;
+@@ -3921,7 +3926,7 @@ load_nameservers_from_registry(struct evdns_base *base)
+ #undef TRY
+ }
+ 
+-int
++static int
+ evdns_base_config_windows_nameservers(struct evdns_base *base)
+ {
+ 	int r;
+@@ -4030,9 +4035,11 @@ evdns_base_new(struct event_base *event_base, int flags)
+ 			opts |= DNS_OPTION_NAMESERVERS_NO_DEFAULT;
+ 		}
+ 
+-#ifdef _WIN32
++#if defined(_WIN32) || defined(__MSYS__)
++fprintf(stderr, "%s:%d: HERE\n", __FILE__, __LINE__); fflush(stderr);
+ 		r = evdns_base_config_windows_nameservers(base);
+ #else
++fprintf(stderr, "%s:%d: HERE\n", __FILE__, __LINE__); fflush(stderr);
+ 		r = evdns_base_resolv_conf_parse(base, opts, "/etc/resolv.conf");
+ #endif
+ 		if (r) {
+diff --git a/evutil.c b/evutil.c
+index 9817f086..059a87c3 100644
+--- a/evutil.c
++++ b/evutil.c
+@@ -2568,18 +2568,23 @@ evutil_hex_char_to_int_(char c)
+ 	return -1;
+ }
+ 
+-#ifdef _WIN32
+-HMODULE
+-evutil_load_windows_system_library_(const TCHAR *library_name)
++#if defined(_WIN32) || defined(__MSYS__)
++#include <w32api/minwindef.h>
++#include <w32api/sysinfoapi.h>
++/* Avoid including Win32 headers conflicting with MSYS2's headers */
++void *WINAPI LoadLibraryA (const char *lpLibFileName);
++
++void *
++evutil_load_windows_system_library_(const char *library_name)
+ {
+-  TCHAR path[MAX_PATH];
++  char path[MAX_PATH];
+   unsigned n;
+-  n = GetSystemDirectory(path, MAX_PATH);
+-  if (n == 0 || n + _tcslen(library_name) + 2 >= MAX_PATH)
++  n = GetSystemDirectoryA(path, MAX_PATH);
++  if (n == 0 || n + strlen(library_name) + 2 >= MAX_PATH)
+     return 0;
+-  _tcscat(path, TEXT("\\"));
+-  _tcscat(path, library_name);
+-  return LoadLibrary(path);
++  strcat(path, TEXT("\\"));
++  strcat(path, library_name);
++  return LoadLibraryA(path);
+ }
+ #endif
+ 
+diff --git a/util-internal.h b/util-internal.h
+index 39576c71..584a94b8 100644
+--- a/util-internal.h
++++ b/util-internal.h
+@@ -450,9 +450,9 @@ int evutil_hex_char_to_int_(char c);
+ void evutil_free_secure_rng_globals_(void);
+ void evutil_free_globals_(void);
+ 
+-#ifdef _WIN32
++#if defined(_WIN32) || defined(__MSYS__)
+ EVENT2_EXPORT_SYMBOL
+-HMODULE evutil_load_windows_system_library_(const TCHAR *library_name);
++void *evutil_load_windows_system_library_(const char *library_name);
+ #endif
+ 
+ #ifndef EV_SIZE_FMT
+-- 
+2.29.1
+
