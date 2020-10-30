@@ -1,0 +1,109 @@
+From f3207a46cbc9253fda09eefe014b2fe3248d68e1 Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Fri, 30 Oct 2020 17:31:53 +0100
+Subject: [PATCH] cygwin disguise
+
+---
+ mesonbuild/build.py                  | 2 +-
+ mesonbuild/compilers/mixins/clike.py | 2 +-
+ mesonbuild/environment.py            | 2 +-
+ mesonbuild/mesonlib.py               | 2 +-
+ mesonbuild/mesonmain.py              | 2 +-
+ mesonbuild/mtest.py                  | 2 +-
+ run_unittests.py                     | 2 ++
+ 7 files changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/mesonbuild/build.py b/mesonbuild/build.py
+index 78292f20a..cc7756014 100644
+--- a/mesonbuild/build.py
++++ b/mesonbuild/build.py
+@@ -1811,7 +1811,7 @@ class SharedLibrary(BuildTarget):
+             self.gcc_import_filename = '{0}{1}.dll.a'.format(self.prefix if self.prefix is not None else 'lib', self.name)
+             # Shared library is of the form cygfoo.dll
+             # (ld --dll-search-prefix=cyg is the default)
+-            prefix = 'cyg'
++            prefix = 'msys-'
+             # Import library is called libfoo.dll.a
+             self.import_filename = self.gcc_import_filename
+             if self.soversion:
+diff --git a/mesonbuild/compilers/mixins/clike.py b/mesonbuild/compilers/mixins/clike.py
+index 3c2c53c7f..e92115840 100644
+--- a/mesonbuild/compilers/mixins/clike.py
++++ b/mesonbuild/compilers/mixins/clike.py
+@@ -995,7 +995,7 @@ class CLikeCompiler(Compiler):
+             stlibext += ['lib']
+         elif env.machines[self.for_machine].is_cygwin():
+             shlibext = ['dll', 'dll.a']
+-            prefixes = ['cyg'] + prefixes
++            prefixes = ['msys-'] + prefixes
+         else:
+             # Linux/BSDs
+             shlibext = ['so']
+diff --git a/mesonbuild/environment.py b/mesonbuild/environment.py
+index 588005bba..c1cf96d3b 100644
+--- a/mesonbuild/environment.py
++++ b/mesonbuild/environment.py
+@@ -437,7 +437,7 @@ def detect_cpu(compilers: CompilersDict):
+     return trial
+ 
+ def detect_system():
+-    if sys.platform == 'cygwin':
++    if sys.platform == 'cygwin' or sys.platform == 'msys':
+         return 'cygwin'
+     return platform.system().lower()
+ 
+diff --git a/mesonbuild/mesonlib.py b/mesonbuild/mesonlib.py
+index 352c5ca8b..1c541eae2 100644
+--- a/mesonbuild/mesonlib.py
++++ b/mesonbuild/mesonlib.py
+@@ -500,7 +500,7 @@ def is_windows() -> bool:
+ 
+ 
+ def is_cygwin() -> bool:
+-    return sys.platform == 'cygwin'
++    return sys.platform == 'cygwin' or sys.platform == 'msys'
+ 
+ 
+ def is_debianlike() -> bool:
+diff --git a/mesonbuild/mesonmain.py b/mesonbuild/mesonmain.py
+index 9bf6ef667..b99e9f246 100644
+--- a/mesonbuild/mesonmain.py
++++ b/mesonbuild/mesonmain.py
+@@ -193,7 +193,7 @@ def run(original_args, mainfile):
+     ensure_stdout_accepts_unicode()
+ 
+     # https://github.com/mesonbuild/meson/issues/3653
+-    if sys.platform.lower() == 'msys':
++    if sys.platform.lower() == 'msys' and os.environ.get('MSYSTEM', '') != 'MSYS':
+         mlog.error('This python3 seems to be msys/python on MSYS2 Windows, which is known to have path semantics incompatible with Meson')
+         msys2_arch = detect_msys2_arch()
+         if msys2_arch:
+diff --git a/mesonbuild/mtest.py b/mesonbuild/mtest.py
+index 35cb10a5b..65567fb4d 100644
+--- a/mesonbuild/mtest.py
++++ b/mesonbuild/mtest.py
+@@ -60,7 +60,7 @@ def is_windows() -> bool:
+     return platname == 'windows'
+ 
+ def is_cygwin() -> bool:
+-    return sys.platform == 'cygwin'
++    return sys.platform == 'cygwin' or sys.platform == 'msys'
+ 
+ def determine_worker_count() -> int:
+     varname = 'MESON_TESTTHREADS'
+diff --git a/run_unittests.py b/run_unittests.py
+index c7c6ba265..c64c6af30 100755
+--- a/run_unittests.py
++++ b/run_unittests.py
+@@ -1890,6 +1890,8 @@ class BasePlatformTests(unittest.TestCase):
+         base = os.path.splitext(filename)[0]
+         if base.startswith(('lib', 'cyg')):
+             return base[3:]
++        if base.startswith('msys-'):
++            return base[5:]
+         return base
+ 
+     def assertBuildRelinkedOnlyTarget(self, target):
+-- 
+2.29.1
+
