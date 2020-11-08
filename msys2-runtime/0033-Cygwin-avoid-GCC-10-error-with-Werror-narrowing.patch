@@ -1,0 +1,41 @@
+From 42babc8c841abb146f2de4271698c26b0ceb6615 Mon Sep 17 00:00:00 2001
+From: Jon Turney <jon.turney@dronecode.org.uk>
+Date: Sat, 19 Sep 2020 15:55:09 +0100
+Subject: [PATCH 33/N] Cygwin: avoid GCC 10 error with -Werror=narrowing
+
+../../../../src/winsup/cygwin/fhandler_console.cc: In member function 'const unsigned char* fhandler_console::write_normal(const unsigned char*, const unsigned char*)':
+../../../../src/winsup/cygwin/fhandler_console.cc:2782:8: error: narrowing conversion of '-2' from 'int' to 'long unsigned int' [-Wnarrowing]
+../../../../src/winsup/cygwin/fhandler_console.cc:2786:8: error: narrowing conversion of '-1' from 'int' to 'long unsigned int' [-Wnarrowing]
+../../../../src/winsup/cygwin/fhandler_console.cc:2836:8: error: narrowing conversion of '-2' from 'int' to 'long unsigned int' [-Wnarrowing]
+../../../../src/winsup/cygwin/fhandler_console.cc:2840:8: error: narrowing conversion of '-1' from 'int' to 'long unsigned int' [-Wnarrowing]
+
+A mbtowc_p function returns an int, so that seems the correct type to use here.
+---
+ winsup/cygwin/fhandler_console.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler_console.cc b/winsup/cygwin/fhandler_console.cc
+index 52741ce..afecb12 100644
+--- a/winsup/cygwin/fhandler_console.cc
++++ b/winsup/cygwin/fhandler_console.cc
+@@ -2765,7 +2765,7 @@ fhandler_console::write_normal (const unsigned char *src,
+   DWORD done;
+   DWORD buf_len;
+   const unsigned char *found = src;
+-  size_t ret;
++  int ret;
+   mbstate_t ps;
+   mbtowc_p f_mbtowc;
+ 
+@@ -2945,7 +2945,7 @@ do_print:
+ 		{
+ 		  ret = __utf8_mbtowc (_REENT, NULL, (const char *) found + 1,
+ 				       end - found - 1, &ps);
+-		  if (ret != (size_t) -1)
++		  if (ret != -1)
+ 		    while (ret-- > 0)
+ 		      {
+ 			WCHAR w = *(found + 1);
+-- 
+2.29.2
+
