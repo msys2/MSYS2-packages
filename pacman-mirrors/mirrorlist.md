@@ -144,13 +144,6 @@ Access URLs:
 
 Contact: [Cameron Weinfurt](mailto:weinfuc@clarkson.edu)
 
-#### Gaphor Project Mirror
-Access URLs:
-
-- <https://msys2.nyc3.digitaloceanspaces.com/>
-
-Contact: [Dan Yeaw](mailto:dan@yeaw.me)
-
 ### Oregon
 #### Oregon State University
 Access URLS:
