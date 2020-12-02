@@ -131,7 +131,7 @@ Contact: <ftp-adm@acc.umu.se>
 
 Access URLs:
 
-- <https://prdownloads.sourceforge.net/msys2/>
+- <https://downloads.sourceforge.net/project/msys2/>
 
 Contact: David Macek @elieux
 
