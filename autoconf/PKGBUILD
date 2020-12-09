@@ -2,52 +2,54 @@
 # Contributor: Ray Donnelly <mingw.android@gmail.com>
 
 pkgname=autoconf
-pkgver=2.69
-pkgrel=5
+pkgver=2.70
+pkgrel=1
 pkgdesc="A GNU tool for automatically configuring source code"
 arch=('any')
 license=('GPL2' 'GPL3' 'custom')
 url="https://www.gnu.org/software/autoconf"
 groups=('base-devel')
-depends=('awk' 'm4' 'diffutils' 'bash' 'perl')
+depends=('awk' 'm4' 'diffutils' 'bash' 'perl' 'sed')
 # for test-suite
 makedepends=('gcc-fortran')
 install=autoconf.install
-source=(https://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig}
-        0001-fix-texinfo.patch
-        0002-msys2.patch
-        0003-autotest-remove-cr-from-prog-stdout-stderr.patch)
-sha256sums=('64ebcec9f8ac5b2487125a86a7760d2591ac9e1d3dbd59489633f9de62a57684'
-            'SKIP'
-            'ad42ff57d1ff3dd6ba06fe94f913a369f9210963856e8c955efed9a164609a64'
-            '9f31df02eb41df57a05ceea1d1442424d1cca63cd9304c953732fa6c65279a5a'
-            '74e2135a3f34f5692a77de85c21cb2f0fd8a1dcf396f7fbba7deb0c59faa54eb')
+source=(https://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz
+        0001-autoconf-2.70-MSYS2-specifics-AC_CYGWIN.patch
+        0002-autoconf-2.70-MSYS2-Autotest-Unify-EOLs-By-Default.patch
+        0003-autoconf-2.70-MSYS2-specifics-config.guess.patch)
+sha256sums=('fa9e227860d9d845c0a07f63b88c8d7a2ae1aa2345fb619384bb8accc19fecc6'
+            '3a5337e2269407405ee4c7feb12dbe2ae711610c3144c07cd085272676005db6'
+            'c4e4952cc63a2ddaf7bf539f6e59353c4fadbf04cd48c3cfa789f8b175d0bd27'
+            'a7671bef559a5f3edbd811a7cf9b557f216f1d3e9502dc046fd3a0ea665da7da')
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
 
-  patch -p1 -i ${srcdir}/0001-fix-texinfo.patch
-  patch -p1 -i ${srcdir}/0002-msys2.patch
-  patch -p1 -i ${srcdir}/0003-autotest-remove-cr-from-prog-stdout-stderr.patch
+  patch -p1 -i ${srcdir}/0001-autoconf-2.70-MSYS2-specifics-AC_CYGWIN.patch
+  patch -p1 -i ${srcdir}/0002-autoconf-2.70-MSYS2-Autotest-Unify-EOLs-By-Default.patch
+  patch -p1 -i ${srcdir}/0003-autoconf-2.70-MSYS2-specifics-config.guess.patch
+
+  # NB: Do not run auto(re)conf and friends to avoid any self-dependency of the package.
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  ./configure --prefix=/usr
+  mkdir -p build-${pkgname}-${pkgver}
+  cd build-${pkgname}-${pkgver}
+  ../${pkgname}-${pkgver}/configure --prefix=/usr
   make
 }
 
 check() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make check
+  cd build-${pkgname}-${pkgver}
+  # CAUTION: The tests run very very long, even on a server.
+  make check TESTSUITEFLAGS='-j16'
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make DESTDIR=${pkgdir} install
+  make -C build-${pkgname}-${pkgver} DESTDIR=${pkgdir} install
 
   # license exception
-  install -Dm644 COPYING.EXCEPTION \
+  install -Dm644 ${pkgname}-${pkgver}/COPYING.EXCEPTION \
     $pkgdir/usr/share/licenses/autoconf/COPYING.EXCEPTION
 
   # conflict with bintuils
