@@ -1,0 +1,499 @@
+From 88e7895f08d55c69500d363fffbae3ca705356be Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Mateusz=20Miku=C5=82a?= <mati865@gmail.com>
+Date: Thu, 29 Oct 2020 18:31:43 +0100
+Subject: Msysize
+
+---
+ CMakeLists.txt                                |  6 +++---
+ cmake/config-ix.cmake                         |  4 ++--
+ cmake/modules/AddLLVM.cmake                   | 10 +++++-----
+ cmake/modules/CMakeLists.txt                  |  2 +-
+ cmake/modules/HandleLLVMOptions.cmake         | 14 +++++++-------
+ include/llvm/Config/abi-breaking.h.cmake      |  2 +-
+ include/llvm/Support/Compiler.h               |  6 ++++--
+ lib/Support/MemoryBuffer.cpp                  |  2 +-
+ lib/Support/Unix/DynamicLibrary.inc           |  4 ++--
+ lib/Support/Unix/Path.inc                     |  8 +++++---
+ lib/Support/raw_ostream.cpp                   |  2 +-
+ lib/Transforms/Hello/CMakeLists.txt           |  2 +-
+ test/CodeGen/MIR/AArch64/lit.local.cfg        |  2 +-
+ test/Unit/lit.cfg.py                          |  2 +-
+ test/lit.cfg.py                               |  2 +-
+ tools/CMakeLists.txt                          |  2 +-
+ tools/bugpoint-passes/CMakeLists.txt          |  2 +-
+ tools/lli/lli.cpp                             |  2 +-
+ tools/llvm-shlib/CMakeLists.txt               |  2 +-
+ .../unittests/ExecutionEngine/MCJIT/CMakeLists.txt |  2 +-
+ utils/benchmark/CMakeLists.txt                |  2 +-
+ utils/benchmark/src/internal_macros.h         |  4 ++--
+ utils/lit/lit/formats/googletest.py           |  2 +-
+ utils/lit/tests/lit.cfg                       |  2 +-
+ .../include/gtest/internal/gtest-port-arch.h       |  2 +-
+ 25 files changed, 47 insertions(+), 43 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 038139a2409..0f73da65365 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -281,7 +281,7 @@ mark_as_advanced(LLVM_UTILS_INSTALL_DIR)
+ # They are used as destination of target generators.
+ set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin)
+ set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib${LLVM_LIBDIR_SUFFIX})
+-if(WIN32 OR CYGWIN)
++if(WIN32 OR CYGWIN OR MSYS)
+   # DLL platform -- put DLLs into bin.
+   set(LLVM_SHLIB_OUTPUT_INTDIR ${LLVM_RUNTIME_OUTPUT_INTDIR})
+ else()
+@@ -513,7 +513,7 @@ endif()
+ set(LLVM_LIT_ARGS "${LIT_ARGS_DEFAULT}" CACHE STRING "Default options for lit")
+ 
+ # On Win32 hosts, provide an option to specify the path to the GnuWin32 tools.
+-if( WIN32 AND NOT CYGWIN )
++if( WIN32 AND NOT (CYGWIN OR MSYS) )
+   set(LLVM_LIT_TOOLS_DIR "" CACHE PATH "Path to GnuWin32 tools")
+ endif()
+ 
+@@ -666,7 +666,7 @@ set(TARGET_TRIPLE "${LLVM_DEFAULT_TARGET_TRIPLE}")
+ message(STATUS "LLVM host triple: ${LLVM_HOST_TRIPLE}")
+ message(STATUS "LLVM default target triple: ${LLVM_DEFAULT_TARGET_TRIPLE}")
+ 
+-if(WIN32 OR CYGWIN)
++if(WIN32 OR CYGWIN OR MSYS)
+   if(BUILD_SHARED_LIBS OR LLVM_BUILD_LLVM_DYLIB)
+     set(LLVM_ENABLE_PLUGINS_default ON)
+   else()
+diff --git a/cmake/config-ix.cmake b/cmake/config-ix.cmake
+index 90e5d327c75..69f1ed7bc14 100644
+--- a/cmake/config-ix.cmake
++++ b/cmake/config-ix.cmake
+@@ -1,4 +1,4 @@
+-if( WIN32 AND NOT CYGWIN )
++if( WIN32 AND NOT (CYGWIN OR MSYS) )
+   # We consider Cygwin as another Unix
+   set(PURE_WINDOWS 1)
+ endif()
+@@ -269,7 +269,7 @@ CHECK_STRUCT_HAS_MEMBER("struct stat" st_mtim.tv_nsec
+     "sys/types.h;sys/stat.h" HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC)
+ 
+ check_symbol_exists(__GLIBC__ stdio.h LLVM_USING_GLIBC)
+-if( LLVM_USING_GLIBC )
++if( LLVM_USING_GLIBC OR MSYS )
+   add_definitions( -D_GNU_SOURCE )
+   list(APPEND CMAKE_REQUIRED_DEFINITIONS "-D_GNU_SOURCE")
+ endif()
+diff --git a/cmake/modules/AddLLVM.cmake b/cmake/modules/AddLLVM.cmake
+index 333167bfb6b..72ddfbf7aaa 100644
+--- a/cmake/modules/AddLLVM.cmake
++++ b/cmake/modules/AddLLVM.cmake
+@@ -279,7 +279,7 @@ function(set_output_directory target)
+ 
+   # module_dir -- corresponding to LIBRARY_OUTPUT_DIRECTORY.
+   # It affects output of add_library(MODULE).
+-  if(WIN32 OR CYGWIN)
++  if(WIN32 OR CYGWIN OR MSYS)
+     # DLL platform
+     set(module_dir ${ARG_BINARY_DIR})
+   else()
+@@ -613,7 +613,7 @@ function(llvm_add_library name)
+     endif()
+   endif()
+ 
+-  if(ARG_MODULE AND LLVM_EXPORT_SYMBOLS_FOR_PLUGINS AND ARG_PLUGIN_TOOL AND (WIN32 OR CYGWIN))
++  if(ARG_MODULE AND LLVM_EXPORT_SYMBOLS_FOR_PLUGINS AND ARG_PLUGIN_TOOL AND (WIN32 OR CYGWIN OR MSYS))
+     # On DLL platforms symbols are imported from the tool by linking against it.
+     set(llvm_libs ${ARG_PLUGIN_TOOL})
+   elseif (NOT ARG_COMPONENT_LIB)
+@@ -1108,10 +1108,10 @@ function(export_executable_symbols target)
+     # ".dll.a", but for clang.exe that causes a collision with libclang.dll,
+     # where the import libraries of both get named libclang.dll.a. Use a suffix
+     # of ".exe.a" to avoid this.
+-    if(CYGWIN OR MINGW)
++    if(CYGWIN OR MINGW OR MSYS)
+       set_target_properties(${target} PROPERTIES IMPORT_SUFFIX ".exe.a")
+     endif()
+-  elseif(NOT (WIN32 OR CYGWIN))
++  elseif(NOT (WIN32 OR CYGWIN OR MSYS))
+     # On Windows auto-exporting everything doesn't work because of the limit on
+     # the size of the exported symbol table, but on other platforms we can do
+     # it without any trouble.
+@@ -1676,7 +1676,7 @@ function(get_llvm_lit_path base_dir file_name)
+   endif()
+ 
+   set(lit_file_name "llvm-lit")
+-  if (CMAKE_HOST_WIN32 AND NOT CYGWIN)
++  if (CMAKE_HOST_WIN32 AND NOT (CYGWIN OR MSYS))
+     # llvm-lit needs suffix.py for multiprocess to find a main module.
+     set(lit_file_name "${lit_file_name}.py")
+   endif ()
+diff --git a/cmake/modules/CMakeLists.txt b/cmake/modules/CMakeLists.txt
+index 4b8879f65fe..159dd50cb8a 100644
+--- a/cmake/modules/CMakeLists.txt
++++ b/cmake/modules/CMakeLists.txt
+@@ -59,7 +59,7 @@ set(LLVM_CONFIG_TOOLS_BINARY_DIR "${LLVM_TOOLS_BINARY_DIR}")
+ 
+ # Generate a default location for lit
+ if (LLVM_BUILD_UTILS)
+-  if (CMAKE_HOST_WIN32 AND NOT CYGWIN)
++  if (CMAKE_HOST_WIN32 AND NOT (CYGWIN OR MSYS))
+     set(LLVM_CONFIG_DEFAULT_EXTERNAL_LIT "${LLVM_CONFIG_TOOLS_BINARY_DIR}/llvm-lit.py")
+   else()
+     set(LLVM_CONFIG_DEFAULT_EXTERNAL_LIT "${LLVM_CONFIG_TOOLS_BINARY_DIR}/llvm-lit")
+diff --git a/cmake/modules/HandleLLVMOptions.cmake b/cmake/modules/HandleLLVMOptions.cmake
+index 5ef22eb493b..ea97e1ce9f3 100644
+--- a/cmake/modules/HandleLLVMOptions.cmake
++++ b/cmake/modules/HandleLLVMOptions.cmake
+@@ -124,13 +124,13 @@ endif()
+ 
+ if(WIN32)
+   set(LLVM_HAVE_LINK_VERSION_SCRIPT 0)
+-  if(CYGWIN)
++  if(CYGWIN OR MSYS)
+     set(LLVM_ON_WIN32 0)
+     set(LLVM_ON_UNIX 1)
+-  else(CYGWIN)
++  else(CYGWIN OR MSYS)
+     set(LLVM_ON_WIN32 1)
+     set(LLVM_ON_UNIX 0)
+-  endif(CYGWIN)
++  endif(CYGWIN OR MSYS)
+ else(WIN32)
+   if(FUCHSIA OR UNIX)
+     set(LLVM_ON_WIN32 0)
+@@ -209,7 +209,7 @@ endif()
+ # Pass -Wl,-z,defs. This makes sure all symbols are defined. Otherwise a DSO
+ # build might work on ELF but fail on MachO/COFF.
+ if(NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|FreeBSD|OpenBSD|DragonFly|AIX|SunOS" OR
+-        WIN32 OR CYGWIN) AND
++        WIN32 OR CYGWIN OR MSYS) AND
+    NOT LLVM_USE_SANITIZER)
+   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,defs")
+ endif()
+@@ -282,7 +282,7 @@ if( LLVM_ENABLE_PIC )
+     # Xcode has -mdynamic-no-pic on by default, which overrides -fPIC. I don't
+     # know how to disable this, so just force ENABLE_PIC off for now.
+     message(WARNING "-fPIC not supported with Xcode.")
+-  elseif( WIN32 OR CYGWIN)
++  elseif( WIN32 OR CYGWIN OR MSYS)
+     # On Windows all code is PIC. MinGW warns if -fPIC is used.
+   else()
+     add_flag_or_print_warning("-fPIC" FPIC)
+@@ -303,7 +303,7 @@ if( LLVM_ENABLE_PIC )
+   endif()
+ endif()
+ 
+-if(NOT WIN32 AND NOT CYGWIN AND NOT (${CMAKE_SYSTEM_NAME} MATCHES "AIX" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
++if(NOT WIN32 AND NOT (CYGWIN OR MSYS) AND NOT (${CMAKE_SYSTEM_NAME} MATCHES "AIX" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+   # MinGW warns if -fvisibility-inlines-hidden is used.
+   # GCC on AIX warns if -fvisibility-inlines-hidden is used.
+   check_cxx_compiler_flag("-fvisibility-inlines-hidden" SUPPORTS_FVISIBILITY_INLINES_HIDDEN_FLAG)
+@@ -820,7 +820,7 @@ endif()
+ # FIXME: With MSVS, consider compiling with /Gy and linking with /OPT:REF?
+ # But MinSizeRel seems to add that automatically, so maybe disable these
+ # flags instead if LLVM_NO_DEAD_STRIP is set.
+-if(NOT CYGWIN AND NOT WIN32)
++if(NOT (CYGWIN OR MSYS) AND NOT WIN32)
+   if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND
+      NOT uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+     check_c_compiler_flag("-Werror -fno-function-sections" C_SUPPORTS_FNO_FUNCTION_SECTIONS)
+diff --git a/include/llvm/Config/abi-breaking.h.cmake b/include/llvm/Config/abi-breaking.h.cmake
+index a1ffad66077..534410b2ce6 100644
+--- a/include/llvm/Config/abi-breaking.h.cmake
++++ b/include/llvm/Config/abi-breaking.h.cmake
+@@ -31,7 +31,7 @@
+ #pragma detect_mismatch("LLVM_ENABLE_ABI_BREAKING_CHECKS", LLVM_XSTR(LLVM_ENABLE_ABI_BREAKING_CHECKS))
+ #undef LLVM_XSTR
+ #undef LLVM_STR
+-#elif defined(_WIN32) || defined(__CYGWIN__) // Win32 w/o #pragma detect_mismatch
++#elif defined(_WIN32) || defined(__CYGWIN__) || defined(__MSYS__) // Win32 w/o #pragma detect_mismatch
+ // FIXME: Implement checks without weak.
+ #elif defined(__cplusplus)
+ #if !(defined(_AIX) && defined(__GNUC__) && !defined(__clang__))
+diff --git a/include/llvm/Support/Compiler.h b/include/llvm/Support/Compiler.h
+index 80ea76240d6..82b3d68c02d 100644
+--- a/include/llvm/Support/Compiler.h
++++ b/include/llvm/Support/Compiler.h
+@@ -123,7 +123,8 @@
+ /// this attribute will be made public and visible outside of any shared library
+ /// they are linked in to.
+ #if (__has_attribute(visibility) || LLVM_GNUC_PREREQ(4, 0, 0)) &&              \
+-    !defined(__MINGW32__) && !defined(__CYGWIN__) && !defined(_WIN32)
++    !defined(__MINGW32__) && !defined(__CYGWIN__) && !defined(_WIN32) &&       \
++    !defined(__MSYS__)
+ #define LLVM_LIBRARY_VISIBILITY __attribute__ ((visibility("hidden")))
+ #define LLVM_EXTERNAL_VISIBILITY __attribute__ ((visibility("default")))
+ #else
+@@ -189,7 +190,8 @@
+ 
+ // FIXME: Provide this for PE/COFF targets.
+ #if (__has_attribute(weak) || LLVM_GNUC_PREREQ(4, 0, 0)) &&                    \
+-    (!defined(__MINGW32__) && !defined(__CYGWIN__) && !defined(_WIN32))
++    (!defined(__MINGW32__) && !defined(__CYGWIN__) && !defined(_WIN32) &&      \
++     !defined(__MSYS__))
+ #define LLVM_ATTRIBUTE_WEAK __attribute__((__weak__))
+ #else
+ #define LLVM_ATTRIBUTE_WEAK
+diff --git a/lib/Support/MemoryBuffer.cpp b/lib/Support/MemoryBuffer.cpp
+index 248fb72c496..3bea6ef9fe8 100644
+--- a/lib/Support/MemoryBuffer.cpp
++++ b/lib/Support/MemoryBuffer.cpp
+@@ -363,7 +363,7 @@ static bool shouldUseMmap(sys::fs::file_t FD,
+   if ((FileSize & (PageSize -1)) == 0)
+     return false;
+ 
+-#if defined(__CYGWIN__)
++#if defined(__CYGWIN__) || defined(__MSYS__)
+   // Don't try to map files that are exactly a multiple of the physical page size
+   // if we need a null terminator.
+   // FIXME: We should reorganize again getPageSize() on Win32.
+diff --git a/lib/Support/Unix/DynamicLibrary.inc b/lib/Support/Unix/DynamicLibrary.inc
+index a2a379963de..d9f8abb5e67 100644
+--- a/lib/Support/Unix/DynamicLibrary.inc
++++ b/lib/Support/Unix/DynamicLibrary.inc
+@@ -31,7 +31,7 @@ void *DynamicLibrary::HandleSet::DLOpen(const char *File, std::string *Err) {
+     return &DynamicLibrary::Invalid;
+   }
+ 
+-#ifdef __CYGWIN__
++#if defined(__CYGWIN__) || defined(__MSYS__)
+   // Cygwin searches symbols only in the main
+   // with the handle of dlopen(NULL, RTLD_GLOBAL).
+   if (!File)
+@@ -91,7 +91,7 @@ static void *DoSearch(const char* SymbolName) {
+   }
+ #endif
+ 
+-#ifdef __CYGWIN__
++#if defined(__CYGWIN__) || defined(__MSYS__)
+   {
+     EXPLICIT_SYMBOL(_alloca);
+     EXPLICIT_SYMBOL(__main);
+diff --git a/lib/Support/Unix/Path.inc b/lib/Support/Unix/Path.inc
+index d91b269cc6d..308fa8f6e7a 100644
+--- a/lib/Support/Unix/Path.inc
++++ b/lib/Support/Unix/Path.inc
+@@ -123,7 +123,8 @@ const file_t kInvalidFile = -1;
+ 
+ #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) ||     \
+     defined(__minix) || defined(__FreeBSD_kernel__) || defined(__linux__) ||   \
+-    defined(__CYGWIN__) || defined(__DragonFly__) || defined(_AIX) || defined(__GNU__)
++    defined(__CYGWIN__) || defined(__DragonFly__) || defined(_AIX) ||          \
++    defined(__GNU__) || defined(__MSYS__)
+ static int
+ test_dir(char ret[PATH_MAX], const char *dir, const char *bin)
+ {
+@@ -239,7 +240,8 @@ std::string getMainExecutable(const char *argv0, void *MainAddr) {
+   // If we don't have procfs mounted, fall back to argv[0]
+   if (getprogpath(exe_path, argv0) != NULL)
+     return exe_path;
+-#elif defined(__linux__) || defined(__CYGWIN__) || defined(__gnu_hurd__)
++#elif defined(__linux__) || defined(__CYGWIN__) || defined(__gnu_hurd__) ||    \
++    defined(__MSYS__)
+   char exe_path[PATH_MAX];
+   const char *aPath = "/proc/self/exe";
+   if (sys::fs::exists(aPath)) {
+@@ -469,7 +471,7 @@ static bool is_local_impl(struct STATVFS &Vfs) {
+   default:
+     return true;
+   }
+-#elif defined(__CYGWIN__)
++#elif defined(__CYGWIN__) || defined(__MSYS__)
+   // Cygwin doesn't expose this information; would need to use Win32 API.
+   return false;
+ #elif defined(__Fuchsia__)
+diff --git a/lib/Support/raw_ostream.cpp b/lib/Support/raw_ostream.cpp
+index f2d78d77323..c344401eb81 100644
+--- a/lib/Support/raw_ostream.cpp
++++ b/lib/Support/raw_ostream.cpp
+@@ -41,7 +41,7 @@
+ # include <unistd.h>
+ #endif
+ 
+-#if defined(__CYGWIN__)
++#if defined(__CYGWIN__) || defined(__MSYS__)
+ #include <io.h>
+ #endif
+ 
+diff --git a/lib/Transforms/Hello/CMakeLists.txt b/lib/Transforms/Hello/CMakeLists.txt
+index c4f10247c1a..249f86ec272 100644
+--- a/lib/Transforms/Hello/CMakeLists.txt
++++ b/lib/Transforms/Hello/CMakeLists.txt
+@@ -6,7 +6,7 @@ if( NOT LLVM_REQUIRES_RTTI )
+   endif()
+ endif()
+ 
+-if(WIN32 OR CYGWIN)
++if(WIN32 OR CYGWIN OR MSYS)
+   set(LLVM_LINK_COMPONENTS Core Support)
+ endif()
+ 
+diff --git a/test/CodeGen/MIR/AArch64/lit.local.cfg b/test/CodeGen/MIR/AArch64/lit.local.cfg
+index f4f77c5aa31..04f6c112bdd 100644
+--- a/test/CodeGen/MIR/AArch64/lit.local.cfg
++++ b/test/CodeGen/MIR/AArch64/lit.local.cfg
+@@ -4,5 +4,5 @@ if not 'AArch64' in config.root.targets:
+     config.unsupported = True
+ 
+ # For now we don't test arm64-win32.
+-if re.search(r'cygwin|mingw32|win32|windows-gnu|windows-msvc', config.target_triple):
++if re.search(r'cygwin|mingw32|msys|win32|windows-gnu|windows-msvc', config.target_triple):
+     config.unsupported = True
+diff --git a/test/Unit/lit.cfg.py b/test/Unit/lit.cfg.py
+index 3198ab2c953..cf99e743c84 100644
+--- a/test/Unit/lit.cfg.py
++++ b/test/Unit/lit.cfg.py
+@@ -42,7 +42,7 @@ for symbolizer in ['ASAN_SYMBOLIZER_PATH', 'MSAN_SYMBOLIZER_PATH']:
+         config.environment[symbolizer] = os.environ[symbolizer]
+ 
+ # Win32 seeks DLLs along %PATH%.
+-if sys.platform in ['win32', 'cygwin'] and os.path.isdir(config.shlibdir):
++if sys.platform in ['win32', 'cygwin', 'msys'] and os.path.isdir(config.shlibdir):
+     config.environment['PATH'] = os.path.pathsep.join((
+             config.shlibdir, config.environment['PATH']))
+ 
+diff --git a/test/lit.cfg.py b/test/lit.cfg.py
+index 4eaa6cb77c8..dfac0215771 100644
+--- a/test/lit.cfg.py
++++ b/test/lit.cfg.py
+@@ -97,7 +97,7 @@ lli_args = []
+ # we don't support COFF in MCJIT well enough for the tests, force ELF format on
+ # Windows.  FIXME: the process target triple should be used here, but this is
+ # difficult to obtain on Windows.
+-if re.search(r'cygwin|windows-gnu|windows-msvc', config.host_triple):
++if re.search(r'cygwin|msys|windows-gnu|windows-msvc', config.host_triple):
+     lli_args = ['-mtriple=' + config.host_triple + '-elf']
+ 
+ llc_args = []
+diff --git a/tools/CMakeLists.txt b/tools/CMakeLists.txt
+index b6d3b2c2fcb..296660e97d2 100644
+--- a/tools/CMakeLists.txt
++++ b/tools/CMakeLists.txt
+@@ -17,7 +17,7 @@ if(NOT LLVM_USE_INTEL_JITEVENTS )
+   set(LLVM_TOOL_LLVM_JITLISTENER_BUILD Off)
+ endif()
+ 
+-if(CYGWIN OR NOT LLVM_ENABLE_PIC)
++if(CYGWIN OR MSYS OR NOT LLVM_ENABLE_PIC)
+   set(LLVM_TOOL_LTO_BUILD Off)
+ endif()
+ 
+diff --git a/tools/bugpoint-passes/CMakeLists.txt b/tools/bugpoint-passes/CMakeLists.txt
+index eea3e239b80..eaa72cd8a95 100644
+--- a/tools/bugpoint-passes/CMakeLists.txt
++++ b/tools/bugpoint-passes/CMakeLists.txt
+@@ -10,7 +10,7 @@ if( NOT LLVM_REQUIRES_RTTI )
+   endif()
+ endif()
+ 
+-if(WIN32 OR CYGWIN)
++if(WIN32 OR CYGWIN OR MSYS)
+   set(LLVM_LINK_COMPONENTS Core)
+ endif()
+ 
+diff --git a/tools/lli/lli.cpp b/tools/lli/lli.cpp
+index 981e0812d45..5fc87aa0e4a 100644
+--- a/tools/lli/lli.cpp
++++ b/tools/lli/lli.cpp
+@@ -61,7 +61,7 @@
+ #include "llvm/Transforms/Instrumentation.h"
+ #include <cerrno>
+ 
+-#ifdef __CYGWIN__
++#if defined(__CYGWIN__) || defined(__MSYS__)
+ #include <cygwin/version.h>
+ #if defined(CYGWIN_VERSION_DLL_MAJOR) && CYGWIN_VERSION_DLL_MAJOR<1007
+ #define DO_NOTHING_ATEXIT 1
+diff --git a/tools/llvm-shlib/CMakeLists.txt b/tools/llvm-shlib/CMakeLists.txt
+index f3a2056f80d..f1decd975d4 100644
+--- a/tools/llvm-shlib/CMakeLists.txt
++++ b/tools/llvm-shlib/CMakeLists.txt
+@@ -33,7 +33,7 @@ if(LLVM_BUILD_LLVM_DYLIB)
+   add_llvm_library(LLVM SHARED DISABLE_LLVM_LINK_LLVM_DYLIB SONAME ${INSTALL_WITH_TOOLCHAIN} ${SOURCES})
+ 
+   list(REMOVE_DUPLICATES LIB_NAMES)
+-  if(("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux") OR (MINGW) OR (HAIKU)
++  if(("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux") OR (MINGW) OR (HAIKU) OR (MSYS)
+      OR ("${CMAKE_SYSTEM_NAME}" STREQUAL "FreeBSD")
+      OR ("${CMAKE_SYSTEM_NAME}" STREQUAL "GNU")
+      OR ("${CMAKE_SYSTEM_NAME}" STREQUAL "OpenBSD")
+diff --git a/unittests/ExecutionEngine/MCJIT/CMakeLists.txt b/unittests/ExecutionEngine/MCJIT/CMakeLists.txt
+index b5f8a14c41c..03da955f388 100644
+--- a/unittests/ExecutionEngine/MCJIT/CMakeLists.txt
++++ b/unittests/ExecutionEngine/MCJIT/CMakeLists.txt
+@@ -29,6 +29,6 @@ add_llvm_unittest(MCJITTests
+   ${MCJITTestsSources}
+   )
+ 
+-if(MINGW OR CYGWIN)
++if(MINGW OR CYGWIN OR MSYS)
+   set_property(TARGET MCJITTests PROPERTY LINK_FLAGS -Wl,--export-all-symbols)
+ endif()
+diff --git a/utils/benchmark/CMakeLists.txt b/utils/benchmark/CMakeLists.txt
+index 38bc8c6bc95..88454f8a88f 100644
+--- a/utils/benchmark/CMakeLists.txt
++++ b/utils/benchmark/CMakeLists.txt
+@@ -173,7 +173,7 @@ else()
+   # predefined macro, which turns on all of the wonderful libc extensions.
+   # However g++ doesn't do this in Cygwin so we have to define it ourselfs
+   # since we depend on GNU/POSIX/BSD extensions.
+-  if (CYGWIN)
++  if (CYGWIN OR MSYS)
+     add_definitions(-D_GNU_SOURCE=1)
+   endif()
+ 
+diff --git a/utils/benchmark/src/internal_macros.h b/utils/benchmark/src/internal_macros.h
+index f2d54bfcbd9..79745e78f83 100644
+--- a/utils/benchmark/src/internal_macros.h
++++ b/utils/benchmark/src/internal_macros.h
+@@ -31,8 +31,8 @@
+   #define BENCHMARK_NORETURN
+ #endif
+ 
+-#if defined(__CYGWIN__)
+-  #define BENCHMARK_OS_CYGWIN 1
++#if defined(__CYGWIN__) || defined(__MSYS__)
++#define BENCHMARK_OS_CYGWIN 1
+ #elif defined(_WIN32)
+   #define BENCHMARK_OS_WINDOWS 1
+   #if defined(__MINGW32__)
+diff --git a/utils/lit/lit/formats/googletest.py b/utils/lit/lit/formats/googletest.py
+index 059eb99762e..5ef9c2fb128 100644
+--- a/utils/lit/lit/formats/googletest.py
++++ b/utils/lit/lit/formats/googletest.py
+@@ -8,7 +8,7 @@ import lit.TestRunner
+ import lit.util
+ from .base import TestFormat
+ 
+-kIsWindows = sys.platform in ['win32', 'cygwin']
++kIsWindows = sys.platform in ['win32', 'cygwin', 'msys']
+ 
+ class GoogleTest(TestFormat):
+     def __init__(self, test_sub_dirs, test_suffix):
+diff --git a/utils/lit/tests/lit.cfg b/utils/lit/tests/lit.cfg
+index 3c49f076a66..62fa8816e47 100644
+--- a/utils/lit/tests/lit.cfg
++++ b/utils/lit/tests/lit.cfg
+@@ -84,7 +84,7 @@ else:
+ # that the llvm_config defines. This means that the 'system-windows' feature
+ # (and any others) need to match the names in llvm_config for consistency
+ if not llvm_config:
+-  if sys.platform.startswith('win') or sys.platform.startswith('cygwin'):
++  if sys.platform.startswith('win') or sys.platform.startswith('cygwin') or sys.platform.startswith('msys'):
+     config.available_features.add('system-windows')
+   if platform.system() == 'AIX':
+     config.available_features.add('system-aix')
+diff --git a/utils/unittest/googletest/include/gtest/internal/gtest-port-arch.h b/utils/unittest/googletest/include/gtest/internal/gtest-port-arch.h
+index f1319c7f2e2..e19c6a04b78 100644
+--- a/utils/unittest/googletest/include/gtest/internal/gtest-port-arch.h
++++ b/utils/unittest/googletest/include/gtest/internal/gtest-port-arch.h
+@@ -36,7 +36,7 @@
+ #define GTEST_INCLUDE_GTEST_INTERNAL_GTEST_PORT_ARCH_H_
+ 
+ // Determines the platform on which Google Test is compiled.
+-#ifdef __CYGWIN__
++#if defined(__CYGWIN__) || defined(__MSYS__)
+ # define GTEST_OS_CYGWIN 1
+ #elif defined __SYMBIAN32__
+ # define GTEST_OS_SYMBIAN 1
+-- 
+2.29.0.windows.1
+

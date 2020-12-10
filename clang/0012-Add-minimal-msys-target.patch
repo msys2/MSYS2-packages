@@ -1,0 +1,99 @@
+From f50d9a3f859b4361456c02273ec23c643e0ad696 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Mateusz=20Miku=C5=82a?= <mati865@gmail.com>
+Date: Thu, 29 Oct 2020 18:32:27 +0100
+Subject: Add minimal msys target
+
+---
+ include/llvm/ADT/Triple.h |  8 +++++---
+ lib/Support/Triple.cpp    | 13 +++++++++++--
+ 2 files changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/include/llvm/ADT/Triple.h b/include/llvm/ADT/Triple.h
+index 6bad18f1924..7361d4211e6 100644
+--- a/include/llvm/ADT/Triple.h
++++ b/include/llvm/ADT/Triple.h
+@@ -219,8 +219,9 @@ public:
+     Cygnus,
+     CoreCLR,
+     Simulator, // Simulator variants of other systems, e.g., Apple's iOS
+-    MacABI, // Mac Catalyst variant of Apple's iOS deployment target.
+-    LastEnvironmentType = MacABI
++    MacABI,    // Mac Catalyst variant of Apple's iOS deployment target.
++    Msys,
++    LastEnvironmentType = Msys
+   };
+   enum ObjectFormatType {
+     UnknownObjectFormat,
+@@ -553,7 +554,8 @@ public:
+   }
+ 
+   bool isWindowsCygwinEnvironment() const {
+-    return isOSWindows() && getEnvironment() == Triple::Cygnus;
++    return isOSWindows() && (getEnvironment() == Triple::Cygnus ||
++                             getEnvironment() == Triple::Msys);
+   }
+ 
+   bool isWindowsGNUEnvironment() const {
+diff --git a/lib/Support/Triple.cpp b/lib/Support/Triple.cpp
+index fec1985ccac..3209a164008 100644
+--- a/lib/Support/Triple.cpp
++++ b/lib/Support/Triple.cpp
+@@ -241,6 +241,7 @@ StringRef Triple::getEnvironmentTypeName(EnvironmentType Kind) {
+   case Itanium: return "itanium";
+   case MSVC: return "msvc";
+   case MacABI: return "macabi";
++  case Msys: return "msys";
+   case Musl: return "musl";
+   case MuslEABI: return "musleabi";
+   case MuslEABIHF: return "musleabihf";
+@@ -545,6 +546,7 @@ static Triple::EnvironmentType parseEnvironment(StringRef EnvironmentName) {
+     .StartsWith("msvc", Triple::MSVC)
+     .StartsWith("itanium", Triple::Itanium)
+     .StartsWith("cygnus", Triple::Cygnus)
++    .StartsWith("msys", Triple::Msys)
+     .StartsWith("coreclr", Triple::CoreCLR)
+     .StartsWith("simulator", Triple::Simulator)
+     .StartsWith("macabi", Triple::MacABI)
+@@ -803,6 +805,7 @@ Triple::Triple(const Twine &ArchStr, const Twine &VendorStr, const Twine &OSStr,
+ std::string Triple::normalize(StringRef Str) {
+   bool IsMinGW32 = false;
+   bool IsCygwin = false;
++  bool IsMsys = false;
+ 
+   // Parse into components.
+   SmallVector<StringRef, 4> Components;
+@@ -824,6 +827,7 @@ std::string Triple::normalize(StringRef Str) {
+     OS = parseOS(Components[2]);
+     IsCygwin = Components[2].startswith("cygwin");
+     IsMinGW32 = Components[2].startswith("mingw");
++    IsMsys = Components[2].startswith("msys");
+   }
+   EnvironmentType Environment = UnknownEnvironment;
+   if (Components.size() > 3)
+@@ -869,7 +873,8 @@ std::string Triple::normalize(StringRef Str) {
+         OS = parseOS(Comp);
+         IsCygwin = Comp.startswith("cygwin");
+         IsMinGW32 = Comp.startswith("mingw");
+-        Valid = OS != UnknownOS || IsCygwin || IsMinGW32;
++        IsMsys = Comp.startswith("msys");
++        Valid = OS != UnknownOS || IsCygwin || IsMinGW32 || IsMsys;
+         break;
+       case 3:
+         Environment = parseEnvironment(Comp);
+@@ -977,8 +982,12 @@ std::string Triple::normalize(StringRef Str) {
+     Components.resize(4);
+     Components[2] = "windows";
+     Components[3] = "cygnus";
++  } else if (IsMsys) {
++    Components.resize(4);
++    Components[2] = "windows";
++    Components[3] = "msys";
+   }
+-  if (IsMinGW32 || IsCygwin ||
++  if (IsMinGW32 || IsCygwin || IsMsys ||
+       (OS == Triple::Win32 && Environment != UnknownEnvironment)) {
+     if (ObjectFormat != UnknownObjectFormat && ObjectFormat != Triple::COFF) {
+       Components.resize(5);
+-- 
+2.29.0.windows.1
+

@@ -1,0 +1,197 @@
+From a75c8105588eaad89fa651f1aa72e8aeb5b0347f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Mateusz=20Miku=C5=82a?= <mati865@gmail.com>
+Date: Thu, 29 Oct 2020 18:45:19 +0100
+Subject: Add minimal msys target
+
+---
+ lib/Basic/Targets.cpp             |  6 ++++
+ lib/Basic/Targets/ARM.cpp         | 21 +++++++++++
+ lib/Basic/Targets/ARM.h           |  9 +++++
+ lib/Basic/Targets/X86.h           | 48 +++++++++++++++++++++++++
+ lib/Frontend/InitHeaderSearch.cpp |  7 ++--
+ 5 files changed, 89 insertions(+), 2 deletions(-)
+
+diff --git a/lib/Basic/Targets.cpp b/lib/Basic/Targets.cpp
+index 965f273892b..36f4e9b2001 100644
+--- a/lib/Basic/Targets.cpp
++++ b/lib/Basic/Targets.cpp
+@@ -202,6 +202,8 @@ TargetInfo *AllocateTarget(const llvm::Triple &Triple,
+         return new MinGWARMTargetInfo(Triple, Opts);
+       case llvm::Triple::Itanium:
+         return new ItaniumWindowsARMleTargetInfo(Triple, Opts);
++      case llvm::Triple::Msys:
++        return new MsysARMTargetInfo(Triple, Opts);
+       case llvm::Triple::MSVC:
+       default: // Assume MSVC for unknown environments
+         return new MicrosoftARMleTargetInfo(Triple, Opts);
+@@ -497,6 +499,8 @@ TargetInfo *AllocateTarget(const llvm::Triple &Triple,
+         return new CygwinX86_32TargetInfo(Triple, Opts);
+       case llvm::Triple::GNU:
+         return new MinGWX86_32TargetInfo(Triple, Opts);
++      case llvm::Triple::Msys:
++        return new MsysX86_32TargetInfo(Triple, Opts);
+       case llvm::Triple::Itanium:
+       case llvm::Triple::MSVC:
+       default: // Assume MSVC for unknown environments
+@@ -554,6 +558,8 @@ TargetInfo *AllocateTarget(const llvm::Triple &Triple,
+         return new CygwinX86_64TargetInfo(Triple, Opts);
+       case llvm::Triple::GNU:
+         return new MinGWX86_64TargetInfo(Triple, Opts);
++      case llvm::Triple::Msys:
++        return new MsysX86_64TargetInfo(Triple, Opts);
+       case llvm::Triple::MSVC:
+       default: // Assume MSVC for unknown environments
+         return new MicrosoftX86_64TargetInfo(Triple, Opts);
+diff --git a/lib/Basic/Targets/ARM.cpp b/lib/Basic/Targets/ARM.cpp
+index 21cfe0107bb..fd71741a1b2 100644
+--- a/lib/Basic/Targets/ARM.cpp
++++ b/lib/Basic/Targets/ARM.cpp
+@@ -1263,6 +1263,27 @@ void CygwinARMTargetInfo::getTargetDefines(const LangOptions &Opts,
+     Builder.defineMacro("_GNU_SOURCE");
+ }
+ 
++MsysARMTargetInfo::MsysARMTargetInfo(const llvm::Triple &Triple,
++                                     const TargetOptions &Opts)
++    : ARMleTargetInfo(Triple, Opts) {
++  this->WCharType = TargetInfo::UnsignedShort;
++  TLSSupported = false;
++  DoubleAlign = LongLongAlign = 64;
++  resetDataLayout("e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64");
++}
++
++void MsysARMTargetInfo::getTargetDefines(const LangOptions &Opts,
++                                         MacroBuilder &Builder) const {
++  ARMleTargetInfo::getTargetDefines(Opts, Builder);
++  Builder.defineMacro("_ARM_");
++  Builder.defineMacro("__CYGWIN__");
++  Builder.defineMacro("__CYGWIN32__");
++  Builder.defineMacro("__MSYS__");
++  DefineStd(Builder, "unix", Opts);
++  if (Opts.CPlusPlus)
++    Builder.defineMacro("_GNU_SOURCE");
++}
++
+ DarwinARMTargetInfo::DarwinARMTargetInfo(const llvm::Triple &Triple,
+                                          const TargetOptions &Opts)
+     : DarwinTargetInfo<ARMleTargetInfo>(Triple, Opts) {
+diff --git a/lib/Basic/Targets/ARM.h b/lib/Basic/Targets/ARM.h
+index 1e80f74d076..51250300df2 100644
+--- a/lib/Basic/Targets/ARM.h
++++ b/lib/Basic/Targets/ARM.h
+@@ -259,6 +259,15 @@ public:
+                         MacroBuilder &Builder) const override;
+ };
+ 
++// ARM Msys target
++class LLVM_LIBRARY_VISIBILITY MsysARMTargetInfo : public ARMleTargetInfo {
++public:
++  MsysARMTargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts);
++
++  void getTargetDefines(const LangOptions &Opts,
++                        MacroBuilder &Builder) const override;
++};
++
+ class LLVM_LIBRARY_VISIBILITY DarwinARMTargetInfo
+     : public DarwinTargetInfo<ARMleTargetInfo> {
+ protected:
+diff --git a/lib/Basic/Targets/X86.h b/lib/Basic/Targets/X86.h
+index 72a01d2514c..3860f1d32e0 100644
+--- a/lib/Basic/Targets/X86.h
++++ b/lib/Basic/Targets/X86.h
+@@ -556,6 +556,31 @@ public:
+   }
+ };
+ 
++// x86-32 Msys target
++class LLVM_LIBRARY_VISIBILITY MsysX86_32TargetInfo : public X86_32TargetInfo {
++public:
++  MsysX86_32TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
++      : X86_32TargetInfo(Triple, Opts) {
++    this->WCharType = TargetInfo::UnsignedShort;
++    DoubleAlign = LongLongAlign = 64;
++    resetDataLayout("e-m:x-p:32:32-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:"
++                    "32-n8:16:32-a:0:32-S32");
++  }
++
++  void getTargetDefines(const LangOptions &Opts,
++                        MacroBuilder &Builder) const override {
++    X86_32TargetInfo::getTargetDefines(Opts, Builder);
++    Builder.defineMacro("_X86_");
++    Builder.defineMacro("__CYGWIN__");
++    Builder.defineMacro("__CYGWIN32__");
++    Builder.defineMacro("__MSYS__");
++    addCygMingDefines(Opts, Builder);
++    DefineStd(Builder, "unix", Opts);
++    if (Opts.CPlusPlus)
++      Builder.defineMacro("_GNU_SOURCE");
++  }
++};
++
+ // x86-32 Haiku target
+ class LLVM_LIBRARY_VISIBILITY HaikuX86_32TargetInfo
+     : public HaikuTargetInfo<X86_32TargetInfo> {
+@@ -824,6 +849,29 @@ public:
+   }
+ };
+ 
++// x86-64 Msys target
++class LLVM_LIBRARY_VISIBILITY MsysX86_64TargetInfo : public X86_64TargetInfo {
++public:
++  MsysX86_64TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
++      : X86_64TargetInfo(Triple, Opts) {
++    this->WCharType = TargetInfo::UnsignedShort;
++    TLSSupported = false;
++  }
++
++  void getTargetDefines(const LangOptions &Opts,
++                        MacroBuilder &Builder) const override {
++    X86_64TargetInfo::getTargetDefines(Opts, Builder);
++    Builder.defineMacro("__x86_64__");
++    Builder.defineMacro("__CYGWIN__");
++    Builder.defineMacro("__CYGWIN64__");
++    Builder.defineMacro("__MSYS__");
++    addCygMingDefines(Opts, Builder);
++    DefineStd(Builder, "unix", Opts);
++    if (Opts.CPlusPlus)
++      Builder.defineMacro("_GNU_SOURCE");
++  }
++};
++
+ class LLVM_LIBRARY_VISIBILITY DarwinX86_64TargetInfo
+     : public DarwinTargetInfo<X86_64TargetInfo> {
+ public:
+diff --git a/lib/Frontend/InitHeaderSearch.cpp b/lib/Frontend/InitHeaderSearch.cpp
+index bc31445d6d0..86277e3a73b 100644
+--- a/lib/Frontend/InitHeaderSearch.cpp
++++ b/lib/Frontend/InitHeaderSearch.cpp
+@@ -231,7 +231,8 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const llvm::Triple &triple,
+     case llvm::Triple::Fuchsia:
+       break;
+     case llvm::Triple::Win32:
+-      if (triple.getEnvironment() != llvm::Triple::Cygnus)
++      if (triple.getEnvironment() != llvm::Triple::Cygnus &&
++          triple.getEnvironment() != llvm::Triple::Msys)
+         break;
+       LLVM_FALLTHROUGH;
+     default:
+@@ -322,6 +323,7 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const llvm::Triple &triple,
+     switch (triple.getEnvironment()) {
+     default: llvm_unreachable("Include management is handled in the driver.");
+     case llvm::Triple::Cygnus:
++    case llvm::Triple::Msys:
+       AddPath("/usr/include/w32api", System, false);
+       break;
+     case llvm::Triple::GNU:
+@@ -431,7 +433,8 @@ void InitHeaderSearch::AddDefaultIncludePaths(const LangOptions &Lang,
+     return;
+ 
+   case llvm::Triple::Win32:
+-    if (triple.getEnvironment() != llvm::Triple::Cygnus ||
++    if ((triple.getEnvironment() != llvm::Triple::Cygnus &&
++         triple.getEnvironment() != llvm::Triple::Msys) ||
+         triple.isOSBinFormatMachO())
+       return;
+     break;
+-- 
+2.29.0.windows.1
+
