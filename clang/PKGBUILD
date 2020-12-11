@@ -1,0 +1,217 @@
+# Maintainer: Mateusz Mikuła <mati865@gmail.com>
+
+_compiler=gcc
+# "Ninja" cant install each component seperately
+# https://github.com/martine/ninja/issues/932
+_generator="Unix Makefiles"
+#_generator="Ninja"
+if [ "${_generator}" = "Ninja" ]; then
+  _make_cmd="ninja"
+else
+  _make_cmd="make"
+fi
+
+_realname=clang
+pkgbase=mingw-w64-${_realname}
+pkgname=("${_realname}" "lld" "llvm")
+pkgver=11.0.0
+pkgrel=1
+pkgdesc="C language family frontend for LLVM"
+arch=('i686' 'x86_64')
+url="https://llvm.org/"
+license=("custom:Apache 2.0 with LLVM Exception")
+makedepends=("cmake"
+             "pkg-config"
+             "tar"
+             $([[ "$_generator" == "Ninja" ]] && echo \
+               "ninja")
+             )
+depends=("gcc")
+options=('!debug' 'strip')
+_url=https://github.com/llvm/llvm-project/releases/download/llvmorg-${pkgver}
+source=(${_url}/clang-${pkgver}.src.tar.xz{,.sig}
+        ${_url}/lld-${pkgver}.src.tar.xz{,.sig}
+        ${_url}/llvm-${pkgver}.src.tar.xz{,.sig}
+        "0002-Fix-GetHostTriple-for-mingw-w64-in-msys.patch"
+        "0004-llvm-config-look-for-unversioned-shared-lib-on-win32.patch"
+        "0009-empty-target-prefix-only-msvc.patch"
+        "0010-mbig-obj-for-all.patch"
+        "0011-Msysize.patch"
+        "0012-Add-minimal-msys-target.patch"
+        "0101-Allow-build-static-clang-library-for-mingw.patch"
+        "0102-fix-libclang-name-for-mingw.patch"
+        "0105-build-libclang-cpp-fix.patch"
+        "0106-cmake-Fix-build-of-attribute-plugin-example-on-Windo.patch"
+        "0107-Msysize.patch"
+        "0108-Add-minimal-msys-target.patch"
+        "0301-LLD-COFF-Error-out-if-creating-a-DLL-with-too-many-e.patch"
+        "0302-LLD-Allow-configuring-default-ld.lld-backend.patch"
+        "0303-LLD-Ignore-ELF-tests-when-ld.lld-defaults-to-MinGW.patch"
+        "0304-ignore-new-bfd-options.patch"
+        "0305-Msysize.patch")
+# Some patch notes :)
+#0001-0099 -> llvm
+#0101-0199 -> clang
+#0301-0399 -> lld
+sha256sums=('0f96acace1e8326b39f220ba19e055ba99b0ab21c2475042dbc6a482649c5209'
+            'SKIP'
+            'efe7be4a7b7cdc6f3bcf222827c6f837439e6e656d12d6c885d5c8a80ff4fd1c'
+            'SKIP'
+            '913f68c898dfb4a03b397c5e11c6a2f39d0f22ed7665c9cefa87a34423a72469'
+            'SKIP'
+            '9b6d3ecb0ef4a38d34aefaefff8c6257ff22d366d84630020d7f079dc8065d97'
+            '1f318c0370357fdf9c54ae6d31bad761b0caa58ac099998937b636309ecb6590'
+            '33400d16d5f6671a8fd60345c3ae44b9777a7d600061957889d14305eb2ad709'
+            '1c9efccd40a0e7834c3aa9d819aa25cfdd2cec389d1bd3e8a89bc9ff670a0129'
+            '462fb587e613c46948f7bc040e3523ae2fb0959b70ea0e18f10e4988ba36113c'
+            'fb37e32d843c817aaa57a15f2f65014c38eb80bfe2af7b84fe5c6f356eea836a'
+            'ddc43bc16f5edaf5290adabd71ce6a8a593fc3f824d7d99acd247bcce88aaf03'
+            '01b029f2a21bd998ce374a90d41d214c891dfbb611dfbd9ca147517cd2c228ea'
+            'a60f7328d84628a56a9f626e4dc26ffd0c35292c79eeba62ac3d4f25aef2fe5c'
+            '0098da33ce4cfea2a6b6943c15e769345f89b84ebea28facff4cc8b92a17bc8f'
+            '865706f9816bfa5abaa648cf7f14e2350bc384ae01109ba821bc9296f7851b39'
+            '2189f1e4bb90d11111ebf0d22a1f6f6f7cb05d69617cae9b21e9f1e195ebd8c1'
+            '0b996f438f7c7bf42c789729dfd588a65d5016386e7032e03e8cd52f1dc8bc73'
+            'c74c313e442a5b8fed7c6372ac8ff8f3598c9e33db1b520f1297949e18042e55'
+            '2e1705274dfc55466cc8977e61d569a685e18ce07895cbec2ccf3b848eafd8ee'
+            '778e0db0a5b0657ab05e2a81d83241347a4a41af2b0f9903422f651fa58e8d40'
+            'b2b5fd8b23710d172082df92c4d44dc31eb948cb34d325c106dde22d8d559d01')
+validpgpkeys=('B6C8F98282B944E3B0D5C2530FC3042E345AD05D'  # Hans Wennborg, Google.
+              '474E22316ABF4785A88C6E8EA2C794A986419D8A') # Tom Stellard
+noextract=(clang-${pkgver}.src.tar.xz)
+
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying ${_patch}"
+    patch -Nbp1 -i "${srcdir}/${_patch}"
+  done
+}
+
+prepare() {
+  plain "Extracting clang-${pkgver}.src.tar.xz due to symlink(s) without pre-existing target(s)"
+  [[ -d ${srcdir}/clang-${pkgver} ]] && rm -rf ${srcdir}/clang-${pkgver}
+  [[ -d ${srcdir}/clang-${pkgver} ]] || tar -xJf ${srcdir}/clang-${pkgver}.src.tar.xz -C ${srcdir} || true
+
+  cd "${srcdir}/llvm-${pkgver}.src"
+  apply_patch_with_msg \
+      "0002-Fix-GetHostTriple-for-mingw-w64-in-msys.patch" \
+      "0004-llvm-config-look-for-unversioned-shared-lib-on-win32.patch" \
+      "0009-empty-target-prefix-only-msvc.patch" \
+      "0010-mbig-obj-for-all.patch" \
+      "0011-Msysize.patch" \
+      "0012-Add-minimal-msys-target.patch"
+
+  cd "${srcdir}/clang-${pkgver}.src"
+  apply_patch_with_msg \
+      "0101-Allow-build-static-clang-library-for-mingw.patch" \
+      "0102-fix-libclang-name-for-mingw.patch" \
+      "0105-build-libclang-cpp-fix.patch" \
+      "0106-cmake-Fix-build-of-attribute-plugin-example-on-Windo.patch" \
+      "0107-Msysize.patch" \
+      "0108-Add-minimal-msys-target.patch"
+
+  cd "${srcdir}/lld-${pkgver}.src"
+  apply_patch_with_msg \
+      "0301-LLD-COFF-Error-out-if-creating-a-DLL-with-too-many-e.patch" \
+      "0302-LLD-Allow-configuring-default-ld.lld-backend.patch" \
+      "0303-LLD-Ignore-ELF-tests-when-ld.lld-defaults-to-MinGW.patch" \
+      "0304-ignore-new-bfd-options.patch" \
+      "0305-Msysize.patch"
+
+  cd "${srcdir}"
+  rm -rf clang lldb | true
+  mv "${srcdir}/clang-${pkgver}.src"             clang
+  mv "${srcdir}/lld-${pkgver}.src"               lld
+}
+
+build() {
+  cd "${srcdir}"
+
+  [[ -d build-${CARCH} ]] && rm -rf build-${CARCH}
+  mkdir build-${CARCH} && cd build-${CARCH}
+
+  local -a extra_config
+
+  if check_option "debug" "y"; then
+    extra_config+=(-DCMAKE_BUILD_TYPE=Debug)
+    VERBOSE="VERBOSE=1"
+  else
+    extra_config+=(-DCMAKE_BUILD_TYPE=Release)
+  fi
+
+  cmake \
+    -G"$_generator" \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DLIBCLANG_BUILD_STATIC=ON \
+    -DLLD_DEFAULT_LD_LLD_IS_MINGW=ON \
+    -DLLVM_BUILD_LLVM_DYLIB=ON \
+    -DLLVM_BUILD_STATIC=OFF \
+    -DLLVM_ENABLE_ASSERTIONS=OFF \
+    -DLLVM_ENABLE_PROJECTS="clang;lld" \
+    -DLLVM_ENABLE_THREADS=ON \
+    -DLLVM_INCLUDE_EXAMPLES=OFF \
+    -DLLVM_INCLUDE_TESTS=OFF \
+    -DLLVM_LINK_LLVM_DYLIB=ON \
+    "${extra_config[@]}" \
+    ../llvm-${pkgver}.src
+
+  ${_make_cmd}
+
+  # Disable automatic installation of components that go into subpackages
+  # -i.orig to check what has been removed in-case it starts dropping more than it should
+  #
+  sed -i.orig '/\(clang\|lld\)\/cmake_install.cmake/d' tools/cmake_install.cmake
+}
+
+check() {
+ cd "${srcdir}"/build-${CARCH}
+ # Remove || true once testcase doesn't cause failures.
+#  make check || true
+#  make check-clang || true
+  make check-lld || true
+}
+
+package_clang() {
+  pkgdesc="C language family frontend for LLVM"
+  url="https://clang.llvm.org/"
+  depends=("gcc" "llvm=${pkgver}-${pkgrel}")
+
+  cd "${srcdir}/clang"
+  ${_make_cmd} -C ../build-${CARCH}/tools/clang DESTDIR="${pkgdir}" install
+
+  # Install static libraries
+  install -Dm644 ../build-${CARCH}/lib/libclang.a ${pkgdir}/usr/lib/libclang.a
+  install -Dm644 ../build-${CARCH}/lib/libclang.a ${pkgdir}/usr/lib/libclang_static.a
+}
+
+package_lld() {
+  pkgdesc="Linker tools for LLVM"
+  url="https://lld.llvm.org/"
+  depends=("gcc-libs" "llvm=${pkgver}-${pkgrel}")
+
+  cd "${srcdir}/lld"
+  ${_make_cmd} -C ../build-${CARCH}/tools/lld DESTDIR="${pkgdir}" install
+}
+
+package_llvm() {
+  pkgdesc="Low Level Virtual Machine"
+  depends=("gcc-libs")
+
+  cd "${srcdir}"/llvm-${pkgver}.src
+
+  ${_make_cmd} -C ../build-${CARCH} DESTDIR="${pkgdir}" install
+
+  install -Dm644 LICENSE.TXT "${pkgdir}/usr/share/licenses/llvm/LICENSE"
+
+  # Install CMake stuff
+  install -d "${pkgdir}"/usr/share/llvm/cmake/{modules,platforms}
+  install -Dm644 "${srcdir}"/llvm-${pkgver}.src/cmake/modules/*.cmake "${pkgdir}"/usr/share/llvm/cmake/modules/
+  install -Dm644 "${srcdir}"/llvm-${pkgver}.src/cmake/platforms/*.cmake "${pkgdir}"/usr/share/llvm/cmake/platforms/
+
+  # FileCheck is needed to build rust.
+  install -Dm755 "${srcdir}"/build-${CARCH}/bin/FileCheck.exe "${pkgdir}/usr/bin/FileCheck.exe"
+  # fix cmake files.
+  local PREFIX_WIN=$(cygpath -a ${srcdir}/build-${CARCH})
+  sed -e "s|${PREFIX_WIN}|/usr|g" -i ${pkgdir}/usr/lib/cmake/llvm/LLVMConfig.cmake
+}

@@ -1,0 +1,153 @@
+# Maintainer: Mateusz Mikuła <mati865@gmail.com>
+
+_realname=clang
+_mingw_suff=mingw-w64-cross
+pkgname=("${_mingw_suff}-${_realname}")
+pkgver=11.0.0
+pkgrel=1
+pkgdesc="Cross Clang for the MinGW-w64"
+arch=('i686' 'x86_64')
+url="https://llvm.org"
+license=('custom:Apache 2.0 with LLVM Exception')
+depends=('mingw-w64-cross-clang-crt' 'mingw-w64-cross-compiler-rt')
+makedepends=("cmake")
+options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
+_url=https://github.com/llvm/llvm-project/releases/download/llvmorg-${pkgver}
+source=(${_url}/llvm-${pkgver}.src.tar.xz{,.sig}
+        ${_url}/libcxx-${pkgver}.src.tar.xz{,.sig}
+        ${_url}/libcxxabi-${pkgver}.src.tar.xz{,.sig}
+        ${_url}/libunwind-${pkgver}.src.tar.xz{,.sig})
+sha256sums=('913f68c898dfb4a03b397c5e11c6a2f39d0f22ed7665c9cefa87a34423a72469'
+            'SKIP'
+            '6c1ee6690122f2711a77bc19241834a9219dda5036e1597bfa397f341a9b8b7a'
+            'SKIP'
+            '58697d4427b7a854ec7529337477eb4fba16407222390ad81a40d125673e4c15'
+            'SKIP'
+            '8455011c33b14abfe57b2fd9803fb610316b16d4c9818bec552287e2ba68922f'
+            'SKIP')
+validpgpkeys=('B6C8F98282B944E3B0D5C2530FC3042E345AD05D'  # Hans Wennborg, Google.
+              '474E22316ABF4785A88C6E8EA2C794A986419D8A') # Tom Stellard
+noextract=(libcxx-${pkgver}.src.tar.xz)
+
+_target="x86_64-w64-mingw32"
+
+prepare() {
+  plain "Extracting libcxx-${pkgver}.src.tar.xz due to symlink(s) without pre-existing target(s)"
+  [[ -d ${srcdir}/libcxx-${pkgver} ]] && rm -rf ${srcdir}/libcxx-${pkgver}
+  [[ -d ${srcdir}/libcxx-${pkgver} ]] || tar -xJvf ${srcdir}/libcxx-${pkgver}.src.tar.xz -C ${srcdir} || true
+
+  cd ${srcdir}
+
+  mv "${srcdir}/libcxxabi-${pkgver}.src"         libcxxabi
+  mv "${srcdir}/libcxx-${pkgver}.src"            libcxx
+  mv "${srcdir}/libunwind-${pkgver}.src"         libunwind
+}
+
+build() {
+  cd "${srcdir}"
+
+  [[ -d build-${CARCH} ]] && rm -rf build-${CARCH}
+  mkdir build-${CARCH} && cd build-${CARCH}
+
+  export CC="clang" CXX="clang++" AS="clang" AR="llvm-ar" RANLIB="llvm-ranlib" DLLTOOL="llvm-dlltool" LD="clang"
+
+  CFLAGS+=" -target ${_target} --sysroot=/opt/${_target} -rtlib=compiler-rt"
+  CPPFLAGS+=" -target ${_target} --sysroot=/opt/${_target}"
+  CXXFLAGS+=" -target ${_target} --sysroot=/opt/${_target} -rtlib=compiler-rt"
+  LDFLAGS+=" -target ${_target} --sysroot=/opt/${_target} -rtlib=compiler-rt -fuse-ld=lld"
+
+  # Force win32 threads for libc++abi
+  export CXXFLAGS+=" -D_LIBCPP_HAS_THREAD_API_WIN32"
+  COMMON_CMAKE_ARGS=(-G'Unix Makefiles'
+    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_C_COMPILER_WORKS=ON
+    -DCMAKE_CROSSCOMPILING=ON
+    -DCMAKE_CXX_COMPILER_WORKS=ON
+    -DCMAKE_INSTALL_PREFIX=/opt/${_target}
+    -DCMAKE_SYSTEM_IGNORE_PATH=/usr/lib
+    -DCMAKE_SYSTEM_NAME=Windows
+    -DCXX_SUPPORTS_CUSTOM_LINKER=ON
+    -DHAVE_CXX_ATOMICS_WITHOUT_LIB=ON
+    -DHAVE_CXX_ATOMICS64_WITHOUT_LIB=ON
+    -DLIBCXX_ENABLE_EXPERIMENTAL_LIBRARY=ON
+    -DLIBCXX_ENABLE_NEW_DELETE_DEFINITIONS=ON
+    -DLIBCXX_ENABLE_STATIC_ABI_LIBRARY=ON
+    -DLIBCXX_HAS_WIN32_THREAD_API=ON
+    -DLIBCXX_INCLUDE_BENCHMARKS=OFF
+    -DLIBCXX_USE_COMPILER_RT=ON
+    -DLIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS=OFF
+    -DLIBCXXABI_ENABLE_SHARED=OFF
+    -DLIBCXXABI_ENABLE_STATIC=ON
+    -DLIBCXXABI_INSTALL_SHARED_LIBRARY=OFF
+    -DLIBCXXABI_INSTALL_STATIC_LIBRARY=OFF
+    -DLIBCXXABI_USE_COMPILER_RT=ON
+    -DLIBCXXABI_USE_LLVM_UNWINDER=ON
+    -DLIBUNWIND_ENABLE_SHARED=ON
+    -DLIBUNWIND_USE_COMPILER_RT=ON
+    -DLLVM_ENABLE_LIBCXX=ON
+    -DLLVM_ENABLE_PROJECTS="libcxx;libcxxabi;libunwind")
+
+  cd "${srcdir}"
+
+  [[ -d build-libcxx-shared-${CARCH} ]] && rm -rf build-libcxx-shared-${CARCH}
+  mkdir build-libcxx-shared-${CARCH} && cd build-libcxx-shared-${CARCH}
+
+  cmake \
+    -DCMAKE_CXX_FLAGS="${CXXFLAGS} -D_LIBCPP_BUILDING_LIBRARY -U_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS" \
+    -DLIBCXX_ENABLE_SHARED=ON \
+    -DLIBCXX_ENABLE_STATIC=OFF \
+    -DLIBUNWIND_ENABLE_STATIC=OFF \
+    "${COMMON_CMAKE_ARGS[@]}" \
+    ${extra_config[@]} \
+    ../llvm-${pkgver}.src
+
+  make cxx
+
+  cd "${srcdir}"
+
+  [[ -d build-libcxx-static-${CARCH} ]] && rm -rf build-libcxx-static-${CARCH}
+  mkdir build-libcxx-static-${CARCH} && cd build-libcxx-static-${CARCH}
+
+  cmake \
+    -DCMAKE_CXX_FLAGS="${CXXFLAGS} -D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS" \
+    -DLIBCXX_ENABLE_SHARED=OFF \
+    -DLIBCXX_ENABLE_STATIC=ON \
+    -DLIBCXXABI_ENABLE_STATIC_UNWINDER=ON \
+    -DLIBUNWIND_ENABLE_STATIC=ON \
+    "${COMMON_CMAKE_ARGS[@]}" \
+    ${extra_config[@]} \
+    ../llvm-${pkgver}.src
+
+  make unwind cxx
+}
+
+package() {
+  cd "${srcdir}/libcxxabi"
+  make -C ../build-libcxx-static-${CARCH}/projects/libcxxabi DESTDIR="${pkgdir}/" install
+
+  cd "$srcdir/libcxx"
+  make -C ../build-libcxx-shared-${CARCH}/projects/libcxx DESTDIR="${pkgdir}" install
+  make -C ../build-libcxx-static-${CARCH}/projects/libcxx DESTDIR="${pkgdir}" install
+  install -Dm644 "${srcdir}/build-libcxx-static-${CARCH}/lib/libc++experimental.a" "${pkgdir}/opt/${_target}/lib/libc++experimental.a"
+
+  cd "${srcdir}/libunwind"
+  make -C ../build-libcxx-static-${CARCH}/projects/libunwind DESTDIR="${pkgdir}" install
+  install "${srcdir}/build-libcxx-static-${CARCH}/lib/libunwind.dll" "${pkgdir}/opt/${_target}/bin/libunwind.dll"
+
+  _prefix="${pkgdir}/opt/${_target}/bin"
+  for tool in addr2line ar dlltool nm objcopy objdump ranlib rc readelf readobj strings strip; do
+    printf "#!/bin/bash\n\n/usr/bin/llvm-${tool} \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
+  done
+  for tool in as cc clang; do
+    printf "#!/bin/bash\n\n/usr/bin/clang -target ${_target} -fuse-ld=lld -rtlib=compiler-rt -unwindlib=libunwind -Wno-error=unused-command-line-argument --sysroot=/opt/${_target} \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
+  done
+  for tool in c++ clang++; do
+    printf "#!/bin/bash\n\n/usr/bin/clang++ -target ${_target} -fuse-ld=lld -rtlib=compiler-rt -stdlib=libc++ -unwindlib=libunwind -Wno-error=unused-command-line-argument --sysroot=/opt/${_target} \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
+  done
+  for tool in ld ld.lld; do
+    printf "#!/bin/bash\n\n/usr/bin/ld.lld \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
+  done
+    for tool in lld; do
+    printf "#!/bin/bash\n\n/usr/bin/lld \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
+  done
+}

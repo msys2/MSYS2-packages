@@ -1,0 +1,58 @@
+# Maintainer: Mateusz Mikula <mati865@gmail.com>
+
+_realname=headers
+_mingw_suff=mingw-w64-cross-clang
+pkgname=("${_mingw_suff}-${_realname}-git")
+replaces=("${_mingw_suff}-${_realname}")
+provides=("${_mingw_suff}-${_realname}")
+conflicts=("${_mingw_suff}-${_realname}" "${_mingw_suff%-*}-${_realname}")
+pkgdesc="MinGW-w64 headers for cross-compiler"
+pkgver=9.0.0.6029.ecb4ff54
+pkgrel=1
+arch=('i686' 'x86_64')
+url="https://mingw-w64.sourceforge.io/"
+license=('custom')
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+makedepends=('git')
+options=('!strip' '!libtool' '!emptydirs' '!buildflags')
+_commit='ecb4ff5498dfedd6abcbadb889b84fab19ee57b2'
+source=("mingw-w64"::"git+https://git.code.sf.net/p/mingw-w64/mingw-w64#commit=$_commit")
+sha256sums=('SKIP')
+
+_targets="i686-w64-mingw32 x86_64-w64-mingw32 armv7-w64-mingw32"
+
+pkgver() {
+  cd "${srcdir}/mingw-w64"
+  local _major=$(head -n 16 mingw-w64-headers/crt/_mingw_mac.h | grep '__MINGW64_VERSION_MAJOR' | sed -e 's/.* //' | tr '\n' '.' | sed 's/.$/\n/')
+  local _minor=$(head -n 16 mingw-w64-headers/crt/_mingw_mac.h | grep '__MINGW64_VERSION_MINOR' | sed -e 's/.* //' | tr '\n' '.' | sed 's/.$/\n/')
+  local _rev=0
+  printf "%s.%s.%s.%s.%s" ${_major} ${_minor} ${_rev} "$(git rev-list --count $_commit)" "$(git rev-parse --short $_commit)"
+}
+
+prepare() {
+  cd "${srcdir}/mingw-w64"
+}
+
+build() {
+  for _target in ${_targets}; do
+    msg "Configuring ${_target} headers"
+    mkdir -p ${srcdir}/headers-${_target} && cd ${srcdir}/headers-${_target}
+
+    ${srcdir}/mingw-w64/mingw-w64-headers/configure \
+    --build=${CHOST} \
+    --host=${_target} \
+    --prefix=/opt/${_target} \
+    --enable-sdk=all \
+    --enable-secure-api \
+    --with-default-win32-winnt=0x601 \
+    --with-default-msvcrt=ucrt
+  done
+}
+
+package() {
+  for _target in ${_targets}; do
+    msg "Installing ${_target} headers"
+    cd ${srcdir}/headers-${_target}
+    make DESTDIR=${pkgdir} install
+  done
+}
