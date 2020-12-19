@@ -1,0 +1,46 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=pax
+pkgver=20201030
+pkgrel=1
+pkgdesc="Portable Archive Interchange - the POSIX standard archive tool for cpio and tar formats"
+arch=('i686' 'x86_64')
+url="https://www.mirbsd.org/pax.htm"
+license=('BSD')
+provides=("${pkgname}-git")
+conflicts=("${pkgname}-git")
+replaces=("${pkgname}-git")
+source=("https://www.mirbsd.org/MirOS/dist/mir/cpio/paxmirabilis-${pkgver}.cpio.gz")
+noextract=("paxmirabilis-${pkgver}.cpio.gz")
+sha256sums=('fe3f99c28ba7a46c4bce0b329da3742908b87fe8fbe17f0db1f99a1bd053d46b')
+
+prepare() {
+  mkdir -p "${pkgname}-${pkgver}/build"
+
+  bsdtar -x -f "paxmirabilis-${pkgver}.cpio.gz" -C "$pkgname-${pkgver}" --strip-components='1'
+}
+
+build() {
+  cd "${srcdir}/$pkgname-${pkgver}"
+
+  cd build
+  CPPFLAGS="-DPAX_SAFE_PATH=\\\"/bin:/usr/bin:/usr/local/bin\\\"" \
+  sh ../Build.sh -r -tpax
+
+  # license
+  sed -n '5,36p' ../pax.h > LICENSE # create file
+  sed -i '1,32s/^.\{,3\}//' LICENSE # erase C comments
+}
+
+package() {
+  # executables
+  install -D -m755 "${pkgname}-${pkgver}/build/pax" -t "${pkgdir}/usr/bin"
+  install -D -m755 "${pkgname}-${pkgver}/build/paxcpio" -t "${pkgdir}/usr/bin"
+  install -D -m755 "${pkgname}-${pkgver}/build/paxtar" -t "${pkgdir}/usr/bin"
+
+  # man pages
+  install -D -m644 "${pkgname}-${pkgver}/build/mans/"*.1 -t "${pkgdir}/usr/share/man/man1"
+
+  # license
+  install -D -m644 "${pkgname}-${pkgver}/build/LICENSE" -t "${pkgdir}/usr/share/licenses/${pkgname}"
+}
