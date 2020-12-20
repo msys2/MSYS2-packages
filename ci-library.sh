@@ -78,13 +78,13 @@ _package_provides() {
 _build_add() {
     local package="${1}"
     local depends makedepends
-    for sorted_package in "${sorted_packages[@]}"; do
-        [[ "${sorted_package}" = "${package}" ]] && return 0
+    for started_package in "${started_packages[@]}"; do
+        [[ "${started_package}" = "${package}" ]] && return 0
     done
+    started_packages+=("${package}")
     _package_info "${package}" depends makedepends
     for dependency in "${depends[@]}" "${makedepends[@]}"; do
         for unsorted_package in "${packages[@]}"; do
-            [[ "${package}" = "${unsorted_package}" ]] && continue
             _package_provides "${unsorted_package}" "${dependency}" && _build_add "${unsorted_package}"
         done
     done
