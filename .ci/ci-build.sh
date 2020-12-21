@@ -7,8 +7,7 @@ set -e
 # Author: Qian Hong <fracting@gmail.com>
 
 # Configure
-cd "$(dirname "$0")"
-source 'ci-library.sh'
+source "$(dirname "$0")/ci-library.sh"
 mkdir artifacts
 git_config user.email 'ci@msys2.org'
 git_config user.name  'MSYS2 Continuous Integration'
@@ -32,7 +31,7 @@ execute 'Approving recipe quality' check_recipe_quality
 for package in "${packages[@]}"; do
     execute 'Building binary' makepkg --noconfirm --noprogressbar --nocheck --syncdeps --rmdeps --cleanbuild
     execute 'Building source' makepkg --noconfirm --noprogressbar --allsource
-    grep -qFx "${package}" ci-dont-install-list.txt || execute 'Installing' yes:pacman --noprogressbar --upgrade *.pkg.tar.*
+    grep -qFx "${package}" "$(dirname "$0")/ci-dont-install-list.txt" || execute 'Installing' yes:pacman --noprogressbar --upgrade '*.pkg.tar.*'
     execute 'Checking dll depencencies' list_dll_deps ./pkg
     mv "${package}"/*.pkg.tar.* artifacts
     mv "${package}"/*.src.tar.gz artifacts
