@@ -4,7 +4,7 @@ _realname=clang
 _mingw_suff=mingw-w64-cross
 pkgname=("${_mingw_suff}-${_realname}")
 pkgver=11.0.0
-pkgrel=2
+pkgrel=3
 pkgdesc="Cross Clang for the MinGW-w64"
 groups=("${_mingw_suff}-${_realname}-toolchain")
 arch=('i686' 'x86_64')
@@ -30,7 +30,7 @@ validpgpkeys=('B6C8F98282B944E3B0D5C2530FC3042E345AD05D'  # Hans Wennborg, Googl
               '474E22316ABF4785A88C6E8EA2C794A986419D8A') # Tom Stellard
 noextract=(libcxx-${pkgver}.src.tar.xz)
 
-_target="x86_64-w64-mingw32"
+_targets="x86_64-w64-mingw32 i686-w64-mingw32"
 
 prepare() {
   plain "Extracting libcxx-${pkgver}.src.tar.xz due to symlink(s) without pre-existing target(s)"
@@ -45,110 +45,109 @@ prepare() {
 }
 
 build() {
-  cd "${srcdir}"
+  for _target in ${_targets}; do
+    export CC="clang" CXX="clang++" AS="clang" AR="llvm-ar" RANLIB="llvm-ranlib" DLLTOOL="llvm-dlltool" LD="clang"
 
-  [[ -d build-${CARCH} ]] && rm -rf build-${CARCH}
-  mkdir build-${CARCH} && cd build-${CARCH}
+    CFLAGS+=" -target ${_target} --sysroot=/opt/${_target} -rtlib=compiler-rt"
+    CPPFLAGS+=" -target ${_target} --sysroot=/opt/${_target}"
+    CXXFLAGS+=" -target ${_target} --sysroot=/opt/${_target} -rtlib=compiler-rt"
+    LDFLAGS+=" -target ${_target} --sysroot=/opt/${_target} -rtlib=compiler-rt -fuse-ld=lld"
 
-  export CC="clang" CXX="clang++" AS="clang" AR="llvm-ar" RANLIB="llvm-ranlib" DLLTOOL="llvm-dlltool" LD="clang"
+    # Force win32 threads for libc++abi
+    export CXXFLAGS+=" -D_LIBCPP_HAS_THREAD_API_WIN32"
+    COMMON_CMAKE_ARGS=(-G'Unix Makefiles'
+      -DCMAKE_BUILD_TYPE=Release
+      -DCMAKE_C_COMPILER_WORKS=ON
+      -DCMAKE_CROSSCOMPILING=ON
+      -DCMAKE_CXX_COMPILER_WORKS=ON
+      -DCMAKE_INSTALL_PREFIX=/opt/${_target}
+      -DCMAKE_SYSTEM_IGNORE_PATH=/usr/lib
+      -DCMAKE_SYSTEM_NAME=Windows
+      -DCXX_SUPPORTS_CUSTOM_LINKER=ON
+      -DHAVE_CXX_ATOMICS_WITHOUT_LIB=ON
+      -DHAVE_CXX_ATOMICS64_WITHOUT_LIB=ON
+      -DLIBCXX_ENABLE_EXPERIMENTAL_LIBRARY=ON
+      -DLIBCXX_ENABLE_NEW_DELETE_DEFINITIONS=ON
+      -DLIBCXX_ENABLE_STATIC_ABI_LIBRARY=ON
+      -DLIBCXX_HAS_WIN32_THREAD_API=ON
+      -DLIBCXX_INCLUDE_BENCHMARKS=OFF
+      -DLIBCXX_USE_COMPILER_RT=ON
+      -DLIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS=OFF
+      -DLIBCXXABI_ENABLE_SHARED=OFF
+      -DLIBCXXABI_ENABLE_STATIC=ON
+      -DLIBCXXABI_INSTALL_SHARED_LIBRARY=OFF
+      -DLIBCXXABI_INSTALL_STATIC_LIBRARY=OFF
+      -DLIBCXXABI_USE_COMPILER_RT=ON
+      -DLIBCXXABI_USE_LLVM_UNWINDER=ON
+      -DLIBUNWIND_ENABLE_SHARED=ON
+      -DLIBUNWIND_USE_COMPILER_RT=ON
+      -DLLVM_ENABLE_LIBCXX=ON
+      -DLLVM_ENABLE_PROJECTS="libcxx;libcxxabi;libunwind")
 
-  CFLAGS+=" -target ${_target} --sysroot=/opt/${_target} -rtlib=compiler-rt"
-  CPPFLAGS+=" -target ${_target} --sysroot=/opt/${_target}"
-  CXXFLAGS+=" -target ${_target} --sysroot=/opt/${_target} -rtlib=compiler-rt"
-  LDFLAGS+=" -target ${_target} --sysroot=/opt/${_target} -rtlib=compiler-rt -fuse-ld=lld"
+    cd "${srcdir}"
 
-  # Force win32 threads for libc++abi
-  export CXXFLAGS+=" -D_LIBCPP_HAS_THREAD_API_WIN32"
-  COMMON_CMAKE_ARGS=(-G'Unix Makefiles'
-    -DCMAKE_BUILD_TYPE=Release
-    -DCMAKE_C_COMPILER_WORKS=ON
-    -DCMAKE_CROSSCOMPILING=ON
-    -DCMAKE_CXX_COMPILER_WORKS=ON
-    -DCMAKE_INSTALL_PREFIX=/opt/${_target}
-    -DCMAKE_SYSTEM_IGNORE_PATH=/usr/lib
-    -DCMAKE_SYSTEM_NAME=Windows
-    -DCXX_SUPPORTS_CUSTOM_LINKER=ON
-    -DHAVE_CXX_ATOMICS_WITHOUT_LIB=ON
-    -DHAVE_CXX_ATOMICS64_WITHOUT_LIB=ON
-    -DLIBCXX_ENABLE_EXPERIMENTAL_LIBRARY=ON
-    -DLIBCXX_ENABLE_NEW_DELETE_DEFINITIONS=ON
-    -DLIBCXX_ENABLE_STATIC_ABI_LIBRARY=ON
-    -DLIBCXX_HAS_WIN32_THREAD_API=ON
-    -DLIBCXX_INCLUDE_BENCHMARKS=OFF
-    -DLIBCXX_USE_COMPILER_RT=ON
-    -DLIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS=OFF
-    -DLIBCXXABI_ENABLE_SHARED=OFF
-    -DLIBCXXABI_ENABLE_STATIC=ON
-    -DLIBCXXABI_INSTALL_SHARED_LIBRARY=OFF
-    -DLIBCXXABI_INSTALL_STATIC_LIBRARY=OFF
-    -DLIBCXXABI_USE_COMPILER_RT=ON
-    -DLIBCXXABI_USE_LLVM_UNWINDER=ON
-    -DLIBUNWIND_ENABLE_SHARED=ON
-    -DLIBUNWIND_USE_COMPILER_RT=ON
-    -DLLVM_ENABLE_LIBCXX=ON
-    -DLLVM_ENABLE_PROJECTS="libcxx;libcxxabi;libunwind")
+    [[ -d build-libcxx-shared-${_target} ]] && rm -rf build-libcxx-shared-${_target}
+    mkdir build-libcxx-shared-${_target} && cd build-libcxx-shared-${_target}
 
-  cd "${srcdir}"
+    cmake \
+      -DCMAKE_CXX_FLAGS="${CXXFLAGS} -D_LIBCPP_BUILDING_LIBRARY -U_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS" \
+      -DLIBCXX_ENABLE_SHARED=ON \
+      -DLIBCXX_ENABLE_STATIC=OFF \
+      -DLIBUNWIND_ENABLE_STATIC=OFF \
+      "${COMMON_CMAKE_ARGS[@]}" \
+      ${extra_config[@]} \
+      ../llvm-${pkgver}.src
 
-  [[ -d build-libcxx-shared-${CARCH} ]] && rm -rf build-libcxx-shared-${CARCH}
-  mkdir build-libcxx-shared-${CARCH} && cd build-libcxx-shared-${CARCH}
+    make cxx
 
-  cmake \
-    -DCMAKE_CXX_FLAGS="${CXXFLAGS} -D_LIBCPP_BUILDING_LIBRARY -U_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS" \
-    -DLIBCXX_ENABLE_SHARED=ON \
-    -DLIBCXX_ENABLE_STATIC=OFF \
-    -DLIBUNWIND_ENABLE_STATIC=OFF \
-    "${COMMON_CMAKE_ARGS[@]}" \
-    ${extra_config[@]} \
-    ../llvm-${pkgver}.src
+    cd "${srcdir}"
 
-  make cxx
+    [[ -d build-libcxx-static-${_target} ]] && rm -rf build-libcxx-static-${_target}
+    mkdir build-libcxx-static-${_target} && cd build-libcxx-static-${_target}
 
-  cd "${srcdir}"
+    cmake \
+      -DCMAKE_CXX_FLAGS="${CXXFLAGS} -D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS" \
+      -DLIBCXX_ENABLE_SHARED=OFF \
+      -DLIBCXX_ENABLE_STATIC=ON \
+      -DLIBCXXABI_ENABLE_STATIC_UNWINDER=ON \
+      -DLIBUNWIND_ENABLE_STATIC=ON \
+      "${COMMON_CMAKE_ARGS[@]}" \
+      ${extra_config[@]} \
+      ../llvm-${pkgver}.src
 
-  [[ -d build-libcxx-static-${CARCH} ]] && rm -rf build-libcxx-static-${CARCH}
-  mkdir build-libcxx-static-${CARCH} && cd build-libcxx-static-${CARCH}
-
-  cmake \
-    -DCMAKE_CXX_FLAGS="${CXXFLAGS} -D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS" \
-    -DLIBCXX_ENABLE_SHARED=OFF \
-    -DLIBCXX_ENABLE_STATIC=ON \
-    -DLIBCXXABI_ENABLE_STATIC_UNWINDER=ON \
-    -DLIBUNWIND_ENABLE_STATIC=ON \
-    "${COMMON_CMAKE_ARGS[@]}" \
-    ${extra_config[@]} \
-    ../llvm-${pkgver}.src
-
-  make unwind cxx
+    make unwind cxx
+  done
 }
 
 package() {
-  cd "${srcdir}/libcxxabi"
-  make -C ../build-libcxx-static-${CARCH}/projects/libcxxabi DESTDIR="${pkgdir}/" install
+  for _target in ${_targets}; do
+    cd "${srcdir}/libcxxabi"
+    make -C ../build-libcxx-static-${_target}/projects/libcxxabi DESTDIR="${pkgdir}/" install
 
-  cd "$srcdir/libcxx"
-  make -C ../build-libcxx-shared-${CARCH}/projects/libcxx DESTDIR="${pkgdir}" install
-  make -C ../build-libcxx-static-${CARCH}/projects/libcxx DESTDIR="${pkgdir}" install
-  install -Dm644 "${srcdir}/build-libcxx-static-${CARCH}/lib/libc++experimental.a" "${pkgdir}/opt/${_target}/lib/libc++experimental.a"
+    cd "$srcdir/libcxx"
+    make -C ../build-libcxx-shared-${_target}/projects/libcxx DESTDIR="${pkgdir}" install
+    make -C ../build-libcxx-static-${_target}/projects/libcxx DESTDIR="${pkgdir}" install
+    install -Dm644 "${srcdir}/build-libcxx-static-${_target}/lib/libc++experimental.a" "${pkgdir}/opt/${_target}/lib/libc++experimental.a"
 
-  cd "${srcdir}/libunwind"
-  make -C ../build-libcxx-static-${CARCH}/projects/libunwind DESTDIR="${pkgdir}" install
-  install "${srcdir}/build-libcxx-static-${CARCH}/lib/libunwind.dll" "${pkgdir}/opt/${_target}/bin/libunwind.dll"
+    cd "${srcdir}/libunwind"
+    make -C ../build-libcxx-static-${_target}/projects/libunwind DESTDIR="${pkgdir}" install
+    install "${srcdir}/build-libcxx-static-${_target}/lib/libunwind.dll" "${pkgdir}/opt/${_target}/bin/libunwind.dll"
 
-  _prefix="${pkgdir}/opt/${_target}/bin"
-  for tool in addr2line ar dlltool nm objcopy objdump ranlib rc readelf readobj strings strip; do
-    printf "#!/bin/bash\n\n/usr/bin/llvm-${tool} \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
-  done
-  for tool in as cc clang; do
-    printf "#!/bin/bash\n\n/usr/bin/clang -target ${_target} -fuse-ld=lld -rtlib=compiler-rt -unwindlib=libunwind -Wno-error=unused-command-line-argument --sysroot=/opt/${_target} \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
-  done
-  for tool in c++ clang++; do
-    printf "#!/bin/bash\n\n/usr/bin/clang++ -target ${_target} -fuse-ld=lld -rtlib=compiler-rt -stdlib=libc++ -unwindlib=libunwind -Wno-error=unused-command-line-argument --sysroot=/opt/${_target} \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
-  done
-  for tool in ld ld.lld; do
-    printf "#!/bin/bash\n\n/usr/bin/ld.lld \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
-  done
+    _prefix="${pkgdir}/opt/${_target}/bin"
+    for tool in addr2line ar dlltool nm objcopy objdump ranlib rc readelf readobj strings strip; do
+      printf "#!/bin/bash\n\n/usr/bin/llvm-${tool} \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
+    done
+    for tool in as cc clang; do
+      printf "#!/bin/bash\n\n/usr/bin/clang -target ${_target} -fuse-ld=lld -rtlib=compiler-rt -unwindlib=libunwind -Wno-error=unused-command-line-argument --sysroot=/opt/${_target} \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
+    done
+    for tool in c++ clang++; do
+      printf "#!/bin/bash\n\n/usr/bin/clang++ -target ${_target} -fuse-ld=lld -rtlib=compiler-rt -stdlib=libc++ -unwindlib=libunwind -Wno-error=unused-command-line-argument --sysroot=/opt/${_target} \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
+    done
+    for tool in ld ld.lld; do
+      printf "#!/bin/bash\n\n/usr/bin/ld.lld \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
+    done
     for tool in lld; do
-    printf "#!/bin/bash\n\n/usr/bin/lld \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
+      printf "#!/bin/bash\n\n/usr/bin/lld \$@" | tee "${_prefix}/${tool}" "${_prefix}/${_target}-${tool}" > /dev/null
+    done
   done
 }
