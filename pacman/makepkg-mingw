@@ -60,7 +60,7 @@ fi
 
 readonly ALL_OFF BOLD BLUE GREEN RED YELLOW
 MINGW_INSTALLS="${MINGW_INSTALLS,,}"
-MINGW_INSTALLS="${MINGW_INSTALLS:-mingw64 mingw32 arm64}"
+MINGW_INSTALLS="${MINGW_INSTALLS:-mingw64 mingw32}"
 
 for _mingw in ${MINGW_INSTALLS}; do
   if [ ! "${_mingw}" = 'mingw32' -a ! "${_mingw}" = 'mingw64' -a ! "${_mingw}" = 'arm64' ]; then
@@ -92,7 +92,12 @@ for _mingw in ${MINGW_INSTALLS}; do
     ;;
   esac
 
-  if [ -f "/${_mingw}/bin/gcc.exe" ]; then
+  # Currently, arm64 is only supported through cross-compilation from mingw32
+  if [ "${_mingw}" = "arm64" -a -f "/mingw32/bin/gcc.exe" ]; then
+    MSYSTEM=${_msystem} \
+    PATH=/mingw32/bin:$(echo $PATH | tr ':' '\n' | awk '$0 != "/opt/bin"' | paste -sd:) \
+    /usr/bin/makepkg --config /etc/makepkg_${_mingw}.conf $@ || exit 1
+  elif [ -f "/${_mingw}/bin/gcc.exe" ]; then
     MSYSTEM=${_msystem} \
     PATH=/${_mingw}/bin:$(echo $PATH | tr ':' '\n' | awk '$0 != "/opt/bin"' | paste -sd:) \
     /usr/bin/makepkg --config /etc/makepkg_${_mingw}.conf $@ || exit 1
