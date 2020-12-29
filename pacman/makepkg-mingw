@@ -17,6 +17,8 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+set -e
+
 plain() {
   local mesg=$1; shift
   printf "${BOLD}    ${mesg}${ALL_OFF}\n" "$@" >&2
@@ -61,17 +63,18 @@ fi
 readonly ALL_OFF BOLD BLUE GREEN RED YELLOW
 MINGW_INSTALLS="${MINGW_INSTALLS,,}"
 MINGW_INSTALLS="${MINGW_INSTALLS:-mingw64 mingw32}"
+MINGW_INSTALLS_ALLOWED=('mingw32' 'mingw64' 'clang32' 'clang64')
 
 for _mingw in ${MINGW_INSTALLS}; do
-  if [ ! "${_mingw}" = 'mingw32' -a ! "${_mingw}" = 'mingw64' ]; then
-    print_error "Requested mingw installation '${_mingw}', but only 'mingw32' and 'mingw64' are allowed."
+  if [[ ! " ${MINGW_INSTALLS_ALLOWED[*]} " = *" ${_mingw} "* ]]; then
+    print_error "Requested mingw installation '${_mingw}' unknown, possible values: ${MINGW_INSTALLS_ALLOWED[*]}"
     exit 1
   fi
 done
 
 for _arg in "$@"; do
-  if [ ${_arg} = "--help" -o ${_arg} = "-h" -o ${_arg} = "--version" -o ${_arg} = "-V" ]; then
-    /usr/bin/makepkg $@
+  if [ "${_arg}" = "--help" ] || [ "${_arg}" = "-h" ] || [ "${_arg}" = "--version" ] || [ "${_arg}" = "-V" ]; then
+    /usr/bin/makepkg "$@"
     exit 0
   fi
 done
@@ -79,23 +82,36 @@ done
 for _mingw in ${MINGW_INSTALLS}; do
   case ${_mingw} in
     mingw32)
-      _arch=i686
       _msystem=MINGW32
+      _compiler="/${_mingw}/bin/gcc.exe"
+      _toolchain="mingw-w64-i686-toolchain"
     ;;
     mingw64)
-      _arch=x86_64
       _msystem=MINGW64
+      _compiler="/${_mingw}/bin/gcc.exe"
+      _toolchain="mingw-w64-x86_64-toolchain"
+    ;;
+    clang32)
+      _msystem=CLANG32
+      _compiler="/${_mingw}/bin/clang.exe"
+      _toolchain="mingw-w64-i686-toolchain"
+    ;;
+    clang64)
+      _msystem=CLANG64
+      _compiler="/${_mingw}/bin/clang.exe"
+      _toolchain="mingw-w64-x86_64-toolchain"
     ;;
   esac
 
-  if [ -f "/${_mingw}/bin/gcc.exe" ]; then
-    MSYSTEM=${_msystem} \
-    PATH=/${_mingw}/bin:$(echo $PATH | tr ':' '\n' | awk '$0 != "/opt/bin"' | paste -sd:) \
-    /usr/bin/makepkg --config /etc/makepkg_${_mingw}.conf $@ || exit 1
-  else
-    print_warning "You don't have installed mingw-w64 toolchain for architecture ${_arch}."
-    print_warning "To install it run: 'pacman -S mingw-w64-${_arch}-toolchain'"
+  if [ ! -f "${_compiler}" ]; then
+    print_warning "You don't have the required toolchain installed for ${_mingw}."
+    print_warning "To install it run: 'pacman -S -${_toolchain}'"
   fi
+
+  MSYSTEM="${_msystem}" \
+  CHERE_INVOKING=1 \
+    bash -leo pipefail -c "/usr/bin/makepkg --config /etc/makepkg_${_mingw}.conf \"\$@\"" bash "$@"
+
 done
 
 exit 0
