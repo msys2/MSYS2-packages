@@ -1,0 +1,101 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgbase=guile
+# don't forget to update package_libguilex.y below with guilever manually
+guilever=3.0
+pkgname=("${pkgbase}" "lib${pkgbase}${guilever}" "lib${pkgbase}-devel")
+pkgver=${guilever}.4
+pkgrel=1
+pkgdesc="a portable, embeddable Scheme implementation written in C"
+url="https://www.gnu.org/software/guile/"
+arch=(i686 x86_64)
+license=('GPL')
+makedepends=('libltdl' 'gmp-devel' 'ncurses-devel' 'libunistring-devel' 'libgc-devel' 'libffi-devel' 'texinfo' 'libreadline-devel>=7.0.0')
+source=("https://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz"
+        0002-Remove-version-in-file-name-of-dynamic-library-guile.patch
+        0101-In-tests-add-dynamic-link-to-msys-2.0-for-host-type-msys.patch
+        0102-Skip-tests-using-setrlimit-for-MSYS-as-done-for-Cygwin.patch
+        0103-Activate-test-pthread-create-secondary-for-CYGWIN-MSYS.patch)
+options=('!libtool')
+sha256sums=('6b7947dc2e3d115983846a268b8f5753c12fd5547e42fbf2b97d75a3b79f0d31'
+            '440d31e6100bf896fcd5d65209da42bfeec43f154fa023fceeae911194ecb15c'
+            '7b06f92cca1b10f1006f53f27b0ed0c653eaa3a1de3732b69364e28b1b36fd1e'
+            '31124d7053454eb082a815b8d15249621dfb92aff50400090854d1f47b174f25'
+            'b66d33a35942c4d4575d169974f91f3e525f6de4fb82e61dc70723e0a43123d6')
+
+prepare() {
+  cd "${srcdir}/${pkgbase}-${pkgver}"
+
+  patch -p1 -i ${srcdir}/0002-Remove-version-in-file-name-of-dynamic-library-guile.patch
+  
+  patch -p1 -i ${srcdir}/0101-In-tests-add-dynamic-link-to-msys-2.0-for-host-type-msys.patch
+  patch -p1 -i ${srcdir}/0102-Skip-tests-using-setrlimit-for-MSYS-as-done-for-Cygwin.patch
+  patch -p1 -i ${srcdir}/0103-Activate-test-pthread-create-secondary-for-CYGWIN-MSYS.patch
+
+  autoreconf -fi
+}
+
+build() {
+  cd "${srcdir}/${pkgbase}-${pkgver}"
+  ./configure \
+    --build=${CHOST} \
+    --prefix=/usr \
+    --disable-debug-malloc \
+    --disable-guile-debug \
+    --disable-error-on-warning \
+    --disable-rpath \
+    --enable-deprecated \
+    --enable-networking \
+    --enable-nls \
+    --enable-posix \
+    --enable-regex \
+    --with-threads \
+    --with-modules \
+    --disable-static
+  make
+  make DESTDIR="${srcdir}/dest" install
+}
+
+package_guile() {
+  depends=("lib${pkgbase}${guilever}=${pkgver}" 'info')
+  install=${pkgbase}.install
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  rm -f ${pkgdir}/usr/bin/*.dll
+  rm -f ${pkgdir}/usr/bin/*-config
+
+  mkdir -p ${pkgdir}/usr/share
+  cp -rf ${srcdir}/dest/usr/share/info ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
+}
+
+# libguile name with version to allow for different parallel installations
+package_libguile3.0() {
+  depends=('gmp' 'libltdl' 'ncurses' 'libunistring' 'libgc' 'libffi' 'libreadline>=7.0.0')
+  groups=('libraries')
+
+  mkdir -p ${pkgdir}/usr/bin
+  install -Dm755 ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+
+  mkdir -p ${pkgdir}/usr/share
+  cp -rf ${srcdir}/dest/usr/share/guile ${pkgdir}/usr/share/
+
+  mkdir -p ${pkgdir}/usr/lib
+  cp -rf ${srcdir}/dest/usr/lib/guile ${pkgdir}/usr/lib/
+}
+
+package_libguile-devel() {
+  depends=("lib${pkgbase}${guilever}=${pkgver}")
+  groups=('development')
+  options=('staticlibs')
+
+  mkdir -p ${pkgdir}/usr/bin
+  install -Dm755 ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  mkdir -p ${pkgdir}/usr/lib
+  cp -rf ${srcdir}/dest/usr/lib/*.a ${pkgdir}/usr/lib/
+  cp -rf ${srcdir}/dest/usr/lib/pkgconfig ${pkgdir}/usr/lib/
+  mkdir -p ${pkgdir}/usr/share
+  cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
+}
