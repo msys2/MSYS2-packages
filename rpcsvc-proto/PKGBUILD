@@ -1,0 +1,40 @@
+# Maintainer: Biswapriyo Nath <nathbappai@gmail.com>
+
+pkgname=rpcsvc-proto
+pkgver=1.4.2
+pkgrel=1
+pkgdesc="rpcsvc protocol definitions from glibc."
+arch=('i686' 'x86_64')
+url="https://github.com/thkukuk/rpcsvc-proto"
+license=('BSD')
+source=("${pkgname}-${pkgver}.tar.gz"::"${url}/archive/v${pkgver}.tar.gz")
+sha512sums=('6769f9439e3f187eebdeef4ee8d54f8a6fee6f410e3137d0c1b26e61b705873932890856faff55b68c39aa702e456b36fe9410b85baf1ef9b20ee97f2158971a')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  # Replace stat64 with stat, cygwin/msys2 does not export it.
+  sed -s "s|stat64|stat|g" -i "rpcgen/rpc_main.c"
+
+  autoreconf -fiv
+}
+
+build() {
+  [[ -d "${srcdir}/build-${MSYSTEM_CHOST}" ]] && rm -rf "${srcdir}/build-${MSYSTEM_CHOST}"
+  mkdir -p "${srcdir}/build-${MSYSTEM_CHOST}" && cd "${srcdir}/build-${MSYSTEM_CHOST}"
+
+  ../${pkgname}-${pkgver}/configure \
+    --prefix=/usr \
+    --build=${CHOST} \
+    --host=${CHOST} \
+    --target=${CHOST}
+
+  make
+}
+
+package() {
+  cd "${srcdir}/build-${MSYSTEM_CHOST}"
+  make DESTDIR="${pkgdir}" install
+
+  install -Dm644 "${srcdir}/${pkgname}-${pkgver}/COPYING" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
