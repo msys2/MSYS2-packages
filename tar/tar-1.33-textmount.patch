@@ -1,7 +1,6 @@
-diff -Naur tar-1.31-orig/lib/rmt.h tar-1.31/lib/rmt.h
---- tar-1.31-orig/lib/rmt.h	2015-12-06 00:53:30.000000000 +0300
-+++ tar-1.31/lib/rmt.h	2019-01-15 11:43:57.167024200 +0300
-@@ -62,7 +62,7 @@
+--- tar-1.33-orig/lib/rmt.h
++++ tar-1.33/lib/rmt.h
+@@ -62,7 +62,7 @@ extern bool force_local_option;
  #define rmtcreat(dev_name, mode, command) \
     (_remdev (dev_name) \
      ? rmt_open__ (dev_name, O_CREAT | O_WRONLY, __REM_BIAS, command) \
@@ -10,10 +9,9 @@ diff -Naur tar-1.31-orig/lib/rmt.h tar-1.31/lib/rmt.h
  
  #define rmtlstat(dev_name, muffer) \
    (_remdev (dev_name) ? (errno = EOPNOTSUPP), -1 : lstat (dev_name, buffer))
-diff -Naur tar-1.31-orig/rmt/rmt.c tar-1.31/rmt/rmt.c
---- tar-1.31-orig/rmt/rmt.c	2018-07-31 11:55:58.000000000 +0300
-+++ tar-1.31/rmt/rmt.c	2019-01-15 11:43:57.182624300 +0300
-@@ -338,7 +338,7 @@
+--- tar-1.33-orig/rmt/rmt.c
++++ tar-1.33/rmt/rmt.c
+@@ -338,7 +338,7 @@ open_device (char *str)
        if (device_fd >= 0)
  	close (device_fd);
  
@@ -22,10 +20,9 @@ diff -Naur tar-1.31-orig/rmt/rmt.c tar-1.31/rmt/rmt.c
        if (device_fd < 0)
  	rmt_error (errno);
        else
-diff -Naur tar-1.31-orig/src/buffer.c tar-1.31/src/buffer.c
---- tar-1.31-orig/src/buffer.c	2019-01-02 21:07:47.000000000 +0300
-+++ tar-1.31/src/buffer.c	2019-01-15 11:43:57.182624300 +0300
-@@ -766,6 +766,7 @@
+--- tar-1.33-orig/src/buffer.c
++++ tar-1.33/src/buffer.c
+@@ -766,6 +766,7 @@ _open_archive (enum access_mode wanted_a
              enum compress_type type;
  
              archive = STDIN_FILENO;
@@ -33,27 +30,27 @@ diff -Naur tar-1.31-orig/src/buffer.c tar-1.31/src/buffer.c
              type = check_compressed_archive (&shortfile);
              if (type != ct_tar && type != ct_none)
                FATAL_ERROR ((0, 0,
-@@ -778,12 +779,19 @@
+@@ -778,12 +779,19 @@ _open_archive (enum access_mode wanted_a
  
          case ACCESS_WRITE:
            archive = STDOUT_FILENO;
-+	  freopen (NULL,
-+		   fcntl (STDOUT_FILENO, F_GETFL) & O_APPEND ? "ab" : "wb",
-+		   stdout);
++          freopen (NULL,
++                   fcntl (STDOUT_FILENO, F_GETFL) & O_APPEND ? "ab" : "wb",
++                   stdout);
            if (!index_file_name)
              stdlis = stderr;
            break;
  
          case ACCESS_UPDATE:
            archive = STDIN_FILENO;
-+	  freopen (NULL, "rb", stdin);
-+	  freopen (NULL,
-+		   fcntl (STDOUT_FILENO, F_GETFL) & O_APPEND ? "ab" : "wb",
-+		   stdout);
++          freopen (NULL, "rb", stdin);
++          freopen (NULL,
++                   fcntl (STDOUT_FILENO, F_GETFL) & O_APPEND ? "ab" : "wb",
++                   stdout);
            write_archive_to_stdout = true;
            record_end = record_start; /* set up for 1st record = # 0 */
            if (!index_file_name)
-@@ -1182,7 +1190,7 @@
+@@ -1182,7 +1190,7 @@ init_volume_number (void)
  void
  closeout_volume_number (void)
  {
@@ -62,26 +59,9 @@ diff -Naur tar-1.31-orig/src/buffer.c tar-1.31/src/buffer.c
  
    if (file)
      {
-diff -Naur tar-1.31-orig/src/incremen.c tar-1.31/src/incremen.c
---- tar-1.31-orig/src/incremen.c	2019-01-02 21:07:48.000000000 +0300
-+++ tar-1.31/src/incremen.c	2019-01-15 11:43:57.198224300 +0300
-@@ -1035,7 +1035,14 @@
-       lineno++;
- 
-       if (buf[n - 1] == '\n')
--	buf[n - 1] = '\0';
-+	{
-+	  buf[n - 1] = '\0';
-+	  /* Cygwin hack - older tars created incremental files with \r\n
-+	     line endings, so strip the \r.  This breaks on managed mount
-+	     on directories with a trailing \r, oh well.  */
-+	  if (buf[n - 2] == '\r')
-+	    buf[n - 2] = '\0';
-+	}
- 
-       if (version == 1)
- 	{
-@@ -1330,7 +1337,7 @@
+--- tar-1.33-orig/src/incremen.c
++++ tar-1.33/src/incremen.c
+@@ -1333,7 +1333,7 @@ read_directory_file (void)
    int fd;
    char *buf = NULL;
    size_t bufsize = 0;
@@ -90,7 +70,7 @@ diff -Naur tar-1.31-orig/src/incremen.c tar-1.31/src/incremen.c
  
    if (incremental_level == 0)
      flags |= O_TRUNC;
-@@ -1344,7 +1351,7 @@
+@@ -1347,7 +1347,7 @@ read_directory_file (void)
        return;
      }
  
@@ -99,10 +79,9 @@ diff -Naur tar-1.31-orig/src/incremen.c tar-1.31/src/incremen.c
    if (! listed_incremental_stream)
      {
        open_error (listed_incremental_option);
-diff -Naur tar-1.31-orig/src/system.c tar-1.31/src/system.c
---- tar-1.31-orig/src/system.c	2019-01-02 21:07:48.000000000 +0300
-+++ tar-1.31/src/system.c	2019-01-15 11:43:57.213824300 +0300
-@@ -366,7 +366,8 @@
+--- tar-1.33-orig/src/system.c
++++ tar-1.33/src/system.c
+@@ -366,7 +366,8 @@ sys_child_open_for_compress (void)
  	 compressor.  */
        if (strcmp (archive_name_array[0], "-"))
  	{
@@ -112,7 +91,7 @@ diff -Naur tar-1.31-orig/src/system.c tar-1.31/src/system.c
  	  if (archive < 0)
  	    {
  	      int saved_errno = errno;
-@@ -407,7 +408,11 @@
+@@ -407,7 +408,11 @@ sys_child_open_for_compress (void)
    xclose (child_pipe[PWRITE]);
  
    if (strcmp (archive_name_array[0], "-") == 0)
