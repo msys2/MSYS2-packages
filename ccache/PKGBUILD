@@ -2,48 +2,41 @@
 # Contributor: Renato Silva <br.renatosilva@gmail.com>
 
 pkgname=ccache
-pkgver=3.7.11
+pkgver=4.1
 pkgrel=1
 pkgdesc="A compiler cache (mingw-w64)"
 arch=('i686' 'x86_64')
 url="https://ccache.samba.org/"
 license=("GPL3")
 replaces=("${pkgname}-git")
-makedepends=("gcc" "pkg-config" "zlib-devel")
+makedepends=("gcc"
+             "cmake"
+             "pkg-config"
+             "zlib-devel")
 depends=("gcc-libs" "zlib")
 options=('staticlibs' 'strip')
 install="${pkgname}.install"
-source=(https://github.com/ccache/ccache/releases/download/v${pkgver}/ccache-${pkgver}.tar.xz{,.asc}
-        "ccache-3.4.2-msys.patch")
+source=(https://github.com/ccache/ccache/releases/download/v${pkgver}/ccache-${pkgver}.tar.xz{,.asc})
 validpgpkeys=("5A939A71A46792CF57866A51996DDA075594ADB8") #Joel Rosdahl <joel@rosdahl.net>
-sha256sums=('8d450208099a4d202bd7df87caaec81baee20ce9dd62da91e9ea7b95a9072f68'
-            'SKIP'
-            '4880623ad5f4292964d7cd2e1f38afdc6979eb070312a9435a60afb144a8c60e')
-
-prepare() {
-  cd ${pkgname}-${pkgver}
-
-  patch -p1 -i ${srcdir}/ccache-3.4.2-msys.patch
-}
+sha256sums=('5fdc804056632d722a1182e15386696f0ea6c59cb4ab4d65a54f0b269ae86f99'
+            'SKIP')
 
 build() {
   [[ -d build-${CHOST} ]] && rm -rf build-${CHOST}
   mkdir -p build-${CHOST}  && cd build-${CHOST}
-  ../${pkgname}-${pkgver}/configure \
-      --prefix=/usr \
-      --build=${CHOST} \
-      --host=${CHOST} \
-      --target=${CHOST}
+
+  /usr/bin/cmake \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    ../${pkgname}-${pkgver}
+
   make
-}
-
-check() {
-  cd "${srcdir}/build-${CHOST}"
-
-  make check
 }
 
 package() {
   cd "${srcdir}/build-${CHOST}"
   make DESTDIR="${pkgdir}" install
+
+  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/GPL-3.0.txt ${pkgdir}/usr/share/licenses/${pkgname}/GPL-3.0.txt
+  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/LGPL-3.0.txt ${pkgdir}/usr/share/licenses/${pkgname}/LGPL-3.0.txt
 }
