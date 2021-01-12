@@ -1,21 +1,38 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
+pkgbase=libxml2
 pkgname=('libxml2' 'libxml2-devel' 'libxml2-python')
 pkgver=2.9.10
-pkgrel=6
+pkgrel=7
 pkgdesc="XML parsing library, version 2"
 arch=(i686 x86_64)
 license=('MIT')
-makedepends=('python-devel' 'icu-devel>=67.1' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel')
+makedepends=('python-devel' 'icu-devel>=68.1' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel')
 url="http://www.xmlsoft.org/"
-source=(http://xmlsoft.org/sources/${pkgname}-${pkgver}.tar.gz
+source=(http://xmlsoft.org/sources/${pkgbase}-${pkgver}.tar.gz
         https://www.w3.org/XML/Test/xmlts20130923.tar.gz
+        libxml2-2.9.8-python3-unicode-errors.patch
+        fix-relaxed-approach-to-nested-documents.patch
+        libxml2-2.9.10-CVE-2019-20388.patch
+        libxml2-2.9.10-CVE-2020-7595.patch
+        libxml2-2.9.10-parenthesize-type-checks.patch
+        libxml2-2.9.10-CVE-2020-24977.patch
+        libxml2-2.9.10-fix-integer-overflow.patch
+        libxml2-2.9.10-icu68.patch
         libxml2-2.9.0-do-not-check-crc.patch
         libxml2-2.7.3-doc-install.patch
         libxml2-cygwin-reentrant.patch
         libxml2-2.9.1-msys2.patch)
 sha256sums=('aafee193ffb8fe0c82d4afef6ef91972cbaf5feea100edc2f262750611b4be1f'
             '9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f'
+            '37eb81a8ec6929eed1514e891bff2dd05b450bcf0c712153880c485b7366c17c'
+            '50f04807b86a179d051fb86755e82f55ba7aac9d0c005eefea93d2599a911d01'
+            'cfe1b3e0f026df6f979dbd77c1dcd1268e60acf3d7a8ff3f480b4e67bfcc19d6'
+            'c6105ff40d7b1b140fcd821b5d64ab8c7b596708071c26964727e7352b07ac7e'
+            'b63c161e4c8a6f0a65ba091c3d3ed09d3110d21f997ee61077c782b311fd4b33'
+            '62eafffc2b4949489c261c63883d27c2e83d688f1d4c899000b283e4c2a682be'
+            'fd227780ad5699bebca7ef412d2d50fb1d21a54f6e3fdcad0bda5bdc8f8b2525'
+            'f02a435761f26ff664041d49f9d05924dc627bf103c7f542feee891f69aa84a2'
             '5a53d640ebce5a96e35fbdf5f644c37642dfa3345a1dc4fc355728897c19b7e7'
             'bff6790eadec6d7b3affd2d3a7385ce7f80cec2cf4abbd2ed83e9cb297a614a9'
             'fbd5ddb92e3cd0ab0f1f058436ca73b677f12fa00f65d634be7ef791e3706e33'
@@ -43,10 +60,23 @@ del_file_exists() {
 
 prepare() {
   cd ${srcdir}
-  del_file_exists ${pkgname}-${pkgver}/xmlconf
-  mv xmlconf -t ${pkgname}-${pkgver}
+  del_file_exists ${pkgbase}-${pkgver}/xmlconf
+  mv xmlconf -t ${pkgbase}-${pkgver}
 
-  cd ${pkgname}-${pkgver}
+  cd ${pkgbase}-${pkgver}
+  
+  # From https://src.fedoraproject.org/rpms/libxml2/tree/master
+  apply_patch_with_msg \
+    libxml2-2.9.8-python3-unicode-errors.patch \
+    fix-relaxed-approach-to-nested-documents.patch \
+    libxml2-2.9.10-CVE-2019-20388.patch \
+    libxml2-2.9.10-CVE-2020-7595.patch \
+    libxml2-2.9.10-parenthesize-type-checks.patch \
+    libxml2-2.9.10-CVE-2020-24977.patch \
+    libxml2-2.9.10-fix-integer-overflow.patch
+
+  apply_patch_with_msg \
+    libxml2-2.9.10-icu68.patch
 
   apply_patch_with_msg \
     libxml2-2.9.0-do-not-check-crc.patch \
@@ -59,7 +89,8 @@ prepare() {
 
 build() {
   export lt_cv_deplibs_check_method='pass_all'
-  cd ${pkgname}-${pkgver}
+  CFLAGS+=" -fcommon"
+  cd ${pkgbase}-${pkgver}
   ./configure \
     --prefix=/usr \
     --sysconfdir=/etc \
@@ -77,17 +108,17 @@ build() {
   make DESTDIR=${srcdir}/dest install
 
   PYTHON_SITELIB="$(python -c 'import site, sys; sys.stdout.write(site.getsitepackages()[0])')"
-  mv ${srcdir}/dest${PYTHON_SITELIB}/${pkgname/lib/msys-}mod.dll ${srcdir}/dest${PYTHON_SITELIB}/${pkgname}mod.dll
-  sed -i -e "s:${pkgname/lib/msys-}mod:${PN}mod:g" ${srcdir}/dest${PYTHON_SITELIB}/${pkgname}mod.la
+  mv ${srcdir}/dest${PYTHON_SITELIB}/${pkgbase/lib/msys-}mod.dll ${srcdir}/dest${PYTHON_SITELIB}/${pkgbase}mod.dll
+  sed -i -e "s:${pkgbase/lib/msys-}mod:${PN}mod:g" ${srcdir}/dest${PYTHON_SITELIB}/${pkgbase}mod.la
 }
 
 check() {
-  cd ${pkgname}-${pkgver}
+  cd ${pkgbase}-${pkgver}
   make check
 }
 
 package_libxml2() {
-  depends=('coreutils' 'icu>=67.1' 'liblzma' 'libreadline' 'ncurses' 'zlib')
+  depends=('coreutils' 'icu>=68.1' 'liblzma' 'libreadline' 'ncurses' 'zlib')
   groups=('libraries')
   install=libxml2.install
 
@@ -96,14 +127,14 @@ package_libxml2() {
   rm -f ${pkgdir}/usr/bin/*-config
   mkdir -p ${pkgdir}/usr/share
   cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
-  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/COPYING "${pkgdir}/usr/share/licenses/${pkgname}/COPYING"
+  install -Dm644 ${srcdir}/${pkgbase}-${pkgver}/COPYING "${pkgdir}/usr/share/licenses/${pkgbase}/COPYING"
 }
 
 package_libxml2-devel() {
   pkgdesc="Libxml2 headers and libraries"
   groups=('development')
   options=('staticlibs')
-  depends=("libxml2=${pkgver}" 'icu-devel>=59.1' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel')
+  depends=("libxml2=${pkgver}" 'icu-devel>=68.1' 'libreadline-devel' 'ncurses-devel' 'liblzma-devel' 'zlib-devel')
 
   PYTHON_SITELIB="$(python -c 'import site, sys; sys.stdout.write(site.getsitepackages()[0])')"
   mkdir -p ${pkgdir}/usr/{bin,share}
