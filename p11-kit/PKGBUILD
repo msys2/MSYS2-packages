@@ -4,63 +4,52 @@
 
 pkgbase=p11-kit
 pkgname=('p11-kit' 'libp11-kit' 'libp11-kit-devel')
-pkgver=0.23.21
+pkgver=0.23.22
 pkgrel=1
 pkgdesc="Library to work with PKCS#11 modules"
 arch=('i686' 'x86_64')
 url="https://p11-glue.freedesktop.org/p11-kit.html"
 license=('BSD')
-makedepends=('gettext-devel' 'libiconv-devel' 'libtasn1-devel' 'libffi-devel' 'glib2-devel' 'gtk-doc')
+makedepends=('bash-completion'
+             'glib2-devel'
+             'gtk-doc'
+             'gettext-devel'
+             'libiconv-devel'
+             'libtasn1-devel'
+             'libffi-devel'
+             'meson'
+             'ninja'
+             'pkg-config')
 options=('!debug' 'strip' 'staticlibs')
 source=(https://github.com/p11-glue/p11-kit/releases/download/${pkgver}/${pkgbase}-${pkgver}.tar.xz{,.sig}
-        0001-allow-gtkdocize.all.patch
-        0015-0.18.7-parallel-make.patch
-        0100-msysize.patch)
-validpgpkeys=('462225C3B46F34879FC8496CD605848ED7E69871')
-sha256sums=('f1baa493f05ca0d867f06bcb54cbb5cdb28c756db07207b6e18de18a87b10627'
+        0016-SIZE_MAX-define.patch)
+validpgpkeys=('C0F67099B808FB063E2C81117BFB1108D92765AF'  # Stef Walter
+              '462225C3B46F34879FC8496CD605848ED7E69871') # Daiki Ueno
+sha256sums=('8a8f40153dd5a3f8e7c03e641f8db400133fb2a6a9ab2aee1b6d0cb0495ec6b6'
             'SKIP'
-            '195b2e8695f701caf545e2a468383ad29457febd9b1ee57de1986de04ad3c31c'
-            'afc0fdcbf34327fadcc90e514cda72cce98c6813fb9dc6b9cb0fe233b07fc67c'
-            '29452aa6662f0ad033c8f7f427d09d1eda758d6ff74bc36178c31f3ea3681cf4')
+            '0c4ac59f72060371b956e5d6f9d2f547aee88d56f7c1b9cbf57cebf634337ee0')
 
 prepare() {
   cd "${srcdir}"/${pkgbase}-${pkgver}
-  patch -p1 -i ${srcdir}/0001-allow-gtkdocize.all.patch
-  patch -p1 -i ${srcdir}/0015-0.18.7-parallel-make.patch
-  patch -p1 -i ${srcdir}/0100-msysize.patch
-
-  autoreconf -vfi
-  gtkdocize
+  patch -p1 -i ${srcdir}/0016-SIZE_MAX-define.patch
 }
 
 build() {
-  local -a extra_config
-
-  if check_option "debug" "y"; then
-    extra_config+=( --enable-debug=yes )
-  else
-    extra_config+=( --enable-debug=no )
-  fi
-
   [[ -d ${srcdir}/build ]] && rm -rf ${srcdir}/build
-  mkdir -p "${srcdir}/build"
-  cd "${srcdir}/build"
+  mkdir -p "${srcdir}/build" && cd "${srcdir}/build"
 
   PKG_CONFIG_PATH="${PKG_CONFIG_PATH}:/usr/share/pkgconfig" \
-  ../${pkgbase}-${pkgver}/configure \
+  /usr/bin/meson \
     --prefix=/usr \
-    --build=${CHOST} \
-    --host=${CHOST} \
-    --target=${CHOST} \
-    --sysconfdir=/etc \
-    --localstatedir=/var \
-    --with-trust-paths="/etc/pki/ca-trust/source:/usr/share/pki/ca-trust-source" \
-    --disable-silent-rules \
-    "${extra_config[@]}"
+    --buildtype debugoptimized \
+    -Dgtk_doc=true \
+    -Dman=true \
+    -Dtrust_paths=/etc/pki/ca-trust/source:/usr/share/pki/ca-trust-source \
+    ../${pkgbase}-${pkgver}
 
-  make
+  ninja
 
-  make DESTDIR="${srcdir}/dest" install
+  DESTDIR="${srcdir}/dest" ninja install
   install -Dm644 ../${pkgbase}-${pkgver}/COPYING ${srcdir}/dest/usr/share/licenses/${pkgbase}/COPYING
 }
 
@@ -75,7 +64,7 @@ package_p11-kit() {
   cp -f ${srcdir}/dest/usr/lib/pkcs11/*.dll ${pkgdir}/usr/lib/pkcs11/
   cp -f ${srcdir}/dest/usr/share/p11-kit/modules/*trust* ${pkgdir}/usr/share/p11-kit/modules/
   cp -rf ${srcdir}/dest/usr/libexec ${pkgdir}/usr/
-  cp -rf ${srcdir}/dest/usr/share/licenses ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/{gtk-doc,licenses,locale,man} ${pkgdir}/usr/share/
 }
 
 package_libp11-kit() {
