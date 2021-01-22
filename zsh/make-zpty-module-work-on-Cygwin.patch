@@ -1,0 +1,62 @@
+From 8bba531ab5122a8236264f3b758911ad6a4accb2 Mon Sep 17 00:00:00 2001
+From: Peiyuan Song <squallatf@gmail.com>
+Date: Wed, 20 Jan 2021 13:33:52 +0900
+Subject: [PATCH] 47840: make zpty module work on Cygwin
+
+---
+ Src/Modules/zpty.c | 11 +++++++++++
+ configure.ac       |  2 +-
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/Src/Modules/zpty.c b/Src/Modules/zpty.c
+index 45fd15ee0..dfd2a2a7a 100644
+--- a/Src/Modules/zpty.c
++++ b/Src/Modules/zpty.c
+@@ -30,6 +30,13 @@
+ #include "zpty.mdh"
+ #include "zpty.pro"
+ 
++#ifdef __CYGWIN__
++#include <cygwin/version.h>
++#if defined(CYGWIN_VERSION_DLL_MAJOR) && CYGWIN_VERSION_DLL_MAJOR<3002
++#define USE_CYGWIN_FIX 1
++#endif
++#endif
++
+ /* The number of bytes we normally read when given no pattern and the
+  * upper bound on the number of bytes we read (even if we are give a
+  * pattern). */
+@@ -428,6 +435,7 @@ newptycmd(char *nam, char *pname, char **args, int echo, int nblock)
+ 	mypid = 0; /* trick to ensure we _exit() */
+ 	zexit(lastval, ZEXIT_NORMAL);
+     }
++#ifndef USE_CYGWIN_FIX
+     master = movefd(master);
+     if (master == -1) {
+ 	zerrnam(nam, "cannot duplicate fd %d: %e", master, errno);
+@@ -435,6 +443,9 @@ newptycmd(char *nam, char *pname, char **args, int echo, int nblock)
+ 	ineval = oineval;
+ 	return 1;
+     }
++#else
++    addmodulefd(master, FDT_INTERNAL);
++#endif
+ 
+     p = (Ptycmd) zalloc(sizeof(*p));
+ 
+diff --git a/configure.ac b/configure.ac
+index f2d65ecfc..a968cfa9c 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -2504,7 +2504,7 @@ if test x$ac_cv_have_dev_ptmx = xyes -o x$ac_cv_func_posix_openpt = xyes && \
+    test x$ac_cv_func_ptsname = xyes; then
+    AC_CACHE_CHECK([if /dev/ptmx is usable],
+    ac_cv_use_dev_ptmx,
+-   [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#ifdef __linux
++   [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#if defined(__linux) || defined(__CYGWIN__)
+ #define _GNU_SOURCE 1
+ #endif
+ #include <stdlib.h>
+-- 
+2.30.0
+
