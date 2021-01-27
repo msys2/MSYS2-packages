@@ -125,6 +125,17 @@ Access URLs:
 
 Contact: <ftp-adm@acc.umu.se>
 
+## Ukraine
+### Kyiv
+#### FastMirror
+Access URLs:
+
+- <https://fastmirror.pp.ua/msys2/>
+- <http://fastmirror.pp.ua/msys2/>
+- <rsync://fastmirror.pp.ua/msys2/>
+
+Contact: <smlr@ukr.net>
+
 ## United States
 ### California
 #### SourceForge
