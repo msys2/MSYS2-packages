@@ -26,12 +26,12 @@ registry value (or just the entire MuiCache directory) should help, at
 least for the current Windows 10.
 ---
  src/appinfo.h  |   2 +-
- src/launcher.c | 129 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/launcher.c | 115 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  src/launcher.h |  12 ++++++
  src/res.h      |   4 ++
- src/res.rc     |  16 ++++++-
- src/winmain.c  |  34 ++++++++++++---
- 6 files changed, 189 insertions(+), 8 deletions(-)
+ src/res.rc     |  16 +++++++-
+ src/winmain.c  |  32 +++++++++++++---
+ 6 files changed, 173 insertions(+), 8 deletions(-)
  create mode 100644 src/launcher.c
  create mode 100644 src/launcher.h
 
@@ -50,10 +50,10 @@ index 6c252d5..a6bf67d 100644
  
 diff --git a/src/launcher.c b/src/launcher.c
 new file mode 100644
-index 0000000..e120708
+index 0000000..ea1848b
 --- /dev/null
 +++ b/src/launcher.c
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,115 @@
 +#include <windows.h>
 +#include <commctrl.h>
 +#include "res.h"
@@ -61,13 +61,7 @@ index 0000000..e120708
 +#define INSIDE_LAUNCHER
 +#include "launcher.h"
 +
-+static char ***ret_argv_addr;
-+
 +int launcher_cancelled = 0;
-+
-+void launcher_init(char ***argv_addr) {
-+  ret_argv_addr = argv_addr;
-+}
 +
 +void launcher_free(void) {
 +  return;
@@ -88,14 +82,6 @@ index 0000000..e120708
 +    break;
 +  }
 +  return;
-+}
-+
-+static char *bash_cmd[] = {
-+  "/usr/bin/bash", "--login", NULL
-+};
-+
-+void launcher_setup_argv(void) {
-+  *ret_argv_addr = bash_cmd;
 +}
 +
 +static void launcher_add_tooltip_to_window(HWND hwnd, char *text) {
@@ -214,7 +200,7 @@ index d17a55d..15e66be 100644
 +#define IDD_MINGW32_BTN 0x102
 +#define IDD_MINGW64_BTN 0x103
 diff --git a/src/res.rc b/src/res.rc
-index 156843b..a329dca 100644
+index 156843b..2ecb1ff 100644
 --- a/src/res.rc
 +++ b/src/res.rc
 @@ -4,7 +4,7 @@
@@ -236,7 +222,7 @@ index 156843b..a329dca 100644
 +CAPTION "Mintty"
 +FONT 8, "Ms Shell Dlg"
 +{
-+    GROUPBOX        "Shells (bash)", 0, 3, 5, 92, 69, 0, WS_EX_LEFT
++    GROUPBOX        "Shells", 0, 3, 5, 92, 69, 0, WS_EX_LEFT
 +    PUSHBUTTON      "MSYS2",            IDD_MSYS2_BTN,   9, 16, 44, 14, 0, WS_EX_LEFT
 +    PUSHBUTTON      "Mingw-w64 32 bit", IDD_MINGW32_BTN, 9, 35, 74, 14, 0, WS_EX_LEFT
 +    PUSHBUTTON      "Mingw-w64 64 bit", IDD_MINGW64_BTN, 9, 54, 74, 14, 0, WS_EX_LEFT
@@ -248,7 +234,7 @@ index 156843b..a329dca 100644
   * The actual VERSIONINFO resource.
   */
 diff --git a/src/winmain.c b/src/winmain.c
-index ccd4180..de500f8 100644
+index cccc0d0..bc807d3 100644
 --- a/src/winmain.c
 +++ b/src/winmain.c
 @@ -57,6 +57,8 @@ typedef UINT_PTR uintptr_t;
@@ -260,7 +246,7 @@ index ccd4180..de500f8 100644
  
  char * home;
  char * cmd;
-@@ -5319,6 +5321,8 @@ main(int argc, char *argv[])
+@@ -5340,6 +5342,8 @@ main(int argc, char *argv[])
      }
    }
  
@@ -269,7 +255,7 @@ index ccd4180..de500f8 100644
    // The window class.
    class_atom = RegisterClassExW(&(WNDCLASSEXW){
      .cbSize = sizeof(WNDCLASSEXW),
-@@ -5327,7 +5331,7 @@ main(int argc, char *argv[])
+@@ -5348,7 +5352,7 @@ main(int argc, char *argv[])
      .cbClsExtra = 0,
      .cbWndExtra = 0,
      .hInstance = inst,
@@ -278,7 +264,7 @@ index ccd4180..de500f8 100644
      .hIconSm = small_icon,
      .hCursor = LoadCursor(null, IDC_IBEAM),
      .hbrBackground = null,
-@@ -5682,11 +5686,29 @@ static int dynfonts = 0;
+@@ -5703,11 +5707,27 @@ static int dynfonts = 0;
    if (*cfg.background == '%')
      scale_to_image_ratio();
  
@@ -291,13 +277,11 @@ index ccd4180..de500f8 100644
 +    char **argv1 = argv;
 +
 +    if (argc == 1) {
-+      launcher_init(&argv1);
 +      DialogBox(inst, MAKEINTRESOURCE(IDD_LAUNCHER), NULL, (DLGPROC)launcher_dlgproc);
 +      if (launcher_cancelled) {
 +        exit(1);
 +      }
 +      launcher_setup_env();
-+      launcher_setup_argv();
 +    }
 +
 +    // Create child process.
