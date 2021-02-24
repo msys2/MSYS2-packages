@@ -42,7 +42,7 @@ case '*'
 end
 
 set -e MINGW_MOUNT_POINT
-/bin/sh '/etc/msystem'
+source '/etc/fish/msystem.fish'
 switch $MSYSTEM
 case MINGW32
   set MINGW_MOUNT_POINT $MINGW_PREFIX
