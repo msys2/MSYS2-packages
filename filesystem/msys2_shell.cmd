@@ -39,6 +39,7 @@ if "x%~1" == "x-msys" shift& set /a msys2_shiftCounter+=1& set MSYSTEM=MSYS& got
 if "x%~1" == "x-msys2" shift& set /a msys2_shiftCounter+=1& set MSYSTEM=MSYS& goto :checkparams
 if "x%~1" == "x-mingw32" shift& set /a msys2_shiftCounter+=1& set MSYSTEM=MINGW32& goto :checkparams
 if "x%~1" == "x-mingw64" shift& set /a msys2_shiftCounter+=1& set MSYSTEM=MINGW64& goto :checkparams
+if "x%~1" == "x-ucrt64" shift& set /a msys2_shiftCounter+=1& set MSYSTEM=UCRT64& goto :checkparams
 if "x%~1" == "x-mingw" shift& set /a msys2_shiftCounter+=1& (if exist "%WD%..\..\mingw64" (set MSYSTEM=MINGW64) else (set MSYSTEM=MINGW32))& goto :checkparams
 rem Console types
 if "x%~1" == "x-mintty" shift& set /a msys2_shiftCounter+=1& set MSYSCON=mintty.exe& goto :checkparams
@@ -190,8 +191,8 @@ echo Usage:
 echo     %~1 [options] [login shell parameters]
 echo.
 echo Options:
-echo     -mingw32 ^| -mingw64 ^| -msys[2]   Set shell type
-echo     -defterm ^| -mintty ^| -conemu     Set terminal type
+echo     -mingw32 ^| -mingw64 ^| -ucrt64 ^| -msys[2]   Set shell type
+echo     -defterm ^| -mintty ^| -conemu               Set terminal type
 echo     -here                            Use current directory as working
 echo                                      directory
 echo     -where DIRECTORY                 Use specified DIRECTORY as working
