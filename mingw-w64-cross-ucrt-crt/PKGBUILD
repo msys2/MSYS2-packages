@@ -1,0 +1,70 @@
+# Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
+
+_realname=crt
+_mingw_suff=mingw-w64-cross-ucrt
+pkgname=("${_mingw_suff}-${_realname}")
+conflicts=("${_mingw_suff%-*}-${_realname}")
+provides=("${_mingw_suff%-*}-${_realname}")
+pkgver=9.0.0.6128.07922837
+pkgrel=1
+pkgdesc='MinGW-w64 CRT for cross-compiler'
+arch=('i686' 'x86_64')
+url='https://mingw-w64.sourceforge.io/'
+license=('custom')
+groups=("${_mingw_suff}-toolchain")
+depends=("${_mingw_suff}-headers")
+makedepends=("git" "mingw-w64-cross-gcc" "mingw-w64-cross-binutils")
+options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
+_commit='0792283787cca8fc27dd38671107c791c87f4db3'
+source=("mingw-w64"::"git+https://git.code.sf.net/p/mingw-w64/mingw-w64#commit=$_commit")
+sha256sums=('SKIP')
+
+_targets="x86_64-w64-mingw32 i686-w64-mingw32" #armv7-w64-mingw32
+
+pkgver() {
+  cd "${srcdir}/mingw-w64"
+  local _major=$(head -n 16 mingw-w64-headers/crt/_mingw_mac.h | grep '__MINGW64_VERSION_MAJOR' | sed -e 's/.* //' | tr '\n' '.' | sed 's/.$/\n/')
+  local _minor=$(head -n 16 mingw-w64-headers/crt/_mingw_mac.h | grep '__MINGW64_VERSION_MINOR' | sed -e 's/.* //' | tr '\n' '.' | sed 's/.$/\n/')
+  local _rev=0
+  printf "%s.%s.%s.%s.%s" ${_major} ${_minor} ${_rev} "$(git rev-list --count $_commit)" "$(git rev-parse --short $_commit)"
+}
+
+prepare() {
+  cd "${srcdir}/mingw-w64"
+}
+
+build() {
+  for _target in ${_targets}; do
+    msg "Building ${_target} CRT"
+  case "${_target}" in
+    i686*)
+      _crt_configure_args="--disable-lib64 --enable-lib32"
+    ;;
+    x86_64*)
+      _crt_configure_args="--disable-lib32 --enable-lib64"
+    ;;
+    armv7*)
+      _crt_configure_args="--disable-lib32 --disable-lib64 --enable-libarm32"
+    ;;
+  esac
+    mkdir -p ${srcdir}/crt-${_target} && cd ${srcdir}/crt-${_target}
+
+    ${srcdir}/mingw-w64/mingw-w64-crt/configure \
+    --build=${CHOST} \
+    --prefix=/opt/${_target} \
+    --host=${_target} \
+    --enable-wildcard \
+    --with-default-msvcrt=ucrt \
+    ${_crt_configure_args}
+
+    make
+  done
+}
+
+package() {
+  for _target in ${_targets}; do
+    msg "Installing ${_target} crt"
+    cd ${srcdir}/crt-${_target}
+    make DESTDIR=${pkgdir} install
+  done
+}
