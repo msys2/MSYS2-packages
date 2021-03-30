@@ -1,17 +1,15 @@
-From 929a7c5fcbdffded942995a2bd9a55c9becb0183 Mon Sep 17 00:00:00 2001
+From 1902cb394ece04f576de77bb6c10a036dfa2bf4e Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?=D0=90=D0=BB=D0=B5=D0=BA=D1=81=D0=B5=D0=B8=CC=86=20=D0=9F?=
  =?UTF-8?q?=D0=B0=D0=B2=D0=BB=D0=BE=D0=B2?= <alexey.pawlow@gmail.com>
 Date: Sun, 14 Apr 2019 21:09:17 +0300
-Subject: [PATCH 02/N] Rename dll from cygwin to msys
+Subject: [PATCH 03/N] Rename dll from cygwin to msys
 
 ---
  winsup/Makefile.in                        |  4 +--
  winsup/cygserver/Makefile.in              |  6 ++--
  winsup/cygserver/transport_pipes.h        |  4 +++
- winsup/cygwin/Makefile.in                 | 38 ++++++++++----------
+ winsup/cygwin/Makefile.in                 | 36 ++++++++++---------
  winsup/cygwin/common.din                  |  4 +--
- winsup/cygwin/configure                   |  4 +--
- winsup/cygwin/configure.ac                |  4 +--
  winsup/cygwin/crt0.c                      |  8 +++++
  winsup/cygwin/cyglsa.h                    |  4 +++
  winsup/cygwin/cygserver_setpwd.h          |  4 +++
@@ -42,7 +40,6 @@ Subject: [PATCH 02/N] Rename dll from cygwin to msys
  winsup/cygwin/winsup.h                    |  4 +++
  winsup/cygwin/winver.rc                   |  2 +-
  winsup/cygwin/x86_64.din                  |  2 +-
- winsup/lsaauth/cyglsa.c                   |  2 +-
  winsup/testsuite/Makefile.in              |  2 +-
  winsup/testsuite/config/default.exp       |  8 ++---
  winsup/testsuite/cygrun.c                 |  6 ++--
@@ -50,20 +47,20 @@ Subject: [PATCH 02/N] Rename dll from cygwin to msys
  winsup/testsuite/winsup.api/cygload.exp   |  2 +-
  winsup/testsuite/winsup.api/cygload.h     |  2 +-
  winsup/testsuite/winsup.api/winsup.exp    |  2 +-
- winsup/utils/Makefile.in                  |  8 ++---
+ winsup/utils/Makefile.in                  |  6 ++--
  winsup/utils/cygcheck.cc                  | 43 +++++++++++------------
  winsup/utils/ldd.cc                       |  2 +-
  winsup/utils/loadlib.h                    |  6 ++--
  winsup/utils/path.cc                      | 12 +++----
  winsup/utils/ssp.c                        |  8 ++---
  winsup/utils/strace.cc                    | 11 +++---
- 52 files changed, 250 insertions(+), 138 deletions(-)
+ 49 files changed, 243 insertions(+), 131 deletions(-)
 
 diff --git a/winsup/Makefile.in b/winsup/Makefile.in
-index 148d985..81ce93c 100644
+index 43cca8f..70005a1 100644
 --- a/winsup/Makefile.in
 +++ b/winsup/Makefile.in
-@@ -62,9 +62,9 @@ endif
+@@ -60,9 +60,9 @@ endif
  all: Makefile $(SUBDIRS)
  
  install-license: CYGWIN_LICENSE COPYING
@@ -74,14 +71,14 @@ index 148d985..81ce93c 100644
 +	  ${INSTALL} $$i $(DESTDIR)$(prefix)/share/doc/Msys ; \
  	done
  
- install: Makefile $(INSTALL_LICENSE) $(INSTALL_SUBDIRS)
+ install: Makefile install-license $(INSTALL_SUBDIRS)
 diff --git a/winsup/cygserver/Makefile.in b/winsup/cygserver/Makefile.in
-index 70f3823..4eba37b 100644
+index b94ca42..622a74c 100644
 --- a/winsup/cygserver/Makefile.in
 +++ b/winsup/cygserver/Makefile.in
-@@ -50,16 +50,16 @@ LIBOBJS:=${patsubst %.o,lib%.o,$(OBJS)}
- 
- CYGWIN_OBJS:=$(cygwin_build)/version.o
+@@ -43,16 +43,16 @@ OBJS:=	cygserver.o client.o process.o msg.o sem.o shm.o threaded_queue.o \
+ 	sysv_msg.o sysv_sem.o sysv_shm.o setpwd.o pwdgrp.o
+ LIBOBJS:=${patsubst %.o,lib%.o,$(OBJS)}
  
 -CYGWIN_LIB:=$(cygwin_build)/libcygwin.a
 +CYGWIN_LIB:=$(cygwin_build)/libmsys-2.0.a
@@ -116,10 +113,10 @@ index e101623..66272bc 100644
  
  /* Named pipes based transport, for security on NT */
 diff --git a/winsup/cygwin/Makefile.in b/winsup/cygwin/Makefile.in
-index fac8175..92890d8 100644
+index 73d9b37..4c51cf3 100644
 --- a/winsup/cygwin/Makefile.in
 +++ b/winsup/cygwin/Makefile.in
-@@ -106,17 +106,17 @@ RUNTEST = `if [ -f $${srcdir}/../dejagnu/runtest ] ; then \
+@@ -96,16 +96,16 @@ RUNTEST = `if [ -f $${srcdir}/../dejagnu/runtest ] ; then \
  	    else echo runtest; fi`
  RUNTESTFLAGS =
  
@@ -131,20 +128,19 @@ index fac8175..92890d8 100644
 -# built cygwin.dll and attempt to use it instead of the old one).
 +# built msys.dll and attempt to use it instead of the old one).
  
- DLL_NAME:=@DLL_NAME@
--TEST_DLL_NAME:=${patsubst %1.dll,%0.dll,@DLL_NAME@}
+-DLL_NAME:=cygwin1.dll
+-TEST_DLL_NAME:=${patsubst %1.dll,%0.dll,$(DLL_NAME)}
 -TEST_LIB_NAME:=libcygwin0.a
--STATIC_LIB_NAME:=libcygwin_s.a
-+TEST_DLL_NAME:=${patsubst %-2.0.dll,%0.dll,@DLL_NAME@}
++DLL_NAME:=msys-2.0.dll
++TEST_DLL_NAME:=${patsubst %-2.0.dll,%0.dll,$(DLL_NAME)}
 +TEST_LIB_NAME:=libmsys0.a
-+STATIC_LIB_NAME:=libmsys2_s.a
  DIN_FILE=@DIN_FILE@ common.din
 -DEF_FILE:=cygwin.def
 +DEF_FILE:=msys.def
  TLSOFFSETS_H:=@TLSOFFSETS_H@
  DLL_ENTRY:=@DLL_ENTRY@
  
-@@ -128,6 +128,7 @@ toolopts:=--cpu=${target_cpu} --ar=${AR} --as=${AS} --nm=${NM} --objcopy=${OBJCO
+@@ -117,6 +117,7 @@ toolopts:=--cpu=${target_cpu} --ar=${AR} --as=${AS} --nm=${NM} --objcopy=${OBJCO
  speclib=\
      ${srcdir}/speclib ${toolopts} \
  	--exclude='cygwin' \
@@ -152,7 +148,7 @@ index fac8175..92890d8 100644
  	--exclude='(?i:dll)' \
  	--exclude='reloc' \
  	--exclude='^main$$' \
-@@ -553,7 +554,7 @@ endif
+@@ -532,7 +533,7 @@ endif
  
  API_VER:=$(srcdir)/include/cygwin/version.h
  
@@ -161,7 +157,7 @@ index fac8175..92890d8 100644
  SUBLIBS:=libpthread.a libutil.a ${CURDIR}/libm.a ${CURDIR}/libc.a libdl.a libresolv.a librt.a libacl.a libssp.a
  EXTRALIBS:=libautomode.a libbinmode.a libtextmode.a libtextreadmode.a
  INSTOBJS:=automode.o binmode.o textmode.o textreadmode.o
-@@ -605,7 +606,8 @@ install-libs: $(TARGET_LIBS)
+@@ -572,7 +573,8 @@ install-libs: $(TARGET_LIBS)
  	for i in $^; do \
  	    $(INSTALL_DATA) $$i $(DESTDIR)$(tooldir)/lib/`basename $$i` ; \
  	done
@@ -171,7 +167,7 @@ index fac8175..92890d8 100644
  
  install-headers:
  	cd $(srcdir); \
-@@ -671,7 +673,7 @@ uninstall-man:
+@@ -634,7 +636,7 @@ uninstall-man:
  
  clean distclean realclean:
  	-rm -f *.o *.dll *.dbg *.a *.exp junk *.base version.cc *.exe *.d \
@@ -180,7 +176,7 @@ index fac8175..92890d8 100644
  	       globals.h localtime.patched.c
  	-@$(MAKE) -C ${cygserver_blddir} libclean
  
-@@ -685,29 +687,29 @@ maintainer-clean: clean
+@@ -648,26 +650,26 @@ maintainer-clean: clean
  $(LDSCRIPT): $(LDSCRIPT).in
  	$(CC) -E - -P < $^ -o $@
  
@@ -188,8 +184,8 @@ index fac8175..92890d8 100644
 +# Rule to build msys-2.0.dll
  $(TEST_DLL_NAME): $(LDSCRIPT) dllfixdbg $(DLL_OFILES) $(LIBSERVER) $(LIBC) $(LIBM) $(API_VER) Makefile $(VERSION_OFILES)
  	$(CXX) $(CXXFLAGS) \
- 	-mno-use-libstdc-wrappers -L${WINDOWS_LIBDIR} \
- 	-Wl,--gc-sections $(nostdlib) -Wl,-T$(firstword $^) -static \
+ 	-mno-use-libstdc-wrappers \
+ 	-Wl,--gc-sections -nostdlib -Wl,-T$(firstword $^) -static \
 -	-Wl,--heap=0 -Wl,--out-implib,cygdll.a -shared -o $@ \
 +	-Wl,--heap=0 -Wl,--out-implib,msysdll.a -shared -o $@ \
  	-e $(DLL_ENTRY) $(DEF_FILE) $(DLL_OFILES) $(VERSION_OFILES) \
@@ -206,10 +202,6 @@ index fac8175..92890d8 100644
 -	${srcdir}/mkimport ${toolopts} ${NEW_FUNCTIONS} $@ cygdll.a $(wordlist 2,99,$^)
 +	${srcdir}/mkimport ${toolopts} ${NEW_FUNCTIONS} $@ msysdll.a $(wordlist 2,99,$^)
  
- ${STATIC_LIB_NAME}: mkstatic ${TEST_DLL_NAME}
--	perl -d $< -x ${EXCLUDE_STATIC_OFILES} --library=${LIBC} --library=${LIBM} --ar=${AR} $@ cygwin.map
-+	perl -d $< -x ${EXCLUDE_STATIC_OFILES} --library=${LIBC} --library=${LIBM} --ar=${AR} $@ msys.map
- 
  # Rule to make stub library used by testsuite
  # dependency set to $(LIB_NAME) to accommodate make -j2.
  $(TEST_LIB_NAME): $(LIB_NAME)
@@ -219,10 +211,10 @@ index fac8175..92890d8 100644
  $(LIBSERVER): ${cygserver_blddir}/Makefile
  	$(MAKE) -C ${cygserver_blddir} libcygserver.a
 diff --git a/winsup/cygwin/common.din b/winsup/cygwin/common.din
-index a7b4aa2..70f8b50 100644
+index 6e5dde8..6a7c960 100644
 --- a/winsup/cygwin/common.din
 +++ b/winsup/cygwin/common.din
-@@ -383,8 +383,8 @@ cygwin_attach_handle_to_fd SIGFE
+@@ -390,8 +390,8 @@ cygwin_attach_handle_to_fd SIGFE
  cygwin_conv_path SIGFE
  cygwin_conv_path_list SIGFE
  cygwin_create_path SIGFE
@@ -233,48 +225,6 @@ index a7b4aa2..70f8b50 100644
  cygwin_internal NOSIGFE
  cygwin_logon_user SIGFE
  cygwin_posix_path_list_p NOSIGFE
-diff --git a/winsup/cygwin/configure b/winsup/cygwin/configure
-index 617b260..7ba55ca 100755
---- a/winsup/cygwin/configure
-+++ b/winsup/cygwin/configure
-@@ -4442,14 +4442,14 @@ fi
- 
- case "$target_cpu" in
-    i?86)
--		DLL_NAME="cygwin1.dll"
-+		DLL_NAME="msys-2.0.dll"
- 		DLL_ENTRY="_dll_entry@12"
- 		DEF_DLL_ENTRY="dll_entry@12"
- 		DIN_FILE="i686.din"
- 		TLSOFFSETS_H="tlsoffsets.h"
- 		;;
-    x86_64)
--		DLL_NAME="cygwin1.dll"
-+		DLL_NAME="msys-2.0.dll"
- 		DLL_ENTRY="dll_entry"
- 		DEF_DLL_ENTRY="dll_entry"
- 		DIN_FILE="x86_64.din"
-diff --git a/winsup/cygwin/configure.ac b/winsup/cygwin/configure.ac
-index cb45983..fe2b8e1 100644
---- a/winsup/cygwin/configure.ac
-+++ b/winsup/cygwin/configure.ac
-@@ -86,14 +86,14 @@ dnl fi
- 
- case "$target_cpu" in
-    i?86)
--		DLL_NAME="cygwin1.dll"
-+		DLL_NAME="msys-2.0.dll"
- 		DLL_ENTRY="_dll_entry@12"
- 		DEF_DLL_ENTRY="dll_entry@12"
- 		DIN_FILE="i686.din"
- 		TLSOFFSETS_H="tlsoffsets.h"
- 		;;
-    x86_64)
--		DLL_NAME="cygwin1.dll"
-+		DLL_NAME="msys-2.0.dll"
- 		DLL_ENTRY="dll_entry"
- 		DEF_DLL_ENTRY="dll_entry"
- 		DIN_FILE="x86_64.din"
 diff --git a/winsup/cygwin/crt0.c b/winsup/cygwin/crt0.c
 index ec7959a..cf74961 100644
 --- a/winsup/cygwin/crt0.c
@@ -513,10 +463,10 @@ index 6a4ed26..6f69b60 100644
    HANDLE retaddr;
    if (_my_tls.isinitialized ())
 diff --git a/winsup/cygwin/dtable.cc b/winsup/cygwin/dtable.cc
-index e9e005b..3994345 100644
+index 84149bd..fb05ac7 100644
 --- a/winsup/cygwin/dtable.cc
 +++ b/winsup/cygwin/dtable.cc
-@@ -1006,9 +1006,15 @@ handle_to_fn (HANDLE h, char *posix_fn)
+@@ -971,9 +971,15 @@ handle_to_fn (HANDLE h, char *posix_fn)
        if (wcsncasecmp (w32, DEV_NAMED_PIPE, DEV_NAMED_PIPE_LEN) == 0)
  	{
  	  w32 += DEV_NAMED_PIPE_LEN;
@@ -533,10 +483,10 @@ index e9e005b..3994345 100644
  	  w32len = cygheap->installation_key.Length / sizeof (WCHAR);
  	  if (w32len
 diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
-index bb7704f..5db94f8 100644
+index a914110..c638044 100644
 --- a/winsup/cygwin/exceptions.cc
 +++ b/winsup/cygwin/exceptions.cc
-@@ -504,14 +504,14 @@ try_to_debug (bool waitloop)
+@@ -502,14 +502,14 @@ try_to_debug ()
    PWCHAR rawenv = GetEnvironmentStringsW () ;
    for (PWCHAR p = rawenv; *p != L'\0'; p = wcschr (p, L'\0') + 1)
      {
@@ -554,7 +504,7 @@ index bb7704f..5db94f8 100644
  	  break;
  	}
 diff --git a/winsup/cygwin/fhandler_pipe.cc b/winsup/cygwin/fhandler_pipe.cc
-index edbaded..fea4bb7 100644
+index 7ab73a9..a5c7b1c 100644
 --- a/winsup/cygwin/fhandler_pipe.cc
 +++ b/winsup/cygwin/fhandler_pipe.cc
 @@ -201,7 +201,11 @@ fhandler_pipe::dup (fhandler_base *child, int flags)
@@ -570,10 +520,10 @@ index edbaded..fea4bb7 100644
  /* Create a pipe, and return handles to the read and write ends,
     just like CreatePipe, but ensure that the write end permits
 diff --git a/winsup/cygwin/fhandler_tty.cc b/winsup/cygwin/fhandler_tty.cc
-index 6294e2c..43eebc1 100644
+index d755f7d..09679d0 100644
 --- a/winsup/cygwin/fhandler_tty.cc
 +++ b/winsup/cygwin/fhandler_tty.cc
-@@ -910,7 +910,11 @@ fhandler_pty_slave::open (int flags, mode_t)
+@@ -870,7 +870,11 @@ fhandler_pty_slave::open (int flags, mode_t)
        pipe_reply repl;
        DWORD len;
  
@@ -585,7 +535,7 @@ index 6294e2c..43eebc1 100644
  		       &cygheap->installation_key, get_minor ());
        termios_printf ("dup handles via master control pipe %s", buf);
        if (!CallNamedPipe (buf, &req, sizeof req, &repl, sizeof repl,
-@@ -2407,7 +2411,11 @@ fhandler_pty_master::close ()
+@@ -1996,7 +2000,11 @@ fhandler_pty_master::close ()
  	  pipe_reply repl;
  	  DWORD len;
  
@@ -597,7 +547,7 @@ index 6294e2c..43eebc1 100644
  			   &cygheap->installation_key, get_minor ());
  	  acquire_output_mutex (INFINITE);
  	  if (master_ctl)
-@@ -3672,7 +3680,11 @@ fhandler_pty_master::setup ()
+@@ -2848,7 +2856,11 @@ fhandler_pty_master::setup ()
  
    /* Create master control pipe which allows the master to duplicate
       the pty pipe handles to processes which deserve it. */
@@ -610,10 +560,10 @@ index 6294e2c..43eebc1 100644
    master_ctl = CreateNamedPipe (buf, PIPE_ACCESS_DUPLEX
  				     | FILE_FLAG_FIRST_PIPE_INSTANCE,
 diff --git a/winsup/cygwin/fork.cc b/winsup/cygwin/fork.cc
-index 7c07b06..3d46096 100644
+index 7192178..0fe112f 100644
 --- a/winsup/cygwin/fork.cc
 +++ b/winsup/cygwin/fork.cc
-@@ -188,7 +188,7 @@ frok::child (volatile char * volatile here)
+@@ -158,7 +158,7 @@ frok::child (volatile char * volatile here)
    char buf[80];
    /* This is useful for debugging fork problems.  Use gdb to attach to
       the pid reported here. */
@@ -721,7 +671,7 @@ index 56b4363..6bc948a 100644
  
  #endif /* __CYGWIN_CYGWIN_DLL_H__ */
 diff --git a/winsup/cygwin/include/cygwin/version.h b/winsup/cygwin/include/cygwin/version.h
-index 1de3420..3dee289 100644
+index f21aba7..5b36781 100644
 --- a/winsup/cygwin/include/cygwin/version.h
 +++ b/winsup/cygwin/include/cygwin/version.h
 @@ -530,7 +530,11 @@ details. */
@@ -863,10 +813,10 @@ index 06a2eee..1ad5572 100644
  }
  
 diff --git a/winsup/cygwin/pseudo-reloc.cc b/winsup/cygwin/pseudo-reloc.cc
-index c250fdc..a230b35 100644
+index d015cc5..cd4dff8 100644
 --- a/winsup/cygwin/pseudo-reloc.cc
 +++ b/winsup/cygwin/pseudo-reloc.cc
-@@ -87,7 +87,7 @@ __report_error (const char *msg, ...)
+@@ -85,7 +85,7 @@ __report_error (const char *msg, ...)
    char buf[128];
    char *posix_module = NULL;
    static const char UNKNOWN_MODULE[] = "<unknown module>: ";
@@ -943,7 +893,7 @@ index 83fb39b..b216634 100644
    ts.SourceIdentifier.LowPart = kerberos_auth ? 0x0105 : 0x0106;
  
 diff --git a/winsup/cygwin/syscalls.cc b/winsup/cygwin/syscalls.cc
-index 885ca37..186eeec 100644
+index 6ba4f10..fd8090b 100644
 --- a/winsup/cygwin/syscalls.cc
 +++ b/winsup/cygwin/syscalls.cc
 @@ -326,7 +326,7 @@ try_to_bin (path_conv &pc, HANDLE &fh, ACCESS_MASK access, ULONG flags)
@@ -981,7 +931,7 @@ index 6a29550..431f9d2 100644
  static struct
  {
 diff --git a/winsup/cygwin/winsup.h b/winsup/cygwin/winsup.h
-index 9bfa1a7..e581af6 100644
+index 0ffd8c5..8692ebd 100644
 --- a/winsup/cygwin/winsup.h
 +++ b/winsup/cygwin/winsup.h
 @@ -169,7 +169,11 @@ extern "C" void _pei386_runtime_relocator (per_process *);
@@ -1019,24 +969,11 @@ index e1896bf..38332c7 100644
  
  EXPORTS
  #Exported variables
-diff --git a/winsup/lsaauth/cyglsa.c b/winsup/lsaauth/cyglsa.c
-index 9d9c9ff..ffdb8f7 100644
---- a/winsup/lsaauth/cyglsa.c
-+++ b/winsup/lsaauth/cyglsa.c
-@@ -410,7 +410,7 @@ LsaApLogonUserEx (PLSA_CLIENT_REQUEST request, SECURITY_LOGON_TYPE logon_type,
- 	  return stat;
- 	}
- 
--      memcpy (ts.SourceName, "Cygwin.1", 8);
-+      memcpy (ts.SourceName, "MSYS.2", 6);
-       ts.SourceIdentifier.HighPart = 0;
-       ts.SourceIdentifier.LowPart = 0x0104;
-       RtlInitEmptyUnicodeString (&flatnm, flatname,
 diff --git a/winsup/testsuite/Makefile.in b/winsup/testsuite/Makefile.in
-index a86a35b..8060bb5 100644
+index 88588e2..37f91d1 100644
 --- a/winsup/testsuite/Makefile.in
 +++ b/winsup/testsuite/Makefile.in
-@@ -72,7 +72,7 @@ ifdef VERBOSE
+@@ -70,7 +70,7 @@ ifdef VERBOSE
      RUNTESTFLAGS = -v
  endif
  
@@ -1046,17 +983,17 @@ index a86a35b..8060bb5 100644
  TESTSUP_LIB_NAME:=libltp.a
  TESTSUP_OFILES:=${sort ${addsuffix .o,${basename ${notdir ${wildcard $(libltp_srcdir)/lib/*.c}}}}}
 diff --git a/winsup/testsuite/config/default.exp b/winsup/testsuite/config/default.exp
-index 3936979..9acfb11 100644
+index 8033ea6..43ef4cb 100644
 --- a/winsup/testsuite/config/default.exp
 +++ b/winsup/testsuite/config/default.exp
 @@ -1,11 +1,11 @@
  proc winsup_version {} {
      global env
      global rootme
--    clone_output "\n[exec grep ^%%% $rootme/../cygwin/cygwin0.dll]\n"
+-    clone_output "\n[exec grep -a ^%%% $rootme/../cygwin/cygwin0.dll]\n"
 -    if { [info exists env(CYGWIN)] } {
 -        clone_output "CYGWIN=$env(CYGWIN)\n"
-+    clone_output "\n[exec grep ^%%% $rootme/../cygwin/msys0.dll]\n"
++    clone_output "\n[exec grep -a ^%%% $rootme/../cygwin/msys0.dll]\n"
 +    if { [info exists env(MSYS)] } {
 +        clone_output "MSYS=$env(MSYS)\n"
      } else {
@@ -1066,12 +1003,12 @@ index 3936979..9acfb11 100644
  }
  
 diff --git a/winsup/testsuite/cygrun.c b/winsup/testsuite/cygrun.c
-index d1f53aa..e8220d0 100644
+index 65d859d..616b043 100644
 --- a/winsup/testsuite/cygrun.c
 +++ b/winsup/testsuite/cygrun.c
-@@ -29,8 +29,8 @@ main (int argc, char **argv)
-       exit (0);
-     }
+@@ -32,8 +32,8 @@ main (int argc, char **argv)
+   if (argc >= 3)
+     SetEnvironmentVariable ("TDIRECTORY", argv[2]);
  
 -  SetEnvironmentVariable ("CYGWIN_TESTING", "1");
 -  if ((p = getenv ("CYGWIN")) == NULL || (strstr (p, "ntsec") == NULL))
@@ -1080,7 +1017,7 @@ index d1f53aa..e8220d0 100644
      {
        char buf[4096];
        if (!p)
-@@ -44,7 +44,7 @@ main (int argc, char **argv)
+@@ -47,7 +47,7 @@ main (int argc, char **argv)
  	  strcat (buf, " ");
  	}
        strcat(buf, "ntsec");
@@ -1140,7 +1077,7 @@ index ad45996..7a398dc 100644
    out = &output;
  
 diff --git a/winsup/testsuite/winsup.api/cygload.exp b/winsup/testsuite/winsup.api/cygload.exp
-index a07a549..bc1ae61 100644
+index e7b4395..c092d99 100644
 --- a/winsup/testsuite/winsup.api/cygload.exp
 +++ b/winsup/testsuite/winsup.api/cygload.exp
 @@ -26,7 +26,7 @@ if { $rv != {0 {}} } {
@@ -1166,32 +1103,32 @@ index 8007fd5..ab4003b 100644
  
      // A wrapper around GetProcAddress() for fetching symbols from the
 diff --git a/winsup/testsuite/winsup.api/winsup.exp b/winsup/testsuite/winsup.api/winsup.exp
-index 6390962..769b7c0 100644
+index 4978136..27fea2c 100644
 --- a/winsup/testsuite/winsup.api/winsup.exp
 +++ b/winsup/testsuite/winsup.api/winsup.exp
-@@ -51,7 +51,7 @@ foreach src [lsort [glob -nocomplain $srcdir/$subdir/*.c $srcdir/$subdir/*/*.{cc
+@@ -59,7 +59,7 @@ foreach src [lsort [glob -nocomplain $srcdir/$subdir/*.c $srcdir/$subdir/*/*.{cc
      if [ file exists "$srcdir/$subdir/$basename.exp" ] then {
  	source "$srcdir/$subdir/$basename.exp"
      } else {
 -	ws_spawn "$CC -nodefaultlibs -mwin32 $CFLAGS $src $add_includes $add_libs $runtime_root/binmode.o -lgcc $runtime_root/libcygwin0.a -lkernel32 -luser32 -o $base.exe"
 +	ws_spawn "$CC -nodefaultlibs -mwin32 $CFLAGS $src $add_includes $add_libs $runtime_root/binmode.o -lgcc $runtime_root/libmsys0.a -lkernel32 -luser32 -o $base.exe"
- 	if { $rv != "" } {
- 	    verbose -log "$rv"
+ 	if { $rv } {
  	    fail "$testcase (compile)"
+ 	} else {
 diff --git a/winsup/utils/Makefile.in b/winsup/utils/Makefile.in
-index 2489396..a2bf192 100644
+index e4f55dd..a7fcbd9 100644
 --- a/winsup/utils/Makefile.in
 +++ b/winsup/utils/Makefile.in
-@@ -50,7 +50,7 @@ EXEEXT_FOR_BUILD:=@EXEEXT_FOR_BUILD@
+@@ -40,7 +40,7 @@ EXEEXT_FOR_BUILD:=@EXEEXT_FOR_BUILD@
  
  LDLIBS := -lnetapi32 -ladvapi32 -lkernel32 -luser32
- CYGWIN_LDFLAGS := -static -Wl,--enable-auto-import -L${WINDOWS_LIBDIR} $(LDLIBS)
+ CYGWIN_LDFLAGS := -static -Wl,--enable-auto-import $(LDLIBS)
 -DEP_LDLIBS := $(cygwin_build)/libcygwin.a
 +DEP_LDLIBS := $(cygwin_build)/libmsys-2.0.a
  
  MINGW_CXX      := @MINGW_CXX@
  
-@@ -99,8 +99,8 @@ cygcheck.exe: MINGW_LDFLAGS += ${ZLIB} -lwininet -lpsapi -lntdll
+@@ -91,8 +91,8 @@ cygcheck.exe: MINGW_LDFLAGS += ${ZLIB} -lwininet -lpsapi -lntdll
  cygcheck.exe: ${CYGCHECK_OBJS}
  
  cygpath.o: CXXFLAGS += -fno-threadsafe-statics
@@ -1202,15 +1139,6 @@ index 2489396..a2bf192 100644
  strace.exe: MINGW_LDFLAGS += -lntdll
  
  ldd.exe:CYGWIN_LDFLAGS += -lpsapi -lntdll
-@@ -180,7 +180,7 @@ install: all
- 	  $(INSTALL_PROGRAM) $$i $(DESTDIR)$(bindir)/$$n; \
- 	done
- 
--$(cygwin_build)/libcygwin.a: $(cygwin_build)/Makefile
-+$(cygwin_build)/libmsys-2.0.a: $(cygwin_build)/Makefile
- 	@$(MAKE) -C $(@D) $(@F)
- 
- .PHONY: warn_dumper
 diff --git a/winsup/utils/cygcheck.cc b/winsup/utils/cygcheck.cc
 index a45ab5d..4daa84d 100644
 --- a/winsup/utils/cygcheck.cc
@@ -1380,7 +1308,7 @@ index a45ab5d..4daa84d 100644
    GetModuleFileNameW (h, cygwin_dll_path, 32768);
    if ((cygwin_internal = (uintptr_t (*) (int, ...))
 diff --git a/winsup/utils/ldd.cc b/winsup/utils/ldd.cc
-index e1af99e..4f3e769 100644
+index 1e1863c..20570d0 100644
 --- a/winsup/utils/ldd.cc
 +++ b/winsup/utils/ldd.cc
 @@ -276,7 +276,7 @@ tocyg (wchar_t *win_fn)
@@ -1417,10 +1345,10 @@ index c83b764..42ffbfd 100644
    wcscpy (dllpath, sysdir);
    wcscpy (dllpath + sysdir_len, dll);
 diff --git a/winsup/utils/path.cc b/winsup/utils/path.cc
-index d8c2081..2877d8d 100644
+index 29344be..fe00329 100644
 --- a/winsup/utils/path.cc
 +++ b/winsup/utils/path.cc
-@@ -598,14 +598,14 @@ read_mounts ()
+@@ -596,14 +596,14 @@ read_mounts ()
      }
    max_mount_entry = 0;
  
@@ -1440,7 +1368,7 @@ index d8c2081..2877d8d 100644
       has been made non-executable for the current user accidentally. */
    else if (!GetModuleFileNameW (NULL, path, 32768))
      return;
-@@ -614,7 +614,7 @@ read_mounts ()
+@@ -612,7 +612,7 @@ read_mounts ()
      {
        if (!cygwin_dll_path[0])
  	{
