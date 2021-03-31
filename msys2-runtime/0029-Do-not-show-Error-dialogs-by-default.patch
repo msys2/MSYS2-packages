@@ -1,0 +1,68 @@
+From c3de1fd2656cf2327d9cbee70dad14d1927077de Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Wed, 31 Mar 2021 11:38:41 +0200
+Subject: [PATCH 29/N] Do not show Error dialogs by default
+
+In https://github.com/msys2/msys2-runtime/pull/18, we discussed a change
+that would allow default Windows error handling of spawned processes to
+kick in (such as registered JIT debuggers). We even agreed that it would
+make sense to hide this functionality behind a flag, `winjitdebug`.
+
+However, when this got upstreamed as 21ec498d7f (cygwin: use
+CREATE_DEFAULT_ERROR_MODE in spawn, 2020-12-09), that flag was deemed
+unnecessary.
+
+But it would appear that it _is_ necessary: As reported in
+https://github.com/msys2/MSYS2-packages/pull/2414#issuecomment-810841296
+this new behavior is pretty disruptive e.g. in CI scenarios.
+
+So let's introduce that `winjitdebug` flag (settable via the environment
+variable `MSYS`) at long last.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/environ.cc | 1 +
+ winsup/cygwin/globals.cc | 1 +
+ winsup/cygwin/spawn.cc   | 2 +-
+ 3 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
+index 6a54ed4..e1dbba3 100644
+--- a/winsup/cygwin/environ.cc
++++ b/winsup/cygwin/environ.cc
+@@ -126,6 +126,7 @@ static struct parse_thing
+   {"winsymlinks", {func: set_winsymlinks}, isfunc, NULL, {{0}, {0}}},
+   {"disable_pcon", {&disable_pcon}, setbool, NULL, {{false}, {true}}},
+   {"enable_pcon", {&disable_pcon}, setnegbool, NULL, {{true}, {false}}},
++  {"winjitdebug", {&winjitdebug}, setbool, NULL, {{false}, {true}}},
+   {NULL, {0}, setdword, 0, {{0}, {0}}}
+ };
+ 
+diff --git a/winsup/cygwin/globals.cc b/winsup/cygwin/globals.cc
+index abe74f2..67103f4 100644
+--- a/winsup/cygwin/globals.cc
++++ b/winsup/cygwin/globals.cc
+@@ -72,6 +72,7 @@ bool reset_com;
+ bool wincmdln = true;
+ winsym_t allow_winsymlinks = WSYM_deepcopy;
+ bool disable_pcon = true;
++bool winjitdebug = false;
+ 
+ bool NO_COPY in_forkee;
+ 
+diff --git a/winsup/cygwin/spawn.cc b/winsup/cygwin/spawn.cc
+index c6bfcb1..6c580d7 100644
+--- a/winsup/cygwin/spawn.cc
++++ b/winsup/cygwin/spawn.cc
+@@ -462,7 +462,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 	 get the default error mode instead of inheriting the mode Cygwin
+ 	 uses.  This allows things like Windows Error Reporting/JIT debugging
+ 	 to work with processes launched from a Cygwin shell. */
+-      if (!real_path.iscygexec ())
++      if (winjitdebug && !real_path.iscygexec ())
+ 	c_flags |= CREATE_DEFAULT_ERROR_MODE;
+ 
+       /* We're adding the CREATE_BREAKAWAY_FROM_JOB flag here to workaround
+-- 
+2.31.0
+
