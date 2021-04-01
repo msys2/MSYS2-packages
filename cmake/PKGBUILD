@@ -4,7 +4,7 @@
 _realname=cmake
 pkgname=("${_realname}" "${_realname}-emacs" "${_realname}-vim")
 pkgver=3.20.0
-pkgrel=1
+pkgrel=2
 pkgdesc="A cross-platform open-source make system"
 arch=('i686' 'x86_64')
 url="https://www.cmake.org/"
@@ -36,9 +36,11 @@ depends=('gcc-libs'
          'zlib')
 options=('staticlibs' 'strip')
 source=(https://www.cmake.org/files/v${pkgver%.*}/${pkgname}-${pkgver}.tar.gz
-        0001-Support-MSYS.patch)
+        0001-MSYS-Add-support-for-running-under-MSYS-runtime-envi.patch
+        0002-MSYS-Add-a-module-to-find-MSYS-and-some-bundled-pack.patch)
 sha256sums=('9c06b2ddf7c337e31d8201f6ebcd3bba86a9a033976a9aee207fe0c6971f4755'
-            '52d2c802d85a21ccf4da88668304d854e4975620b7f53800ef9671539083c862')
+            'f368049103ec99a20e5d57616fbe2bf5477f7ec326105ebc795acf07111589cb'
+            '82b8b024c948e1e38e51ecdef93c50609402d8f89dc39462f8796774943c9217')
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -61,8 +63,7 @@ del_file_exists() {
 
 prepare() {
   cd ${pkgname}-${pkgver}
-  del_file_exists Modules/CPackMsys.cmake \
-    Modules/FindMsys.cmake \
+  del_file_exists Modules/FindMsys.cmake \
     Modules/Platform/MSYS-Clang-C.cmake \
     Modules/Platform/MSYS-Clang-CXX.cmake \
     Modules/Platform/MSYS-Determine-CXX.cmake \
@@ -76,7 +77,8 @@ prepare() {
 
   # Msysize
   apply_patch_with_msg \
-       0001-Support-MSYS.patch
+       0001-MSYS-Add-support-for-running-under-MSYS-runtime-envi.patch \
+       0002-MSYS-Add-a-module-to-find-MSYS-and-some-bundled-pack.patch
 }
 
 build() {
@@ -93,10 +95,6 @@ build() {
     -- -DCURSES_FORM_LIBRARY=/usr/lib/libformw.dll.a \
       -DCTEST_TEST_CTEST=ON \
       -DCMAKE_BUILD_TYPE=Release
-  #Fix tests
-  local  _gccver=$(gcc --version | grep ^gcc | sed 's/^.* //g')
-  sed -e "s|4.9.2|${_gccver}|g" -e "s|4.8.2|${_gccver}|g" \
-       -i ${srcdir}/build-${CARCH}/Tests/CMakeTests/ImplicitLinkInfoTest.cmake
   plain "Start building..."
   make
   make DESTDIR=${srcdir}/dest install
