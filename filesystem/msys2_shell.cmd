@@ -46,6 +46,7 @@ rem Console types
 if "x%~1" == "x-mintty" shift& set /a msys2_shiftCounter+=1& set MSYSCON=mintty.exe& goto :checkparams
 if "x%~1" == "x-conemu" shift& set /a msys2_shiftCounter+=1& set MSYSCON=conemu& goto :checkparams
 if "x%~1" == "x-defterm" shift& set /a msys2_shiftCounter+=1& set MSYSCON=defterm& goto :checkparams
+if "x%~1" == "x-wincon" shift& set /a msys2_shiftCounter+=1& set MSYSCON=wincon& goto :checkparams
 rem Other parameters
 if "x%~1" == "x-full-path" shift& set /a msys2_shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
 if "x%~1" == "x-use-full-path" shift& set /a msys2_shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
@@ -116,6 +117,7 @@ if "%MSYSTEM%" == "MINGW32" (
 if "x%MSYSCON%" == "xmintty.exe" goto startmintty
 if "x%MSYSCON%" == "xconemu" goto startconemu
 if "x%MSYSCON%" == "xdefterm" goto startsh
+if "x%MSYSCON%" == "xwincon" goto startwincon
 
 if NOT EXIST "%WD%mintty.exe" goto startsh
 set MSYSCON=mintty.exe
@@ -145,6 +147,22 @@ if not defined MSYS2_NOSTART (
   start "%CONTITLE%" "%WD%\%LOGINSHELL%" --login !SHELL_ARGS!
 ) else (
   "%WD%\%LOGINSHELL%" --login !SHELL_ARGS!
+)
+exit /b %ERRORLEVEL%
+
+:startwincon
+set MSYSCON=
+set _MSYSTEM_=%MSYSTEM:~0,5%
+if "%_MSYSTEM_%" == "MINGW" (
+  set _MSYSTEM_=
+  set Path=%__CD__%%MSYSTEM%\bin;%Path%
+) else (
+  exit /b
+)
+if not defined MSYS2_NOSTART (
+  start "%CONTITLE%" "cmd" !SHELL_ARGS!
+) else (
+  "cmd" !SHELL_ARGS!
 )
 exit /b %ERRORLEVEL%
 
@@ -199,7 +217,7 @@ echo     %~1 [options] [login shell parameters]
 echo.
 echo Options:
 echo     -mingw32 ^| -mingw64 ^| -ucrt64 ^| -clang64 ^| -msys[2]   Set shell type
-echo     -defterm ^| -mintty ^| -conemu                            Set terminal type
+echo     -defterm ^| -mintty ^| -conemu ^| -wincon                 Set terminal type
 echo     -here                            Use current directory as working
 echo                                      directory
 echo     -where DIRECTORY                 Use specified DIRECTORY as working
