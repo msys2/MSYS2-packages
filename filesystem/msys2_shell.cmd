@@ -144,6 +144,9 @@ exit /b %ERRORLEVEL%
 set MSYSCON=
 if /I "%LOGINSHELL%"=="cmd" (
   set SHELLPATH=%LOGINSHELL%
+  if exist "%~dp0%MSYSTEM%\bin\gcc.exe" (
+    set Path=%~dp0%MSYSTEM%\bin;%Path%
+  )
 ) else (
   set SHELLPATH=%WD%\%LOGINSHELL%
 )
