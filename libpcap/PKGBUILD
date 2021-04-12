@@ -1,0 +1,57 @@
+# Maintainer: Orgad Shaneh <orgads@gmail.com>
+
+pkgbase=libpcap
+pkgname=('libpcap' 'libpcap-devel')
+pkgver=1.10.0
+pkgrel=1
+pkgdesc="A portable C/C++ library for network traffic capture"
+arch=('i686' 'x86_64')
+license=('BSD')
+url="https://www.tcpdump.org/"
+makedepends=('bison' 'cmake' 'flex' 'gcc' 'make' 'openssl-devel')
+source=(https://www.tcpdump.org/release/${pkgname}-${pkgver}.tar.gz
+        0001-Fix-symlinking-with-DESTDIR.patch
+        0002-Fix-Cygwin-MSYS-target-directories.patch
+        0003-Disable-man-symlinks.patch)
+sha256sums=('8d12b42623eeefee872f123bd0dc85d535b00df4d42e865f993c40f7bfc92b1e'
+            'e5e47f7aa271f8d92cf19525bfb301c7e158e3e4a96d870a03bc5eae141b92a0'
+            'dc69c6be0c39f37cf957d4b4fe5b9b56748a9e6a456836777651470de40d7c2c'
+            'cc3e4218937f5c75448ddcb3b09b1ad90c11ca2a01ade1defe900cba60893e8e')
+
+prepare() {
+  cd ${srcdir}/${pkgbase}-${pkgver}
+
+  patch -p1 -i ${srcdir}/0001-Fix-symlinking-with-DESTDIR.patch
+  patch -p1 -i ${srcdir}/0002-Fix-Cygwin-MSYS-target-directories.patch
+  patch -p1 -i ${srcdir}/0003-Disable-man-symlinks.patch
+}
+
+build() {
+  mkdir -p build-${pkgbase}-${pkgver}-${CHOST}
+  cd build-${pkgbase}-${pkgver}-${CHOST}
+  cmake \
+    -DCMAKE_INSTALL_PREFIX="/usr" \
+    ../${pkgbase}-${pkgver}
+  make DESTDIR=${srcdir}/dest install
+}
+
+package_libpcap() {
+  pkgdesc="A portable C/C++ library for network traffic capture"
+  groups=('libraries')
+  depends=('gcc-libs')
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+}
+
+package_libpcap-devel() {
+  pkgdesc="Libpcap headers and libraries"
+  groups=('development')
+  depends=("libpcap=${pkgver}")
+  options=('staticlibs')
+
+  mkdir -p ${pkgdir}/usr/bin
+
+  cp -f ${srcdir}/dest/usr/bin/pcap-config ${pkgdir}/usr/bin
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
