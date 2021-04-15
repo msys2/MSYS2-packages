@@ -1,8 +1,8 @@
 # Maintainer: Green0Photon <green0photon AT gmail DOT com>
 
 pkgname=task
-pkgver=2.5.1
-pkgrel=3
+pkgver=2.5.3
+pkgrel=1
 pkgdesc="A command-line todo list manager"
 arch=('i686' 'x86_64')
 url="https://taskwarrior.org/"
@@ -38,33 +38,26 @@ checkdepends=("python" # for tests
 #source=("https://taskwarrior.org/download/${pkgname}-${pkgver}.tar.gz")
 #sha256sums=("d87bcee58106eb8a79b850e9abc153d98b79e00d50eade0d63917154984f2a15")
 
-source=("${pkgname}-s${pkgver}.tar.gz"::"https://github.com/taskwarrior/${pkgname}/archive/s${pkgver}.tar.gz")
-sha256sums=("30a6253aa5de2f339def58150edcf1d7c1a302875f30f9b31160eaaf2303e978")
-noextract=(${pkgname}-s${pkgver}.tar.gz)
+source=("https://github.com/GothenburgBitFactory/taskwarrior/releases/download/v${pkgver}/${pkgname}-${pkgver}.tar.gz")
+sha256sums=('7243d75e0911d9e2c9119ad94a61a87f041e4053e197f7280c42410aa1ee963b')
+noextract=(${pkgname}-${pkgver}.tar.gz)
 
 prepare() {
-  [[ -d ${srcdir}/${pkgname}-s${pkgver} ]] && rm -rf ${srcdir}/${pkgname}-s${pkgver}
-  tar -xzf ${srcdir}/${pkgname}-s${pkgver}.tar.gz -C $srcdir || true
+  [[ -d ${srcdir}/${pkgname}-${pkgver} ]] && rm -rf ${srcdir}/${pkgname}-${pkgver}
+  tar -xzf ${srcdir}/${pkgname}-${pkgver}.tar.gz -C $srcdir || true
 }
 
 build() {
-  cd "${srcdir}/${pkgname}-s${pkgver}"
-#  ls "/usr/include/sys"
-#  pacman -Q
-  msg "Starting cmake..."
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  CXXFLAGS+=" -D_GNU_SOURCE" \
   cmake -DCMAKE_BUILD_TYPE=release -DCMAKE_INSTALL_PREFIX=/usr .
-
-  sed -i -r 's/-luuid/-luuid.dll/' src/CMakeFiles/task_executable.dir/link.txt
-  sed -i -r 's/-luuid/-luuid.dll/' src/CMakeFiles/calc_executable.dir/link.txt
-  sed -i -r 's/-luuid/-luuid.dll/' src/CMakeFiles/lex_executable.dir/link.txt
-
-  msg "Starting make..."
   make
 }
 
 package() {
-  cd "${srcdir}/${pkgname}-s${pkgver}"
-  make DESTDIR=$pkgdir install
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make DESTDIR="${pkgdir}" install
 
   # Note that we rename the bash completion script for bash-completion > 1.99, until upstream does so.
   install -Dm644 "$pkgdir/usr/share/doc/task/scripts/bash/task.sh" "$pkgdir/usr/share/bash-completion/completions/task"
@@ -76,17 +69,5 @@ package() {
   install -Dm644 "$pkgdir/usr/share/doc/task/scripts/vim/syntax/taskedit.vim" "$pkgdir/usr/share/vim/vimfiles/syntax/taskedit.vim"
   install -Dm644 "$pkgdir/usr/share/doc/task/scripts/vim/syntax/taskrc.vim" "$pkgdir/usr/share/vim/vimfiles/syntax/taskrc.vim"
 
-  install -Dm644 "$srcdir/$pkgname-s$pkgver/LICENSE" "$pkgdir/usr/share/licenses/task/LICENSE"
-}
-
-check() {
-  cd "${srcdir}/${pkgname}-s${pkgver}/test"
-
-  msg "Starting make for testing..."
-  make
-
-  msg "Running tests (Please be patient)..."
-  ./run_all || true
-  msg "Results:"
-  ./python problems || true
+  install -Dm644 "$srcdir/$pkgname-$pkgver/LICENSE" "$pkgdir/usr/share/licenses/task/LICENSE"
 }
