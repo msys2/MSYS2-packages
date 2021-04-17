@@ -9,6 +9,12 @@ Access URLs:
 
 Contact: [Nick Østergaard](mailto:oe.nick@gmail.com)
 
+## Canada
+### Ottawa
+Access URLs:
+- <https://repo.casualgamer.ca/x86_64> mingw64
+- <https://repo.casualgamer.ca/ucrt64> ucrt64
+
 ## Chile
 #### Universidad de La Frontera
 Access URLs:
