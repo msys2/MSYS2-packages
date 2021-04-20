@@ -6,7 +6,7 @@ pkgname=("${_mingw_suff}-${_realname}")
 conflicts=("${_mingw_suff%-*}-${_realname}")
 pkgdesc="MinGW-w64 headers for cross-compiler"
 pkgver=9.0.0.6158.1c773877
-pkgrel=1
+pkgrel=2
 arch=('i686' 'x86_64')
 url="https://mingw-w64.sourceforge.io/"
 license=('custom')
@@ -17,7 +17,7 @@ _commit='1c773877f4a13c8bd7bfb8da80e1e8761a889f51'
 source=("mingw-w64"::"git+https://git.code.sf.net/p/mingw-w64/mingw-w64#commit=$_commit")
 sha256sums=('SKIP')
 
-_targets="i686-w64-mingw32 x86_64-w64-mingw32 armv7-w64-mingw32"
+_targets="i686-w64-mingw32 x86_64-w64-mingw32 armv7-w64-mingw32 aarch64-w64-mingw32"
 
 pkgver() {
   cd "${srcdir}/mingw-w64"
@@ -36,13 +36,24 @@ build() {
     msg "Configuring ${_target} headers"
     mkdir -p ${srcdir}/headers-${_target} && cd ${srcdir}/headers-${_target}
 
+    local _default_win32_winnt
+    case "${_target%%-*}" in
+      i686|x86_64)
+        _default_win32_winnt=0x601
+        ;;
+      *)
+        # assume any new arches added will be at least Win10
+        _default_win32_winnt=0xA00
+        ;;
+    esac
+
     ${srcdir}/mingw-w64/mingw-w64-headers/configure \
     --build=${CHOST} \
     --host=${_target} \
     --prefix=/opt/${_target} \
     --enable-sdk=all \
     --enable-secure-api \
-    --with-default-win32-winnt=0x601 \
+    --with-default-win32-winnt=${_default_win32_winnt} \
     --with-default-msvcrt=ucrt
   done
 }

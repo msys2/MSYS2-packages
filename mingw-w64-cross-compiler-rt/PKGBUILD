@@ -4,7 +4,7 @@ _realname=compiler-rt
 _mingw_suff=mingw-w64-cross
 pkgname=("${_mingw_suff}-${_realname}")
 pkgver=11.0.0
-pkgrel=5
+pkgrel=6
 pkgdesc="Compiler runtime libraries for cross clang"
 arch=('i686' 'x86_64')
 url="https://llvm.org"
@@ -19,7 +19,7 @@ sha256sums=('374aff82ff573a449f9aabbd330a5d0a441181c535a3599996127378112db234'
 validpgpkeys=('B6C8F98282B944E3B0D5C2530FC3042E345AD05D'  # Hans Wennborg, Google.
               '474E22316ABF4785A88C6E8EA2C794A986419D8A') # Tom Stellard
 
-_targets="x86_64-w64-mingw32 i686-w64-mingw32"
+_targets="x86_64-w64-mingw32 i686-w64-mingw32 armv7-w64-mingw32 aarch64-w64-mingw32"
 
 prepare() {
   cd ${srcdir}
@@ -28,21 +28,27 @@ prepare() {
 build() {
   for _target in ${_targets}; do
     cd "${srcdir}"
+    _llvmtarget=${_target%%-*}
     case "${_target}" in
       x86_64*)
         _sizeof_void_p=8
-        _llvmtarget=x86_64
         ;;
-      i686*)
+      i?86*)
         _sizeof_void_p=4
         _llvmtarget=i386
+        ;;
+      aarch64*)
+        _sizeof_void_p=8
+        ;;
+      armv7*)
+        _sizeof_void_p=4
         ;;
     esac
 
     [[ -d build-${_target} ]] && rm -rf build-${_target}
     mkdir build-${_target} && cd build-${_target}
 
-    export CC="clang" CXX="clang++" AS="clang" AR="llvm-ar" RANLIB="llvm-ranlib" DLLTOOL="llvm-dlltool" LD="clang"
+    export CC="clang" CXX="clang++" ASM="clang" AR="llvm-ar" RANLIB="llvm-ranlib" DLLTOOL="llvm-dlltool" LD="clang"
     export ASMFLAGS
 
     ASMFLAGS+=" -target ${_target} --sysroot=/opt/${_target}"
@@ -53,6 +59,11 @@ build() {
 
     cmake \
       -G'Ninja' \
+      -DCMAKE_AR="$(which llvm-ar)" \
+      -DCMAKE_ASM_COMPILER="clang" \
+      -DCMAKE_C_COMPILER="clang" \
+      -DCMAKE_CXX_COMPILER="clang++" \
+      -DCMAKE_RANLIB="$(which llvm-ranlib)" \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_COMPILER_TARGET=${_llvmtarget}-windows-gnu \
       -DCMAKE_C_COMPILER_WORKS=ON \
@@ -83,6 +94,10 @@ package() {
     fi
     cd $srcdir/build-${_target}
     mkdir -p "${pkgdir}/usr/lib/clang/${pkgver}/lib/windows"
-    cp "lib/windows/libclang_rt.builtins-${_llvmtarget}.a" "${pkgdir}/usr/lib/clang/${pkgver}/lib/windows"
+    if [[ ${_llvmtarget} == armv7 ]]; then
+      cp "lib/windows/libclang_rt.builtins-${_llvmtarget}.a" "${pkgdir}/usr/lib/clang/${pkgver}/lib/windows/libclang_rt.builtins-arm.a"
+    else
+      cp "lib/windows/libclang_rt.builtins-${_llvmtarget}.a" "${pkgdir}/usr/lib/clang/${pkgver}/lib/windows"
+    fi
   done
 }
