@@ -1,11 +1,145 @@
---- pkgconf-1.7.1/libpkgconf/path.c.orig	2019-07-12 13:10:54.000000000 +0200
-+++ pkgconf-1.7.1/libpkgconf/path.c	2020-10-16 19:56:17.512930500 +0200
-@@ -320,7 +320,7 @@
- bool
- pkgconf_path_relocate(char *buf, size_t buflen)
- {
--#if defined(HAVE_CYGWIN_CONV_PATH) && defined(__MSYS__)
-+#if defined(HAVE_CYGWIN_CONV_PATH) && defined(__MSYS__) && 0
- 	ssize_t size;
- 	char *tmpbuf, *ti;
+From 4be39c59fbad1008af6e06e9a76f53f9c0b48d43 Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Fri, 19 Mar 2021 16:59:02 +0100
+Subject: [PATCH] Remove usage of cygwin_conv_path() under cygwin/msys
+
+This converted Unix paths to Windows paths, but all cygwin tools
+work with Unix paths so this shouldn't be needed.
+
+There is one use case if you use a cygwin pkgconf with a non-cygwin toolchain,
+but pkgconf works reasonable well natively now so this shouldn't be needed
+anymore and more likely leads to problems and confusion.
+
+Both cygwin and msys have patched this out already:
+* https://cygwin.com/git-cygwin-packages/?p=git/cygwin-packages/pkgconf.git;a=blob;f=pkgconf.cygport;h=e5d003f3f3dfc9e374b916974018022ad8d68852;hb=HEAD#l55
+* https://github.com/msys2/MSYS2-packages/blob/a4bce0c2943109e7d06c8660d91b89065eb09bea/pkgconf/PKGBUILD#L26
+---
+ configure.ac              |  2 +-
+ doc/libpkgconf-path.rst   |  2 +-
+ libpkgconf/config.h.meson |  3 ---
+ libpkgconf/path.c         | 26 +-------------------------
+ meson.build               |  1 -
+ tests/test_env.sh.in      |  1 -
+ 6 files changed, 3 insertions(+), 32 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index cd6ab67..be494c9 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -22,7 +22,7 @@ AX_CHECK_COMPILE_FLAG([-std=gnu99], [CFLAGS="$CFLAGS -std=gnu99"], [
+ 	AX_CHECK_COMPILE_FLAG([-std=c99], [CFLAGS="$CFLAGS -std=c99"])
+ ])
+ AC_CONFIG_HEADERS([libpkgconf/config.h])
+-AC_CHECK_FUNCS([strlcpy strlcat strndup cygwin_conv_path])
++AC_CHECK_FUNCS([strlcpy strlcat strndup])
+ AC_CHECK_HEADERS([sys/stat.h])
+ AM_INIT_AUTOMAKE([foreign dist-xz subdir-objects])
+ AM_SILENT_RULES([yes])
+diff --git a/doc/libpkgconf-path.rst b/doc/libpkgconf-path.rst
+index 6d39b3a..e923f61 100644
+--- a/doc/libpkgconf-path.rst
++++ b/doc/libpkgconf-path.rst
+@@ -55,7 +55,7 @@ variables.
+ 
+ .. c:function:: bool pkgconf_path_relocate(char *buf, size_t buflen)
+ 
+-   Relocates a path, possibly calling normpath() or cygwin_conv_path() on it.
++   Relocates a path, possibly calling normpath() on it.
+ 
+    :param char* buf: The path to relocate.
+    :param size_t buflen: The buffer length the path is contained in.
+diff --git a/libpkgconf/config.h.meson b/libpkgconf/config.h.meson
+index c0e97a6..09279da 100644
+--- a/libpkgconf/config.h.meson
++++ b/libpkgconf/config.h.meson
+@@ -1,8 +1,5 @@
+ /* libpkgconf/config.h.in.  Generated from configure.ac by autoheader.  */
+ 
+-/* Define to 1 if you have the `cygwin_conv_path' function. */
+-#mesondefine HAVE_CYGWIN_CONV_PATH
+-
+ /* Define to 1 if you have the `strlcat' function. */
+ #mesondefine HAVE_STRLCAT
+ 
+diff --git a/libpkgconf/path.c b/libpkgconf/path.c
+index 8e23c44..89d2ce0 100644
+--- a/libpkgconf/path.c
++++ b/libpkgconf/path.c
+@@ -17,10 +17,6 @@
+ #include <libpkgconf/stdinc.h>
+ #include <libpkgconf/libpkgconf.h>
+ 
+-#ifdef HAVE_CYGWIN_CONV_PATH
+-# include <sys/cygwin.h>
+-#endif
+-
+ #if defined(HAVE_SYS_STAT_H) && ! defined(_WIN32)
+ # include <sys/stat.h>
+ # define PKGCONF_CACHE_INODES
+@@ -306,7 +302,7 @@ normpath(const char *path)
+  *
+  * .. c:function:: bool pkgconf_path_relocate(char *buf, size_t buflen)
+  *
+- *    Relocates a path, possibly calling normpath() or cygwin_conv_path() on it.
++ *    Relocates a path, possibly calling normpath() on it.
+  *
+  *    :param char* buf: The path to relocate.
+  *    :param size_t buflen: The buffer length the path is contained in.
+@@ -320,25 +316,6 @@ pkgconf_path_relocate(char *buf, size_t buflen)
+ 	char *ti;
+ #endif
+ 
+-#ifdef HAVE_CYGWIN_CONV_PATH
+-	/*
+-	 * If we are on Cygwin or MSYS, then we want to convert the virtual path
+-	 * to a real DOS path, using cygwin_conv_path().
+-	 */
+-	ssize_t size;
+-	char *tmpbuf;
+-
+-	size = cygwin_conv_path(CCP_POSIX_TO_WIN_A, buf, NULL, 0);
+-	if (size < 0 || (size_t) size > buflen)
+-		return false;
+-
+-	tmpbuf = malloc(size);
+-	if (cygwin_conv_path(CCP_POSIX_TO_WIN_A, buf, tmpbuf, size))
+-		return false;
+-
+-	pkgconf_strlcpy(buf, tmpbuf, buflen);
+-	free(tmpbuf);
+-#else
+ 	char *tmpbuf;
+ 
+ 	if ((tmpbuf = normpath(buf)) != NULL)
+@@ -353,7 +330,6 @@ pkgconf_path_relocate(char *buf, size_t buflen)
+ 		pkgconf_strlcpy(buf, tmpbuf, buflen);
+ 		free(tmpbuf);
+ 	}
+-#endif
+ 
+ #ifdef _WIN32
+ 	/*
+diff --git a/meson.build b/meson.build
+index e7822b8..991598a 100644
+--- a/meson.build
++++ b/meson.build
+@@ -10,7 +10,6 @@ cc = meson.get_compiler('c')
+ cdata = configuration_data()
+ 
+ check_functions = [
+-  ['HAVE_CYGWIN_CONV_PATH', 'cygwin_conv_path', 'sys/cygwin.h'],
+   ['HAVE_STRLCAT', 'strlcat', 'string.h'],
+   ['HAVE_STRLCPY', 'strlcpy', 'string.h'],
+   ['HAVE_STRNDUP', 'strndup', 'string.h'],
+diff --git a/tests/test_env.sh.in b/tests/test_env.sh.in
+index 17ee1f5..e0ce042 100644
+--- a/tests/test_env.sh.in
++++ b/tests/test_env.sh.in
+@@ -26,7 +26,6 @@ LIBRARY_PATH_ENV="LIBRARY_PATH"
+ PATH_SEP=":"
+ SYSROOT_DIR="${selfdir}/test"
+ case "$(uname -s)" in
+-Msys|CYGWIN*) PATH_SEP=";";;
+ Haiku) LIBRARY_PATH_ENV="BELIBRARIES";;
+ esac
  
