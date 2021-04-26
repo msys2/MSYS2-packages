@@ -1,0 +1,42 @@
+From 05aefb8f82d856626598ef6a3f49ff8d5f623bf5 Mon Sep 17 00:00:00 2001
+From: Pascal Ernster <pacman-dev@hardfalcon.net>
+Date: Thu, 21 Jan 2021 03:49:58 +0100
+Subject: pacman: correct length of ".files.sig" string
+
+Running "pacman -Sc" deletes /var/lib/pacman/sync/*.files.sig due to a
+wrong string length being used when checking filename suffixes in that
+directory. In turn, these missing signature files cause both the
+corresponding "*.files" files and their signatures being forcibly
+re-downloaded again when "pacman -Sy" is executed.
+
+Since official Arch Linux repos don't use signed database files yet, this
+only affects people who use custom repos with signed database files, for
+which they have set the "SigLevel" directive to "Required" or
+"DatabaseRequired" in /etc/pacman.conf.
+
+Fixes FS#66472
+
+Signed-off-by: Pascal Ernster <pacman-dev@hardfalcon.net>
+Signed-off-by: Allan McRae <allan@archlinux.org>
+---
+ src/pacman/sync.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+(limited to 'src/pacman/sync.c')
+
+diff --git a/src/pacman/sync.c b/src/pacman/sync.c
+index a05af5da..9ec4c92e 100644
+--- a/src/pacman/sync.c
++++ b/src/pacman/sync.c
+@@ -105,7 +105,7 @@ static int sync_cleandb(const char *dbpath)
+ 			dbname = strndup(dname, len - 7);
+ 		} else if(len > 6 && strcmp(dname + len - 6, ".files") == 0) {
+ 			dbname = strndup(dname, len - 6);
+-		} else if(len > 6 && strcmp(dname + len - 6, ".files.sig") == 0) {
++		} else if(len > 10 && strcmp(dname + len - 10, ".files.sig") == 0) {
+ 			dbname = strndup(dname, len - 10);
+ 		} else {
+ 			ret += unlink_verbose(path, 0);
+-- 
+cgit v1.2.3-1-gf6bb5
+
