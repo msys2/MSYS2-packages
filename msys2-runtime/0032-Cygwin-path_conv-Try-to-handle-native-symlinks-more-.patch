@@ -1,0 +1,119 @@
+From 517744ea36a28d8e1166f8e12b0d88ea9cd9aadc Mon Sep 17 00:00:00 2001
+From: Corinna Vinschen <corinna@vinschen.de>
+Date: Mon, 19 Apr 2021 14:49:14 +0200
+Subject: [PATCH 32/N] Cygwin: path_conv: Try to handle native symlinks more
+ sanely
+
+For local paths, add a check if the inner path components contain native
+symlinks or junctions.  Compare the incoming path with the path returned
+by NtQueryInformationFile(FileNameInformation).  If they differ, there
+must be at least one native symlink or junction in the path.  If so,
+treat the currently evaluated file as non-existant.  This forces
+path_conv::check to backtrack inner path components until we eliminated
+all native symlinks or junctions and have a normalized path.
+
+Signed-off-by: Corinna Vinschen <corinna@vinschen.de>
+(cherry picked from commits 456c3a46386f38887407603b2c64b7f63a4871c5 and
+13fd26ecf5ca8417146d57b45aed0133435c3497)
+---
+ winsup/cygwin/dcrt0.cc   |  6 +++++
+ winsup/cygwin/globals.cc |  2 ++
+ winsup/cygwin/path.cc    | 52 ++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 60 insertions(+)
+
+diff --git a/winsup/cygwin/dcrt0.cc b/winsup/cygwin/dcrt0.cc
+index 4683972..579158a 100644
+--- a/winsup/cygwin/dcrt0.cc
++++ b/winsup/cygwin/dcrt0.cc
+@@ -742,6 +742,12 @@ init_windows_system_directory ()
+ 	  system_wow64_directory[system_wow64_directory_length++] = L'\\';
+ 	  system_wow64_directory[system_wow64_directory_length] = L'\0';
+ 	}
++      /* We need the Windows dir in path.cc. */
++      wcscpy (windows_directory, windows_system_directory);
++      windows_directory_length = windows_system_directory_length - 1;
++      windows_directory[windows_directory_length] = L'\0';
++      while (windows_directory[windows_directory_length - 1] != L'\\')
++	windows_directory[--windows_directory_length] = L'\0';
+ #endif /* __i386__ */
+     }
+ }
+diff --git a/winsup/cygwin/globals.cc b/winsup/cygwin/globals.cc
+index 67103f4..a729e70 100644
+--- a/winsup/cygwin/globals.cc
++++ b/winsup/cygwin/globals.cc
+@@ -26,6 +26,8 @@ UINT windows_system_directory_length;
+ #ifdef __i386__
+ WCHAR system_wow64_directory[MAX_PATH];
+ UINT system_wow64_directory_length;
++WCHAR windows_directory[MAX_PATH];
++UINT windows_directory_length;
+ #endif /* __i386__ */
+ WCHAR global_progname[NT_MAX_PATH];
+ 
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 561d1ac..4121628 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -3341,6 +3341,58 @@ restart:
+ 	  status = conv_hdl.get_finfo (h, fs.is_nfs ());
+ 	  if (NT_SUCCESS (status))
+ 	    fileattr = conv_hdl.get_dosattr (fs.is_nfs ());
++
++	  /* For local paths, check if the inner path components contain
++	     native symlinks or junctions.  Compare incoming path with
++	     path returned by NtQueryInformationFile(FileNameInformation).
++	     If they differ, bail out as if the file doesn't exist.  This
++	     forces path_conv::check to backtrack inner path components. */
++	  if (!fs.is_remote_drive ())
++	    {
++#ifdef __i386__
++	      /* On WOW64, ignore any potential problems if the path is inside
++		 the Windows dir to avoid false positives for stuff under
++		 File System Redirector control. */
++	      if (wincap.is_wow64 ())
++		{
++		  static UNICODE_STRING wpath;
++		  UNICODE_STRING udpath;
++
++		  /* Create UNICODE_STRING for Windows dir. */
++		  RtlInitCountedUnicodeString (&wpath, windows_directory,
++				windows_directory_length * sizeof (WCHAR));
++		  /* Create a UNICODE_STRING from incoming path, splitting
++		     off the leading "\\??\\" */
++		  RtlInitCountedUnicodeString (&udpath, upath.Buffer + 4,
++				upath.Length - 4 * sizeof (WCHAR));
++		  /* Are we below Windows dir?  Skip the check for inner
++		     symlinks. */
++		  if (RtlEqualUnicodePathPrefix (&udpath, &wpath, TRUE))
++		    goto skip_inner_syml_check;
++		}
++#endif /* __i386__ */
++	      PFILE_NAME_INFORMATION pfni;
++
++	      pfni = (PFILE_NAME_INFORMATION) tp.c_get ();
++	      if (NT_SUCCESS (NtQueryInformationFile (h, &io, pfni, NT_MAX_PATH,
++						      FileNameInformation)))
++		{
++		  UNICODE_STRING npath;
++
++		  RtlInitCountedUnicodeString (&npath, pfni->FileName,
++					      pfni->FileNameLength);
++		  if (!RtlEqualUnicodePathSuffix (&upath, &npath, !!ci_flag))
++		    {
++		      fileattr = INVALID_FILE_ATTRIBUTES;
++		      set_error (ENOENT);
++		      break;
++		    }
++		}
++#ifdef __i386__
++	      skip_inner_syml_check:
++	        ;
++#endif /* __i386__ */
++	    }
+ 	}
+       if (!NT_SUCCESS (status))
+ 	{
+-- 
+2.31.1
+
