@@ -1,7 +1,7 @@
-From ef91df5ca767096015bedd6a81ef1008161d96d2 Mon Sep 17 00:00:00 2001
+From 78a3fc32338171cb791512076e3696e62d08c33a Mon Sep 17 00:00:00 2001
 From: Jon Turney <jon.turney@dronecode.org.uk>
 Date: Tue, 12 Jan 2016 22:26:26 +0000
-Subject: [PATCH 2/5] 7.8-windows-nat-cygwin.patch
+Subject: [PATCH 2/5] 7.8-windows-nat-cygwin
 
 Remaining parts of 7.8-windows-nat-cygwin.patch not yet upstream.
 
@@ -36,14 +36,14 @@ have other problems...)
 * In one place, clarify that thread_rec()'s second parameter is a bool flag.
 (This should be done everywhere, or not)
 ---
- gdb/windows-nat.c | 28 ++++++++++++++++++----------
- 1 file changed, 18 insertions(+), 10 deletions(-)
+ gdb/windows-nat.c | 25 ++++++++++++++++---------
+ 1 file changed, 16 insertions(+), 9 deletions(-)
 
 diff --git a/gdb/windows-nat.c b/gdb/windows-nat.c
-index 3add8e63f9..0e366c3162 100644
+index 108e1e32edc..a0faa058be7 100644
 --- a/gdb/windows-nat.c
 +++ b/gdb/windows-nat.c
-@@ -154,8 +154,7 @@ static GetConsoleFontSize_ftype *GetConsoleFontSize;
+@@ -176,8 +176,7 @@ static Wow64GetThreadSelectorEntry_ftype *Wow64GetThreadSelectorEntry;
  #   define bad_GetModuleFileNameEx bad_GetModuleFileNameExW
  #endif
  
@@ -51,19 +51,18 @@ index 3add8e63f9..0e366c3162 100644
 -				   cygwin signal.  */
 +static DWORD  signal_thread_id;	/* Non-zero if we saved context. */
  #ifdef __CYGWIN__
- static CONTEXT saved_context;	/* Containes the saved context from a
+ static CONTEXT saved_context;	/* Contains the saved context from a
  				   cygwin signal.  */
-@@ -403,7 +402,8 @@ thread_rec (DWORD id, int get_context)
-       {
- 	if (!th->suspended && get_context)
- 	  {
--	    if (get_context > 0 && id != current_event.dwThreadId)
-+	    if (get_context > 0 && id != current_event.dwThreadId
-+		&& id != signal_thread_id)
- 	      {
- 		if (SuspendThread (th->h) == (DWORD) -1)
- 		  {
-@@ -612,7 +612,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
+@@ -403,7 +402,7 @@ windows_nat::thread_rec (ptid_t ptid, thread_disposition_type disposition)
+ 		/* Nothing.  */
+ 		break;
+ 	      case INVALIDATE_CONTEXT:
+-		if (ptid.lwp () != current_event.dwThreadId)
++		if (ptid.lwp () != current_event.dwThreadId && ptid.lwp () != signal_thread_id)
+ 		  th->suspend ();
+ 		th->reload_context = true;
+ 		break;
+@@ -644,7 +643,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
    if (th->reload_context)
      {
  #ifdef __CYGWIN__
@@ -72,7 +71,7 @@ index 3add8e63f9..0e366c3162 100644
  	{
  	  /* Lie about where the program actually is stopped since
  	     cygwin has informed us that we should consider the signal
-@@ -620,7 +620,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
+@@ -652,7 +651,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
  	     "saved_context.  */
  	  memcpy (&th->context, &saved_context,
  		  __COPY_CONTEXT_SIZE);
@@ -81,7 +80,7 @@ index 3add8e63f9..0e366c3162 100644
  	}
        else
  #endif
-@@ -1007,7 +1007,11 @@ handle_output_debug_string (struct target_waitstatus *ourstatus)
+@@ -997,7 +996,11 @@ windows_nat::handle_output_debug_string (struct target_waitstatus *ourstatus)
    else if (!startswith (s.get (), _CYGWIN_SIGNAL_STRING))
      {
  #ifdef __CYGWIN__
@@ -94,7 +93,7 @@ index 3add8e63f9..0e366c3162 100644
  #endif
  	{
  	  char *p = strchr (s.get (), '\0');
-@@ -1046,7 +1050,12 @@ handle_output_debug_string (struct target_waitstatus *ourstatus)
+@@ -1036,7 +1039,12 @@ windows_nat::handle_output_debug_string (struct target_waitstatus *ourstatus)
  					 &saved_context,
  					 __COPY_CONTEXT_SIZE, &n)
  		   && n == __COPY_CONTEXT_SIZE)
@@ -108,15 +107,15 @@ index 3add8e63f9..0e366c3162 100644
  	}
      }
  #endif
-@@ -1563,7 +1572,6 @@ get_windows_debug_event (struct target_ops *ops,
+@@ -1563,7 +1571,6 @@ windows_nat_target::get_windows_debug_event (int pid,
+ 
    event_code = current_event.dwDebugEventCode;
    ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
-   th = NULL;
 -  have_saved_context = 0;
  
    switch (event_code)
      {
-@@ -1736,7 +1744,7 @@ get_windows_debug_event (struct target_ops *ops,
+@@ -1765,7 +1772,7 @@ windows_nat_target::get_windows_debug_event (int pid,
      }
  
  out:
@@ -125,15 +124,6 @@ index 3add8e63f9..0e366c3162 100644
  }
  
  /* Wait for interesting events to occur in the target process.  */
-@@ -3041,7 +3049,7 @@ windows_nat_target::get_tib_address (ptid_t ptid, CORE_ADDR *addr)
- {
-   windows_thread_info *th;
- 
--  th = thread_rec (ptid.tid (), 0);
-+  th = thread_rec (ptid.tid (), FALSE);
-   if (th == NULL)
-     return false;
- 
 -- 
-2.21.0
+2.31.1.windows.1
 
