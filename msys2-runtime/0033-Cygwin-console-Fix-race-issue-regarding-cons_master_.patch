@@ -1,0 +1,66 @@
+From 38cbabfa51fef46f53fc3b2f79091062fe15c196 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Mon, 19 Apr 2021 19:30:45 +0900
+Subject: [PATCH 33/N] Cygwin: console: Fix race issue regarding
+ cons_master_thread().
+
+- With this patch, the race issue regarding starting/stopping
+  cons_master_thread() introduced by commit ff4440fc is fixed.
+
+  Addresses:
+    https://cygwin.com/pipermail/cygwin/2021-April/248292.html
+---
+ winsup/cygwin/fhandler_console.cc | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler_console.cc b/winsup/cygwin/fhandler_console.cc
+index 0b33a13..e418aac 100644
+--- a/winsup/cygwin/fhandler_console.cc
++++ b/winsup/cygwin/fhandler_console.cc
+@@ -48,6 +48,7 @@ details. */
+ #define con_is_legacy (shared_console_info && con.is_legacy)
+ 
+ #define CONS_THREAD_SYNC "cygcons.thread_sync"
++static bool NO_COPY master_thread_started = false;
+ 
+ const unsigned fhandler_console::MAX_WRITE_CHARS = 16384;
+ 
+@@ -184,6 +185,7 @@ cons_master_thread (VOID *arg)
+ 		   GetCurrentProcess (), &thread_sync_event,
+ 		   0, FALSE, DUPLICATE_SAME_ACCESS);
+   SetEvent (thread_sync_event);
++  master_thread_started = true;
+   /* Do not touch class members after here because the class instance
+      may have been destroyed. */
+   fhandler_console::cons_master_thread (&handle_set, ttyp);
+@@ -370,6 +372,8 @@ fhandler_console::set_unit ()
+     }
+   if (!created && shared_console_info)
+     {
++      while (con.owner > MAX_PID)
++	Sleep (1);
+       pinfo p (con.owner);
+       if (!p)
+ 	con.owner = myself->pid;
+@@ -1393,14 +1397,16 @@ fhandler_console::close ()
+ 
+   release_output_mutex ();
+ 
+-  if (shared_console_info && con.owner == myself->pid)
++  if (shared_console_info && con.owner == myself->pid
++      && master_thread_started)
+     {
+       char name[MAX_PATH];
+       shared_name (name, CONS_THREAD_SYNC, get_minor ());
+       thread_sync_event = OpenEvent (MAXIMUM_ALLOWED, FALSE, name);
+-      con.owner = 0;
++      con.owner = MAX_PID + 1;
+       WaitForSingleObject (thread_sync_event, INFINITE);
+       CloseHandle (thread_sync_event);
++      con.owner = 0;
+     }
+ 
+   CloseHandle (input_mutex);
+-- 
+2.31.1
+
