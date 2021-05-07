@@ -1,0 +1,63 @@
+# Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
+
+pkgname=fmt
+pkgver=7.1.3
+pkgrel=1
+pkgdesc="A modern formatting library for C++ (mingw-w64)"
+arch=('any')
+url="https://fmt.dev"
+license=('MIT')
+makedepends=(gcc cmake ninja)
+depends=(gcc-libs)
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/fmtlib/${pkgname}/archive/${pkgver}.tar.gz")
+sha256sums=('5cae7072042b3043e12d53d50ef404bbb76949dad1de368d7f993a15c8c05ecc')
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  # Shared Build
+  [[ -d "build-shared" ]] && rm -rf "build-shared"
+  mkdir -p ${srcdir}/build-shared
+  cd ${srcdir}/build-shared
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+  /usr/bin/cmake.exe \
+    -G"Ninja" \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=ON \
+    -DFMT_TEST=OFF \
+    ../${pkgname}-${pkgver}
+
+  ninja
+
+  # Static Build
+  [[ -d "build-static" ]] && rm -rf "build-static"
+  mkdir -p ${srcdir}/build-static
+  cd ${srcdir}/build-static
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+  /usr/bin/cmake.exe \
+    -G"Ninja" \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DFMT_TEST=OFF \
+    ../${pkgname}-${pkgver}
+
+  ninja
+}
+
+package() {
+  # Shared Install
+  cd "${srcdir}/build-shared"
+  DESTDIR=${pkgdir} ninja install
+
+  # Static Install
+  cd "${srcdir}/build-static"
+  DESTDIR=${pkgdir} ninja install
+
+  # Copy the source files for including
+  install -m644 ${srcdir}/${pkgname}-${pkgver}/src/*.cc ${pkgdir}/usr/include/${pkgname}
+
+  # License
+  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/LICENSE.rst ${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.rst
+}
