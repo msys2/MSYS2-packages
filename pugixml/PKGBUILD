@@ -1,0 +1,46 @@
+# Maintainer: Peter Budai <peterbudai at hotmail dot com>
+
+pkgname=pugixml
+pkgver=1.11.4
+pkgrel=1
+pkgdesc="Light-weight, simple and fast XML parser for C++ with XPath support (mingw-w64)"
+arch=('any')
+url="https://pugixml.org/"
+license=("MIT")
+depends=(fmt)
+makedepends=(gcc cmake ninja)
+source=(https://github.com/zeux/pugixml/releases/download/v${pkgver}/${pkgname}-${pkgver}.tar.gz
+        010-msys.patch)
+sha256sums=('8ddf57b65fb860416979a3f0640c2ad45ddddbbafa82508ef0a0af3ce7061716'
+            '6befa0190c9aa911e2bdb1d5225aaa85e4a8c96fd652b9b45fb01c7140264645')
+
+prepare() {
+  cd "${srcdir}"/${pkgname}-${pkgver}
+  patch -Np1 -i "${srcdir}/010-msys.patch"
+}
+
+build() {
+  if check_option "debug" "n"; then
+    extra_config+=("-DCMAKE_BUILD_TYPE=Release")
+  else
+    extra_config+=("-DCMAKE_BUILD_TYPE=Debug")
+  fi
+
+  [[ -d ${srcdir}/build ]] && rm -rf ${srcdir}/build
+  mkdir -p ${srcdir}/build && cd ${srcdir}/build
+
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+  /usr/bin/cmake.exe \
+    -G"Ninja" \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    ${extra_config} \
+    -DBUILD_SHARED_AND_STATIC_LIBS=ON \
+    ../${pkgname}-${pkgver}
+
+  ninja
+}
+
+package() {
+  cd "${srcdir}/build"
+  DESTDIR=${pkgdir} ninja install
+}
