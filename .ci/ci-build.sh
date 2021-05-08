@@ -55,6 +55,7 @@ for package in "${packages[@]}"; do
 
     echo "::group::[dll check] ${package}"
     execute 'Checking dll depencencies' list_dll_deps ./pkg
+    execute 'Checking dll bases' list_dll_bases ./pkg
     echo "::endgroup::"
 
     mv "${package}"/*.pkg.tar.* artifacts
