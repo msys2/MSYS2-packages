@@ -45,18 +45,6 @@ diff -Naur subversion-1.8.0-orig/build/config.guess subversion-1.8.0/build/confi
      p*:CYGWIN*:*)
  	echo powerpcle-unknown-cygwin
  	exit ;;
-diff -Naur subversion-1.8.0-orig/build/get-py-info.py subversion-1.8.0/build/get-py-info.py
---- subversion-1.8.0-orig/build/get-py-info.py	2009-11-16 22:07:17.000000000 +0300
-+++ subversion-1.8.0/build/get-py-info.py	2013-06-24 09:18:54.709961000 +0400
-@@ -101,7 +101,7 @@
-       sysconfig.get_config_var('PYTHON'))
-     add_option_if_missing(options, "-bundle_loader", python_exe)
- 
--  elif sys.platform == 'cygwin' or sys.platform.startswith('openbsd'):
-+  elif sys.platform == 'cygwin' or sys.platform == 'msys' or sys.platform.startswith('openbsd'):
- 
-     # Add flags to build against the Python library (also necessary
-     # for Darwin, but handled elsewhere).
 diff -Naur subversion-1.8.0-orig/configure.ac subversion-1.8.0/configure.ac
 --- subversion-1.8.0-orig/configure.ac	2013-06-24 09:05:45.530273500 +0400
 +++ subversion-1.8.0/configure.ac	2013-06-24 09:18:54.928711000 +0400
@@ -69,18 +57,6 @@ diff -Naur subversion-1.8.0-orig/configure.ac subversion-1.8.0/configure.ac
      AC_MSG_RESULT([yes])
      LT_NO_UNDEFINED="-no-undefined"
      ;;
-diff -Naur subversion-1.8.0-orig/subversion/bindings/ctypes-python/test/remoterepos.py subversion-1.8.0/subversion/bindings/ctypes-python/test/remoterepos.py
---- subversion-1.8.0-orig/subversion/bindings/ctypes-python/test/remoterepos.py	2011-08-12 00:56:26.000000000 +0400
-+++ subversion-1.8.0/subversion/bindings/ctypes-python/test/remoterepos.py	2013-06-24 09:18:54.928711000 +0400
-@@ -175,7 +175,7 @@
-             f.close()
-         os.chmod(hook, S_IRWXU)
- 
--        if sys.platform == "cygwin":
-+        if sys.platform == "cygwin" or sys.platform == "msys":
-             ### FIXME: When you try to set revprops, cygwin crashes
-             ###        with a fatal error, so we skip this test for now.
-             return
 diff -Naur subversion-1.8.0-orig/subversion/bindings/swig/perl/native/Makefile.PL.in subversion-1.8.0/subversion/bindings/swig/perl/native/Makefile.PL.in
 --- subversion-1.8.0-orig/subversion/bindings/swig/perl/native/Makefile.PL.in	2012-12-14 10:05:48.000000000 +0400
 +++ subversion-1.8.0/subversion/bindings/swig/perl/native/Makefile.PL.in	2013-06-24 09:18:54.944336000 +0400
@@ -93,18 +69,6 @@ diff -Naur subversion-1.8.0-orig/subversion/bindings/swig/perl/native/Makefile.P
  
  chomp $apr_shlib_path_var;
  
-diff -Naur subversion-1.8.0-orig/subversion/bindings/swig/python/tests/setup_path.py subversion-1.8.0/subversion/bindings/swig/python/tests/setup_path.py
---- subversion-1.8.0-orig/subversion/bindings/swig/python/tests/setup_path.py	2009-11-19 22:25:52.000000000 +0300
-+++ subversion-1.8.0/subversion/bindings/swig/python/tests/setup_path.py	2013-06-24 09:18:54.944336000 +0400
-@@ -39,7 +39,7 @@
- 
- # OSes without RPATH support are going to have to do things here to make
- # the correct shared libraries be found.
--if sys.platform == 'cygwin':
-+if sys.platform == 'cygwin' or sys.platform == 'msys':
-   import glob
-   svndir = os.path.normpath("../../../%s" % bld_swig_python_dir)
-   libpath = os.getenv("PATH").split(":")
 diff -Naur subversion-1.8.0-orig/Makefile.in subversion-1.8.0/Makefile.in
 --- subversion-1.8.0-orig/Makefile.in	2009-11-19 22:25:52.000000000 +0300
 +++ subversion-1.8.0/Makefile.in	2013-06-24 09:18:54.944336000 +0400
@@ -117,49 +81,3 @@ diff -Naur subversion-1.8.0-orig/Makefile.in subversion-1.8.0/Makefile.in
  	@touch $(SWIG_PY_DIR)/libsvn/__init__.py
  
  swig-py: autogen-swig-py copy-swig-py
-diff -Naur subversion-1.8.0-orig/subversion/tests/cmdline/commit_tests.py subversion-1.8.0/subversion/tests/cmdline/commit_tests.py
---- subversion-1.8.0-orig/subversion/tests/cmdline/commit_tests.py	2013-04-12 11:44:37.000000000 +0400
-+++ subversion-1.8.0/subversion/tests/cmdline/commit_tests.py	2013-06-24 09:18:54.959961000 +0400
-@@ -51,7 +51,7 @@
- #
- 
- def is_non_posix_os_or_cygwin_platform():
--  return (not svntest.main.is_posix_os()) or sys.platform == 'cygwin'
-+  return (not svntest.main.is_posix_os()) or sys.platform == 'cygwin' or sys.platform == 'msys'
- 
- def get_standard_state(wc_dir):
-   """Return a status list reflecting the local mods made by
-@@ -1024,7 +1024,7 @@
- 
-   # Note: on Windows, files can't have angle brackets in them, so we
-   # don't tests that case.
--  if svntest.main.windows or sys.platform == 'cygwin':
-+  if svntest.main.windows or sys.platform == 'cygwin' or sys.platform == 'msys':
-     angle_name = '_angle_'
-     nasty_name = '#![]{}()__%'
-   else:
-diff -Naur subversion-1.8.0-orig/subversion/tests/cmdline/svntest/main.py subversion-1.8.0/subversion/tests/cmdline/svntest/main.py
---- subversion-1.8.0-orig/subversion/tests/cmdline/svntest/main.py	2013-06-24 09:10:09.858398500 +0400
-+++ subversion-1.8.0/subversion/tests/cmdline/svntest/main.py	2013-06-24 10:12:05.326171900 +0400
-@@ -278,7 +278,7 @@
- def get_admin_name():
-   "Return name of SVN administrative subdirectory."
- 
--  if (windows or sys.platform == 'cygwin') \
-+  if (windows or sys.platform == 'cygwin' or sys.platform == 'msys') \
-       and 'SVN_ASP_DOT_NET_HACK' in os.environ:
-     return '_svn'
-   else:
-@@ -1329,8 +1329,11 @@
- def is_os_cygwin():
-   return sys.platform == 'cygwin'
- 
-+def is_os_msys():
-+  return sys.platform == 'msys'
-+
- def is_fs_case_insensitive():
--  return (is_os_darwin() or is_os_windows() or is_os_cygwin())
-+  return (is_os_darwin() or is_os_windows() or is_os_cygwin() or is_os_msys())
- 
- def is_threaded_python():
-   return True
