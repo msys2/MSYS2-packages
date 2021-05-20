@@ -1,0 +1,183 @@
+From 56841ec45372877dc2692f5e9cbe0380197cda02 Mon Sep 17 00:00:00 2001
+From: Corinna Vinschen <corinna@vinschen.de>
+Date: Mon, 19 Apr 2021 14:49:14 +0200
+Subject: [PATCH 35/N] Reapply Cygwin: path_conv: Try to handle native
+ symlinks more sanely
+
+For local paths, add a check if the inner path components contain native
+symlinks or junctions.  Compare the incoming path with the path returned
+by NtQueryInformationFile(FileNameInformation).  If they differ, there
+must be at least one native symlink or junction in the path.  If so,
+treat the currently evaluated file as non-existant.  This forces
+path_conv::check to backtrack inner path components until we eliminated
+all native symlinks or junctions and have a normalized path.
+
+Signed-off-by: Corinna Vinschen <corinna@vinschen.de>
+(cherry picked from commits 456c3a46386f38887407603b2c64b7f63a4871c5,
+13fd26ecf5ca8417146d57b45aed0133435c3497 and
+19d59ce75d5301ae167b421111d77615eb307aa7)
+---
+ winsup/cygwin/dcrt0.cc   |   6 +++
+ winsup/cygwin/globals.cc |   2 +
+ winsup/cygwin/path.cc    | 107 +++++++++++++++++++++++++++++++++++----
+ 3 files changed, 105 insertions(+), 10 deletions(-)
+
+diff --git a/winsup/cygwin/dcrt0.cc b/winsup/cygwin/dcrt0.cc
+index 4683972..579158a 100644
+--- a/winsup/cygwin/dcrt0.cc
++++ b/winsup/cygwin/dcrt0.cc
+@@ -742,6 +742,12 @@ init_windows_system_directory ()
+ 	  system_wow64_directory[system_wow64_directory_length++] = L'\\';
+ 	  system_wow64_directory[system_wow64_directory_length] = L'\0';
+ 	}
++      /* We need the Windows dir in path.cc. */
++      wcscpy (windows_directory, windows_system_directory);
++      windows_directory_length = windows_system_directory_length - 1;
++      windows_directory[windows_directory_length] = L'\0';
++      while (windows_directory[windows_directory_length - 1] != L'\\')
++	windows_directory[--windows_directory_length] = L'\0';
+ #endif /* __i386__ */
+     }
+ }
+diff --git a/winsup/cygwin/globals.cc b/winsup/cygwin/globals.cc
+index 67103f4..a729e70 100644
+--- a/winsup/cygwin/globals.cc
++++ b/winsup/cygwin/globals.cc
+@@ -26,6 +26,8 @@ UINT windows_system_directory_length;
+ #ifdef __i386__
+ WCHAR system_wow64_directory[MAX_PATH];
+ UINT system_wow64_directory_length;
++WCHAR windows_directory[MAX_PATH];
++UINT windows_directory_length;
+ #endif /* __i386__ */
+ WCHAR global_progname[NT_MAX_PATH];
+ 
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 561d1ac..4ebaf4d 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -1017,17 +1017,25 @@ path_conv::check (const char *src, unsigned opt,
+ 		    }
+ 		  goto out;	// file found
+ 		}
+-	      /* Found a symlink if symlen > 0.  If component == 0, then the
+-		 src path itself was a symlink.  If !follow_mode then
+-		 we're done.  Otherwise we have to insert the path found
+-		 into the full path that we are building and perform all of
+-		 these operations again on the newly derived path. */
+-	      else if (symlen > 0)
++	      /* Found a symlink if symlen > 0 or short-circuited a native
++		 symlink or junction point if symlen < 0.
++		 If symlen > 0 and component == 0, then the src path itself
++		 was a symlink.  If !follow_mode then we're done.  Otherwise
++		 we have to insert the path found into the full path that we
++		 are building and perform all of these operations again on the
++		 newly derived path. */
++	      else if (symlen)
+ 		{
+-		  if (component == 0
+-		      && (!(opt & PC_SYM_FOLLOW)
+-			  || (is_winapi_reparse_point ()
+-			      && (opt & PC_SYM_NOFOLLOW_REP))))
++		  /* if symlen is negativ, the actual native symlink or
++		      junction point is an inner path component.  Just fix up
++		      symlen to be positive and don't try any PC_SYM_FOLLOW
++		      handling. */
++		  if (symlen < 0)
++		    symlen = -symlen;
++		  else if (component == 0
++			   && (!(opt & PC_SYM_FOLLOW)
++			       || (is_winapi_reparse_point ()
++				   && (opt & PC_SYM_NOFOLLOW_REP))))
+ 		    {
+ 		      /* Usually a trailing slash requires to follow a symlink,
+ 			 even with PC_SYM_NOFOLLOW.  The reason is that "foo/"
+@@ -3596,6 +3604,85 @@ restart:
+ 	    break;
+ 	}
+ 
++      /* Check if the inner path components contain native symlinks or
++	 junctions, or if the drive is a virtual drive.  Compare incoming
++	 path with path returned by GetFinalPathNameByHandleA.  If they
++	 differ, return the final path as symlink content and set symlen
++	 to a negative value.  This forces path_conv::check to restart
++	 symlink evaluation with the new path. */
++#ifdef __i386__
++      /* On WOW64, ignore any potential problems if the path is inside
++	 the Windows dir to avoid false positives for stuff under File
++	 System Redirector control.  Believe it or not, but even
++	 GetFinalPathNameByHandleA returns the converted path for the
++	 Sysnative dir.  I. e.
++
++	     C:\Windows\Sysnative --> C:\Windows\System32
++
++	 This is obviously wrong when using this path for further
++	 file manipulation because the non-final path points to another
++	 file than the final path.  Oh well... */
++      if (!fs.is_remote_drive () && wincap.is_wow64 ())
++	{
++	  static UNICODE_STRING wpath;
++	  UNICODE_STRING udpath;
++
++	  /* Create UNICODE_STRING for Windows dir. */
++	  RtlInitCountedUnicodeString (&wpath, windows_directory,
++			windows_directory_length * sizeof (WCHAR));
++	  /* Create a UNICODE_STRING from incoming path, splitting
++	     off the leading "\\??\\" */
++	  RtlInitCountedUnicodeString (&udpath, upath.Buffer + 4,
++			upath.Length - 4 * sizeof (WCHAR));
++	  /* Are we below Windows dir?  Skip the check for inner
++	     symlinks. */
++	  if (RtlEqualUnicodePathPrefix (&udpath, &wpath, TRUE))
++	    goto file_not_symlink;
++	}
++#endif /* __i386__ */
++      {
++	PWCHAR fpbuf = tp.w_get ();
++	DWORD ret;
++
++	ret = GetFinalPathNameByHandleW (h, fpbuf, NT_MAX_PATH, 0);
++	if (ret)
++	  {
++	    UNICODE_STRING fpath;
++
++	    RtlInitCountedUnicodeString (&fpath, fpbuf, ret * sizeof (WCHAR));
++	    fpbuf[1] = L'?';	/* \\?\ --> \??\ */
++	    if (!RtlEqualUnicodeString (&upath, &fpath, !!ci_flag))
++	      {
++		issymlink = true;
++		/* upath.Buffer is big enough and unused from this point on.
++		   Reuse it here, avoiding yet another buffer allocation. */
++		char *nfpath = (char *) upath.Buffer;
++		sys_wcstombs (nfpath, NT_MAX_PATH, fpbuf);
++		res = posixify (nfpath);
++
++		/* If the incoming path consisted of a drive prefix only,
++		   we just handle a virtual drive, created with, e.g.
++
++		     subst X: C:\foo\bar
++
++		   Treat it like a symlink.  This is required to tell an
++		   lstat caller that the "drive" is actually pointing
++		   somewhere else, thus, it's a symlink in POSIX speak. */
++		if (upath.Length == 14)	/* \??\X:\ */
++		  {
++		    fileattr &= ~FILE_ATTRIBUTE_DIRECTORY;
++		    path_flags |= PATH_SYMLINK;
++		  }
++		/* For final paths differing in inner path components return
++		   length as negative value.  This informs path_conv::check
++		   to skip realpath handling on the last path component. */
++		else
++		  res = -res;
++		break;
++	      }
++	  }
++      }
++
+     /* Normal file. */
+     file_not_symlink:
+       issymlink = false;
+-- 
+2.31.1
+
