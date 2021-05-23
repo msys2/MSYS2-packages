@@ -1,9 +1,25 @@
-This makes _alpm_filelist_difference() and _alpm_filelist_intersection() take
-into account that filenames are case insensitive (only for ASCII, unicode is
-still broken). This fixes conflict detection in case two packages share the
-same filename with a different case.
---- pacman-5.1.1-orig/lib/libalpm/filelist.c	2018-05-14 02:02:18.000000000 +0200
-+++ pacman-5.1.1/lib/libalpm/filelist.c	2018-09-28 13:05:47.398469000 +0200
+From bb14cd639cef1da7e51b9f2a4351725b3618082a Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Fri, 21 May 2021 22:57:25 +0200
+Subject: [PATCH 10/N] pacman: make file list comparisons between packages
+ case insensitive
+
+In case a package gets upgrade and a filename has changed case this allows
+the upgrade to go through without any conflicts.
+
+Similarly in case two different packages contain the same file with
+a different case this makes it correctly detect a conflict.
+
+This only handles ASCII parts of paths, so Unicode filenames still can
+lead to invalid conflict detection.
+---
+ lib/libalpm/filelist.c | 47 +++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 42 insertions(+), 5 deletions(-)
+
+diff --git a/lib/libalpm/filelist.c b/lib/libalpm/filelist.c
+index 4a534b0..34a771a 100644
+--- a/lib/libalpm/filelist.c
++++ b/lib/libalpm/filelist.c
 @@ -25,6 +25,43 @@
  #include "filelist.h"
  #include "util.h"
@@ -48,7 +64,7 @@ same filename with a different case.
  /* Returns the difference of the provided two lists of files.
   * Pre-condition: both lists are sorted!
   * When done, free the list but NOT the contained data.
-@@ -39,7 +76,7 @@
+@@ -39,7 +76,7 @@ alpm_list_t *_alpm_filelist_difference(alpm_filelist_t *filesA,
  		char *strA = filesA->files[ctrA].name;
  		char *strB = filesB->files[ctrB].name;
  
@@ -57,7 +73,7 @@ same filename with a different case.
  		if(cmp < 0) {
  			/* item only in filesA, qualifies as a difference */
  			ret = alpm_list_add(ret, strA);
-@@ -63,7 +100,7 @@
+@@ -63,7 +100,7 @@ alpm_list_t *_alpm_filelist_difference(alpm_filelist_t *filesA,
  
  static int _alpm_filelist_pathcmp(const char *p1, const char *p2)
  {
@@ -66,7 +82,7 @@ same filename with a different case.
  		p1++;
  		p2++;
  	}
-@@ -75,7 +112,7 @@
+@@ -75,7 +112,7 @@ static int _alpm_filelist_pathcmp(const char *p1, const char *p2)
  		p1++;
  	}
  
@@ -75,7 +91,7 @@ same filename with a different case.
  }
  
  /* Returns the intersection of the provided two lists of files.
-@@ -115,7 +152,7 @@
+@@ -115,7 +152,7 @@ static int _alpm_files_cmp(const void *f1, const void *f2)
  {
  	const alpm_file_t *file1 = f1;
  	const alpm_file_t *file2 = f2;
@@ -84,7 +100,7 @@ same filename with a different case.
  }
  
  alpm_file_t SYMEXPORT *alpm_filelist_contains(alpm_filelist_t *filelist,
-@@ -137,7 +174,7 @@
+@@ -137,7 +174,7 @@ void _alpm_filelist_sort(alpm_filelist_t *filelist)
  {
  	size_t i;
  	for(i = 1; i < filelist->count; i++) {
@@ -93,3 +109,6 @@ same filename with a different case.
  			/* filelist is not pre-sorted */
  			qsort(filelist->files, filelist->count,
  					sizeof(alpm_file_t), _alpm_files_cmp);
+-- 
+2.31.1
+
