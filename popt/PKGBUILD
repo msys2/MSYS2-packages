@@ -1,0 +1,56 @@
+# Maintainer: Jeremy Drake <github@jdrake.com>
+
+pkgname=popt
+pkgver=1.18
+pkgrel=1
+pkgdesc="A command-line option parser library"
+arch=('i686' 'x86_64')
+url="http://rpm.org/"
+license=('custom')
+depends=('libiconv' 'libintl')
+makedepends=('gcc'
+             'gettext-devel'
+             'libiconv-devel'
+             'make')
+options=('staticlibs') #'debug' '!strip')
+source=(http://ftp.rpm.org/popt/releases/popt-1.x/${pkgname}-${pkgver}.tar.gz
+        1.18-cygwin.patch
+        1.18-testit.patch)
+sha256sums=('5159bc03a20b28ce363aa96765f37df99ea4d8850b1ece17d1e6ad5c24fdc5d1'
+            'cbc8c5266dd3d4564fe950ff5ef497d9bc04a2344c845a5e94108067878fd529'
+            '1d7dd99eac24225bcd1ae1a195692ae1a95ed68409922b2d93c89a975c6f66ee')
+
+prepare(){
+  cd ${pkgname}-${pkgver}
+  # Cygwin patches
+  patch -Np1 -i "${srcdir}"/1.18-cygwin.patch
+  patch -Np1 -i "${srcdir}"/1.18-testit.patch
+  autoreconf -fi
+}
+
+build() {
+  mkdir -p "${srcdir}/build-${CHOST}"
+  cd "${srcdir}/build-${CHOST}"
+
+  ../${pkgname}-${pkgver}/configure \
+    --prefix=/usr \
+    --build=${CHOST} \
+    --host=${CHOST} \
+    --target=${CHOST} \
+    --enable-shared \
+    --enable-static
+
+  make
+}
+
+check() {
+  cd "${srcdir}/build-${CHOST}"
+  make check
+}
+
+package() {
+  cd "${srcdir}/build-${CHOST}"
+  make DESTDIR="${pkgdir}" install
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  install -Dm644 COPYING "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
