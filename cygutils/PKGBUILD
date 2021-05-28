@@ -1,0 +1,52 @@
+# Maintainer: Jeremy Drake <github@jdrake.com>
+
+pkgname=cygutils
+pkgver=1.4.16
+pkgrel=1
+pkgdesc="${pkgname} is a collection of simple utilities"
+arch=('i686' 'x86_64')
+url="https://cygwin.org/"
+license=('GPL')
+#options=('debug' '!strip')
+# Nothing in this package directly depends on libintl/libiconv, only indirectly
+# via popt
+depends=('gcc-libs' 'popt')
+makedepends=('gcc'
+             'gettext-devel'
+             'git'
+             'libiconv-devel'
+             'make')
+source=(${pkgname}-${pkgver}::git+https://sourceware.org/git/cygwin-apps/${pkgname}.git#tag=v${pkgver//./_}
+        msysize.patch
+        0001-cygdrop-fix-return-type-of-usageCore.patch)
+sha256sums=(SKIP
+            '814b5a1df4f5a5071387feb948a951ba3756e3be13d405bf8180a80cc6443ac0'
+            'dbc669301dfc54411da1f5128738a9750af5b4dcf6bd254db52ea2c628515851')
+
+prepare(){
+  cd ${pkgname}-${pkgver}
+  patch -p1 -i ${srcdir}/msysize.patch
+  patch -p1 -i ${srcdir}/0001-cygdrop-fix-return-type-of-usageCore.patch
+
+  autoreconf -fi
+}
+
+build() {
+  mkdir -p "${srcdir}/build-${CHOST}"
+  cd "${srcdir}/build-${CHOST}"
+
+  ../${pkgname}-${pkgver}/configure \
+    --prefix=/usr \
+    --build=${CHOST} \
+    --host=${CHOST} \
+    --target=${CHOST}
+
+  make
+}
+
+package() {
+  cd "${srcdir}/build-${CHOST}"
+  make DESTDIR="${pkgdir}" install
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  install -Dm644 COPYING "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
