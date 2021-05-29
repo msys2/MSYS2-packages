@@ -1,0 +1,69 @@
+diff --git a/source/pacboy/pacboy.sh b/source/pacboy/pacboy.sh
+index bac637a..2337384 100644
+--- a/source/pacboy/pacboy.sh
++++ b/source/pacboy/pacboy.sh
+@@ -13,11 +13,21 @@ help_and_exit() {
+         $(basename "$0") [command] [arguments]
+         Arguments will be passed to pacman or pkgfile after translation:
+ 
+-        For 64-bit MSYS2, name:i means i686-only
+-        For 64-bit MSYS2, name:x means x86_64-only
+-        For MSYS shell, name:m means mingw-w64
+-        For all shells, name: disables any translation for name
+-        For all shells, repository::name means repository/name
++        For 64-bit MSYS2 shell:
++            name:i means i686-only
++            name:x means x86_64-only
++            name:z means clang-i686-only
++            name:c means clang-x86_64-only
++            name:u means ucrt-x86_64-only
++            name:a means clang-aarch64-only
++
++        For MSYS shell:
++            name:m means mingw-w64
++            name:l means mingw-w64-clang
++			
++        For all shells:
++            name: disables any translation for name
++            repository::name means repository/name
+ 
+     Commands:
+         sync        Shorthand for --sync or --upgrade
+@@ -82,7 +92,11 @@ packages() {
+         case "${package}" in
+             mingw-w64-x86_64-*) package="${package/mingw-w64-x86_64-/}" ;;
+             mingw-w64-i686-*)   package="${package/mingw-w64-i686-/}" ;;
+-            *)                  package="${package}:"
++            mingw-w64-clang-x86_64-*) package="${package/mingw-w64-clang-x86_64-/}" ;;
++            mingw-w64-clang-i686-*)   package="${package/mingw-w64-clang-i686-/}" ;;
++            mingw-w64-ucrt-x86_64-*) package="${package/mingw-w64-ucrt-x86_64-/}" ;;
++            mingw-w64-clang-aarch64-*) package="${package/mingw-w64-clang-aarch64-/}" ;;
++            *) package="${package}:"
+         esac
+         echo "${package}"
+     done
+@@ -147,7 +161,9 @@ machine=$(uname -m)
+ case "${MSYSTEM}" in
+     MINGW32) architecture='i686' ;;
+     MINGW64) architecture='x86_64' ;;
+-    *)       architecture="${machine}"
++    CLANG64) architecture='clang-x86_64' ;;
++    UCRT64) architecture='ucrt-x86_64' ;;
++    *) architecture="${machine}"
+ esac
+ test -z "${1}" && help_and_exit
+ 
+@@ -194,7 +210,12 @@ for argument in "${arguments[@]}"; do
+      *:i) raw_argument=(mingw-w64-i686-${argument%:i}) ;;
+      *:x) raw_argument=(mingw-w64-x86_64-${argument%:x}) ;;
+      *:m) raw_argument=(mingw-w64-x86_64-${argument%:m} mingw-w64-i686-${argument%:m}) ;;
+-       *) parse_mingw_argument ;;
++     *:u) raw_argument=(mingw-w64-ucrt-x86_64-${argument%:u}) ;;
++     *:z) raw_argument=(mingw-w64-clang-i686-${argument%:z}) ;;
++     *:c) raw_argument=(mingw-w64-clang-x86_64-${argument%:c}) ;;
++     *:l) raw_argument=(mingw-w64-clang-x86_64-${argument%:l} mingw-w64-clang-i686-${argument%:l}) ;;
++     *:a) raw_argument=(mingw-w64-clang-aarch64-${argument%:a}) ;;
++     *) parse_mingw_argument ;;
+     esac
+     [[ $argument =~ ^(-h|-[^-].*h|--help$) ]] && help_tip='true'
+     for raw_argument in "${raw_argument[@]}"; do
