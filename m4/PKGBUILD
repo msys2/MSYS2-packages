@@ -1,45 +1,77 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=m4
-pkgver=1.4.18
-pkgrel=2
+pkgver=1.4.19
+pkgrel=1
 pkgdesc="The GNU macro processor"
 arch=('i686' 'x86_64')
 url="https://www.gnu.org/software/m4"
 license=('GPL3')
 groups=('base-devel')
-depends=('bash' 'gcc-libs')
-install=m4.install
+depends=('bash' 'gcc-libs' 'libiconv')
+makedepends=('libiconv-devel')
 source=(https://ftp.gnu.org/gnu/m4/$pkgname-$pkgver.tar.xz{,.sig}
-        m4-1.4.18-msys2.patch)
-sha256sums=('f2c1e86ca0a404ff281631bdc8377638992744b175afb806e25871a24a934e07'
+        '0001-m4-1.4.19-tests-refine-error-messages.patch'
+        '0002-m4-1.4.19-skip-tests-when-temp-directories-cannot-be-generated.patch')
+sha256sums=('63aede5c6d33b6d9b13511cd0be2cac046f2e70fd0a07aa9573a04a82783af96'
             'SKIP'
-            'fbdcb59d940cf5eeba79fdf8935bdb04e6c10b69c981d8ca6fa3a8c35b1905cb')
+            'b413328e2a06ea5aba102ef28038b1b0f3b4a083ef952bf37e58ec2823a14cd0'
+            '6be0fbe1f9cdf2765869a9dbf97e6bac8221c16d63df6639af27cb592567dcd8')
 validpgpkeys=('71C2CC22B1C4602927D2F3AAA7A16B4A2527436A')  # Eric Blake <eblake@redhat.com>
 
-prepare() {
-  cd ${srcdir}/$pkgname-$pkgver
-  patch -p1 -i ${srcdir}/m4-1.4.18-msys2.patch
 
-  autoreconf -fi
+prepare() {
+  pushd "${srcdir}/${pkgname}-${pkgver}"
+
+    patch -p1 -i '../0001-m4-1.4.19-tests-refine-error-messages.patch'
+    patch -p1 -i '../0002-m4-1.4.19-skip-tests-when-temp-directories-cannot-be-generated.patch'
+
+  popd
 }
 
 build() {
-  cd ${srcdir}/$pkgname-$pkgver
-  ./configure \
-    --prefix=/usr \
-    --sysconfdir=/etc \
-    --localstatedir=/var \
-    --with-syscmd-shell=/usr/bin/sh
-  make
+  mkdir -p build-${pkgname}-${pkgver}_${MSYSTEM_CHOST}
+  pushd build-${pkgname}-${pkgver}_${MSYSTEM_CHOST}
+    # fool configure that gcc is CYGWIN (which it essentially is)
+    ../${pkgname}-${pkgver}/configure -C \
+      --host="$(gcc -dumpmachine | sed 's|-msys$|-cygwin|')" CC=gcc \
+      --prefix=/usr \
+      --sysconfdir=/etc \
+      --localstatedir=/var \
+      --with-syscmd-shell=/usr/bin/sh \
+      --disable-nls \
+      --enable-threads
+
+    make
+
+  popd
 }
 
 check() {
-  cd ${srcdir}/$pkgname-$pkgver
-  make check
+  pushd build-${pkgname}-${pkgver}_${MSYSTEM_CHOST}
+
+    # m4 1.4.19: all CHECKS succeeded except for the following tests related
+    # to GNULIB, only, which are expected to fail here:
+    # - failing access right permissions
+    XFAIL_TESTS='test-access.exe test-rename.exe'
+    # - raise(-1) returns 0 (instead of non-zero value)
+    XFAIL_TESTS+=' test-raise.exe'
+    # - time-stamp mismatch
+    XFAIL_TESTS+=' test-stat-time.exe'
+    if ! make check XFAIL_TESTS="$XFAIL_TESTS"
+    then
+      _rc=$?
+      cat tests/test-suite.log
+      exit ${_rc}
+    fi
+
+  popd
 }
 
 package() {
-  cd ${srcdir}/$pkgname-$pkgver
-  make prefix=${pkgdir}/usr install
+  make -C build-${pkgname}-${pkgver}_${MSYSTEM_CHOST} DESTDIR="${pkgdir}" install
+
+  # install license
+  mkdir -p "${pkgdir}/usr/share/licenses/${pkgname}"
+  cp -pv "${pkgname}-${pkgver}/COPYING" "${pkgdir}/usr/share/licenses/${pkgname}"
 }
