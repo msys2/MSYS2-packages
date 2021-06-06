@@ -1,7 +1,31 @@
-diff -Naur pacman-5.1.0-orig/lib/libalpm/add.c pacman-5.1.0/lib/libalpm/add.c
---- pacman-5.1.0-orig/lib/libalpm/add.c	2018-05-14 03:02:18.000000000 +0300
-+++ pacman-5.1.0/lib/libalpm/add.c	2018-06-21 12:53:58.832056200 +0300
-@@ -656,7 +658,10 @@
+From 66df8638f4b4b83905b939027de4fdae990c666e Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Fri, 21 May 2021 22:53:34 +0200
+Subject: [PATCH 04/N] Remove ldconfig
+
+---
+ lib/libalpm/add.c                |  9 ++++++++-
+ lib/libalpm/remove.c             |  4 ++++
+ lib/libalpm/util.c               |  2 ++
+ test/pacman/ldconfig.stub        |  4 ----
+ test/pacman/meson.build          |  4 ----
+ test/pacman/pactest.py           |  4 ----
+ test/pacman/pmtest.py            |  8 +-------
+ test/pacman/tests/TESTS          |  3 ---
+ test/pacman/tests/ldconfig001.py |  9 ---------
+ test/pacman/tests/ldconfig002.py | 13 -------------
+ test/pacman/tests/ldconfig003.py |  9 ---------
+ 11 files changed, 15 insertions(+), 54 deletions(-)
+ delete mode 100755 test/pacman/ldconfig.stub
+ delete mode 100644 test/pacman/tests/ldconfig001.py
+ delete mode 100644 test/pacman/tests/ldconfig002.py
+ delete mode 100644 test/pacman/tests/ldconfig003.py
+
+diff --git a/lib/libalpm/add.c b/lib/libalpm/add.c
+index 1e330ca..d30777a 100644
+--- a/lib/libalpm/add.c
++++ b/lib/libalpm/add.c
+@@ -663,7 +663,10 @@ cleanup:
  int _alpm_upgrade_packages(alpm_handle_t *handle)
  {
  	size_t pkg_count, pkg_current;
@@ -12,8 +36,8 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/add.c pacman-5.1.0/lib/libalpm/add.c
 +	int ret = 0;
  	alpm_list_t *targ;
  	alpm_trans_t *trans = handle->trans;
-
-@@ -679,18 +684,22 @@
+ 
+@@ -686,18 +689,22 @@ int _alpm_upgrade_packages(alpm_handle_t *handle)
  			/* something screwed up on the commit, abort the trans */
  			trans->state = STATE_INTERRUPTED;
  			handle->pm_errno = ALPM_ERR_TRANS_ABORT;
@@ -23,23 +47,24 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/add.c pacman-5.1.0/lib/libalpm/add.c
 +#endif
  			ret = -1;
  		}
-
+ 
  		pkg_current++;
  	}
-
+ 
 +#ifndef __MSYS__
  	if(!skip_ldconfig) {
  		/* run ldconfig if it exists */
  		_alpm_ldconfig(handle);
  	}
 +#endif
-
+ 
  	return ret;
  }
-diff -Naur pacman-5.1.0-orig/lib/libalpm/remove.c pacman-5.1.0/lib/libalpm/remove.c
---- pacman-5.1.0-orig/lib/libalpm/remove.c	2018-05-14 03:02:18.000000000 +0300
-+++ pacman-5.1.0/lib/libalpm/remove.c	2018-06-21 12:53:58.852056200 +0300
-@@ -772,18 +772,22 @@
+diff --git a/lib/libalpm/remove.c b/lib/libalpm/remove.c
+index e891550..e0617cf 100644
+--- a/lib/libalpm/remove.c
++++ b/lib/libalpm/remove.c
+@@ -773,18 +773,22 @@ int _alpm_remove_packages(alpm_handle_t *handle, int run_ldconfig)
  		if(_alpm_remove_single_package(handle, pkg, NULL,
  					targ_count, pkg_count) == -1) {
  			handle->pm_errno = ALPM_ERR_TRANS_ABORT;
@@ -49,50 +74,76 @@ diff -Naur pacman-5.1.0-orig/lib/libalpm/remove.c pacman-5.1.0/lib/libalpm/remov
 +#endif
  			ret = -1;
  		}
-
+ 
  		targ_count++;
  	}
-
+ 
 +#ifndef __MSYS__
  	if(run_ldconfig) {
  		/* run ldconfig if it exists */
  		_alpm_ldconfig(handle);
  	}
 +#endif
-
+ 
  	return ret;
  }
-diff -Naur pacman-5.1.0-orig/lib/libalpm/util.c pacman-5.1.0/lib/libalpm/util.c
---- pacman-5.1.0-orig/lib/libalpm/util.c	2018-05-14 03:02:18.000000000 +0300
-+++ pacman-5.1.0/lib/libalpm/util.c	2018-06-21 12:53:58.852056200 +0300
-@@ -743,6 +743,7 @@
+diff --git a/lib/libalpm/util.c b/lib/libalpm/util.c
+index 6f6cd2e..87c3acd 100644
+--- a/lib/libalpm/util.c
++++ b/lib/libalpm/util.c
+@@ -788,6 +788,7 @@ cleanup:
  	return retval;
  }
-
+ 
 +#ifndef __MSYS__
  /** Run ldconfig in a chroot.
   * @param handle the context handle
   * @return 0 on success, 1 on error
-@@ -766,6 +767,7 @@
-
+@@ -811,6 +812,7 @@ int _alpm_ldconfig(alpm_handle_t *handle)
+ 
  	return 0;
  }
 +#endif
-
+ 
  /** Helper function for comparing strings using the alpm "compare func"
   * signature.
-diff -Naur pacman-5.1.0-orig/test/pacman/ldconfig.stub pacman-5.1.0/test/pacman/ldconfig.stub
---- pacman-5.1.0-orig/test/pacman/ldconfig.stub	2017-12-13 13:47:39.000000000 +0300
-+++ pacman-5.1.0/test/pacman/ldconfig.stub	1970-01-01 03:00:00.000000000 +0300
+diff --git a/test/pacman/ldconfig.stub b/test/pacman/ldconfig.stub
+deleted file mode 100755
+index d261a04..0000000
+--- a/test/pacman/ldconfig.stub
++++ /dev/null
 @@ -1,4 +0,0 @@
 -#!/bin/sh
 -# A simple stub to copy into the chroot to fake ldconfig.
 -# Simply appends a line to /etc/ld.so.cache if called.
 -echo "ldconfig called" >> /etc/ld.so.cache
-diff -Naur pacman-5.1.0-orig/test/pacman/pactest.py pacman-5.1.0/test/pacman/pactest.py
---- pacman-5.1.0-orig/test/pacman/pactest.py	2018-05-14 03:02:18.000000000 +0300
-+++ pacman-5.1.0/test/pacman/pactest.py	2018-06-21 13:36:21.136744900 +0300
-@@ -94,9 +94,6 @@
+diff --git a/test/pacman/meson.build b/test/pacman/meson.build
+index 4e87b4f..dcc7800 100644
+--- a/test/pacman/meson.build
++++ b/test/pacman/meson.build
+@@ -79,9 +79,6 @@ pacman_tests = [
+   'tests/ignore006.py',
+   'tests/ignore007.py',
+   'tests/ignore008.py',
+-  'tests/ldconfig001.py',
+-  'tests/ldconfig002.py',
+-  'tests/ldconfig003.py',
+   'tests/mode001.py',
+   'tests/mode002.py',
+   'tests/mode003.py',
+@@ -336,7 +333,6 @@ foreach input : pacman_tests
+     join_paths(meson.current_source_dir(), 'pactest.py'),
+     '--scriptlet-shell', get_option('scriptlet-shell'),
+     '--bindir', meson.build_root(),
+-    '--ldconfig', LDCONFIG,
+     '--verbose',
+     join_paths(meson.current_source_dir(), input)
+   ]
+diff --git a/test/pacman/pactest.py b/test/pacman/pactest.py
+index bd53b05..ac21840 100755
+--- a/test/pacman/pactest.py
++++ b/test/pacman/pactest.py
+@@ -104,9 +104,6 @@ def create_parser():
      parser.add_option("--scriptlet-shell", type = "string",
                        dest = "scriptletshell", default = "/bin/sh",
                        help = "specify path to shell used for install scriptlets")
@@ -102,7 +153,7 @@ diff -Naur pacman-5.1.0-orig/test/pacman/pactest.py pacman-5.1.0/test/pacman/pac
      parser.add_option("--review", action = "store_true",
                        dest = "review", default = False,
                        help = "review test files, test output, and saved logs")
-@@ -135,7 +132,6 @@
+@@ -145,7 +142,6 @@ if __name__ == "__main__":
      env.pacman["valgrind"] = opts.valgrind
      env.pacman["manual-confirm"] = opts.manualconfirm
      env.pacman["scriptlet-shell"] = opts.scriptletshell
@@ -110,10 +161,11 @@ diff -Naur pacman-5.1.0-orig/test/pacman/pactest.py pacman-5.1.0/test/pacman/pac
      env.config["gpg"] = not opts.missing_gpg
      env.config["nls"] = not opts.missing_nls
      env.config["curl"] = not opts.missing_curl
-diff -Naur pacman-5.1.0-orig/test/pacman/pmtest.py pacman-5.1.0/test/pacman/pmtest.py
---- pacman-5.1.0-orig/test/pacman/pmtest.py	2018-05-14 03:02:18.000000000 +0300
-+++ pacman-5.1.0/test/pacman/pmtest.py	2018-06-21 12:53:58.942056300 +0300
-@@ -127,12 +127,10 @@
+diff --git a/test/pacman/pmtest.py b/test/pacman/pmtest.py
+index 5ce752e..a0cc61b 100644
+--- a/test/pacman/pmtest.py
++++ b/test/pacman/pmtest.py
+@@ -129,12 +129,10 @@ class pmtest(object):
          logdir = os.path.join(self.root, os.path.dirname(util.LOGFILE))
          etcdir = os.path.join(self.root, os.path.dirname(util.PACCONF))
          bindir = os.path.join(self.root, "bin")
@@ -127,7 +179,7 @@ diff -Naur pacman-5.1.0-orig/test/pacman/pmtest.py pacman-5.1.0/test/pacman/pmte
          for sys_dir in sys_dirs:
              if not os.path.isdir(sys_dir):
                  vprint("\t%s" % sys_dir[len(self.root)+1:])
-@@ -141,10 +139,6 @@
+@@ -143,10 +141,6 @@ class pmtest(object):
          shutil.copy("/bin/sh", bindir)
          if shell != "bin/sh":
              shutil.copy("/bin/sh", os.path.join(self.root, shell))
@@ -135,12 +187,28 @@ diff -Naur pacman-5.1.0-orig/test/pacman/pmtest.py pacman-5.1.0/test/pacman/pmte
 -            os.path.join(ldconfigdir, ldconfig))
 -        ld_so_conf = open(os.path.join(etcdir, "ld.so.conf"), "w")
 -        ld_so_conf.close()
-
+ 
          # Configuration file
          vprint("    Creating configuration file")
-diff -Naur pacman-5.1.0-orig/test/pacman/tests/ldconfig001.py pacman-5.1.0/test/pacman/tests/ldconfig001.py
---- pacman-5.1.0-orig/test/pacman/tests/ldconfig001.py	2017-12-13 13:47:39.000000000 +0300
-+++ pacman-5.1.0/test/pacman/tests/ldconfig001.py	1970-01-01 03:00:00.000000000 +0300
+diff --git a/test/pacman/tests/TESTS b/test/pacman/tests/TESTS
+index 74c8f67..b29181b 100644
+--- a/test/pacman/tests/TESTS
++++ b/test/pacman/tests/TESTS
+@@ -78,9 +78,6 @@ TESTS += test/pacman/tests/ignore005.py
+ TESTS += test/pacman/tests/ignore006.py
+ TESTS += test/pacman/tests/ignore007.py
+ TESTS += test/pacman/tests/ignore008.py
+-TESTS += test/pacman/tests/ldconfig001.py
+-TESTS += test/pacman/tests/ldconfig002.py
+-TESTS += test/pacman/tests/ldconfig003.py
+ TESTS += test/pacman/tests/mode001.py
+ TESTS += test/pacman/tests/mode002.py
+ TESTS += test/pacman/tests/mode003.py
+diff --git a/test/pacman/tests/ldconfig001.py b/test/pacman/tests/ldconfig001.py
+deleted file mode 100644
+index a97f28c..0000000
+--- a/test/pacman/tests/ldconfig001.py
++++ /dev/null
 @@ -1,9 +0,0 @@
 -self.description = "Make sure ldconfig runs on an upgrade operation"
 -
@@ -151,9 +219,11 @@ diff -Naur pacman-5.1.0-orig/test/pacman/tests/ldconfig001.py pacman-5.1.0/test/
 -
 -self.addrule("PACMAN_RETCODE=0")
 -self.addrule("FILE_EXIST=etc/ld.so.cache")
-diff -Naur pacman-5.1.0-orig/test/pacman/tests/ldconfig002.py pacman-5.1.0/test/pacman/tests/ldconfig002.py
---- pacman-5.1.0-orig/test/pacman/tests/ldconfig002.py	2017-12-13 13:47:39.000000000 +0300
-+++ pacman-5.1.0/test/pacman/tests/ldconfig002.py	1970-01-01 03:00:00.000000000 +0300
+diff --git a/test/pacman/tests/ldconfig002.py b/test/pacman/tests/ldconfig002.py
+deleted file mode 100644
+index 07f2ec6..0000000
+--- a/test/pacman/tests/ldconfig002.py
++++ /dev/null
 @@ -1,13 +0,0 @@
 -self.description = "Make sure ldconfig runs on an upgrade operation"
 -
@@ -168,9 +238,11 @@ diff -Naur pacman-5.1.0-orig/test/pacman/tests/ldconfig002.py pacman-5.1.0/test/
 -self.addrule("PACMAN_RETCODE=0")
 -self.addrule("PKG_VERSION=dummy|1.0-2")
 -self.addrule("FILE_EXIST=etc/ld.so.cache")
-diff -Naur pacman-5.1.0-orig/test/pacman/tests/ldconfig003.py pacman-5.1.0/test/pacman/tests/ldconfig003.py
---- pacman-5.1.0-orig/test/pacman/tests/ldconfig003.py	2017-12-13 13:47:39.000000000 +0300
-+++ pacman-5.1.0/test/pacman/tests/ldconfig003.py	1970-01-01 03:00:00.000000000 +0300
+diff --git a/test/pacman/tests/ldconfig003.py b/test/pacman/tests/ldconfig003.py
+deleted file mode 100644
+index 9b2967e..0000000
+--- a/test/pacman/tests/ldconfig003.py
++++ /dev/null
 @@ -1,9 +0,0 @@
 -self.description = "Make sure ldconfig runs on a sync operation"
 -
@@ -181,36 +253,6 @@ diff -Naur pacman-5.1.0-orig/test/pacman/tests/ldconfig003.py pacman-5.1.0/test/
 -
 -self.addrule("PACMAN_RETCODE=0")
 -self.addrule("FILE_EXIST=etc/ld.so.cache")
-diff -Naur pacman-5.1.0-orig/test/pacman/tests/TESTS pacman-5.1.0/test/pacman/tests/TESTS
---- pacman-5.1.0-orig/test/pacman/tests/TESTS	2018-03-18 05:51:17.000000000 +0300
-+++ pacman-5.1.0/test/pacman/tests/TESTS	2018-06-21 12:53:58.942056300 +0300
-@@ -78,9 +78,6 @@
- TESTS += test/pacman/tests/ignore006.py
- TESTS += test/pacman/tests/ignore007.py
- TESTS += test/pacman/tests/ignore008.py
--TESTS += test/pacman/tests/ldconfig001.py
--TESTS += test/pacman/tests/ldconfig002.py
--TESTS += test/pacman/tests/ldconfig003.py
- TESTS += test/pacman/tests/mode001.py
- TESTS += test/pacman/tests/mode002.py
- TESTS += test/pacman/tests/mode003.py
---- pacman-5.2.1/test/pacman/meson.build.orig	2019-08-12 03:26:54.000000000 +0200
-+++ pacman-5.2.1/test/pacman/meson.build	2020-05-16 17:14:19.986575000 +0200
-@@ -79,9 +79,6 @@
-   'tests/ignore006.py',
-   'tests/ignore007.py',
-   'tests/ignore008.py',
--  'tests/ldconfig001.py',
--  'tests/ldconfig002.py',
--  'tests/ldconfig003.py',
-   'tests/mode001.py',
-   'tests/mode002.py',
-   'tests/mode003.py',
-@@ -336,7 +333,6 @@
-     join_paths(meson.current_source_dir(), 'pactest.py'),
-     '--scriptlet-shell', get_option('scriptlet-shell'),
-     '--bindir', meson.build_root(),
--    '--ldconfig', LDCONFIG,
-     '--verbose',
-     join_paths(meson.current_source_dir(), input)
-   ]
+-- 
+2.31.1
+

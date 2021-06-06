@@ -1,18 +1,126 @@
-diff -Naur pacman-5.1.0-orig/src/pacman/sighandler.c pacman-5.1.0/src/pacman/sighandler.c
---- pacman-5.1.0-orig/src/pacman/sighandler.c	2018-05-14 03:02:18.000000000 +0300
-+++ pacman-5.1.0/src/pacman/sighandler.c	2018-06-21 12:53:58.922056300 +0300
+From 16ca714fdcce63c7bc5b51616ccb4a56e19ec537 Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Fri, 21 May 2021 22:52:38 +0200
+Subject: [PATCH 03/N] Core update
+
+---
+ lib/libalpm/alpm.h      |   9 +++
+ lib/libalpm/package.c   |  16 +++++
+ lib/libalpm/sync.c      |  24 +++++++
+ src/pacman/sighandler.c |  14 ++++
+ src/pacman/sync.c       | 140 ++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 203 insertions(+)
+
+diff --git a/lib/libalpm/alpm.h b/lib/libalpm/alpm.h
+index fd207b5..2219f5e 100644
+--- a/lib/libalpm/alpm.h
++++ b/lib/libalpm/alpm.h
+@@ -1506,6 +1506,15 @@ int alpm_trans_release(alpm_handle_t *handle);
+  * @return 0 on success, -1 on error (pm_errno is set accordingly)
+  */
+ int alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade);
++#ifdef __MSYS__
++int alpm_sync_sysupgrade_core(alpm_handle_t *handle, int enable_downgrade);
++
++/** Informs whether a package is a core package.
++ * @param pkg the package to check
++ * @return non-zero if this is a core package, zero otherwise
++ */
++int alpm_pkg_is_core_package(const alpm_pkg_t *pkg);
++#endif
+ 
+ /** Add a package to the transaction.
+  * If the package was loaded by alpm_pkg_load(), it will be freed upon
+diff --git a/lib/libalpm/package.c b/lib/libalpm/package.c
+index 510d812..ed46c28 100644
+--- a/lib/libalpm/package.c
++++ b/lib/libalpm/package.c
+@@ -793,3 +793,19 @@ int SYMEXPORT alpm_pkg_should_ignore(alpm_handle_t *handle, alpm_pkg_t *pkg)
+ 
+ 	return 0;
+ }
++
++#ifdef __MSYS__
++int SYMEXPORT alpm_pkg_is_core_package(const alpm_pkg_t *pkg)
++{
++	if (pkg == NULL)
++		return 0;
++	return
++		strcmp(pkg->name, "bash")                == 0 ||
++		strcmp(pkg->name, "filesystem")          == 0 ||
++		strcmp(pkg->name, "mintty")              == 0 ||
++		strcmp(pkg->name, "msys2-runtime")       == 0 ||
++		strcmp(pkg->name, "msys2-runtime-devel") == 0 ||
++		strcmp(pkg->name, "pacman")              == 0 ||
++		strcmp(pkg->name, "pacman-mirrors")      == 0;
++}
++#endif
+diff --git a/lib/libalpm/sync.c b/lib/libalpm/sync.c
+index a596945..bb95570 100644
+--- a/lib/libalpm/sync.c
++++ b/lib/libalpm/sync.c
+@@ -201,7 +201,12 @@ static alpm_list_t *check_replacers(alpm_handle_t *handle, alpm_pkg_t *lpkg,
+ }
+ 
+ /** Search for packages to upgrade and add them to the transaction. */
++#ifdef __MSYS__
++static
++int SYMEXPORT do_alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade, int core_update)
++#else
+ int SYMEXPORT alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade)
++#endif
+ {
+ 	alpm_list_t *i, *j;
+ 	alpm_trans_t *trans;
+@@ -215,6 +220,13 @@ int SYMEXPORT alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade)
+ 	for(i = _alpm_db_get_pkgcache(handle->db_local); i; i = i->next) {
+ 		alpm_pkg_t *lpkg = i->data;
+ 
++#ifdef __MSYS__
++		/* Skip regular packages in core update, and core packages in regular update */
++		if(core_update != alpm_pkg_is_core_package(lpkg)) {
++			continue;
++		}
++#endif
++
+ 		if(alpm_pkg_find(trans->remove, lpkg->name)) {
+ 			_alpm_log(handle, ALPM_LOG_DEBUG, "%s is marked for removal -- skipping\n", lpkg->name);
+ 			continue;
+@@ -256,6 +268,18 @@ int SYMEXPORT alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade)
+ 	return 0;
+ }
+ 
++#ifdef __MSYS__
++int SYMEXPORT alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade)
++{
++	return do_alpm_sync_sysupgrade(handle, enable_downgrade, 0);
++}
++
++int SYMEXPORT alpm_sync_sysupgrade_core(alpm_handle_t *handle, int enable_downgrade)
++{
++	return do_alpm_sync_sysupgrade(handle, enable_downgrade, 1);
++}
++#endif
++
+ /** Find group members across a list of databases.
+  * If a member exists in several databases, only the first database is used.
+  * IgnorePkg is also handled.
+diff --git a/src/pacman/sighandler.c b/src/pacman/sighandler.c
+index 46e6481..c152eea 100644
+--- a/src/pacman/sighandler.c
++++ b/src/pacman/sighandler.c
 @@ -21,6 +21,10 @@
  #include <signal.h>
  #include <unistd.h>
-
+ 
 +#ifdef __MSYS__
 +#include <termios.h>
 +#endif
 +
  #include <alpm.h>
-
+ 
  #include "conf.h"
-@@ -44,6 +48,9 @@
+@@ -53,6 +57,9 @@ static void _reset_handler(int signum)
   */
  static void soft_interrupt_handler(int signum)
  {
@@ -22,7 +130,7 @@ diff -Naur pacman-5.1.0-orig/src/pacman/sighandler.c pacman-5.1.0/src/pacman/sig
  	if(signum == SIGINT) {
  		const char msg[] = "\nInterrupt signal received\n";
  		xwrite(STDERR_FILENO, msg, ARRAYSIZE(msg) - 1);
-@@ -56,6 +63,13 @@
+@@ -65,6 +72,13 @@ static void soft_interrupt_handler(int signum)
  		return;
  	}
  	alpm_unlock(config->handle);
@@ -36,13 +144,14 @@ diff -Naur pacman-5.1.0-orig/src/pacman/sighandler.c pacman-5.1.0/src/pacman/sig
  	/* output a newline to be sure we clear any line we may be on */
  	xwrite(STDOUT_FILENO, "\n", 1);
  	_Exit(128 + signum);
-diff -Naur pacman-5.1.0-orig/src/pacman/sync.c pacman-5.1.0/src/pacman/sync.c
---- pacman-5.1.0-orig/src/pacman/sync.c	2018-05-14 03:02:18.000000000 +0300
-+++ pacman-5.1.0/src/pacman/sync.c	2018-06-21 13:35:38.316684900 +0300
+diff --git a/src/pacman/sync.c b/src/pacman/sync.c
+index 0473f4e..0d39a37 100644
+--- a/src/pacman/sync.c
++++ b/src/pacman/sync.c
 @@ -28,6 +28,12 @@
  #include <sys/stat.h>
  #include <fnmatch.h>
-
+ 
 +#ifdef __MSYS__
 +#include <termios.h>
 +#include <handle.h>
@@ -51,8 +160,8 @@ diff -Naur pacman-5.1.0-orig/src/pacman/sync.c pacman-5.1.0/src/pacman/sync.c
 +
  #include <alpm.h>
  #include <alpm_list.h>
-
-@@ -680,8 +686,134 @@
+ 
+@@ -680,8 +686,134 @@ cleanup:
  	return ret;
  }
  
@@ -187,9 +296,9 @@ diff -Naur pacman-5.1.0-orig/src/pacman/sync.c pacman-5.1.0/src/pacman/sync.c
  	int retval = 0;
  	alpm_list_t *i;
  
-@@ -695,6 +767,14 @@
+@@ -704,6 +836,14 @@ static int sync_trans(alpm_list_t *targets)
  	}
-
+ 
  	if(config->op_s_upgrade) {
 +#ifdef __MSYS__
 +		if((retval = core_update(&found_core_updates))) {
@@ -202,94 +311,6 @@ diff -Naur pacman-5.1.0-orig/src/pacman/sync.c pacman-5.1.0/src/pacman/sync.c
  		if(!config->print) {
  			colon_printf(_("Starting full system upgrade...\n"));
  			alpm_logaction(config->handle, PACMAN_CALLER_PREFIX,
-diff -Naur pacman-5.1.0-orig/lib/libalpm/alpm.h pacman-5.1.0/lib/libalpm/alpm.h
---- pacman-5.1.0-orig/lib/libalpm/alpm.h	2018-05-14 03:02:18.000000000 +0300
-+++ pacman-5.1.0/lib/libalpm/alpm.h	2018-06-21 12:53:58.842056200 +0300
-@@ -1558,6 +1558,15 @@
-  * @return 0 on success, -1 on error (pm_errno is set accordingly)
-  */
- int alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade);
-+#ifdef __MSYS__
-+int alpm_sync_sysupgrade_core(alpm_handle_t *handle, int enable_downgrade);
-+
-+/** Informs whether a package is a core package.
-+ * @param pkg the package to check
-+ * @return non-zero if this is a core package, zero otherwise
-+ */
-+int alpm_pkg_is_core_package(const alpm_pkg_t *pkg);
-+#endif
+-- 
+2.31.1
 
- /** Add a package to the transaction.
-  * If the package was loaded by alpm_pkg_load(), it will be freed upon
-diff -Naur pacman-5.1.0-orig/lib/libalpm/package.c pacman-5.1.0/lib/libalpm/package.c
---- pacman-5.1.0-orig/lib/libalpm/package.c	2018-05-14 03:02:18.000000000 +0300
-+++ pacman-5.1.0/lib/libalpm/package.c	2018-06-21 12:59:13.842497200 +0300
-@@ -805,3 +805,19 @@
-
- 	return 0;
- }
-+
-+#ifdef __MSYS__
-+int SYMEXPORT alpm_pkg_is_core_package(const alpm_pkg_t *pkg)
-+{
-+	if (pkg == NULL)
-+		return 0;
-+	return
-+		strcmp(pkg->name, "bash")                == 0 ||
-+		strcmp(pkg->name, "filesystem")          == 0 ||
-+		strcmp(pkg->name, "mintty")              == 0 ||
-+		strcmp(pkg->name, "msys2-runtime")       == 0 ||
-+		strcmp(pkg->name, "msys2-runtime-devel") == 0 ||
-+		strcmp(pkg->name, "pacman")              == 0 ||
-+		strcmp(pkg->name, "pacman-mirrors")      == 0;
-+}
-+#endif
-diff -Naur pacman-5.1.0-orig/lib/libalpm/sync.c pacman-5.1.0/lib/libalpm/sync.c
---- pacman-5.1.0-orig/lib/libalpm/sync.c	2018-05-14 03:02:18.000000000 +0300
-+++ pacman-5.1.0/lib/libalpm/sync.c	2018-06-21 12:53:58.852056200 +0300
-@@ -200,7 +200,12 @@
- }
-
- /** Search for packages to upgrade and add them to the transaction. */
-+#ifdef __MSYS__
-+static
-+int SYMEXPORT do_alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade, int core_update)
-+#else
- int SYMEXPORT alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade)
-+#endif
- {
- 	alpm_list_t *i, *j;
- 	alpm_trans_t *trans;
-@@ -214,6 +219,13 @@
- 	for(i = _alpm_db_get_pkgcache(handle->db_local); i; i = i->next) {
- 		alpm_pkg_t *lpkg = i->data;
-
-+#ifdef __MSYS__
-+		/* Skip regular packages in core update, and core packages in regular update */
-+		if(core_update != alpm_pkg_is_core_package(lpkg)) {
-+			continue;
-+		}
-+#endif
-+
- 		if(alpm_pkg_find(trans->remove, lpkg->name)) {
- 			_alpm_log(handle, ALPM_LOG_DEBUG, "%s is marked for removal -- skipping\n", lpkg->name);
- 			continue;
-@@ -255,6 +267,18 @@
- 	return 0;
- }
-
-+#ifdef __MSYS__
-+int SYMEXPORT alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade)
-+{
-+	return do_alpm_sync_sysupgrade(handle, enable_downgrade, 0);
-+}
-+
-+int SYMEXPORT alpm_sync_sysupgrade_core(alpm_handle_t *handle, int enable_downgrade)
-+{
-+	return do_alpm_sync_sysupgrade(handle, enable_downgrade, 1);
-+}
-+#endif
-+
- /** Find group members across a list of databases.
-  * If a member exists in several databases, only the first database is used.
-  * IgnorePkg is also handled.
