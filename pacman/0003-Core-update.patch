@@ -1,4 +1,4 @@
-From 16ca714fdcce63c7bc5b51616ccb4a56e19ec537 Mon Sep 17 00:00:00 2001
+From c9f803da1263c918c691c6b330acc747ac2baf95 Mon Sep 17 00:00:00 2001
 From: Christoph Reiter <reiter.christoph@gmail.com>
 Date: Fri, 21 May 2021 22:52:38 +0200
 Subject: [PATCH 03/N] Core update
@@ -6,16 +6,16 @@ Subject: [PATCH 03/N] Core update
 ---
  lib/libalpm/alpm.h      |   9 +++
  lib/libalpm/package.c   |  16 +++++
- lib/libalpm/sync.c      |  24 +++++++
- src/pacman/sighandler.c |  14 ++++
+ lib/libalpm/sync.c      |  25 +++++++
+ src/pacman/sighandler.c |  16 ++++-
  src/pacman/sync.c       | 140 ++++++++++++++++++++++++++++++++++++++++
- 5 files changed, 203 insertions(+)
+ 5 files changed, 205 insertions(+), 1 deletion(-)
 
 diff --git a/lib/libalpm/alpm.h b/lib/libalpm/alpm.h
-index fd207b5..2219f5e 100644
+index a5f4a6a..c65bc6e 100644
 --- a/lib/libalpm/alpm.h
 +++ b/lib/libalpm/alpm.h
-@@ -1506,6 +1506,15 @@ int alpm_trans_release(alpm_handle_t *handle);
+@@ -2805,6 +2805,15 @@ int alpm_trans_release(alpm_handle_t *handle);
   * @return 0 on success, -1 on error (pm_errno is set accordingly)
   */
  int alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade);
@@ -32,10 +32,10 @@ index fd207b5..2219f5e 100644
  /** Add a package to the transaction.
   * If the package was loaded by alpm_pkg_load(), it will be freed upon
 diff --git a/lib/libalpm/package.c b/lib/libalpm/package.c
-index 510d812..ed46c28 100644
+index f837f84..8f592ad 100644
 --- a/lib/libalpm/package.c
 +++ b/lib/libalpm/package.c
-@@ -793,3 +793,19 @@ int SYMEXPORT alpm_pkg_should_ignore(alpm_handle_t *handle, alpm_pkg_t *pkg)
+@@ -803,3 +803,19 @@ int SYMEXPORT alpm_pkg_should_ignore(alpm_handle_t *handle, alpm_pkg_t *pkg)
  
  	return 0;
  }
@@ -56,13 +56,14 @@ index 510d812..ed46c28 100644
 +}
 +#endif
 diff --git a/lib/libalpm/sync.c b/lib/libalpm/sync.c
-index a596945..bb95570 100644
+index 36ad624..88f1fc6 100644
 --- a/lib/libalpm/sync.c
 +++ b/lib/libalpm/sync.c
-@@ -201,7 +201,12 @@ static alpm_list_t *check_replacers(alpm_handle_t *handle, alpm_pkg_t *lpkg,
+@@ -197,7 +197,13 @@ static alpm_list_t *check_replacers(alpm_handle_t *handle, alpm_pkg_t *lpkg,
+ 	return replacers;
  }
  
- /** Search for packages to upgrade and add them to the transaction. */
++/** Search for packages to upgrade and add them to the transaction. */
 +#ifdef __MSYS__
 +static
 +int SYMEXPORT do_alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade, int core_update)
@@ -72,7 +73,7 @@ index a596945..bb95570 100644
  {
  	alpm_list_t *i, *j;
  	alpm_trans_t *trans;
-@@ -215,6 +220,13 @@ int SYMEXPORT alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade)
+@@ -211,6 +217,13 @@ int SYMEXPORT alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade)
  	for(i = _alpm_db_get_pkgcache(handle->db_local); i; i = i->next) {
  		alpm_pkg_t *lpkg = i->data;
  
@@ -86,7 +87,7 @@ index a596945..bb95570 100644
  		if(alpm_pkg_find(trans->remove, lpkg->name)) {
  			_alpm_log(handle, ALPM_LOG_DEBUG, "%s is marked for removal -- skipping\n", lpkg->name);
  			continue;
-@@ -256,6 +268,18 @@ int SYMEXPORT alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade)
+@@ -252,6 +265,18 @@ int SYMEXPORT alpm_sync_sysupgrade(alpm_handle_t *handle, int enable_downgrade)
  	return 0;
  }
  
@@ -102,11 +103,11 @@ index a596945..bb95570 100644
 +}
 +#endif
 +
- /** Find group members across a list of databases.
-  * If a member exists in several databases, only the first database is used.
-  * IgnorePkg is also handled.
+ alpm_list_t SYMEXPORT *alpm_find_group_pkgs(alpm_list_t *dbs,
+ 		const char *name)
+ {
 diff --git a/src/pacman/sighandler.c b/src/pacman/sighandler.c
-index 46e6481..c152eea 100644
+index ff54dce..15f4350 100644
 --- a/src/pacman/sighandler.c
 +++ b/src/pacman/sighandler.c
 @@ -21,6 +21,10 @@
@@ -120,17 +121,20 @@ index 46e6481..c152eea 100644
  #include <alpm.h>
  
  #include "conf.h"
-@@ -53,6 +57,9 @@ static void _reset_handler(int signum)
+@@ -53,8 +57,11 @@ static void _reset_handler(int signum)
   */
  static void soft_interrupt_handler(int signum)
  {
+-	console_cursor_move_end();
 +#ifdef __MSYS__
 +	struct termios term;
 +#endif
+ 
++	console_cursor_move_end();
  	if(signum == SIGINT) {
  		const char msg[] = "\nInterrupt signal received\n";
  		xwrite(STDERR_FILENO, msg, ARRAYSIZE(msg) - 1);
-@@ -65,6 +72,13 @@ static void soft_interrupt_handler(int signum)
+@@ -69,6 +76,13 @@ static void soft_interrupt_handler(int signum)
  		return;
  	}
  	alpm_unlock(config->handle);
@@ -145,7 +149,7 @@ index 46e6481..c152eea 100644
  	xwrite(STDOUT_FILENO, "\n", 1);
  	_Exit(128 + signum);
 diff --git a/src/pacman/sync.c b/src/pacman/sync.c
-index 0473f4e..0d39a37 100644
+index b6da1a3..2dd8e18 100644
 --- a/src/pacman/sync.c
 +++ b/src/pacman/sync.c
 @@ -28,6 +28,12 @@
@@ -161,7 +165,7 @@ index 0473f4e..0d39a37 100644
  #include <alpm.h>
  #include <alpm_list.h>
  
-@@ -680,8 +686,134 @@ cleanup:
+@@ -689,8 +695,134 @@ cleanup:
  	return ret;
  }
  
@@ -296,7 +300,7 @@ index 0473f4e..0d39a37 100644
  	int retval = 0;
  	alpm_list_t *i;
  
-@@ -704,6 +836,14 @@ static int sync_trans(alpm_list_t *targets)
+@@ -713,6 +845,14 @@ static int sync_trans(alpm_list_t *targets)
  	}
  
  	if(config->op_s_upgrade) {
