@@ -56,6 +56,30 @@ case MINGW64
   set -x PKG_CONFIG_PATH "$MINGW_MOUNT_POINT/lib/pkgconfig:$MINGW_MOUNT_POINT/share/pkgconfig"
   set ACLOCAL_PATH "$MINGW_MOUNT_POINT/share/aclocal:/usr/share/aclocal"
   set -x MANPATH $MINGW_MOUNT_POINT/local/man $MINGW_MOUNT_POINT/share/man $MANPATH
+case CLANG32
+  set MINGW_MOUNT_POINT $MINGW_PREFIX
+  set -x PATH $MINGW_MOUNT_POINT/bin $MSYS2_PATH $ORIGINAL_PATH 2>/dev/null
+  set -x PKG_CONFIG_PATH "$MINGW_MOUNT_POINT/lib/pkgconfig:$MINGW_MOUNT_POINT/share/pkgconfig"
+  set ACLOCAL_PATH "$MINGW_MOUNT_POINT/share/aclocal:/usr/share/aclocal"
+  set -x MANPATH $MINGW_MOUNT_POINT/local/man $MINGW_MOUNT_POINT/share/man $MANPATH
+case CLANG64
+  set MINGW_MOUNT_POINT $MINGW_PREFIX
+  set -x PATH $MINGW_MOUNT_POINT/bin $MSYS2_PATH $ORIGINAL_PATH 2>/dev/null
+  set -x PKG_CONFIG_PATH "$MINGW_MOUNT_POINT/lib/pkgconfig:$MINGW_MOUNT_POINT/share/pkgconfig"
+  set ACLOCAL_PATH "$MINGW_MOUNT_POINT/share/aclocal:/usr/share/aclocal"
+  set -x MANPATH $MINGW_MOUNT_POINT/local/man $MINGW_MOUNT_POINT/share/man $MANPATH
+case CLANGARM64
+  set MINGW_MOUNT_POINT $MINGW_PREFIX
+  set -x PATH $MINGW_MOUNT_POINT/bin $MSYS2_PATH $ORIGINAL_PATH 2>/dev/null
+  set -x PKG_CONFIG_PATH "$MINGW_MOUNT_POINT/lib/pkgconfig:$MINGW_MOUNT_POINT/share/pkgconfig"
+  set ACLOCAL_PATH "$MINGW_MOUNT_POINT/share/aclocal:/usr/share/aclocal"
+  set -x MANPATH $MINGW_MOUNT_POINT/local/man $MINGW_MOUNT_POINT/share/man $MANPATH
+case UCRT64
+  set MINGW_MOUNT_POINT $MINGW_PREFIX
+  set -x PATH $MINGW_MOUNT_POINT/bin $MSYS2_PATH $ORIGINAL_PATH 2>/dev/null
+  set -x PKG_CONFIG_PATH "$MINGW_MOUNT_POINT/lib/pkgconfig:$MINGW_MOUNT_POINT/share/pkgconfig"
+  set ACLOCAL_PATH "$MINGW_MOUNT_POINT/share/aclocal:/usr/share/aclocal"
+  set -x MANPATH $MINGW_MOUNT_POINT/local/man $MINGW_MOUNT_POINT/share/man $MANPATH
 case '*'
   set -x PATH $MSYS2_PATH /opt/bin $ORIGINAL_PATH 2>/dev/null
   set -x PKG_CONFIG_PATH "/usr/lib/pkgconfig:/usr/share/pkgconfig:/lib/pkgconfig"
