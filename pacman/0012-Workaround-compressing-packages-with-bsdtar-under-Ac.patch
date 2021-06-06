@@ -1,4 +1,4 @@
-From 6734419a33ad66f1fc2f399315af4577ff96af60 Mon Sep 17 00:00:00 2001
+From c696f04399c0b08cf1909a7bef482898c83cc288 Mon Sep 17 00:00:00 2001
 From: Christoph Reiter <reiter.christoph@gmail.com>
 Date: Fri, 21 May 2021 22:59:28 +0200
 Subject: [PATCH 12/N] Workaround compressing packages with bsdtar under
@@ -6,14 +6,14 @@ Subject: [PATCH 12/N] Workaround compressing packages with bsdtar under
 
 ---
  scripts/makepkg.sh.in  | 4 ++--
- scripts/repo-add.sh.in | 4 ++--
- 2 files changed, 4 insertions(+), 4 deletions(-)
+ scripts/repo-add.sh.in | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/scripts/makepkg.sh.in b/scripts/makepkg.sh.in
-index 6baeddf..5ff6607 100644
+index 7ad3a0e..1a6acc1 100644
 --- a/scripts/makepkg.sh.in
 +++ b/scripts/makepkg.sh.in
-@@ -697,7 +697,7 @@ create_package() {
+@@ -711,7 +711,7 @@ create_package() {
  	msg2 "$(gettext "Compressing package...")"
  	# TODO: Maybe this can be set globally for robustness
  	shopt -s -o pipefail
@@ -22,7 +22,7 @@ index 6baeddf..5ff6607 100644
  		compress_as "$PKGEXT" > "${pkg_file}" || ret=$?
  
  	shopt -u -o pipefail
-@@ -792,7 +792,7 @@ create_srcpackage() {
+@@ -806,7 +806,7 @@ create_srcpackage() {
  
  	# TODO: Maybe this can be set globally for robustness
  	shopt -s -o pipefail
@@ -32,23 +32,18 @@ index 6baeddf..5ff6607 100644
  	shopt -u -o pipefail
  
 diff --git a/scripts/repo-add.sh.in b/scripts/repo-add.sh.in
-index d8a539e..c9d93d4 100644
+index a231699..8d6d32d 100644
 --- a/scripts/repo-add.sh.in
 +++ b/scripts/repo-add.sh.in
-@@ -535,11 +535,11 @@ create_db() {
- 
- 		pushd "$tmpdir/$repo" >/dev/null
- 		if ( shopt -s nullglob; files=(*); (( ${#files[*]} )) ); then
--			bsdtar -c ${TAR_OPT} -f "$tempname" *
-+			bsdtar --uid 1 --uname root --gid 1 --gname root -c ${TAR_OPT} -f "$tempname" *
- 		else
- 			# we have no packages remaining? zip up some emptyness
+@@ -531,7 +531,7 @@ create_db() {
  			warning "$(gettext "No packages remain, creating empty database.")"
--			bsdtar -c ${TAR_OPT} -f "$tempname" -T /dev/null
-+			bsdtar --uid 1 --uname root --gid 1 --gname root -c ${TAR_OPT} -f "$tempname" -T /dev/null
+ 			files=(-T /dev/null)
  		fi
+-		bsdtar -cf - "${files[@]}" | compress_as "$filename" > "$tempname"
++		bsdtar --uid 1 --uname root --gid 1 --gname root -cf - "${files[@]}" | compress_as "$filename" > "$tempname"
  		popd >/dev/null
  
+ 		create_signature "$tempname"
 -- 
 2.31.1
 

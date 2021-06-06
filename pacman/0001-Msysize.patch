@@ -1,15 +1,15 @@
-From 91067406c454929239a5eebf043ed2eb0a485762 Mon Sep 17 00:00:00 2001
+From 9e9a116fb7c06190687cc8d5afb2d5d5ac610f3f Mon Sep 17 00:00:00 2001
 From: Christoph Reiter <reiter.christoph@gmail.com>
-Date: Fri, 21 May 2021 22:47:29 +0200
+Date: Thu, 3 Jun 2021 16:22:43 +0200
 Subject: [PATCH 01/N] Msysize
 
 ---
  lib/libalpm/add.c                             |   2 +
  .../lint_package/build_references.sh.in       |   8 +
  scripts/libmakepkg/tidy/staticlibs.sh.in      |   4 +-
- scripts/libmakepkg/tidy/strip.sh.in           | 167 ++++++++++++-----
+ scripts/libmakepkg/tidy/strip.sh.in           | 180 ++++++++++++------
  scripts/libmakepkg/utils_fixed_path.sh.in     |  34 ++++
- scripts/makepkg.sh.in                         | 177 +++++++-----------
+ scripts/makepkg.sh.in                         | 174 +++++++----------
  scripts/pacman-db-upgrade.sh.in               |  12 +-
  scripts/pacman-key.sh.in                      |  22 +--
  scripts/repo-add.sh.in                        |  11 +-
@@ -18,11 +18,11 @@ Subject: [PATCH 01/N] Msysize
  src/pacman/check.c                            |   2 +
  src/pacman/pacman.c                           |   4 +
  test/pacman/pmtest.py                         |  19 +-
- 14 files changed, 275 insertions(+), 196 deletions(-)
+ 14 files changed, 283 insertions(+), 198 deletions(-)
  create mode 100644 scripts/libmakepkg/utils_fixed_path.sh.in
 
 diff --git a/lib/libalpm/add.c b/lib/libalpm/add.c
-index f84e96a..1e330ca 100644
+index f806e5b..f0af886 100644
 --- a/lib/libalpm/add.c
 +++ b/lib/libalpm/add.c
 @@ -266,6 +266,7 @@ static int extract_single_file(alpm_handle_t *handle, struct archive *archive,
@@ -42,7 +42,7 @@ index f84e96a..1e330ca 100644
  				filename);
  		archive_read_data_skip(archive);
 diff --git a/scripts/libmakepkg/lint_package/build_references.sh.in b/scripts/libmakepkg/lint_package/build_references.sh.in
-index bcaf71c..a897adc 100644
+index 9b7ffab..a5fc455 100644
 --- a/scripts/libmakepkg/lint_package/build_references.sh.in
 +++ b/scripts/libmakepkg/lint_package/build_references.sh.in
 @@ -37,5 +37,13 @@ warn_build_references() {
@@ -60,7 +60,7 @@ index bcaf71c..a897adc 100644
  	return 0
  }
 diff --git a/scripts/libmakepkg/tidy/staticlibs.sh.in b/scripts/libmakepkg/tidy/staticlibs.sh.in
-index 7993c09..a685efe 100644
+index 498518c..e9d514a 100644
 --- a/scripts/libmakepkg/tidy/staticlibs.sh.in
 +++ b/scripts/libmakepkg/tidy/staticlibs.sh.in
 @@ -35,9 +35,9 @@ tidy_staticlibs() {
@@ -76,7 +76,7 @@ index 7993c09..a685efe 100644
  	fi
  }
 diff --git a/scripts/libmakepkg/tidy/strip.sh.in b/scripts/libmakepkg/tidy/strip.sh.in
-index b04426c..4cc9db6 100644
+index 5d03b28..e3d4061 100644
 --- a/scripts/libmakepkg/tidy/strip.sh.in
 +++ b/scripts/libmakepkg/tidy/strip.sh.in
 @@ -31,10 +31,6 @@ packaging_options+=('strip' 'debug')
@@ -88,9 +88,9 @@ index b04426c..4cc9db6 100644
 -}
 -
  source_files() {
- 	LANG=C readelf "$1" --debug-dump | \
- 		awk '/DW_AT_name +:/{name=$8}/DW_AT_comp_dir +:/{{if (name == "<artificial>") next}{if (name !~ /^[<\/]/) {printf "%s/", $8}}{print name}}'
-@@ -43,55 +39,57 @@ source_files() {
+ 	LANG=C readelf "$1" --debug-dump 2>/dev/null | \
+ 		awk '/DW_AT_name +:/{name=$NF}/DW_AT_comp_dir +:/{{if (name == "<artificial>") next}{if (name !~ /^[<\/]/) {printf "%s/", $NF}}{print name}}'
+@@ -43,58 +39,63 @@ source_files() {
  strip_file() {
  	local binary=$1; shift
  
@@ -120,28 +120,6 @@ index b04426c..4cc9db6 100644
 -				cp -- "$file" "$dest"
 -			fi
 -		done < <(source_files "$binary")
--
--		# copy debug symbols to debug directory
--		mkdir -p "$dbgdir/${binary%/*}"
--		objcopy --only-keep-debug "$binary" "$dbgdir/$binary.debug"
--		objcopy --add-gnu-debuglink="$dbgdir/${binary#/}.debug" "$binary"
--
--		# create any needed hardlinks
--		while IFS= read -rd '' file ; do
--			if [[ "${binary}" -ef "${file}" && ! -f "$dbgdir/${file}.debug" ]]; then
--				mkdir -p "$dbgdir/${file%/*}"
--				ln "$dbgdir/${binary}.debug" "$dbgdir/${file}.debug"
--			fi
--		done < <(find . -type f -perm -u+w -print0 2>/dev/null)
--
--		if [[ -n "$bid" ]]; then
--			local target
--			mkdir -p "$dbgdir/.build-id/${bid:0:2}"
--
--			target="../../../../../${binary#./}"
--			target="${target/..\/..\/usr\/lib\/}"
--			target="${target/..\/usr\/}"
--			ln -s "$target" "$dbgdir/.build-id/${bid:0:2}/${bid:2}"
 +			# copy source files to debug directory
 +			local file dest t
 +			while IFS= read -r t; do
@@ -160,7 +138,10 @@ index b04426c..4cc9db6 100644
 +			objcopy --only-keep-debug "$binary" "$dbgdir/$binary.debug"
 +
 +			msg2 "Creating a debuginfo link to $dbgdir/$binary.debug in $binary"
-+			objcopy --add-gnu-debuglink="$dbgdir/${binary#/}.debug" "$binary"
++			local tempfile=$(mktemp "$binary.XXXXXX")
++			objcopy --add-gnu-debuglink="$dbgdir/${binary#/}.debug" "$binary" "$tempfile"
++			cat "$tempfile" > "$binary"
++			rm "$tempfile"
 +
 +			msg2 "Separating (again) debug info from $binary into $dbgdir/$binary.debug"
 +			objcopy --only-keep-debug "$binary" "$dbgdir/$binary.debug"
@@ -171,7 +152,10 @@ index b04426c..4cc9db6 100644
 +			# strip debug-info from the original file
 +			objcopy --strip-debug "$binary"
 +			msg2 "Creating (again) a debuginfo link to $dbgdir/$binary.debug in $binary"
-+			objcopy --add-gnu-debuglink="$dbgdir/${binary#/}.debug" "$binary"
++			tempfile=$(mktemp "$binary.XXXXXX")
++			objcopy --add-gnu-debuglink="$dbgdir/${binary#/}.debug" "$binary" "$tempfile"
++			cat "$tempfile" > "$binary"
++			rm "$tempfile"
 +			# This way dbg file gets a .gnu_debuglink section (doesn't matter where
 +			# it's pointing), and its contents pass the CRC32 check
 +
@@ -183,6 +167,31 @@ index b04426c..4cc9db6 100644
 +				fi
 +			done < <(find . -type f -perm -u+w -print0 2>/dev/null)
  
+-		# copy debug symbols to debug directory
+-		mkdir -p "$dbgdir/${binary%/*}"
+-		objcopy --only-keep-debug "$binary" "$dbgdir/$binary.debug"
+-		local tempfile=$(mktemp "$binary.XXXXXX")
+-		objcopy --add-gnu-debuglink="$dbgdir/${binary#/}.debug" "$binary" "$tempfile"
+-		cat "$tempfile" > "$binary"
+-		rm "$tempfile"
+-
+-		# create any needed hardlinks
+-		while IFS= read -rd '' file ; do
+-			if [[ "${binary}" -ef "${file}" && ! -f "$dbgdir/${file}.debug" ]]; then
+-				mkdir -p "$dbgdir/${file%/*}"
+-				ln "$dbgdir/${binary}.debug" "$dbgdir/${file}.debug"
+-			fi
+-		done < <(find . -type f -perm -u+w -print0 2>/dev/null)
+-
+-		if [[ -n "$bid" ]]; then
+-			local target
+-			mkdir -p "$dbgdir/.build-id/${bid:0:2}"
+-
+-			target="../../../../../${binary#./}"
+-			target="${target/..\/..\/usr\/lib\/}"
+-			target="${target/..\/usr\/}"
+-			ln -s "$target" "$dbgdir/.build-id/${bid:0:2}/${bid:2}"
+-
 -			target="../../${binary#./}.debug"
 -			ln -s "$target" "$dbgdir/.build-id/${bid:0:2}/${bid:2}.debug"
  		fi
@@ -190,9 +199,9 @@ index b04426c..4cc9db6 100644
 +		;;
 +	esac
  
- 	strip $@ "$binary"
- }
-@@ -106,15 +104,84 @@ tidy_strip() {
+ 	local tempfile=$(mktemp "$binary.XXXXXX")
+ 	if strip "$@" "$binary" -o "$tempfile"; then
+@@ -123,17 +124,86 @@ tidy_strip() {
  
  		if check_option "debug" "y"; then
  
@@ -213,6 +222,9 @@ index b04426c..4cc9db6 100644
 +			-o -type f -executable ! -name '*.dll' ! -name '*.exe' ! -name '*.so' ! -name '*.so.[0-9]*' ! -name '*.oct' ! -name '*.cmxs' ! -name '*.a' ! -name '*.la' ! -name '*.lib' ! -name '*.exe.manifest' ! -name '*.exe.config' ! -name '*.dll.config' ! -name '*.mdb' ! -name '*-config' ! -name '*.csh' ! -name '*.sh' ! -name '*.pl' ! -name '*.pm' ! -name '*.py' ! -name '*.rb' ! -name '*.tcl' -print0 | \
 +		while IFS= read -d $'\0' binary
 +		do
+ 			local STRIPLTO=0
+-			case "$(LC_ALL=C readelf -h "$binary" 2>/dev/null)" in
+-				*Type:*'DYN (Shared object file)'*) # Libraries (.so) or Relocatable binaries
 +			# Skip thin archives from stripping
 +			case "${binary##*/}" in
 +				*.a)
@@ -273,12 +285,13 @@ index b04426c..4cc9db6 100644
 +			esac
 +			chmod 0755 "${binary}";
 +
- 			case "$(@FILECMD@ -bi "$binary")" in
++			case "$(@FILECMD@ -bi "$binary")" in
 +				*application/x-dosexec*) # Windows executables and dlls
 +					strip_flags="$STRIP_SHARED";;
- 				*application/x-sharedlib*)  # Libraries (.so)
++				*application/x-sharedlib*)  # Libraries (.so)
  					strip_flags="$STRIP_SHARED";;
- 				*application/x-archive*)    # Libraries (.a)
+ 				*Type:*'EXEC (Executable file)'*) # Binaries
+ 					strip_flags="$STRIP_BINARIES";;
 diff --git a/scripts/libmakepkg/utils_fixed_path.sh.in b/scripts/libmakepkg/utils_fixed_path.sh.in
 new file mode 100644
 index 0000000..e3a06bc
@@ -320,7 +333,7 @@ index 0000000..e3a06bc
 +  done
 +fi
 diff --git a/scripts/makepkg.sh.in b/scripts/makepkg.sh.in
-index c9e381d..86616de 100644
+index e58edfa..6c8446b 100644
 --- a/scripts/makepkg.sh.in
 +++ b/scripts/makepkg.sh.in
 @@ -1,4 +1,4 @@
@@ -328,8 +341,8 @@ index c9e381d..86616de 100644
 +#!/usr/bin/env bash
  #
  #   makepkg - make packages compatible for use with pacman
- #   @configure_input@
-@@ -27,7 +27,7 @@
+ #
+@@ -26,7 +26,7 @@
  
  # makepkg uses quite a few external programs during its execution. You
  # need to have at least the following installed for makepkg to function:
@@ -338,7 +351,7 @@ index c9e381d..86616de 100644
  #   gettext, gpg, grep, gzip, sed, tput (ncurses), xz
  
  # gettext initialization
-@@ -60,7 +60,6 @@ FORCE=0
+@@ -59,7 +59,6 @@ FORCE=0
  GENINTEG=0
  HOLDVER=0
  IGNOREARCH=0
@@ -346,7 +359,7 @@ index c9e381d..86616de 100644
  INSTALL=0
  LOGGING=0
  NEEDED=0
-@@ -106,10 +105,9 @@ done
+@@ -105,10 +104,9 @@ done
  trap_exit() {
  	local signal=$1; shift
  
@@ -360,7 +373,7 @@ index c9e381d..86616de 100644
  	[[ -n $srclinks ]] && rm -rf "$srclinks"
  
  	# unset the trap for this signal, and then call the default handler
-@@ -124,11 +122,6 @@ trap_exit() {
+@@ -123,11 +121,6 @@ trap_exit() {
  clean_up() {
  	local EXIT_CODE=$?
  
@@ -372,7 +385,7 @@ index c9e381d..86616de 100644
  	if [[ -p $logpipe ]]; then
  		rm "$logpipe"
  	fi
-@@ -138,7 +131,7 @@ clean_up() {
+@@ -137,7 +130,7 @@ clean_up() {
  
  		# If it's a clean exit and -c/--clean has been passed...
  		msg "$(gettext "Cleaning up...")"
@@ -381,7 +394,7 @@ index c9e381d..86616de 100644
  		if [[ -n $pkgbase ]]; then
  			local fullver=$(get_full_version)
  			# Can't do this unless the BUILDSCRIPT has been sourced.
-@@ -180,11 +173,6 @@ clean_up() {
+@@ -179,11 +172,6 @@ clean_up() {
  	fi
  }
  
@@ -393,19 +406,18 @@ index c9e381d..86616de 100644
  # Automatically update pkgver variable if a pkgver() function is provided
  # Re-sources the PKGBUILD afterwards to allow for other variables that use $pkgver
  update_pkgver() {
-@@ -229,11 +217,6 @@ run_pacman() {
- 		cmd=("$PACMAN_PATH" "$@")
- 	else
- 		cmd=("$PACMAN_PATH" "${PACMAN_OPTS[@]}" "$@")
--		if type -p sudo >/dev/null; then
+@@ -237,10 +225,6 @@ run_pacman() {
+ 			else
+ 				cmd=("${PACMAN_AUTH[@]}" "${cmd[@]}")
+ 			fi
+-		elif type -p sudo >/dev/null; then
 -			cmd=(sudo "${cmd[@]}")
 -		else
--			cmd=(su root -c "$(printf '%q ' "${cmd[@]}")")
--		fi
+-			cmd=(su root -c "$cmdescape")
+ 		fi
  		local lockfile="$(pacman-conf DBPath)/db.lck"
  		while [[ -f $lockfile ]]; do
- 			local timer=0
-@@ -432,7 +415,7 @@ run_function() {
+@@ -440,7 +424,7 @@ run_function() {
  
  		$pkgfunc &>"$logpipe"
  
@@ -414,7 +426,7 @@ index c9e381d..86616de 100644
  		rm "$logpipe"
  	else
  		"$pkgfunc"
-@@ -460,7 +443,7 @@ find_libdepends() {
+@@ -468,7 +452,7 @@ find_libdepends() {
  
  	sodepends=0
  	for d in "${depends[@]}"; do
@@ -423,7 +435,7 @@ index c9e381d..86616de 100644
  			sodepends=1
  			break
  		fi
-@@ -471,28 +454,33 @@ find_libdepends() {
+@@ -479,28 +463,33 @@ find_libdepends() {
  		return 0
  	fi
  
@@ -468,7 +480,7 @@ index c9e381d..86616de 100644
  			fi
  		done
  	done < <(find "$pkgdir" -type f -perm -u+x -print0)
-@@ -500,7 +488,7 @@ find_libdepends() {
+@@ -508,7 +497,7 @@ find_libdepends() {
  	local libdepends v
  	for d in "${depends[@]}"; do
  		case "$d" in
@@ -477,9 +489,9 @@ index c9e381d..86616de 100644
  				if [[ ${libdeps[$d]} ]]; then
  					for v in ${libdeps[$d]}; do
  						libdepends+=("$d=$v")
-@@ -525,32 +513,23 @@ find_libprovides() {
- 	for p in "${provides[@]}"; do
+@@ -534,30 +523,23 @@ find_libprovides() {
  		missing=0
+ 		versioned_provides=()
  		case "$p" in
 -			*.so)
 -				mapfile -t filename < <(find "$pkgdir" -type f -name $p\* | LC_ALL=C sort)
@@ -494,7 +506,6 @@ index c9e381d..86616de 100644
 -							local sofile=$(LC_ALL=C readelf -d "$fn" 2>/dev/null | sed -n 's/.*Library soname: \[\(.*\)\].*/\1/p')
 -							if [[ -z "$sofile" ]]; then
 -								warning "$(gettext "Library listed in %s is not versioned: %s")" "'provides'" "$p"
--								libprovides+=("$p")
 -								continue
 -							fi
 -
@@ -504,10 +515,9 @@ index c9e381d..86616de 100644
 -							# extract the library major version
 -							local soversion="${sofile##*\.so\.}"
 -
--							libprovides+=("${p}=${soversion}-${soarch}")
+-							versioned_provides+=("${p}=${soversion}-${soarch}")
 -						else
 -							warning "$(gettext "Library listed in %s is not a shared object: %s")" "'provides'" "$p"
--							libprovides+=("$p")
 -						fi
 +						# get the library architecture (32 or 64 bit)
 +						local soarch=$(LC_ALL=C objdump -a "$fn" | sed -n 's/.*file format.*pei-\(i386\|x86-64\)/\1/p')
@@ -520,11 +530,11 @@ index c9e381d..86616de 100644
 +							;;
 +						esac
 +
-+						libprovides+=("${p}=${soarch}")
++						versioned_provides+=("${p}=${soarch}")
  					done
  				else
- 					libprovides+=("$p")
-@@ -589,7 +568,6 @@ write_pkginfo() {
+ 					missing=1
+@@ -597,7 +579,6 @@ write_pkginfo() {
  	merge_arch_attrs
  
  	printf "# Generated by makepkg %s\n" "$makepkg_version"
@@ -532,7 +542,7 @@ index c9e381d..86616de 100644
  
  	write_kv_pair "pkgname" "$pkgname"
  	write_kv_pair "pkgbase" "$pkgbase"
-@@ -739,7 +717,7 @@ create_debug_package() {
+@@ -750,7 +731,7 @@ create_debug_package() {
  	local pkgdir="$pkgdirbase/$pkgbase-@DEBUGSUFFIX@"
  
  	# check if we have any debug symbols to package
@@ -541,7 +551,7 @@ index c9e381d..86616de 100644
  		return 0
  	fi
  
-@@ -928,6 +906,11 @@ restore_package_variables() {
+@@ -939,6 +920,11 @@ restore_package_variables() {
  
  run_single_packaging() {
  	local pkgdir="$pkgdirbase/$pkgname"
@@ -553,7 +563,7 @@ index c9e381d..86616de 100644
  	mkdir "$pkgdir"
  	if [[ -n $1 ]] || (( PKGFUNC )); then
  		run_package $1
-@@ -1021,12 +1004,16 @@ if ! type -p gettext >/dev/null; then
+@@ -1032,12 +1018,16 @@ if ! type -p gettext >/dev/null; then
  	gettext() {
  		printf "%s\n" "$@"
  	}
@@ -571,7 +581,7 @@ index c9e381d..86616de 100644
  OPT_LONG=('allsource' 'check' 'clean' 'cleanbuild' 'config:' 'force' 'geninteg'
            'help' 'holdver' 'ignorearch' 'install' 'key:' 'log' 'noarchive' 'nobuild'
            'nocolor' 'nocheck' 'nodeps' 'noextract' 'noprepare' 'nosign' 'packagelist'
-@@ -1060,7 +1047,6 @@ while true; do
+@@ -1071,7 +1061,6 @@ while true; do
  		-d|--nodeps)      NODEPS=1 ;;
  		-e|--noextract)   NOEXTRACT=1 ;;
  		-f|--force)       FORCE=1 ;;
@@ -579,7 +589,7 @@ index c9e381d..86616de 100644
  		# generating integrity checks does not depend on architecture
  		-g|--geninteg)    BUILDPKG=0 GENINTEG=1 IGNOREARCH=1;;
  		--holdver)        HOLDVER=1 ;;
-@@ -1175,19 +1161,6 @@ if (( LOGGING )) && ! ensure_writable_dir "LOGDEST" "$LOGDEST"; then
+@@ -1186,19 +1175,6 @@ if (( LOGGING )) && ! ensure_writable_dir "LOGDEST" "$LOGDEST"; then
  	exit $E_FS_PERMISSIONS
  fi
  
@@ -599,7 +609,7 @@ index c9e381d..86616de 100644
  unset pkgname "${pkgbuild_schema_strings[@]}" "${pkgbuild_schema_arrays[@]}"
  unset "${known_hash_algos[@]/%/sums}"
  unset -f pkgver prepare build check package "${!package_@}"
-@@ -1308,29 +1281,6 @@ if (( ! PKGVERFUNC )); then
+@@ -1319,29 +1295,6 @@ if (( ! PKGVERFUNC )); then
  	check_build_status
  fi
  
@@ -629,7 +639,7 @@ index c9e381d..86616de 100644
  msg "$(gettext "Making package: %s")" "$pkgbase $basever ($(date +%c))"
  
  # if we are creating a source-only package, go no further
-@@ -1354,7 +1304,7 @@ if (( SOURCEONLY )); then
+@@ -1365,7 +1318,7 @@ if (( SOURCEONLY )); then
  	check_source_integrity all
  	cd_safe "$startdir"
  
@@ -638,7 +648,7 @@ index c9e381d..86616de 100644
  
  	if [[ $SIGNPKG = 'y' ]]; then
  		msg "$(gettext "Signing package...")"
-@@ -1404,6 +1354,9 @@ mkdir -p "$srcdir"
+@@ -1415,6 +1368,9 @@ mkdir -p "$srcdir"
  chmod a-s "$srcdir"
  cd_safe "$srcdir"
  
@@ -648,7 +658,7 @@ index c9e381d..86616de 100644
  if (( !REPKG )); then
  	if (( NOEXTRACT && ! VERIFYSOURCE )); then
  		warning "$(gettext "Using existing %s tree")" "\$srcdir/"
-@@ -1456,17 +1409,25 @@ else
+@@ -1467,15 +1423,23 @@ else
  		cd_safe "$startdir"
  	fi
  
@@ -666,23 +676,21 @@ index c9e381d..86616de 100644
 +	else
 +		run_split_packaging
 +	fi
-+
-+	create_debug_package
  
- 	create_package_signatures || exit $E_PRETTY_BAD_PRIVACY
- fi
+-	create_package_signatures || exit $E_PRETTY_BAD_PRIVACY
+-fi
++	create_debug_package
  
 -# if inhibiting archive creation, go no further
 -if (( NOARCHIVE )); then
 -	msg "$(gettext "Package directory is ready.")"
 -	exit $E_OK
--fi
--
- msg "$(gettext "Finished making: %s")" "$pkgbase $basever ($(date +%c))"
++	create_package_signatures || exit $E_PRETTY_BAD_PRIVACY
+ fi
  
- install_package && exit $E_OK || exit $E_INSTALL_FAILED
+ msg "$(gettext "Finished making: %s")" "$pkgbase $basever ($(date +%c))"
 diff --git a/scripts/pacman-db-upgrade.sh.in b/scripts/pacman-db-upgrade.sh.in
-index af3b17c..d3e2e13 100644
+index 550d9f9..c1cb200 100644
 --- a/scripts/pacman-db-upgrade.sh.in
 +++ b/scripts/pacman-db-upgrade.sh.in
 @@ -1,4 +1,4 @@
@@ -690,8 +698,8 @@ index af3b17c..d3e2e13 100644
 +#!/usr/bin/env bash
  #
  #   pacman-db-upgrade - upgrade the local pacman db to a newer format
- #   @configure_input@
-@@ -79,9 +79,13 @@ resolve_dir() {
+ #
+@@ -78,9 +78,13 @@ resolve_dir() {
  # PROGRAM START
  
  # determine whether we have gettext; make it a no-op if we do not
@@ -707,7 +715,7 @@ index af3b17c..d3e2e13 100644
  	}
  fi
  
-@@ -138,7 +142,7 @@ lockfile="${dbroot}/db.lck"
+@@ -137,7 +141,7 @@ lockfile="${dbroot}/db.lck"
  
  # make sure pacman isn't running
  if [[ -f $lockfile ]]; then
@@ -717,7 +725,7 @@ index af3b17c..d3e2e13 100644
  # do not let pacman run while we do this
  touch "$lockfile"
 diff --git a/scripts/pacman-key.sh.in b/scripts/pacman-key.sh.in
-index 3962a57..1bdc5d7 100644
+index 5034264..c923244 100644
 --- a/scripts/pacman-key.sh.in
 +++ b/scripts/pacman-key.sh.in
 @@ -1,4 +1,4 @@
@@ -726,7 +734,7 @@ index 3962a57..1bdc5d7 100644
  #
  #   pacman-key - manages pacman's keyring
  #                Based on apt-key, from Debian
-@@ -31,6 +31,7 @@ LIBRARY=${LIBRARY:-'@libmakepkgdir@'}
+@@ -30,6 +30,7 @@ LIBRARY=${LIBRARY:-'@libmakepkgdir@'}
  # Import libmakepkg
  source "$LIBRARY"/util/message.sh
  source "$LIBRARY"/util/parseopts.sh
@@ -734,7 +742,7 @@ index 3962a57..1bdc5d7 100644
  
  # Options
  ADD=0
-@@ -237,7 +238,7 @@ check_keyring() {
+@@ -265,7 +266,7 @@ check_keyring() {
  		exit 1
  	fi
  
@@ -743,7 +751,7 @@ index 3962a57..1bdc5d7 100644
  		if ! grep -q "^[[:space:]]*lock-never[[:space:]]*$" ${PACMAN_KEYRING_DIR}/gpg.conf &>/dev/null; then
  			error "$(gettext "You do not have sufficient permissions to run this command.")"
  			msg "$(gettext "Use '%s' to correct the keyring permissions.")" "pacman-key --init"
-@@ -390,7 +391,7 @@ import_trustdb() {
+@@ -428,7 +429,7 @@ import_trustdb() {
  	local ret=0
  	for importdir in "$@"; do
  		if [[ -f "${importdir}/trustdb.gpg" ]]; then
@@ -752,7 +760,7 @@ index 3962a57..1bdc5d7 100644
  				"${GPG_PACMAN[@]}" --import-ownertrust -
  			if (( PIPESTATUS )); then
  				error "$(gettext "%s could not be imported.")" "${importdir}/trustdb.gpg"
-@@ -530,10 +531,14 @@ updatedb() {
+@@ -603,10 +604,14 @@ updatedb() {
  	fi
  }
  
@@ -770,7 +778,7 @@ index 3962a57..1bdc5d7 100644
  	}
  fi
  
-@@ -596,11 +601,6 @@ if ! type -p gpg >/dev/null; then
+@@ -670,11 +675,6 @@ if ! type -p gpg >/dev/null; then
  	exit 1
  fi
  
@@ -783,7 +791,7 @@ index 3962a57..1bdc5d7 100644
  if [[ ! -r "${CONFIG}" ]]; then
  	error "$(gettext "%s configuration file '%s' not found.")" "pacman" "$CONFIG"
 diff --git a/scripts/repo-add.sh.in b/scripts/repo-add.sh.in
-index b0b3505..d8a539e 100644
+index d393839..a231699 100644
 --- a/scripts/repo-add.sh.in
 +++ b/scripts/repo-add.sh.in
 @@ -1,4 +1,4 @@
@@ -793,14 +801,14 @@ index b0b3505..d8a539e 100644
  #   repo-add - add a package to a given repo database file
  #   repo-remove - remove a package entry from a given repo database file
 @@ -46,6 +46,7 @@ PREVENT_DOWNGRADE=0
- 
  # Import libmakepkg
+ source "$LIBRARY"/util/compress.sh
  source "$LIBRARY"/util/message.sh
 +source "$LIBRARY"/utils_fixed_path.sh
  
  # ensure we have a sane umask set
  umask 0022
-@@ -571,9 +572,13 @@ clean_up() {
+@@ -562,9 +563,13 @@ clean_up() {
  # PROGRAM START
  
  # determine whether we have gettext; make it a no-op if we do not
@@ -817,7 +825,7 @@ index b0b3505..d8a539e 100644
  fi
  
 diff --git a/scripts/wrapper.sh.in b/scripts/wrapper.sh.in
-index 2a041d5..5c9f111 100644
+index 1b28b84..504db36 100644
 --- a/scripts/wrapper.sh.in
 +++ b/scripts/wrapper.sh.in
 @@ -1,4 +1,4 @@
@@ -827,10 +835,10 @@ index 2a041d5..5c9f111 100644
  #   @PROGNAME@ - a wrapper for running the real @PROGNAME@ in the source tree
  #
 diff --git a/src/pacman/callback.c b/src/pacman/callback.c
-index 548e2df..a46f406 100644
+index 75c74f8..2f07512 100644
 --- a/src/pacman/callback.c
 +++ b/src/pacman/callback.c
-@@ -98,8 +98,11 @@ static int64_t get_update_timediff(int first_call)
+@@ -153,8 +153,11 @@ static int64_t get_update_timediff(int first_call)
  static void fill_progress(const int bar_percent, const int disp_percent,
  		const int proglen)
  {
@@ -845,7 +853,7 @@ index 548e2df..a46f406 100644
  	static int lasthash = 0, mouth = 0;
  	int i;
 diff --git a/src/pacman/check.c b/src/pacman/check.c
-index 6b4fdcb..543dd31 100644
+index 091055f..188f515 100644
 --- a/src/pacman/check.c
 +++ b/src/pacman/check.c
 @@ -75,6 +75,7 @@ static int check_file_permissions(const char *pkgname, const char *filepath,
@@ -865,10 +873,10 @@ index 6b4fdcb..543dd31 100644
  	/* mode */
  	fsmode = st->st_mode & (S_ISUID | S_ISGID | S_ISVTX | S_IRWXU | S_IRWXG | S_IRWXO);
 diff --git a/src/pacman/pacman.c b/src/pacman/pacman.c
-index d58c428..c5d629c 100644
+index e398855..36c3b5e 100644
 --- a/src/pacman/pacman.c
 +++ b/src/pacman/pacman.c
-@@ -1082,7 +1082,9 @@ static void cl_to_log(int argc, char *argv[])
+@@ -1086,7 +1086,9 @@ static void cl_to_log(int argc, char *argv[])
  int main(int argc, char *argv[])
  {
  	int ret = 0;
@@ -876,9 +884,9 @@ index d58c428..c5d629c 100644
  	uid_t myuid = getuid();
 +#endif
  
+ 	console_cursor_hide();
  	install_segv_handler();
- 
-@@ -1125,11 +1127,13 @@ int main(int argc, char *argv[])
+@@ -1130,11 +1132,13 @@ int main(int argc, char *argv[])
  		cleanup(ret);
  	}
  
@@ -890,13 +898,13 @@ index d58c428..c5d629c 100644
  	}
 +#endif
  
- 	if(config->sysroot && (chroot(config->sysroot) != 0 || chdir("/") != 0)) {
- 		pm_printf(ALPM_LOG_ERROR,
+ 	/* we support reading targets from stdin if a cmdline parameter is '-' */
+ 	if(alpm_list_find_str(pm_targets, "-")) {
 diff --git a/test/pacman/pmtest.py b/test/pacman/pmtest.py
-index ed6eab6..5ce752e 100644
+index 94b0930..f008f22 100644
 --- a/test/pacman/pmtest.py
 +++ b/test/pacman/pmtest.py
-@@ -234,19 +234,6 @@ class pmtest(object):
+@@ -239,19 +239,6 @@ class pmtest(object):
          vprint("\tpacman %s" % self.args)
  
          cmd = []
@@ -916,7 +924,7 @@ index ed6eab6..5ce752e 100644
          if pacman["gdb"]:
              cmd.extend(["libtool", "execute", "gdb", "--args"])
          if pacman["valgrind"]:
-@@ -287,8 +274,10 @@ class pmtest(object):
+@@ -294,8 +281,10 @@ class pmtest(object):
          # Change to the tmp dir before running pacman, so that local package
          # archives are made available more easily.
          time_start = time.time()
