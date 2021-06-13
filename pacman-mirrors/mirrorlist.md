@@ -46,6 +46,7 @@ Contact: <webmaster@bitnp.net>
 Access URLs:
 
 - <http://mirrors.ustc.edu.cn/msys2/>
+- <rsync://rsync.mirrors.ustc.edu.cn/repo/msys2/>
 
 Contact: <lug@ustc.edu.cn>
 
