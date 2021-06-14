@@ -1,5 +1,16 @@
+From 3674b17632a00d29a65a7f83371811796e085b9e Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Mon, 14 Jun 2021 10:29:49 -0700
+Subject: [PATCH 3/3] msysize
+
+---
+ lib/Makefile | 34 ++++++++++++++++++++++++++--------
+ src/Makefile |  2 +-
+ t/Makefile   | 15 +++++++++++----
+ 3 files changed, 38 insertions(+), 13 deletions(-)
+
 diff --git a/lib/Makefile b/lib/Makefile
-index a8c368c..3d2ba1d 100644
+index a8c368c..b582f2b 100644
 --- a/lib/Makefile
 +++ b/lib/Makefile
 @@ -6,7 +6,7 @@ ALPM_CFLAGS ?= $(shell pkg-config libalpm --cflags)
@@ -11,10 +22,11 @@ index a8c368c..3d2ba1d 100644
  
  PREFIX        ?= /usr/local
  EXEC_PREFIX   ?= ${PREFIX}
-@@ -24,6 +24,15 @@ HOOKDIR    ?= ${SYSCONFDIR}/pacman.d/hooks
+@@ -24,6 +24,16 @@ HOOKDIR    ?= ${SYSCONFDIR}/pacman.d/hooks
  LOGFILE    ?= ${LOCALSTATEDIR}/log/pacman.log
  ROOTDIR    ?= /
  
++SOPREFIX   ?= lib
 +SOEXT      ?= so
 +ifeq ($(SOEXT),dll)
 +  SODIR    ?= ${BINDIR}
@@ -27,30 +39,30 @@ index a8c368c..3d2ba1d 100644
  override CPPFLAGS += \
  	-DCACHEDIR=\"$(CACHEDIR)\" \
  	-DDBEXT=\"$(DBEXT)\" \
-@@ -63,18 +72,26 @@ SOURCES = \
+@@ -63,18 +73,26 @@ SOURCES = \
  					pacutils/ui.c \
  					pacutils/util.c
  
 -all: libpacutils.so
-+all: msys-pacutils.${SOEXT}
++all: ${SOPREFIX}pacutils.${SOEXT}
  
 -libpacutils.so: ${SOURCES}
 -	$(CC) $(CPPFLAGS) -shared -fPIC $(CFLAGS) -o $@ $^ $(LDLIBS) $(LDFLAGS)
-+msys-pacutils.${SOEXT}: ${SOURCES}
++${SOPREFIX}pacutils.${SOEXT}: ${SOURCES}
 +	if [[ -z "${IMPEXT}" ]]; then \
 +	  $(CC) $(CPPFLAGS) -shared -fPIC $(CFLAGS) -o $@ $^ $(LDLIBS) $(LDFLAGS); \
 +	else \
-+	  $(CC) $(CPPFLAGS) -shared -fPIC $(CFLAGS) -o $@ -Wl,--out-implib,$(patsubst msys-%.$(SOEXT),lib%.$(IMPEXT),$@) $^ $(LDLIBS) $(LDFLAGS); \
++	  $(CC) $(CPPFLAGS) -shared -fPIC $(CFLAGS) -o $@ -Wl,--out-implib,$(patsubst ${SOPREFIX}%.$(SOEXT),lib%.$(IMPEXT),$@) $^ $(LDLIBS) $(LDFLAGS); \
 +	fi
  
 -install: libpacutils.so
-+install: msys-pacutils.${SOEXT}
++install: ${SOPREFIX}pacutils.${SOEXT}
  	install -d "${DESTDIR}${INCLUDEDIR}/pacutils"
  	for h in ${HEADERS}; do install -m 644 $$h "${DESTDIR}${INCLUDEDIR}/$$h"; done
 -	install -d "${DESTDIR}${LIBDIR}"
 -	install -m 644 libpacutils.so "${DESTDIR}${LIBDIR}/libpacutils.so"
 +	install -d "${DESTDIR}${SODIR}"
-+	install -m 755 msys-pacutils.${SOEXT} "${DESTDIR}${SODIR}/msys-pacutils.${SOEXT}"
++	install -m 755 ${SOPREFIX}pacutils.${SOEXT} "${DESTDIR}${SODIR}/${SOPREFIX}pacutils.${SOEXT}"
 +	if [[ -n "${IMPEXT}" ]]; then \
 +	  install -d "${DESTDIR}${LIBDIR}"; \
 +	  install -m 644 libpacutils.${IMPEXT} "${DESTDIR}${LIBDIR}/libpacutils.${IMPEXT}"; \
@@ -119,3 +131,6 @@ index 4e4d447..fe2c276 100644
  
  gcov: CC = gcc
  gcov: CFLAGS += -fprofile-arcs -ftest-coverage
+-- 
+2.32.0.windows.1
+
