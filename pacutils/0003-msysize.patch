@@ -1,0 +1,136 @@
+From 3674b17632a00d29a65a7f83371811796e085b9e Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Mon, 14 Jun 2021 10:29:49 -0700
+Subject: [PATCH 3/3] msysize
+
+---
+ lib/Makefile | 34 ++++++++++++++++++++++++++--------
+ src/Makefile |  2 +-
+ t/Makefile   | 15 +++++++++++----
+ 3 files changed, 38 insertions(+), 13 deletions(-)
+
+diff --git a/lib/Makefile b/lib/Makefile
+index a8c368c..b582f2b 100644
+--- a/lib/Makefile
++++ b/lib/Makefile
+@@ -6,7 +6,7 @@ ALPM_CFLAGS ?= $(shell pkg-config libalpm --cflags)
+ CFLAGS ?= -Wall -Wextra -Wpedantic -Werror -g
+ 
+ override CFLAGS += $(ALPM_CFLAGS)
+-override LDLIBS += -lalpm
++override LDLIBS += $(shell pkg-config libalpm --libs --static)
+ 
+ PREFIX        ?= /usr/local
+ EXEC_PREFIX   ?= ${PREFIX}
+@@ -24,6 +24,16 @@ HOOKDIR    ?= ${SYSCONFDIR}/pacman.d/hooks
+ LOGFILE    ?= ${LOCALSTATEDIR}/log/pacman.log
+ ROOTDIR    ?= /
+ 
++SOPREFIX   ?= lib
++SOEXT      ?= so
++ifeq ($(SOEXT),dll)
++  SODIR    ?= ${BINDIR}
++  IMPEXT   ?= dll.a
++else
++  SODIR    ?= ${LIBDIR}
++  IMPEXT   ?=
++endif
++
+ override CPPFLAGS += \
+ 	-DCACHEDIR=\"$(CACHEDIR)\" \
+ 	-DDBEXT=\"$(DBEXT)\" \
+@@ -63,18 +73,26 @@ SOURCES = \
+ 					pacutils/ui.c \
+ 					pacutils/util.c
+ 
+-all: libpacutils.so
++all: ${SOPREFIX}pacutils.${SOEXT}
+ 
+-libpacutils.so: ${SOURCES}
+-	$(CC) $(CPPFLAGS) -shared -fPIC $(CFLAGS) -o $@ $^ $(LDLIBS) $(LDFLAGS)
++${SOPREFIX}pacutils.${SOEXT}: ${SOURCES}
++	if [[ -z "${IMPEXT}" ]]; then \
++	  $(CC) $(CPPFLAGS) -shared -fPIC $(CFLAGS) -o $@ $^ $(LDLIBS) $(LDFLAGS); \
++	else \
++	  $(CC) $(CPPFLAGS) -shared -fPIC $(CFLAGS) -o $@ -Wl,--out-implib,$(patsubst ${SOPREFIX}%.$(SOEXT),lib%.$(IMPEXT),$@) $^ $(LDLIBS) $(LDFLAGS); \
++	fi
+ 
+-install: libpacutils.so
++install: ${SOPREFIX}pacutils.${SOEXT}
+ 	install -d "${DESTDIR}${INCLUDEDIR}/pacutils"
+ 	for h in ${HEADERS}; do install -m 644 $$h "${DESTDIR}${INCLUDEDIR}/$$h"; done
+-	install -d "${DESTDIR}${LIBDIR}"
+-	install -m 644 libpacutils.so "${DESTDIR}${LIBDIR}/libpacutils.so"
++	install -d "${DESTDIR}${SODIR}"
++	install -m 755 ${SOPREFIX}pacutils.${SOEXT} "${DESTDIR}${SODIR}/${SOPREFIX}pacutils.${SOEXT}"
++	if [[ -n "${IMPEXT}" ]]; then \
++	  install -d "${DESTDIR}${LIBDIR}"; \
++	  install -m 644 libpacutils.${IMPEXT} "${DESTDIR}${LIBDIR}/libpacutils.${IMPEXT}"; \
++	fi
+ 
+ clean:
+-	$(RM) *.o *.so*
++	$(RM) *.o *.${SOEXT}*
+ 
+ .PHONY: all clean install
+diff --git a/src/Makefile b/src/Makefile
+index 708bca1..d6cee3b 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -8,7 +8,7 @@ CFLAGS ?= -Wall -Wextra -Wpedantic -Werror -g
+ override CFLAGS   += $(ALPM_CFLAGS)
+ override CPPFLAGS += -I../lib
+ override LDFLAGS  += -L../lib
+-override LDLIBS   += -lpacutils -lalpm -larchive
++override LDLIBS   += -lpacutils $(shell pkg-config libalpm --libs --static)
+ 
+ PREFIX      ?= /usr/local
+ EXEC_PREFIX ?= ${PREFIX}
+diff --git a/t/Makefile b/t/Makefile
+index 4e4d447..fe2c276 100644
+--- a/t/Makefile
++++ b/t/Makefile
+@@ -1,10 +1,17 @@
+ CFLAGS += -Wall -g -Wextra -I../lib
+ LDFLAGS += -L../lib
+-LDLIBS += -lpacutils -lalpm -larchive
++LDLIBS += -lpacutils $(shell pkg-config libalpm --libs --static)
+ 
+ ALPM_CFLAGS ?= $(shell pkg-config libalpm --cflags)
+ override CFLAGS += $(ALPM_CFLAGS)
+ 
++SOEXT ?= so
++ifeq ($(SOEXT),dll)
++  IMPEXT ?= dll.a
++else
++  IMPEXT ?= ${SOEXT}
++endif
++
+ PROVE ?= prove
+ 
+ GIT ?= git
+@@ -26,18 +33,18 @@ TESTS += \
+ 		 40-ui-cb-download-progress.t \
+ 		 99-pu_list_shift.t
+ 
+-%.t: %.c ../lib/libpacutils.so ../ext/tap.c/tap.c Makefile
++%.t: %.c ../lib/libpacutils.${IMPEXT} ../ext/tap.c/tap.c Makefile
+ 	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $< $(LDLIBS) -o $@
+ 
+ check: tests
+-	LD_LIBRARY_PATH=../lib $(PROVE) $(TESTS)
++	LD_LIBRARY_PATH=../lib PATH="../lib:$$PATH" $(PROVE) $(TESTS)
+ 
+ tests: $(TESTS)
+ 
+ all: tests
+ 
+ valgrind: tests
+-	LD_LIBRARY_PATH=../lib $(PROVE) --exec="./runtest.sh -v" $(TESTS)
++	LD_LIBRARY_PATH=../lib PATH="../lib:$$PATH" $(PROVE) --exec="./runtest.sh -v" $(TESTS)
+ 
+ gcov: CC = gcc
+ gcov: CFLAGS += -fprofile-arcs -ftest-coverage
+-- 
+2.32.0.windows.1
+
