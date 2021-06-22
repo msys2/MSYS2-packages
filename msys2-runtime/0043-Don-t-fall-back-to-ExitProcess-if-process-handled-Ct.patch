@@ -1,0 +1,93 @@
+From 281acd22a0fdfe48a87230ad212b4f372dee0d49 Mon Sep 17 00:00:00 2001
+From: Naveen M K <naveen521kk@gmail.com>
+Date: Tue, 22 Jun 2021 13:57:45 +0530
+Subject: [PATCH 43/N] Don't fall back to ExitProcess if process handled
+ Ctrl-C event
+
+I have experimented with the mysterious kernel32!CtrlRoutine that
+it returns 0 if the CtrlHandlers set using SetConsoleCtrlHandler
+handled it correctly. So, now rather than defaulting to move to
+ExitProcess if the process isn't killed by CtrlRoutine, it will
+check only if the the ctrl event is handled correctly and falls
+back to ExitProcess only when CtrlRoutine fails.
+
+This should possibly allow python interactive mode.
+
+Signed-off-by: Naveen M K <naveen521kk@gmail.com>
+---
+ winsup/cygwin/include/cygwin/exit_process.h |  6 +++--
+ winsup/utils/getprocaddr.c                  | 29 ++++++++++++++++-----
+ 2 files changed, 26 insertions(+), 9 deletions(-)
+
+diff --git a/winsup/cygwin/include/cygwin/exit_process.h b/winsup/cygwin/include/cygwin/exit_process.h
+index 5f926c9..5e04c0f 100644
+--- a/winsup/cygwin/include/cygwin/exit_process.h
++++ b/winsup/cygwin/include/cygwin/exit_process.h
+@@ -163,10 +163,12 @@ exit_process (HANDLE process, int exit_code)
+     {
+     case SIGINT:
+     case SIGQUIT:
++      /* We are not going to kill them but simply say that Ctrl+C
++      is pressed. If the processes want they can exit or else
++      just wait.*/
+       if (kill_via_console_helper (
+               process, L"CtrlRoutine",
+-              signo == SIGINT ? CTRL_C_EVENT : CTRL_BREAK_EVENT, pid) &&
+-          GetExitCodeProcess(process, &code) && code != STILL_ACTIVE)
++              signo == SIGINT ? CTRL_C_EVENT : CTRL_BREAK_EVENT, pid))
+         return 0;
+       /* fall-through */
+     case SIGTERM:
+diff --git a/winsup/utils/getprocaddr.c b/winsup/utils/getprocaddr.c
+index 80b399c..d5ecd35 100644
+--- a/winsup/utils/getprocaddr.c
++++ b/winsup/utils/getprocaddr.c
+@@ -40,12 +40,23 @@ inject_remote_thread_into_process (HANDLE process,
+     {
+       /*
+        * Wait up to 10 seconds (arbitrary constant) for the thread to finish;
+-       * After that grace period, fall back to exit with an exit code
+-       * indicating failure.
++       * Maybe we should wait forever? I have seen Cmd does so, but well...
+        */
+-      if (WaitForSingleObject (thread, 10000) == WAIT_OBJECT_0 &&
+-          GetExitCodeThread(thread, &code) && code != STILL_ACTIVE)
++      if (WaitForSingleObject (thread, 10000) == WAIT_OBJECT_0)
+         res = 0;
++      /*
++      According to the docs at MSDN for GetExitCodeThread, it will
++      get the return value from the function, here CtrlRoutine. So, this
++      checks if the Ctrl Event is handled correctly by the process.
++
++      By some testing I could see CtrlRoutine returns 0 in case where
++      CtrlEvent set by SetConsoleCtrlHandler is handled correctly, in all
++      other cases it returns something non-zero(not sure what it that).
++      */
++      GetExitCodeThread (thread, &code);
++      if (code != 0)
++        res = code;
++
+       CloseHandle (thread);
+     }
+ 
+@@ -123,10 +134,14 @@ ctrl_handler (DWORD ctrl_type)
+           return 1;
+         }
+       /* Inject the remote thread only when asked to */
+-      if (inject_remote_thread_into_process (h, address, exit_code) < 0)
++      int t = inject_remote_thread_into_process (h, address, exit_code);
++      if (t != 0)
+         {
+-          fprintf (stderr, "Could not inject thread into process %d\n", pid);
+-          return 1;
++          fprintf (stderr,
++                   "Error while injecting remote thread %d for pid(%d)\n", t,
++                   pid);
++          exit (1); /*We should exit immediately or else there will a 10s hang
++                       waiting for the event to happen.*/
+         }
+     }
+   SymCleanup (process);
+-- 
+2.31.1
+
