@@ -2,15 +2,15 @@
 
 pkgname=('libarchive' 'libarchive-devel' 'bsdcpio' 'bsdtar')
 pkgver=3.5.1
-pkgrel=1
+pkgrel=2
 pkgdesc="library that can create and read several streaming archive formats"
 arch=('i686' 'x86_64')
 url="https://libarchive.org/"
 license=('BSD')
 groups=('libraries')
 depends=('gcc-libs' 'libbz2' 'libiconv' 'libexpat' 'liblzma' 'liblz4' 'libnettle' 'libxml2' 'libzstd' 'zlib')
-makedepends=('libbz2-devel' 'libiconv-devel' 'libexpat-devel' 'liblzma-devel' 'liblz4-devel' 'libnettle-devel' 'libxml2-devel' 'libzstd-devel' 'zlib-devel')
-options=('!strip' 'debug' 'libtool')
+makedepends=('libbz2-devel' 'libiconv-devel' 'libexpat-devel' 'liblzma-devel' 'liblz4-devel' 'libnettle-devel' \
+             'libxml2-devel' 'libzstd-devel' 'zlib-devel' 'cmake')
 source=("https://github.com/libarchive/libarchive/releases/download/${pkgver}/${pkgname}-${pkgver}.tar.xz"
         'libarchive-3.3.2-bcrypt-fix.patch'
         'libarchive-3.3.1-msys2.patch')
@@ -24,46 +24,34 @@ prepare() {
   # msysize patch
   #patch -Np1 -i "${srcdir}/libarchive-3.3.1-msys2.patch"
   patch -Np1 -i "${srcdir}/libarchive-3.3.2-bcrypt-fix.patch"
-  autoreconf -ivf
 }
 
 build() {
-  export lt_cv_deplibs_check_method='pass_all'
-  cd "${pkgname}-${pkgver}"
+  local build_type=Release
+  if check_option "debug" "y"; then
+    build_type=Debug
+  fi
 
-  ./configure \
-    --prefix=/usr \
-    --enable-shared \
-    --enable-static \
-    --without-libiconv-prefix \
-    --without-xml2 \
-    --without-cng \
-    --without-lzo2
+  #export lt_cv_deplibs_check_method='pass_all'
 
-# CNG breaks pacman on Vista due to BCryptDeriveKeyPBKDF2
+  mkdir -p "${pkgname}-${pkgver}/build-${CHOST}"
+  cd "${pkgname}-${pkgver}/build-${CHOST}"
+
+  cmake \
+    -G"Unix Makefiles" \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=$build_type \
+    -DENABLE_TAR_SHARED=ON \
+    -DENABLE_CPIO_SHARED=ON \
+    -DENABLE_CAT_SHARED=ON \
+    ..
 
   make
   make DESTDIR="${srcdir}/dest" install
 }
 
 check() {
-  cd "${pkgname}-${pkgver}"
-
-  make check || true
-}
-
-package_bsdcpio() {
-  mkdir -p ${pkgdir}/usr/bin
-  mkdir -p ${pkgdir}/usr/share/man/man1/
-  cp -f ${srcdir}/dest/usr/bin/bsdcpio.exe ${pkgdir}/usr/bin/
-  cp -f ${srcdir}/dest/usr/share/man/man1/bsdcpio.* ${pkgdir}/usr/share/man/man1/
-}
-
-package_bsdtar() {
-  mkdir -p ${pkgdir}/usr/bin
-  mkdir -p ${pkgdir}/usr/share/man/man1/
-  cp -f ${srcdir}/dest/usr/bin/bsdtar.exe ${pkgdir}/usr/bin/
-  cp -f ${srcdir}/dest/usr/share/man/man1/bsdtar.* ${pkgdir}/usr/share/man/man1/
+  cd "${pkgname}-${pkgver}/build-${CHOST}"
 }
 
 package_libarchive() {
@@ -81,4 +69,20 @@ package_libarchive-devel() {
   mkdir -p ${pkgdir}/usr
   cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
   cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+}
+
+package_bsdcpio() {
+  depends=("libarchive=${pkgver}")
+  mkdir -p ${pkgdir}/usr/bin
+  mkdir -p ${pkgdir}/usr/share/man/man1/
+  cp -f ${srcdir}/dest/usr/bin/bsdcpio.exe ${pkgdir}/usr/bin/
+  cp -f ${srcdir}/dest/usr/share/man/man1/bsdcpio.* ${pkgdir}/usr/share/man/man1/
+}
+
+package_bsdtar() {
+  depends=("libarchive=${pkgver}")
+  mkdir -p ${pkgdir}/usr/bin
+  mkdir -p ${pkgdir}/usr/share/man/man1/
+  cp -f ${srcdir}/dest/usr/bin/bsdtar.exe ${pkgdir}/usr/bin/
+  cp -f ${srcdir}/dest/usr/share/man/man1/bsdtar.* ${pkgdir}/usr/share/man/man1/
 }
