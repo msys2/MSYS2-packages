@@ -2,41 +2,45 @@
 
 pkgbase="c-ares"
 pkgname=("libcares" "libcares-devel")
-pkgver=1.17.1
+pkgver=1.17.2
 pkgrel=1
 pkgdesc="C library that performs DNS requests and name resolves asynchronously (libraries)"
 arch=('i686' 'x86_64')
 url="https://c-ares.haxx.se/"
 license=("MIT")
-makedepends=("gcc")
+makedepends=("cmake")
 depends=("gcc-libs")
 options=('staticlibs')
-source=("https://c-ares.haxx.se/download/${pkgbase}-${pkgver}.tar.gz"{,.asc}
-        "https://c-ares.haxx.se/license.html")
-sha256sums=('d73dd0f6de824afd407ce10750ea081af47eba52b8a6cb307d220131ad93fc40'
+source=("https://github.com/c-ares/c-ares/releases/download/cares-${pkgver//./_}/c-ares-${pkgver}.tar.gz"{,.asc}
+        "0001-cmake-check-win32-winsock.patch")
+sha256sums=('4803c844ce20ce510ef0eb83f8ea41fa24ecaae9d280c468c582d2bb25b3913d'
             'SKIP'
-            '41215a3adeb9dcb308df48ed63faea7eb34cd9e944139123623e79fb8e656712')
-validpgpkeys=('27EDEAF22F3ABCEB50DB9A125CC908FDB71E12C2')
+            'd581371cc2e371e215a0442d3ac0711b93a5a549a9521055461c9d4d0777e8e5')
+validpgpkeys=('27EDEAF22F3ABCEB50DB9A125CC908FDB71E12C2') # Daniel Stenberg <daniel@haxx.se>
 
 prepare() {
   cd "${srcdir}/${pkgbase}-${pkgver}"
-  autoreconf -ivf
+
+  # https://github.com/c-ares/c-ares/pull/422.patch
+  patch -p1 -i "${srcdir}/0001-cmake-check-win32-winsock.patch"
 }
 
 build() {
   cd "${srcdir}/${pkgbase}-${pkgver}"
-  ./configure \
-    --prefix=/usr \
-    --enable-shared \
-    --enable-static
-  make
-  make DESTDIR="${srcdir}/dest" install
-  install -Dm644 ${srcdir}/license.html ${srcdir}/dest/usr/share/licenses/c-ares/license.html
-}
 
-check() {
-  cd "${srcdir}/${pkgbase}-${pkgver}"
-  make -k check
+  cmake -B "build-static" \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCARES_STATIC=ON \
+    -DCARES_SHARED=OFF
+  cmake --build "build-static"
+  DESTDIR="${srcdir}/dest" cmake --install "build-static"
+
+  cmake -B "build-shared" \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCARES_STATIC=OFF \
+    -DCARES_SHARED=ON
+  cmake --build "build-shared"
+  DESTDIR="${srcdir}/dest" cmake --install "build-shared"
 }
 
 package_libcares() {
@@ -47,6 +51,8 @@ package_libcares() {
 
   mkdir -p ${pkgdir}/usr/share
   cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+
+  install -vDm 644 "${srcdir}/${pkgbase}-${pkgver}/LICENSE.md" -t "${pkgdir}/usr/share/licenses/${pkgbase}/"
 }
 
 package_libcares-devel() {
