@@ -2,34 +2,38 @@
 # stolen from Archlinux
 
 pkgname=re2c
-pkgver=2.1.1
+pkgver=2.2
 pkgrel=1
 arch=('i686' 'x86_64')
-depends=(gcc-libs)
 pkgdesc='A tool for generating C-based recognizers from regular expressions'
 url='https://re2c.org/'
 license=('public domain')
-source=(${pkgname}-${pkgver}.tar.gz::https://github.com/skvadrik/re2c/archive/${pkgver}.tar.gz)
-sha256sums=('6ce465687b0037e49da7b6ffb0ed7f829702ca083c6c5eedbd1a5142e6d7f8fa')
+depends=('gcc-libs')
+makedepends=('cmake')
+checkdepends=('python')
+source=(${pkgname}-${pkgver}.tar.gz::https://github.com/skvadrik/re2c/archive/${pkgver}.tar.gz
+        "0001-define-posix-source-fdopen.patch")
+sha256sums=('a7906b73c815a3924cfe0b4879a3db9a790b4334b42af11eaf876bbf32c76b21'
+            '759227baf31c4591e9dfe1c9aa4e74c9c6998f3888376d1d32fc0f7217e99b64')
 
 prepare() {
   cd ${pkgname}-${pkgver}
-  autoreconf -fiv
+  patch -p1 -i "${srcdir}/0001-define-posix-source-fdopen.patch"
 }
 
 build() {
   cd ${pkgname}-${pkgver}
-  ./configure --prefix=/usr --enable-golang
-  make
+  cmake -B build -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build build
 }
 
 check() {
   cd ${pkgname}-${pkgver}
-  make tests
+  cmake --build build --target check
 }
 
 package() {
   cd ${pkgname}-${pkgver}
-  make DESTDIR="${pkgdir}" install
+  DESTDIR="${pkgdir}" cmake --install build
   install -Dm644 LICENSE ${pkgdir}/usr/share/licenses/${pkgname}/LICENSE
 }
