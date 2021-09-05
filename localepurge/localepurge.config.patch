@@ -1,0 +1,148 @@
+diff -ur localepurge-0.7.3.10.orig/debian/localepurge.config localepurge-0.7.3.10/debian/localepurge.config
+--- localepurge-0.7.3.10.orig/debian/localepurge.config	2020-08-02 19:01:39.000000000 +0300
++++ localepurge-0.7.3.10/debian/localepurge.config	2021-09-05 10:50:44.494063300 +0300
+@@ -2,26 +2,11 @@
+ 
+ set -e
+ 
+-. /usr/share/debconf/confmodule
+-
+ # first get all possible locales and create a full list of locale values:
+ 
+-CONFIG_FILE="/etc/locale.nopurge"
+ TEMPFILE="$(mktemp --suffix ".locales")"
+ LOCALELIST=/var/cache/localepurge/localelist
+ 
+-conf_has_key() {
+-    local key="$1"
+-
+-    if [ -f "$CONFIG_FILE" ] && fgrep --quiet --line-regexp \
+-             "$key" "$CONFIG_FILE"; then
+-        echo "true"
+-    else
+-        echo "false"
+-    fi
+-}
+-
+-
+ # for the purpose of presenting a ready made preselection at the very first
+ # configuration, include already configured locales from locales package:
+ 
+@@ -46,9 +31,7 @@
+ 
+ # include locales supported by the locales package:
+ 
+-if [ -f /usr/share/i18n/SUPPORTED ]; then
+-    grep ^[a-z] /usr/share/i18n/SUPPORTED | cut -d' ' -f1 | sort -u >> "$TEMPFILE"
+-fi
++find /usr/share/locale -maxdepth 1 -type d -name "*" -printf "%f\n" | grep "^[a-z]" | cut -d" " -f1 | sort -u >> "$TEMPFILE"
+ 
+ # include locales from our previous localelist if it already exists:
+ 
+@@ -59,8 +42,7 @@
+ # include locales from newly added locales:
+ NEWLOCALELIST="$LOCALELIST"-new
+ 
+-if [ -f "$NEWLOCALELIST" ] && \
+-   [ $(ps w -p "$PPID" | grep -c dpkg-reconfigure) = "1" ]; then
++if [ -f "$NEWLOCALELIST" ]; then
+     cat "$NEWLOCALELIST" >> "$TEMPFILE"
+     rm -f "$NEWLOCALELIST"
+ fi
+@@ -79,96 +61,9 @@
+    else
+     mv "$LOCALELIST" "$LOCALELIST"-old
+     sort -u "$TEMPFILE" > "$LOCALELIST"
+-fi 
+-
+-# finally sort and create full list of all collected locale names
+-
+-LOCALES=$(sort -u "$TEMPFILE" | tr '\n' ' ' \
+-         | sed 's/\ /,\ /g' | sed 's/,\ $//g')
+-
+-if [ -f "$CONFIG_FILE" ] ; then
+-    # Update the debconf database
+-    PRESELECT="$(grep --extended-regexp '^[[:lower:]][[:lower:]]' \
+-                "$CONFIG_FILE" | tr '\n' ' ' | sed 's/\ /,\ /g' | \
+-                   sed 's/,\ $//g')"
+-    db_set localepurge/nopurge "$PRESELECT"
+-
+-    db_set localepurge/use-dpkg-feature "$(conf_has_key USE_DPKG)"
+-    db_set localepurge/mandelete "$(conf_has_key MANDELETE)"
+-    db_set localepurge/dontbothernew "$(conf_has_key DONTBOTHERNEWLOCALE)"
+-    db_set localepurge/showfreedspace "$(conf_has_key SHOWFREEDSPACE)"
+-    db_set localepurge/quickndirtycalc "$(conf_has_key QUICKNDIRTYCALC)"
+-    db_set localepurge/verbose "$(conf_has_key VERBOSE)"
+-
+-else
+-
+-    # sort and create preselection values from "$LOCALEGEN"
+-
+-    PRESELECT=$(sort -u "$LOCALEGEN" | tr '\n' ' ' \
+-                     | sed 's/\ /,\ /g' | sed 's/,\ $//g')
+ fi
+ 
+ # deleting temporary files not needed anymore:
+ 
+ rm -f "$TEMPFILE" "$LOCALEGEN"
+ 
+-#############################################################
+-# now that all locale data is in place let debconf take over:
+-
+-db_subst localepurge/nopurge locales "$LOCALES"
+-
+-# uncomment for debugging:
+-#echo "$LOCALES" > /tmp/locales.list
+-
+-db_get localepurge/nopurge
+-if [ "$RET" = "" ] && [ "$RET" != "PURGE_ALL" ] \
+-   || [ "$RET" = "NEEDSCONFIGFIRST" ]; then
+-       db_set localepurge/nopurge "$PRESELECT"
+-       db_fset localepurge/nopurge seen false
+-       # uncomment for debugging:
+-       #echo "$PRESELECT" > /tmp/preselect.list
+-fi
+-
+-db_input high localepurge/nopurge || true
+-db_go
+-
+-db_get localepurge/nopurge
+-if [ "$RET" = "" ] || [ "$RET" = "PURGE_ALL" ]; then
+-    db_input high localepurge/none_selected || true
+-    db_go
+-
+-    db_get localepurge/none_selected
+-    if [ "$RET" = "false" ]; then
+-        db_input high localepurge/remove_no || true
+-	    db_go
+-    fi
+-fi
+-
+-db_input high localepurge/use-dpkg-feature || true
+-db_go
+-if [ "$RET" = "" -o "$RET" = "true" ] ; then
+-    USE_DPKG=yes
+-else
+-    USE_DPKG=no
+-fi
+-
+-db_input medium localepurge/mandelete || true
+-db_go
+-
+-if [ "$USE_DPKG" = "xno" ] ; then
+-    # Features incompatible with the dpkg approach.
+-    db_input medium localepurge/dontbothernew || true
+-    db_go
+-
+-    db_input low localepurge/showfreedspace || true
+-    db_go
+-
+-    db_get localepurge/showfreedspace
+-    if [ "$RET" = "true" ]; then
+-        db_input low localepurge/quickndirtycalc || true
+-        db_go
+-    fi
+-
+-    db_input low localepurge/verbose || true
+-    db_go
+-fi
