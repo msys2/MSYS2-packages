@@ -2,7 +2,7 @@
 # Contributor: Renato Silva <br.renatosilva@gmail.com>
 
 pkgname=ccache
-pkgver=4.2
+pkgver=4.4
 pkgrel=1
 pkgdesc="A compiler cache (mingw-w64)"
 arch=('i686' 'x86_64')
@@ -11,6 +11,7 @@ license=("GPL3")
 replaces=("${pkgname}-git")
 makedepends=("gcc"
              "cmake"
+             "ninja"
              "pkg-config"
              "zlib-devel"
              "libzstd-devel")
@@ -19,7 +20,7 @@ options=('staticlibs' 'strip')
 install="${pkgname}.install"
 source=(https://github.com/ccache/ccache/releases/download/v${pkgver}/ccache-${pkgver}.tar.xz{,.asc})
 validpgpkeys=("5A939A71A46792CF57866A51996DDA075594ADB8") #Joel Rosdahl <joel@rosdahl.net>
-sha256sums=('2f14b11888c39778c93814fc6843fc25ad60ff6ba4eeee3dff29a1bad67ba94f'
+sha256sums=('b40bea2ecf88fc15d4431f0d5fb8babf018d7218eaded0f40e07d4c18c667561'
             'SKIP')
 
 build() {
@@ -27,16 +28,19 @@ build() {
   mkdir -p build-${CHOST}  && cd build-${CHOST}
 
   /usr/bin/cmake \
+    -GNinja \
     -DCMAKE_INSTALL_PREFIX=/usr \
     -DCMAKE_BUILD_TYPE=Release \
+    -DREDIS_STORAGE_BACKEND=OFF \
+    -DUSE_CCACHE=OFF \
     ../${pkgname}-${pkgver}
 
-  make
+  cmake --build .
 }
 
 package() {
   cd "${srcdir}/build-${CHOST}"
-  make DESTDIR="${pkgdir}" install
+  DESTDIR="${pkgdir}" cmake --build . --target install
 
   install -Dm644 ${srcdir}/${pkgname}-${pkgver}/GPL-3.0.txt ${pkgdir}/usr/share/licenses/${pkgname}/GPL-3.0.txt
   install -Dm644 ${srcdir}/${pkgname}-${pkgver}/LGPL-3.0.txt ${pkgdir}/usr/share/licenses/${pkgname}/LGPL-3.0.txt
