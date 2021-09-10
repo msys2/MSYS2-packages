@@ -1,0 +1,46 @@
+# Maintainer: Nicolas Formichella <stigpro@outlook.fr>
+# Contributor: Hyacinthe Cartiaux <hyacinthe.cartiaux @ free.fr>
+# Contributor: Francesco Groccia <frgroccia gmail.com>
+# Contributor: Dincer Celik <dincer@bornovali.com>
+# Contributor: Orgad Shaneh <orgads @ gmail.com>
+
+pkgname=localepurge
+pkgver=0.7.3.10
+pkgrel=1
+pkgdesc="Script to remove disk space wasted for unneeded localizations."
+arch=('any')
+url="http://packages.debian.org/source/sid/localepurge"
+license=('GPL')
+backup=('etc/locale.nopurge')
+source=("http://deb.debian.org/debian/pool/main/l/localepurge/${pkgname}_${pkgver}.tar.xz"
+        "${pkgname}.patch"
+        "${pkgname}.8.patch"
+        "${pkgname}.config.patch"
+        "locale.nopurge")
+sha256sums=('56b08640f46d6ebf20b2d535e5ba54d062de70c8f2aadf5a5c665b6007f7f6e2'
+            '1713d521c6184cdaf5462b771fb340241d330e345f21bcd078594ac1fb277f32'
+            '8fda09c5e570282840818ad4c2bd7e0231b740e46d2d4ea185f7d0cf07369f6e'
+            'd2494a6135da835cf82cc1a5c5516792c09ad5d2f874df680380e4e31900e9e1'
+            '2eaf74647f6b94338c13489eb6b3a05ae1a27cbc5f3b88e5a73376c38f4f2bf5')
+
+prepare()
+{
+  cd "$srcdir/$pkgname-$pkgver"
+  patch -p1 < ${srcdir}/localepurge.patch
+  patch -p1 < ${srcdir}/localepurge.8.patch
+  patch -p1 < ${srcdir}/localepurge.config.patch
+}
+
+package()
+{
+  install -D -m755 ${srcdir}/${pkgname}-${pkgver}/usr/sbin/localepurge ${pkgdir}/usr/bin/localepurge
+  install -D -m644 ${srcdir}/${pkgname}-${pkgver}/debian/localepurge.8 ${pkgdir}/usr/share/man/man8/localepurge.8
+  install -D -m755 ${srcdir}/${pkgname}-${pkgver}/debian/localepurge.config ${pkgdir}/usr/bin/localepurge-config
+  install -D -m644 locale.nopurge ${pkgdir}/etc/locale.nopurge
+  if [ -e /var/cache/localepurge/localelist ]; then
+    cp /var/cache/localepurge/localelist ${srcdir}/localelist
+  else
+    find /usr/share/locale -maxdepth 1 -type d -name "*" -printf "%f\n" | grep "^[a-z]" | cut -d" " -f1 | sort -u > ${srcdir}/localelist
+  fi
+  install -D -m644 ${srcdir}/localelist ${pkgdir}/var/cache/localepurge/localelist
+}

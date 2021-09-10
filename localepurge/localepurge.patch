@@ -1,0 +1,189 @@
+diff -ur localepurge-0.7.3.10.orig/usr/sbin/localepurge localepurge-0.7.3.10/usr/sbin/localepurge
+--- localepurge-0.7.3.10.orig/usr/sbin/localepurge	2020-08-02 19:01:39.000000000 +0300
++++ localepurge-0.7.3.10/usr/sbin/localepurge	2021-09-05 10:50:44.334801200 +0300
+@@ -1,6 +1,6 @@
+ #! /bin/bash
+ 
+-# Deleting all locale files and localized man pages installed 
++# Deleting all locale files and localized man pages installed
+ # on system which are *not* listed in /etc/locale.nopurge
+ 
+ set -e
+@@ -12,48 +12,35 @@
+ fi
+ 
+ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+-   echo ""
+-   echo "Verbose output is triggered with option '-v' or '-verbose'."
+-   echo "Debugging output is triggered with option '-d' or '-debug'."
+-   echo "To reconfigure it, run 'dpkg-reconfigure localepurge'."
+-   echo "Documentation is either available via 'man localepurge'"
+-   echo "or by reading the docs in /usr/share/doc/localepurge."
+-   echo ""
+-   if [ -f $NOPURGECONF ] && fgrep --quiet --line-regexp USE_DPKG $NOPURGECONF ; then
+-       echo "NB: localepurge has been configured to use dpkg.  Therefore,"
+-       echo "this script will not do anything."
+-   fi
+-   exit 0
++    echo ""
++    echo "Verbose output is triggered with option '-v' or '-verbose'."
++    echo "Debugging output is triggered with option '-d' or '-debug'."
++    echo "To reconfigure it, edit /etc/locale.nopurge file."
++    echo "Documentation is available via 'man 8 localepurge'."
++    echo ""
++    exit 0
+ fi
+ 
+-
+ # Do nothing and report why if no valid configuration file exists:
+ 
+-if [ ! -f $NOPURGECONF ]
+-    then
+-	echo " No $NOPURGECONF file present, exiting ..."
++if [ ! -f $NOPURGECONF ]; then
++    echo " No $NOPURGECONF file present, exiting ..."
++    exit 0
++else
++    if fgrep --quiet --line-regexp NEEDSCONFIGFIRST $NOPURGECONF ; then
++	echo
++	echo "	  You have to configure \"localepurge\" by editing"
++	echo
++	echo "	      /etc/locale.nopurge file"
++	echo
++	echo "	  to make $0 actually start to function."
++	echo
++	echo "	  Nothing to be done, exiting ..."
++	echo
+ 	exit 0
+-    else
+-	if fgrep --quiet --line-regexp USE_DPKG $NOPURGECONF
+-            then
+-            # Do nothing, dpkg does all the work for us.
+-            exit 0
+-	elif fgrep --quiet --line-regexp NEEDSCONFIGFIRST $NOPURGECONF
+-	    then
+-		echo
+-		echo "	  You have to configure \"localepurge\" with the command"
+-		echo
+-		echo "	      dpkg-reconfigure localepurge"
+-		echo
+-		echo "	  to make $0 actually start to function."
+-		echo
+-		echo "	  Nothing to be done, exiting ..."
+-		echo
+-		exit 0
+-	fi
++    fi
+ fi
+ 
+-
+ ################################################################
+ ## Initialise variables
+ 
+@@ -85,7 +72,6 @@
+     VERBOSE=1
+ fi
+ 
+-
+ ################################################################
+ ## Manage the list of locales
+ 
+@@ -97,57 +83,57 @@
+ 
+ ((VERBOSE)) && echo "localepurge: checking for existence of $LOCALECACHEDIR..."
+ if [ ! -d $LOCALECACHEDIR ]; then
+-	mkdir -m 644 -p $LOCALECACHEDIR
++    mkdir -m 644 -p $LOCALECACHEDIR
+ fi
+ 
+ ((VERBOSE)) && echo "localepurge: checking for existence of $LOCALELIST..."
+ if [ ! -f $LOCALELIST ]; then
+-	touch $LOCALELIST && chmod 664 $LOCALELIST
++    touch $LOCALELIST && chmod 664 $LOCALELIST
+ fi
+ 
+ ((VERBOSE)) && echo "localepurge: checking system for new locale ..."
+ 
+ for NEWLOCALE in $(cd /usr/share/locale; ls .)
+-do 
+- if [ -d /usr/share/locale/$NEWLOCALE/LC_MESSAGES ]; then
+-    if [ ! "$(grep -cx $NEWLOCALE $LOCALELIST)" = "1" ]; then
+-	echo "$NEWLOCALE" >> "$NEWLOCALELIST"
++do
++    if [ -d /usr/share/locale/$NEWLOCALE/LC_MESSAGES ]; then
++	if [ ! "$(grep -cx $NEWLOCALE $LOCALELIST)" = "1" ]; then
++	    echo "$NEWLOCALE" >> "$NEWLOCALELIST"
++	fi
+     fi
+- fi
+ done
+ 
+ for NEWLOCALE in $(ls --ignore="man[1-9]*" /usr/share/man)
+-do 
+- if [ -d /usr/share/man/$NEWLOCALE/man1 ] || [ -d /usr/share/man/$NEWLOCALE/man8 ]; then
+-    if [ ! "$(grep -cx $NEWLOCALE $LOCALELIST)" = "1" ]; then
+-	echo "$NEWLOCALE" >> "$NEWLOCALELIST"
++do
++    if [ -d /usr/share/man/$NEWLOCALE/man1 ] || [ -d /usr/share/man/$NEWLOCALE/man8 ]; then
++	if [ ! "$(grep -cx $NEWLOCALE $LOCALELIST)" = "1" ]; then
++	    echo "$NEWLOCALE" >> "$NEWLOCALELIST"
++	fi
+     fi
+- fi
+ done
+ 
+ if [ -f $NEWLOCALELIST ]; then
+-  if ((DONTBOTHERNEWLOCALE)); then
+-    mv "$NEWLOCALELIST" "$NEWLOCALELIST".temp
+-    sort -u "$NEWLOCALELIST".temp "$LOCALELIST"> "$NEWLOCALELIST"
+-    mv "$NEWLOCALELIST" "$LOCALELIST"
+-    rm "$NEWLOCALELIST".temp
+-   else
+-    mv "$NEWLOCALELIST" "$NEWLOCALELIST".temp
+-    sort -u "$NEWLOCALELIST".temp > "$NEWLOCALELIST"
+-    rm "$NEWLOCALELIST".temp
+-  fi
++    if ((DONTBOTHERNEWLOCALE)); then
++	mv "$NEWLOCALELIST" "$NEWLOCALELIST".temp
++	sort -u "$NEWLOCALELIST".temp "$LOCALELIST"> "$NEWLOCALELIST"
++	mv "$NEWLOCALELIST" "$LOCALELIST"
++	rm "$NEWLOCALELIST".temp
++    else
++	mv "$NEWLOCALELIST" "$NEWLOCALELIST".temp
++	sort -u "$NEWLOCALELIST".temp > "$NEWLOCALELIST"
++	rm "$NEWLOCALELIST".temp
++    fi
+ fi
+ 
+ if [ -f "$NEWLOCALELIST" ] && [ $DONTBOTHERNEWLOCALE != yes ]; then
+     echo "Some new locales have appeared on your system:"
+     echo
+-    tr '\n' ' ' < "$NEWLOCALELIST" 
++    tr '\n' ' ' < "$NEWLOCALELIST"
+     echo
+     echo
+     echo "They will not be touched until you reconfigure localepurge"
+     echo "with the following command:"
+     echo
+-    echo "    dpkg-reconfigure localepurge"
++    echo "    /usr/bin/localepurge-config"
+     echo
+ fi
+ 
+@@ -202,7 +188,7 @@
+ 	local flag
+ 	((VERBOSE)) && flag=-v
+ 	for file; do
+-	    if [ -f "$file" ] || [ -h "$file" ]; then 
++	    if [ -f "$file" ] || [ -h "$file" ]; then
+ 		echo "$file"
+ 	    fi
+ 	done | xargs rm $flag
+@@ -244,7 +230,6 @@
+     fi
+ }
+ 
+-
+ ################################################################
+ ## Now, get the job done
+ 
