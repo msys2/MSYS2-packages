@@ -21,50 +21,19 @@ diff -Naur diffutils-3.7-orig/build-aux/ar-lib diffutils-3.7/build-aux/ar-lib
  	wine)
  	  file=`winepath -w "$file" || echo "$file"`
  	  ;;
-diff -Naur diffutils-3.7-orig/build-aux/compile diffutils-3.7/build-aux/compile
---- diffutils-3.7-orig/build-aux/compile	2019-01-01 04:37:29.000000000 +0300
-+++ diffutils-3.7/build-aux/compile	2019-01-15 10:41:20.472415300 +0300
-@@ -53,7 +53,7 @@
- 	  MINGW*)
- 	    file_conv=mingw
- 	    ;;
--	  CYGWIN*)
-+	  CYGWIN* | MSYS*)
- 	    file_conv=cygwin
- 	    ;;
- 	  *)
-@@ -67,7 +67,7 @@
- 	mingw/*)
- 	  file=`cmd //C echo "$file " | sed -e 's/"\(.*\) " *$/\1/'`
- 	  ;;
--	cygwin/*)
-+	cygwin/* | msys/*)
- 	  file=`cygpath -m "$file" || echo "$file"`
- 	  ;;
- 	wine/*)
 diff -Naur diffutils-3.7-orig/build-aux/config.guess diffutils-3.7/build-aux/config.guess
 --- diffutils-3.7-orig/build-aux/config.guess	2018-12-24 04:21:56.000000000 +0300
 +++ diffutils-3.7/build-aux/config.guess	2019-01-15 10:45:58.513703700 +0300
-@@ -869,6 +869,9 @@
-     *:MINGW64*:*)
- 	echo "$UNAME_MACHINE"-pc-mingw64
- 	exit ;;
-+    i*:MSYS*:*)
-+	echo ${UNAME_MACHINE}-pc-msys
-+	exit ;;
-     *:MINGW*:*)
- 	echo "$UNAME_MACHINE"-pc-mingw32
- 	exit ;;
-@@ -896,6 +899,9 @@
+@@ -947,6 +947,9 @@
      amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
- 	echo x86_64-pc-cygwin
- 	exit ;;
+ 	GUESS=x86_64-pc-cygwin
+ 	;;
 +    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
 +	echo x86_64-pc-msys
 +	exit ;;
      prep*:SunOS:5.*:*)
- 	echo powerpcle-unknown-solaris2"`echo "$UNAME_RELEASE"|sed -e 's/[^.]*//'`"
- 	exit ;;
+ 	SUN_REL=`echo "$UNAME_RELEASE" | sed -e 's/[^.]*//'`
+ 	GUESS=powerpcle-unknown-solaris2$SUN_REL
 diff -Naur diffutils-3.7-orig/build-aux/config.rpath diffutils-3.7/build-aux/config.rpath
 --- diffutils-3.7-orig/build-aux/config.rpath	2018-01-07 03:45:52.000000000 +0300
 +++ diffutils-3.7/build-aux/config.rpath	2019-01-15 10:41:20.503615300 +0300
@@ -116,7 +85,7 @@ diff -Naur diffutils-3.7-orig/build-aux/config.rpath diffutils-3.7/build-aux/con
 diff -Naur diffutils-3.7-orig/m4/btowc.m4 diffutils-3.7/m4/btowc.m4
 --- diffutils-3.7-orig/m4/btowc.m4	2018-01-07 03:45:52.000000000 +0300
 +++ diffutils-3.7/m4/btowc.m4	2019-01-16 07:32:38.096944800 +0300
-@@ -51,6 +51,8 @@
+@@ -43,6 +43,8 @@
                        # Guess no on Cygwin.
               cygwin*) gl_cv_func_btowc_nul="guessing no" ;;
                        # Guess yes on native Windows.
@@ -140,19 +109,19 @@ diff -Naur diffutils-3.7-orig/m4/double-slash-root.m4 diffutils-3.7/m4/double-sl
 diff -Naur diffutils-3.7-orig/m4/dup2.m4 diffutils-3.7/m4/dup2.m4
 --- diffutils-3.7-orig/m4/dup2.m4	2018-01-07 03:45:52.000000000 +0300
 +++ diffutils-3.7/m4/dup2.m4	2019-01-15 10:41:20.550415400 +0300
-@@ -78,7 +78,7 @@
-         [case "$host_os" in
-            mingw*) # on this platform, dup2 always returns 0 for success
-              gl_cv_func_dup2_works="guessing no" ;;
--           cygwin*) # on cygwin 1.5.x, dup2(1,1) returns 0
-+           cygwin* | msys*) # on cygwin 1.5.x, dup2(1,1) returns 0
-              gl_cv_func_dup2_works="guessing no" ;;
-            aix* | freebsd*)
-                    # on AIX 7.1 and FreeBSD 6.1, dup2 (1,toobig) gives EMFILE,
+@@ -69,7 +69,7 @@
+       [case "$host_os" in
+          mingw*) # on this platform, dup2 always returns 0 for success
+            gl_cv_func_dup2_works="guessing no" ;;
+-         cygwin*) # on cygwin 1.5.x, dup2(1,1) returns 0
++         cygwin* | msys*) # on cygwin 1.5.x, dup2(1,1) returns 0
+            gl_cv_func_dup2_works="guessing no" ;;
+          aix* | freebsd*)
+                  # on AIX 7.1 and FreeBSD 6.1, dup2 (1,toobig) gives EMFILE,
 diff -Naur diffutils-3.7-orig/m4/fcntl.m4 diffutils-3.7/m4/fcntl.m4
 --- diffutils-3.7-orig/m4/fcntl.m4	2018-01-07 03:45:52.000000000 +0300
 +++ diffutils-3.7/m4/fcntl.m4	2019-01-16 07:33:22.262070800 +0300
-@@ -69,7 +69,7 @@
+@@ -70,7 +70,7 @@
           [gl_cv_func_fcntl_f_dupfd_works=yes],
           [gl_cv_func_fcntl_f_dupfd_works=no],
           [case $host_os in
@@ -164,37 +133,37 @@ diff -Naur diffutils-3.7-orig/m4/fcntl.m4 diffutils-3.7/m4/fcntl.m4
 diff -Naur diffutils-3.7-orig/m4/getcwd.m4 diffutils-3.7/m4/getcwd.m4
 --- diffutils-3.7-orig/m4/getcwd.m4	2018-06-25 07:08:29.000000000 +0300
 +++ diffutils-3.7/m4/getcwd.m4	2019-01-16 07:33:54.355413900 +0300
-@@ -51,7 +51,7 @@
-                            # Guess yes on glibc systems.
-             *-gnu* | gnu*) gl_cv_func_getcwd_null="guessing yes";;
+@@ -54,7 +54,7 @@
+                            # Guess yes on musl systems.
+             *-musl*)       gl_cv_func_getcwd_null="guessing yes";;
                             # Guess yes on Cygwin.
 -            cygwin*)       gl_cv_func_getcwd_null="guessing yes";;
 +            cygwin* | msys*) gl_cv_func_getcwd_null="guessing yes";;
-                            # If we don't know, assume the worst.
-             *)             gl_cv_func_getcwd_null="guessing no";;
+                            # If we don't know, obey --enable-cross-guesses.
+             *)             gl_cv_func_getcwd_null="$gl_cross_guess_normal";;
            esac
 diff -Naur diffutils-3.7-orig/m4/printf.m4 diffutils-3.7/m4/printf.m4
 --- diffutils-3.7-orig/m4/printf.m4	2018-12-24 04:21:56.000000000 +0300
 +++ diffutils-3.7/m4/printf.m4	2019-01-16 07:34:27.521072200 +0300
-@@ -769,7 +769,7 @@
-            openbsd*)       gl_cv_func_printf_directive_ls="guessing no";;
-            irix*)          gl_cv_func_printf_directive_ls="guessing no";;
-            solaris*)       gl_cv_func_printf_directive_ls="guessing no";;
--           cygwin*)        gl_cv_func_printf_directive_ls="guessing no";;
+@@ -816,7 +816,7 @@
+            openbsd*)        gl_cv_func_printf_directive_ls="guessing yes";;
+            irix*)           gl_cv_func_printf_directive_ls="guessing no";;
+            solaris*)        gl_cv_func_printf_directive_ls="guessing no";;
+-           cygwin*)         gl_cv_func_printf_directive_ls="guessing no";;
 +           cygwin* | msys*) gl_cv_func_printf_directive_ls="guessing no";;
-            beos* | haiku*) gl_cv_func_printf_directive_ls="guessing no";;
-                            # Guess yes on native Windows.
-            mingw*)         gl_cv_func_printf_directive_ls="guessing yes";;
-@@ -849,7 +849,7 @@
+            beos* | haiku*)  gl_cv_func_printf_directive_ls="guessing no";;
+                             # Guess no on Android.
+            linux*-android*) gl_cv_func_printf_directive_ls="guessing no";;
+@@ -900,7 +900,7 @@
          [
  changequote(,)dnl
           case "$host_os" in
--           cygwin*)      gl_cv_func_printf_flag_grouping="guessing no";;
-+           cygwin* | msys*)      gl_cv_func_printf_flag_grouping="guessing no";;
-            netbsd*)      gl_cv_func_printf_flag_grouping="guessing no";;
-                          # Guess no on native Windows.
-            mingw* | pw*) gl_cv_func_printf_flag_grouping="guessing no";;
-@@ -1524,7 +1524,7 @@
+-           cygwin*)         gl_cv_func_printf_flag_grouping="guessing no";;
++           cygwin* | msys*) gl_cv_func_printf_flag_grouping="guessing no";;
+            netbsd*)         gl_cv_func_printf_flag_grouping="guessing no";;
+                             # Guess no on Android.
+            linux*-android*) gl_cv_func_printf_flag_grouping="guessing no";;
+@@ -1613,7 +1613,7 @@
             darwin[1-6].*)        gl_cv_func_vsnprintf_zerosize_c99="guessing no";;
             darwin*)              gl_cv_func_vsnprintf_zerosize_c99="guessing yes";;
                                   # Guess yes on Cygwin.
@@ -203,18 +172,27 @@ diff -Naur diffutils-3.7-orig/m4/printf.m4 diffutils-3.7/m4/printf.m4
                                   # Guess yes on Solaris >= 2.6.
             solaris2.[0-5] | solaris2.[0-5].*)
                                   gl_cv_func_vsnprintf_zerosize_c99="guessing no";;
-diff -Naur diffutils-3.7-orig/m4/setlocale.m4 diffutils-3.7/m4/setlocale.m4
---- diffutils-3.7-orig/m4/setlocale.m4	2018-12-24 04:21:56.000000000 +0300
-+++ diffutils-3.7/m4/setlocale.m4	2019-01-15 10:41:20.597215500 +0300
+diff -Naur diffutils-3.7-orig/m4/setlocale_null.m4 diffutils-3.7/m4/setlocale_null.m4
+--- diffutils-3.7-orig/m4/setlocale_null.m4	2018-12-24 04:21:56.000000000 +0300
++++ diffutils-3.7/m4/setlocale_null.m4	2019-01-15 10:41:20.597215500 +0300
 @@ -14,7 +14,7 @@
-     mingw*) REPLACE_SETLOCALE=1 ;;
-     dnl On Cygwin 1.5.x, setlocale always succeeds but setlocale(LC_CTYPE,NULL)
-     dnl is then still "C".
--    cygwin*)
-+    cygwin* | msys*)
-       case `uname -r` in
-         1.5.*) REPLACE_SETLOCALE=1 ;;
-       esac
+     [gl_cv_func_setlocale_null_all_mtsafe],
+     [case "$host_os" in
+        # Guess no on musl libc, macOS, FreeBSD, NetBSD, OpenBSD, AIX, Haiku, Cygwin.
+-       *-musl* | darwin* | freebsd* | midnightbsd* | netbsd* | openbsd* | aix* | haiku* | cygwin*)
++       *-musl* | darwin* | freebsd* | midnightbsd* | netbsd* | openbsd* | aix* | haiku* | cygwin* | msys*)
+          gl_cv_func_setlocale_null_all_mtsafe=no ;;
+        # Guess yes on glibc, HP-UX, IRIX, Solaris, native Windows.
+        *-gnu* | gnu* | hpux* | irix* | solaris* | mingw*)
+@@ -48,7 +48,7 @@
+        openbsd* | aix*)
+          gl_cv_func_setlocale_null_one_mtsafe=no ;;
+        # Guess yes on glibc, musl libc, macOS, FreeBSD, NetBSD, HP-UX, IRIX, Solaris, Haiku, Cygwin, native Windows.
+-       *-gnu* | gnu* | *-musl* | darwin* | freebsd* | midnightbsd* | netbsd* | hpux* | irix* | solaris* | haiku* | cygwin* | mingw*)
++       *-gnu* | gnu* | *-musl* | darwin* | freebsd* | midnightbsd* | netbsd* | hpux* | irix* | solaris* | haiku* | cygwin* | mingw* | msys*)
+          gl_cv_func_setlocale_null_one_mtsafe=yes ;;
+        # If we don't know, obey --enable-cross-guesses.
+        *)
 diff -Naur diffutils-3.7-orig/m4/wctob.m4 diffutils-3.7/m4/wctob.m4
 --- diffutils-3.7-orig/m4/wctob.m4	2018-01-07 03:45:53.000000000 +0300
 +++ diffutils-3.7/m4/wctob.m4	2019-01-16 07:35:46.613211100 +0300
