@@ -62,31 +62,51 @@ fi
 
 readonly ALL_OFF BOLD BLUE GREEN RED YELLOW
 
-# For backwards compatibility
-if [[ -z "${MINGW_ARCH}" ]] && [[ -n "${MINGW_INSTALLS}" ]]; then
-  plain "MINGW_INSTALLS is deprecated, use MINGW_ARCH instead"
-  MINGW_ARCH="${MINGW_INSTALLS}";
-fi
-
-MINGW_ARCH="${MINGW_ARCH,,}"
-MINGW_ARCH="${MINGW_ARCH:-mingw64 mingw32}"
-MINGW_ARCH_ALLOWED=('mingw32' 'mingw64' 'clang32' 'clang64' 'clangarm64' 'ucrt64')
-
-for _mingw in ${MINGW_ARCH}; do
-  if [[ ! " ${MINGW_ARCH_ALLOWED[*]} " = *" ${_mingw} "* ]]; then
-    print_error "MINGW_ARCH: '${_mingw}' unknown, possible values: ${MINGW_ARCH_ALLOWED[*]}"
-    exit 1
-  fi
-done
-
+# For certain flags skip our processing and just forward to makepkg
 for _arg in "$@"; do
-  if [ "${_arg}" = "--help" ] || [ "${_arg}" = "-h" ] || [ "${_arg}" = "--version" ] || [ "${_arg}" = "-V" ]; then
+  if [ "${_arg}" = "--help" ] || [ "${_arg}" = "-h" ]; then
+    /usr/bin/makepkg "$@"
+    echo -e "makepkg-mingw:\n"
+    echo '  $MINGW_ARCH      Space separated list of environments to build for.'
+    echo '                   Defaults to the active environment.'
+    exit 0
+  fi
+  if [ "${_arg}" = "--version" ] || [ "${_arg}" = "-V" ]; then
     /usr/bin/makepkg "$@"
     exit 0
   fi
 done
 
+# For backwards compatibility
+if [[ -z "${MINGW_ARCH}" ]] && [[ -n "${MINGW_INSTALLS}" ]]; then
+  print_warning "MINGW_INSTALLS is deprecated, use MINGW_ARCH instead"
+  MINGW_ARCH="${MINGW_INSTALLS}";
+fi
+
+# Validate or set MINGW_ARCH
+MINGW_ARCH_ALLOWED=('mingw32' 'mingw64' 'clang32' 'clang64' 'clangarm64' 'ucrt64')
+MINGW_ARCH="${MINGW_ARCH,,}"
+if [[ -z "$MINGW_ARCH" ]]; then
+  # In case MINGW_ARCH isn't set we default to MSYSTEM, or error out
+  if [[ " ${MINGW_ARCH_ALLOWED[*]} " = *" ${MSYSTEM,,} "* ]]; then
+    MINGW_ARCH="${MSYSTEM,,}"
+  else
+    print_warning 'MINGW_ARCH not set and not called from a MINGW environment, defaulting to mingw64. This will fail in the future!'
+    MINGW_ARCH='mingw64'
+  fi
+else
+  # Make sure MINGW_ARCH is valid
+  for _mingw in ${MINGW_ARCH}; do
+    if [[ ! " ${MINGW_ARCH_ALLOWED[*]} " = *" ${_mingw} "* ]]; then
+      print_error "MINGW_ARCH: '${_mingw}' unknown, possible values: ${MINGW_ARCH_ALLOWED[*]}"
+      exit 1
+    fi
+  done
+fi
+print_msg1 "MINGW_ARCH: ${MINGW_ARCH}"
+
 for _mingw in ${MINGW_ARCH}; do
+  print_msg2 "Building ${_mingw}..."
   case ${_mingw} in
     mingw32)
       _msystem=MINGW32
