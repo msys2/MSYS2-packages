@@ -1,7 +1,7 @@
-From 55202e1291da165b2b47c726171fb73e007cbed7 Mon Sep 17 00:00:00 2001
+From 17a8f32e326cd366c737c23ffd0352f4cc327d87 Mon Sep 17 00:00:00 2001
 From: Johannes Schindelin <johannes.schindelin@gmx.de>
 Date: Fri, 20 Mar 2015 09:56:28 +0000
-Subject: [PATCH 40/N] Emulate GenerateConsoleCtrlEvent() upon Ctrl+C
+Subject: [PATCH 29/N] Emulate GenerateConsoleCtrlEvent() upon Ctrl+C
 
 This patch is heavily inspired by the Git for Windows' strategy in
 handling Ctrl+C.
@@ -88,8 +88,8 @@ Co-authored-by: Naveen M K <naveen@syrusdark.website>
 Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
 ---
  winsup/cygwin/exceptions.cc                 |  20 +-
- winsup/cygwin/include/cygwin/exit_process.h | 282 ++++++++++++++++++++
- 2 files changed, 300 insertions(+), 2 deletions(-)
+ winsup/cygwin/include/cygwin/exit_process.h | 364 ++++++++++++++++++++
+ 2 files changed, 382 insertions(+), 2 deletions(-)
  create mode 100644 winsup/cygwin/include/cygwin/exit_process.h
 
 diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
@@ -132,10 +132,10 @@ index c638044..86e154d 100644
    sigproc_printf ("signal %d, signal handler %p", si.si_signo, handler);
 diff --git a/winsup/cygwin/include/cygwin/exit_process.h b/winsup/cygwin/include/cygwin/exit_process.h
 new file mode 100644
-index 0000000..19b8e60
+index 0000000..0486a0c
 --- /dev/null
 +++ b/winsup/cygwin/include/cygwin/exit_process.h
-@@ -0,0 +1,282 @@
+@@ -0,0 +1,364 @@
 +#ifndef EXIT_PROCESS_H
 +#define EXIT_PROCESS_H
 +
@@ -184,7 +184,7 @@ index 0000000..19b8e60
 +#define small_printf(...) fprintf (stderr, __VA_ARGS__)
 +#endif
 +
-+static BOOL get_wow (HANDLE process, BOOL &is_wow, int &bitness);
++static BOOL get_wow (HANDLE process, BOOL &is_wow, USHORT &process_arch);
 +static int exit_process_tree (HANDLE main_process, int exit_code);
 +
 +static BOOL
@@ -192,34 +192,47 @@ index 0000000..19b8e60
 +                         DWORD pid)
 +{
 +  BOOL is_wow;
-+  int bitness;
-+  if (!get_wow (process, is_wow, bitness))
++  USHORT process_arch;
++  if (!get_wow (process, is_wow, process_arch))
 +    {
 +      return FALSE;
 +    }
 +
 +  const char *name;
-+  if (bitness == 32)
-+    name = "/usr/libexec/getprocaddr32.exe";
-+  else if (bitness == 64)
-+    name = "/usr/libexec/getprocaddr64.exe";
-+  else
-+    return NULL; /* what?!? */
++  switch (process_arch)
++  {
++    case IMAGE_FILE_MACHINE_I386:
++      name = "/usr/libexec/getprocaddr32.exe";
++      break;
++    case IMAGE_FILE_MACHINE_AMD64:
++      name = "/usr/libexec/getprocaddr64.exe";
++      break;
++    /* TODO: provide exes for these */
++    case IMAGE_FILE_MACHINE_ARMNT:
++      name = "/usr/libexec/getprocaddrarm32.exe";
++      break;
++    case IMAGE_FILE_MACHINE_ARM64:
++      name = "/usr/libexec/getprocaddrarm64.exe";
++      break;
++    default:
++      return FALSE; /* what?!? */
++  }
 +  wchar_t wbuf[PATH_MAX];
 +
 +  if (cygwin_conv_path (CCP_POSIX_TO_WIN_W, name, wbuf, PATH_MAX)
 +      || GetFileAttributesW (wbuf) == INVALID_FILE_ATTRIBUTES)
-+    return NULL;
++    return FALSE;
 +
 +  STARTUPINFOW si = {};
 +  PROCESS_INFORMATION pi;
-+  size_t len = wcslen (wbuf) + wcslen (function_name) + 3 /* exit code */
-+               + 1 /* space */ + 10 /* process ID, i.e. DWORD */ + 1 /* NUL */;
++  size_t len = wcslen (wbuf) + 1 /* space */ + wcslen (function_name)
++               + 1 /* space */ + 3 /* exit code */ + 1 /* space */
++               + 10 /* process ID, i.e. DWORD */ + 1 /* NUL */;
 +  WCHAR cmd[len + 1];
 +  WCHAR title[] = L"cygwin-console-helper";
 +  DWORD process_exit;
 +
-+  swprintf (cmd, len + 1, L"%S %S %d %ld", wbuf, function_name, exit_code,
++  swprintf (cmd, len + 1, L"%S %S %d %u", wbuf, function_name, exit_code,
 +            pid);
 +
 +  si.cb = sizeof (si);
@@ -253,33 +266,96 @@ index 0000000..19b8e60
 +static int current_is_wow = -1;
 +static int is_32_bit_os = -1;
 +
-+static BOOL
-+get_wow (HANDLE process, BOOL &is_wow, int &bitness)
-+{
-+  if (is_32_bit_os == -1)
-+    {
-+      SYSTEM_INFO info;
++typedef BOOL (WINAPI * IsWow64Process2_t) (HANDLE, USHORT *, USHORT *);
++static bool wow64process2initialized = false;
++static IsWow64Process2_t pIsWow64Process2 /* = NULL */;
 +
-+      GetNativeSystemInfo (&info);
-+      if (info.wProcessorArchitecture == 0)
-+        is_32_bit_os = 1;
-+      else if (info.wProcessorArchitecture == 9)
-+        is_32_bit_os = 0;
-+      else
-+        is_32_bit_os = -2;
++typedef BOOL (WINAPI * GetProcessInformation_t) (HANDLE,
++                                                 PROCESS_INFORMATION_CLASS,
++                                                 LPVOID, DWORD);
++static bool getprocessinfoinitialized = false;
++static GetProcessInformation_t pGetProcessInformation /* = NULL */;
++
++static BOOL
++get_wow (HANDLE process, BOOL &is_wow, USHORT &process_arch)
++{
++  USHORT native_arch = IMAGE_FILE_MACHINE_UNKNOWN;
++  if (!wow64process2initialized)
++    {
++      pIsWow64Process2 = (IsWow64Process2_t)
++              GetProcAddress (GetModuleHandle ("KERNEL32"),
++                              "IsWow64Process2");
++      MemoryBarrier ();
++      wow64process2initialized = true;
++    }
++  if (!pIsWow64Process2)
++    {
++      if (is_32_bit_os == -1)
++        {
++          SYSTEM_INFO info;
++
++          GetNativeSystemInfo (&info);
++          if (info.wProcessorArchitecture == 0)
++            is_32_bit_os = 1;
++          else if (info.wProcessorArchitecture == 9)
++            is_32_bit_os = 0;
++          else
++            is_32_bit_os = -2;
++        }
++
++      if (current_is_wow == -1
++          && !IsWow64Process (GetCurrentProcess (), &current_is_wow))
++        current_is_wow = -2;
++
++      if (is_32_bit_os == -2 || current_is_wow == -2)
++        return FALSE;
++
++      if (!IsWow64Process (process, &is_wow))
++        return FALSE;
++
++      process_arch = is_32_bit_os || is_wow ? IMAGE_FILE_MACHINE_I386 :
++                                      IMAGE_FILE_MACHINE_AMD64;
++      return TRUE;
 +    }
 +
-+  if (current_is_wow == -1
-+      && !IsWow64Process (GetCurrentProcess (), &current_is_wow))
-+    current_is_wow = -2;
-+
-+  if (is_32_bit_os == -2 || current_is_wow == -2)
++  if (!pIsWow64Process2 (process, &process_arch, &native_arch))
 +    return FALSE;
 +
-+  if (!IsWow64Process (process, &is_wow))
-+    return FALSE;
++  /* The value will be IMAGE_FILE_MACHINE_UNKNOWN if the target process
++   * is not a WOW64 process
++   */
++  if (process_arch == IMAGE_FILE_MACHINE_UNKNOWN)
++    {
++      struct /* _PROCESS_MACHINE_INFORMATION */
++        {
++          /* 0x0000 */ USHORT ProcessMachine;
++          /* 0x0002 */ USHORT Res0;
++          /* 0x0004 */ DWORD MachineAttributes;
++        } /* size: 0x0008 */ process_machine_info;
 +
-+  bitness = is_32_bit_os || is_wow ? 32 : 64;
++      is_wow = FALSE;
++      /* However, x86_64 on ARM64 claims not to be WOW64, so we have to
++       * dig harder... */
++      if (!getprocessinfoinitialized)
++        {
++          pGetProcessInformation = (GetProcessInformation_t)
++                  GetProcAddress (GetModuleHandle ("KERNEL32"),
++                                  "GetProcessInformation");
++          MemoryBarrier ();
++          getprocessinfoinitialized = true;
++        }
++      /*#define ProcessMachineTypeInfo 9*/
++      if (pGetProcessInformation &&
++          pGetProcessInformation (process, (PROCESS_INFORMATION_CLASS)9,
++            &process_machine_info, sizeof (process_machine_info)))
++        process_arch = process_machine_info.ProcessMachine;
++      else
++        process_arch = native_arch;
++    }
++  else
++    {
++      is_wow = TRUE;
++    }
 +  return TRUE;
 +}
 +
@@ -300,10 +376,12 @@ index 0000000..19b8e60
 +    {
 +    case SIGINT:
 +    case SIGQUIT:
++      /* We are not going to kill them but simply say that Ctrl+C
++      is pressed. If the processes want they can exit or else
++      just wait.*/
 +      if (kill_via_console_helper (
 +              process, L"CtrlRoutine",
-+              signo == SIGINT ? CTRL_C_EVENT : CTRL_BREAK_EVENT, pid) &&
-+          GetExitCodeProcess(process, &code) && code != STILL_ACTIVE)
++              signo == SIGINT ? CTRL_C_EVENT : CTRL_BREAK_EVENT, pid))
 +        return 0;
 +      /* fall-through */
 +    case SIGTERM:
@@ -332,10 +410,10 @@ index 0000000..19b8e60
 +  PROCESSENTRY32 entry;
 +  DWORD pids[16384];
 +  int max_len = sizeof (pids) / sizeof (*pids), i, len, ret = 0;
-+  pid_t pid = GetProcessId (main_process);
++  DWORD pid = GetProcessId (main_process);
 +  int signo = exit_code & 0x7f;
 +
-+  pids[0] = (DWORD)pid;
++  pids[0] = pid;
 +  len = 1;
 +
 +  /*
@@ -387,6 +465,8 @@ index 0000000..19b8e60
 +        break;
 +    }
 +
++  CloseHandle (snapshot);
++
 +  for (i = len - 1; i >= 0; i--)
 +    {
 +      HANDLE process;
@@ -400,7 +480,9 @@ index 0000000..19b8e60
 +                  | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
 +              FALSE, pids[i]);
 +          if (!process)
-+            process = OpenProcess (PROCESS_TERMINATE, FALSE, pids[i]);
++            process = OpenProcess (
++                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
++                FALSE, pids[i]);
 +        }
 +      DWORD code;
 +
@@ -410,7 +492,7 @@ index 0000000..19b8e60
 +          if (!exit_process (process, exit_code))
 +            ret = -1;
 +        }
-+      if (process)
++      if (process && process != main_process)
 +        CloseHandle (process);
 +    }
 +
@@ -419,5 +501,5 @@ index 0000000..19b8e60
 +
 +#endif
 -- 
-2.31.1
+2.33.0
 
