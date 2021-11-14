@@ -1,0 +1,39 @@
+From c64fde18f02a18c9caec4a9b9cfd7a25241e0e3d Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Wed, 10 Nov 2021 12:24:53 +0900
+Subject: [PATCH 34/N] Cygwin: pipe: Handle WAIT_CANCELED when waiting
+ read_mtx.
+
+- Add missing handling for WAIT_CANCELED in cygwait() for read_mtx
+  in raw_read().
+---
+ winsup/cygwin/fhandler_pipe.cc | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/fhandler_pipe.cc b/winsup/cygwin/fhandler_pipe.cc
+index ce58e37..22149ca 100644
+--- a/winsup/cygwin/fhandler_pipe.cc
++++ b/winsup/cygwin/fhandler_pipe.cc
+@@ -302,10 +302,18 @@ fhandler_pipe::raw_read (void *ptr, size_t& len)
+       set_errno (EAGAIN);
+       len = (size_t) -1;
+       return;
+-    default:
++    case WAIT_SIGNALED:
+       set_errno (EINTR);
+       len = (size_t) -1;
+       return;
++    case WAIT_CANCELED:
++      pthread::static_cancel_self ();
++      /* NOTREACHED */
++    default:
++      /* Should not reach here. */
++      __seterrno ();
++      len = (size_t) -1;
++      return;
+     }
+   while (nbytes < len)
+     {
+-- 
+2.33.0
+
