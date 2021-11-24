@@ -1,0 +1,105 @@
+From 0bd3f2aa9bd75263901e1f57a6cd9c4015084408 Mon Sep 17 00:00:00 2001
+From: Kamil Dudka <kdudka@redhat.com>
+Date: Tue, 6 Nov 2018 12:32:04 +0100
+Subject: [PATCH] lynx: fix bugs detected by static analysis
+
+---
+ WWW/Library/Implementation/HTGopher.c |  1 +
+ samples/lynxdump                      |  1 +
+ src/LYBookmark.c                      |  2 ++
+ src/LYDownload.c                      |  1 +
+ src/LYLeaks.c                         | 24 ++++--------------------
+ 5 files changed, 9 insertions(+), 20 deletions(-)
+
+diff --git a/WWW/Library/Implementation/HTGopher.c b/WWW/Library/Implementation/HTGopher.c
+index a9ad41e..36ff592 100644
+--- a/WWW/Library/Implementation/HTGopher.c
++++ b/WWW/Library/Implementation/HTGopher.c
+@@ -1651,6 +1651,7 @@ static int HTLoadCSO(const char *arg,
+ 	(*Target->isa->put_block) (Target, buf, (int) strlen(buf));
+ 	(*Target->isa->_free) (Target);
+ 	free_CSOfields();
++	BStrFree(command);
+ 	return HT_LOADED;
+     }
+     /*
+diff --git a/samples/lynxdump b/samples/lynxdump
+index f79be2f..a0e9ae2 100755
+--- a/samples/lynxdump
++++ b/samples/lynxdump
+@@ -12,4 +12,5 @@ if test $HOME/.lynxrc ; then
+ fi
+ echo 'keypad_mode=NUMBERS_AS_ARROWS' >> $MYTMP/.lynxrc
+ HOME=$MYTMP; export HOME
++umask $oldmask
+ lynx -justify -dump -force_html -with_backspaces -nolist $*
+diff --git a/src/LYBookmark.c b/src/LYBookmark.c
+index c3116ef..6464d96 100644
+--- a/src/LYBookmark.c
++++ b/src/LYBookmark.c
+@@ -303,6 +303,7 @@ void save_bookmark_link(const char *address,
+ 	    LYMBM_statusline(CANCELLED);
+ 	    LYSleepMsg();
+ 	    FREE(bookmark_URL);
++	    BStrFree(tmp_data);
+ 	    return;
+ 	}
+     } while (!havevisible(string_data->str));
+@@ -347,6 +348,7 @@ void save_bookmark_link(const char *address,
+ 	LYSleepAlert();
+ 	FREE(Title);
+ 	FREE(bookmark_URL);
++	BStrFree(tmp_data);
+ 	return;
+     }
+ 
+diff --git a/src/LYDownload.c b/src/LYDownload.c
+index cf1ea98..9cf712d 100644
+--- a/src/LYDownload.c
++++ b/src/LYDownload.c
+@@ -456,6 +456,7 @@ void LYDownload(char *line)
+   cleanup:
+     FREE(Line);
+     BStrFree(buffer);
++    BStrFree(command);
+     return;
+ }
+ 
+diff --git a/src/LYLeaks.c b/src/LYLeaks.c
+index 2f2de28..8c236ff 100644
+--- a/src/LYLeaks.c
++++ b/src/LYLeaks.c
+@@ -1090,26 +1090,10 @@ static char *LYLeakSAVsprintf(char **dest,
+ 		mark_realloced(ALp_old, *dest, strlen(*dest) + 1, cp_File, ssi_Line);
+ 		return (*dest);
+ 	    }
+-	    if (vp_realloced == vp_oldAlloced) {
+-		ALp_new->SL_memory.cp_FileName = old_cp_File;
+-		ALp_new->SL_memory.ssi_LineNumber = old_ssi_Line;
+-		ALp_new->SL_realloc.cp_FileName = cp_File;
+-		ALp_new->SL_realloc.ssi_LineNumber = ssi_Line;
+-		return (*dest);
+-	    }
+-	    /* Look up again, list may have changed! - kw */
+-	    ALp_old = FindInList(vp_oldAlloced);
+-	    if (ALp_old == NULL) {
+-		ALp_new->SL_memory.cp_FileName = old_cp_File;
+-		ALp_new->SL_memory.ssi_LineNumber = old_ssi_Line;
+-		ALp_new->SL_realloc.cp_FileName = cp_File;
+-		ALp_new->SL_realloc.ssi_LineNumber = ssi_Line;
+-	    } else {
+-		ALp_new->SL_memory.cp_FileName = old_cp_File;
+-		ALp_new->SL_memory.ssi_LineNumber = old_ssi_Line;
+-		ALp_new->SL_realloc.cp_FileName = cp_File;
+-		ALp_new->SL_realloc.ssi_LineNumber = ssi_Line;
+-	    }
++	    ALp_new->SL_memory.cp_FileName = old_cp_File;
++	    ALp_new->SL_memory.ssi_LineNumber = old_ssi_Line;
++	    ALp_new->SL_realloc.cp_FileName = cp_File;
++	    ALp_new->SL_realloc.ssi_LineNumber = ssi_Line;
+ 	}
+ 	return (*dest);
+     }
+-- 
+2.17.2
+
