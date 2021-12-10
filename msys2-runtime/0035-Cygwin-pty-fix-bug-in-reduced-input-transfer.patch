@@ -1,0 +1,70 @@
+From eb5547505a855821e58a373642958ffc9bfe8402 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Fri, 10 Dec 2021 19:20:40 +0900
+Subject: [PATCH 35/N] Cygwin: pty: fix bug in reduced input transfer
+
+When launching an MSYS2 process via a non-MSYS2 process, the response
+for, say, a CSI [ 6n (Device Status Report) sent from that MSYS2 process
+was sometimes not sent (or sent only partially) to the process but to
+the terminal instead.
+
+This regression was introduced in f206417894 (Cygwin: pty: Reduce
+unecessary input transfer., 2021-02-11).
+
+While it is not yet completely clear why, this patch fixes this. The
+explanation is left for the commit message that Takashi will craft for
+the Cygwin project, but we will take this patch early into the MSYS2/Git
+for Windows projects.
+
+This addresses https://github.com/git-for-windows/git/issues/3579
+---
+ winsup/cygwin/fhandler_tty.cc | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler_tty.cc b/winsup/cygwin/fhandler_tty.cc
+index aeca0cb..b8a40ae 100644
+--- a/winsup/cygwin/fhandler_tty.cc
++++ b/winsup/cygwin/fhandler_tty.cc
+@@ -1247,10 +1247,13 @@ fhandler_pty_slave::mask_switch_to_pcon_in (bool mask, bool xfer)
+   else if (InterlockedDecrement (&num_reader) == 0)
+     CloseHandle (slave_reading);
+ 
++  bool need_xfer =
++    get_ttyp ()->switch_to_pcon_in && !get_ttyp ()->pcon_activated;
++
+   /* In GDB, transfer input based on setpgid() does not work because
+      GDB may not set terminal process group properly. Therefore,
+      transfer input here if isHybrid is set. */
+-  if (isHybrid && !!masked != mask && xfer
++  if ((isHybrid || need_xfer) && !!masked != mask && xfer
+       && GetStdHandle (STD_INPUT_HANDLE) == get_handle ())
+     {
+       if (mask && get_ttyp ()->pcon_input_state_eq (tty::to_nat))
+@@ -1544,7 +1547,7 @@ out:
+   if (ptr0)
+     { /* Not tcflush() */
+       bool saw_eol = totalread > 0 && strchr ("\r\n", ptr0[totalread -1]);
+-      mask_switch_to_pcon_in (false, saw_eol);
++      mask_switch_to_pcon_in (false, saw_eol || len == 0);
+     }
+ }
+ 
+@@ -2226,6 +2229,15 @@ fhandler_pty_master::write (const void *ptr, size_t len)
+       return len;
+     }
+ 
++  if (to_be_read_from_pcon () && !get_ttyp ()->pcon_activated
++      && get_ttyp ()->pcon_input_state == tty::to_cyg)
++    {
++      WaitForSingleObject (input_mutex, INFINITE);
++      fhandler_pty_slave::transfer_input (tty::to_nat, from_master,
++					  get_ttyp (), input_available_event);
++      ReleaseMutex (input_mutex);
++    }
++
+   line_edit_status status = line_edit (p, len, ti, &ret);
+   if (status > line_edit_signalled && status != line_edit_pipe_full)
+     ret = -1;
+-- 
+2.34.1
+
