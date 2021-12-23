@@ -1,0 +1,123 @@
+From 068dd234b9c42fdb7b8a44c66c186a8f5059d43e Mon Sep 17 00:00:00 2001
+From: Achim Gratz <Achim.Gratz@Stromeko.DE>
+Date: Sun, 25 Apr 2021 11:57:09 +0200
+Subject: [PATCH 2/2] Cygwin: testsuite fixes for libgccjit
+
+The .exe suffix is handled specially by Cygwin, so using that for JIT
+objects make the testsuite fail almost all tests.  Changing the suffix
+doesn't quite work everywhere unfortunately.
+---
+ gcc/testsuite/jit.dg/jit.exp                         | 12 ++++++------
+ gcc/testsuite/jit.dg/test-compile-to-assembler.c     |  2 +-
+ .../jit.dg/test-compile-to-dynamic-library.c         |  2 +-
+ gcc/testsuite/jit.dg/test-compile-to-executable.c    |  4 ++--
+ gcc/testsuite/jit.dg/test-compile-to-object.c        |  2 +-
+ 5 files changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/gcc/testsuite/jit.dg/jit.exp b/gcc/testsuite/jit.dg/jit.exp
+index 9af87f9c6ad..f261a25d2f5 100644
+--- a/gcc/testsuite/jit.dg/jit.exp
++++ b/gcc/testsuite/jit.dg/jit.exp
+@@ -449,7 +449,7 @@ proc jit-dg-test { prog do_what extra_tool_flags } {
+     # This also ensures that the source name makes it into the
+     # pass/fail output, so that we can distinguish e.g. which test-foo
+     # is failing.
+-    set output_file "[file tail $prog].exe"
++    set output_file "[file tail $prog].xcx"
+     verbose "output_file: $output_file"
+ 
+     # Create the test executable:
+@@ -590,7 +590,7 @@ proc jit-dg-test { prog do_what extra_tool_flags } {
+ 	# Verify that a reproducer was generated
+ 	if { [file exists $generated_reproducer] == 1} {
+ 	    pass "found generated reproducer: $generated_reproducer"
+-	    set output_file "${generated_reproducer}.exe"
++	    set output_file "${generated_reproducer}.xcx"
+ 	    # (this overwrites output_file)
+ 
+ 	    # Try to compile the generated reproducer
+@@ -764,7 +764,7 @@ proc jit-verify-assembler { args } {
+ 
+     # Name the built executable as OUTPUT_FILENAME with
+     # ".exe" appended.
+-    set executable_from_asm ${asm_filename}.exe
++    set executable_from_asm ${asm_filename}.xsx
+     verbose "  executable_from_asm: ${executable_from_asm}"
+ 
+     # Invoke the driver to assemble/link the .s file to the .exe
+@@ -812,7 +812,7 @@ proc jit-verify-object { args } {
+ 
+     # Name the linked executable as OUTPUT_FILENAME with
+     # ".exe" appended.
+-    set executable_from_obj ${obj_filename}.exe
++    set executable_from_obj ${obj_filename}.xox
+     verbose "  executable_from_obj: ${executable_from_obj}"
+ 
+     # Invoke the driver to link the .o file to the .exe
+@@ -864,7 +864,7 @@ proc jit-verify-dynamic-library { args } {
+     # Build a test executable from
+     # verify-dynamic-library.c
+     set test_src "verify-dynamic-library.c"
+-    set test_executable ${test_src}.exe
++    set test_executable ${test_src}.xdx
+     verbose "  test_executable: ${test_executable}"
+ 
+     # Invoke the driver to build the test executable
+@@ -916,7 +916,7 @@ proc jit-verify-executable { args } {
+ 
+ # We need to link with --export-dynamic for test-calling-external-function.c
+ # so that the JIT-built code can call into functions from the main program.
+-set DEFAULT_CFLAGS "-I$srcdir/../jit -lgccjit -g -Wall -Werror -Wl,--export-dynamic"
++set DEFAULT_CFLAGS "-I$srcdir/../jit -lgccjit -g -Wall -Werror"
+ 
+ # Main loop.  This will invoke jig-dg-test on each test-*.c file.
+ dg-runtest $tests "" $DEFAULT_CFLAGS
+diff --git a/gcc/testsuite/jit.dg/test-compile-to-assembler.c b/gcc/testsuite/jit.dg/test-compile-to-assembler.c
+index e3a6d2edd20..6321402e20e 100644
+--- a/gcc/testsuite/jit.dg/test-compile-to-assembler.c
++++ b/gcc/testsuite/jit.dg/test-compile-to-assembler.c
+@@ -10,4 +10,4 @@
+ #include "create-code-for-hello-world-executable.h"
+ 
+ /* { dg-final { jit-verify-output-file-was-created "" } } */
+-/* { dg-final { jit-verify-assembler "hello from ./output-of-test-compile-to-assembler.c.s.exe" } } */
++/* { dg-final { jit-verify-assembler "hello from ./output-of-test-compile-to-assembler.c.s.xsx" } } */
+diff --git a/gcc/testsuite/jit.dg/test-compile-to-dynamic-library.c b/gcc/testsuite/jit.dg/test-compile-to-dynamic-library.c
+index c29e6f6d628..ead2085d303 100644
+--- a/gcc/testsuite/jit.dg/test-compile-to-dynamic-library.c
++++ b/gcc/testsuite/jit.dg/test-compile-to-dynamic-library.c
+@@ -63,4 +63,4 @@ create_code (gcc_jit_context *ctxt, void *user_data)
+ }
+ 
+ /* { dg-final { jit-verify-output-file-was-created "" } } */
+-/* { dg-final { jit-verify-dynamic-library "hello from ./verify-dynamic-library.c.exe" } } */
++/* { dg-final { jit-verify-dynamic-library "hello from ./verify-dynamic-library.c.xdx" } } */
+diff --git a/gcc/testsuite/jit.dg/test-compile-to-executable.c b/gcc/testsuite/jit.dg/test-compile-to-executable.c
+index 2fb0bd91cc9..f9c5c583aae 100644
+--- a/gcc/testsuite/jit.dg/test-compile-to-executable.c
++++ b/gcc/testsuite/jit.dg/test-compile-to-executable.c
+@@ -5,9 +5,9 @@
+ 
+ #define TEST_COMPILING_TO_FILE
+ #define OUTPUT_KIND      GCC_JIT_OUTPUT_KIND_EXECUTABLE
+-#define OUTPUT_FILENAME  "output-of-test-compile-to-executable.c.exe"
++#define OUTPUT_FILENAME  "output-of-test-compile-to-executable.c.xcx.exe"
+ #include "harness.h"
+ #include "create-code-for-hello-world-executable.h"
+ 
+ /* { dg-final { jit-verify-output-file-was-created "" } } */
+-/* { dg-final { jit-verify-executable "hello from ./output-of-test-compile-to-executable.c.exe" } } */
++/* { dg-final { jit-verify-executable "hello from ./output-of-test-compile-to-executable.c.xcx" } } */
+diff --git a/gcc/testsuite/jit.dg/test-compile-to-object.c b/gcc/testsuite/jit.dg/test-compile-to-object.c
+index 81d41c21d40..56914cf9e20 100644
+--- a/gcc/testsuite/jit.dg/test-compile-to-object.c
++++ b/gcc/testsuite/jit.dg/test-compile-to-object.c
+@@ -10,4 +10,4 @@
+ #include "create-code-for-hello-world-executable.h"
+ 
+ /* { dg-final { jit-verify-output-file-was-created "" } } */
+-/* { dg-final { jit-verify-object "hello from ./output-of-test-compile-to-object.c.o.exe" } } */
++/* { dg-final { jit-verify-object "hello from ./output-of-test-compile-to-object.c.o.xox" } } */
+-- 
+2.31.1
+
