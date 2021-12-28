@@ -1,8 +1,7 @@
-From 1822f7cf064bc795a31e8eeb736e48593abb5af2 Mon Sep 17 00:00:00 2001
+From 742a5dd1aec188e45edddc9491e46e31ac2cf887 Mon Sep 17 00:00:00 2001
 From: Jon Turney <jon.turney@dronecode.org.uk>
 Date: Tue, 12 Jan 2016 22:49:09 +0000
-Subject: [PATCH 1/5] Teach gdb how to unwind cygwin _sigbe and sigdelayed
- frames
+Subject: [PATCH] Teach gdb how to unwind cygwin _sigbe and sigdelayed frames
 
 The majority of functions in the cygwin DLL are wrapped by routines which use an
 an alternate stack to return via a signal handler if a signal occured while
@@ -42,15 +41,15 @@ as we unwind the stack.
 ---
  gdb/amd64-windows-tdep.c |  57 +++++++++-
  gdb/i386-windows-tdep.c  |  28 +++++
- gdb/windows-tdep.c       | 237 +++++++++++++++++++++++++++++++++++++++
+ gdb/windows-tdep.c       | 238 +++++++++++++++++++++++++++++++++++++++
  gdb/windows-tdep.h       |  20 ++++
- 4 files changed, 341 insertions(+), 1 deletion(-)
+ 4 files changed, 342 insertions(+), 1 deletion(-)
 
 diff --git a/gdb/amd64-windows-tdep.c b/gdb/amd64-windows-tdep.c
-index 3f9cbebc5d3..130d421be7e 100644
+index fe8a3a0b7ac..1d9121cf76d 100644
 --- a/gdb/amd64-windows-tdep.c
 +++ b/gdb/amd64-windows-tdep.c
-@@ -1208,11 +1208,66 @@ amd64_windows_auto_wide_charset (void)
+@@ -1272,13 +1272,68 @@ amd64_windows_auto_wide_charset (void)
    return "UTF-16";
  }
  
@@ -111,15 +110,17 @@ index 3f9cbebc5d3..130d421be7e 100644
  static void
  amd64_windows_init_abi_common (gdbarch_info info, struct gdbarch *gdbarch)
  {
-+
+   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+ 
 +  cygwin_sigwrapper_frame_unwind_set_sigbe_pattern (&amd64_sigbe);
 +  cygwin_sigwrapper_frame_unwind_set_sigdelayed_pattern (&amd64_sigdelayed);
 +  frame_unwind_append_unwinder (gdbarch, &cygwin_sigwrapper_frame_unwind);
++
    /* The dwarf2 unwinder (appended very early by i386_gdbarch_init) is
       preferred over the SEH one.  The reasons are:
       - binaries without SEH but with dwarf2 debug info are correctly handled
 diff --git a/gdb/i386-windows-tdep.c b/gdb/i386-windows-tdep.c
-index 4ffaa4562b5..26132f0a800 100644
+index b561d60e0f8..1da56866bff 100644
 --- a/gdb/i386-windows-tdep.c
 +++ b/gdb/i386-windows-tdep.c
 @@ -27,6 +27,7 @@
@@ -130,7 +131,7 @@ index 4ffaa4562b5..26132f0a800 100644
  
  /* Core file support.  */
  
-@@ -199,6 +200,30 @@ i386_windows_auto_wide_charset (void)
+@@ -101,6 +102,30 @@ i386_windows_auto_wide_charset (void)
    return "UTF-16";
  }
  
@@ -161,7 +162,7 @@ index 4ffaa4562b5..26132f0a800 100644
  /* Implement the "push_dummy_call" gdbarch method.  */
  
  static CORE_ADDR
-@@ -236,6 +261,9 @@ i386_windows_init_abi_common (struct gdbarch_info info, struct gdbarch *gdbarch)
+@@ -138,6 +163,9 @@ i386_windows_init_abi_common (struct gdbarch_info info, struct gdbarch *gdbarch)
  {
    struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
  
@@ -172,7 +173,7 @@ index 4ffaa4562b5..26132f0a800 100644
  
    set_gdbarch_skip_main_prologue (gdbarch, i386_skip_main_prologue);
 diff --git a/gdb/windows-tdep.c b/gdb/windows-tdep.c
-index 019d4d18b64..a2c7a1efa97 100644
+index ca854390b7e..7ff1750990b 100644
 --- a/gdb/windows-tdep.c
 +++ b/gdb/windows-tdep.c
 @@ -33,6 +33,7 @@
@@ -183,7 +184,7 @@ index 019d4d18b64..a2c7a1efa97 100644
  #include "gdbcore.h"
  #include "coff/internal.h"
  #include "libcoff.h"
-@@ -1120,3 +1121,239 @@ even if their meaning is unknown."),
+@@ -1237,3 +1238,240 @@ even if their meaning is unknown."),
       isn't another convenience variable of the same name.  */
    create_internalvar_type_lazy ("_tlb", &tlb_funcs, NULL);
  }
@@ -416,6 +417,7 @@ index 019d4d18b64..a2c7a1efa97 100644
 +
 +const struct frame_unwind cygwin_sigwrapper_frame_unwind =
 +{
++  "cygwin_sigwrapper",
 +  NORMAL_FRAME,
 +  default_frame_unwind_stop_reason,
 +  &cygwin_sigwrapper_frame_this_id,
@@ -424,10 +426,10 @@ index 019d4d18b64..a2c7a1efa97 100644
 +  &cygwin_sigwrapper_frame_sniffer
 +};
 diff --git a/gdb/windows-tdep.h b/gdb/windows-tdep.h
-index 00ae7a6258e..9c2efcc0516 100644
+index bd2c7e7589f..835bb2253ad 100644
 --- a/gdb/windows-tdep.h
 +++ b/gdb/windows-tdep.h
-@@ -48,4 +48,24 @@ extern void cygwin_init_abi (struct gdbarch_info info,
+@@ -56,4 +56,24 @@ extern void cygwin_init_abi (struct gdbarch_info info,
  
  extern bool is_linked_with_cygwin_dll (bfd *abfd);
  
@@ -453,5 +455,5 @@ index 00ae7a6258e..9c2efcc0516 100644
 +
  #endif
 -- 
-2.31.1.windows.1
+2.34.1
 
