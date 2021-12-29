@@ -50,7 +50,7 @@ for package in "${packages[@]}"; do
         for pkg in *.pkg.tar.*; do
             pkgname="$(echo "$pkg" | rev | cut -d- -f4- | rev)"
             echo "::group::[install] ${pkgname}"
-            grep -qFx "${package}" "$(dirname "$0")/ci-dont-install-list.txt" || pacman --noprogressbar --upgrade --noconfirm $pkg
+            grep -qFx "${package}" "$DIR/ci-dont-install-list.txt" || pacman --noprogressbar --upgrade --noconfirm $pkg
             echo "::endgroup::"
 
             echo "::group::[diff] ${pkgname}"
@@ -71,7 +71,7 @@ for package in "${packages[@]}"; do
         cd - > /dev/null
     else
         echo "::group::[install] ${package}"
-        grep -qFx "${package}" "$(dirname "$0")/ci-dont-install-list.txt" || execute 'Installing' install_packages
+        grep -qFx "${package}" "$DIR/ci-dont-install-list.txt" || execute 'Installing' install_packages
         echo "::endgroup::"
 
         echo "::group::[diff] ${package}"
@@ -101,7 +101,7 @@ for package in "${packages[@]}"; do
         for pkg in *.pkg.tar.*; do
             installed_packages+=("$(echo "$pkg" | rev | cut -d- -f4- | rev)")
         done
-        pacman -R --recursive --unneeded --noconfirm --noprogressbar "${installed_packages[@]}"
+        grep -qFx "${package}" "$DIR/ci-dont-install-list.txt" || pacman -R --recursive --unneeded --noconfirm --noprogressbar "${installed_packages[@]}"
         unset installed_packages
         cd - > /dev/null
         echo "::endgroup::"
