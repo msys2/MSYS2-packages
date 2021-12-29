@@ -1,0 +1,97 @@
+From 7818455627c5e54813ac89924b8b67d0bc869146 Mon Sep 17 00:00:00 2001
+From: Bruno Haible <bruno@clisp.org>
+Date: Fri, 17 Sep 2021 22:22:50 +0200
+Subject: threadlib: Avoid crashes in thread-related functions on Cygwin 3.2.0.
+
+Reported by Brian Inglis via Akim Demaille in
+<https://lists.gnu.org/archive/html/bug-gnulib/2021-09/msg00063.html>.
+
+* m4/threadlib.m4 (gl_WEAK_SYMBOLS): Force a "guessing no" result on
+Cygwin.
+---
+ m4/threadlib.m4 | 62 +++++++++++++++++++++++++++++++++------------------------
+ 1 file changed, 36 insertions(+), 26 deletions(-)
+
+(limited to 'm4')
+
+diff --git a/m4/threadlib.m4 b/m4/threadlib.m4
+index 37b797c..6b43bbd 100644
+--- a/m4/threadlib.m4
++++ b/m4/threadlib.m4
+@@ -84,38 +84,48 @@ AC_DEFUN([gl_WEAK_SYMBOLS],
+   AC_REQUIRE([AC_CANONICAL_HOST])
+   AC_CACHE_CHECK([whether imported symbols can be declared weak],
+     [gl_cv_have_weak],
+-    [gl_cv_have_weak=no
+-     dnl First, test whether the compiler accepts it syntactically.
+-     AC_LINK_IFELSE(
+-       [AC_LANG_PROGRAM(
+-          [[extern void xyzzy ();
++    [case "$host_os" in
++       cygwin* | msys*)
++         dnl On Cygwin 3.2.0 with gcc 10.2, the test below would succeed, but
++         dnl programs that use pthread_in_use() with weak symbol references
++         dnl crash miserably at runtime.
++         gl_cv_have_weak="guessing no"
++         ;;
++       *)
++         gl_cv_have_weak=no
++         dnl First, test whether the compiler accepts it syntactically.
++         AC_LINK_IFELSE(
++           [AC_LANG_PROGRAM(
++              [[extern void xyzzy ();
+ #pragma weak xyzzy]],
+-          [[xyzzy();]])],
+-       [gl_cv_have_weak=maybe])
+-     if test $gl_cv_have_weak = maybe; then
+-       dnl Second, test whether it actually works. On Cygwin 1.7.2, with
+-       dnl gcc 4.3, symbols declared weak always evaluate to the address 0.
+-       AC_RUN_IFELSE(
+-         [AC_LANG_SOURCE([[
++              [[xyzzy();]])],
++           [gl_cv_have_weak=maybe])
++         if test $gl_cv_have_weak = maybe; then
++           dnl Second, test whether it actually works. On Cygwin 1.7.2, with
++           dnl gcc 4.3, symbols declared weak always evaluate to the address 0.
++           AC_RUN_IFELSE(
++             [AC_LANG_SOURCE([[
+ #include <stdio.h>
+ #pragma weak fputs
+ int main ()
+ {
+   return (fputs == NULL);
+ }]])],
+-         [gl_cv_have_weak=yes],
+-         [gl_cv_have_weak=no],
+-         [dnl When cross-compiling, assume that only ELF platforms support
+-          dnl weak symbols.
+-          AC_EGREP_CPP([Extensible Linking Format],
+-            [#ifdef __ELF__
+-             Extensible Linking Format
+-             #endif
+-            ],
+-            [gl_cv_have_weak="guessing yes"],
+-            [gl_cv_have_weak="guessing no"])
+-         ])
+-     fi
++             [gl_cv_have_weak=yes],
++             [gl_cv_have_weak=no],
++             [dnl When cross-compiling, assume that only ELF platforms support
++              dnl weak symbols.
++              AC_EGREP_CPP([Extensible Linking Format],
++                [#ifdef __ELF__
++                 Extensible Linking Format
++                 #endif
++                ],
++                [gl_cv_have_weak="guessing yes"],
++                [gl_cv_have_weak="guessing no"])
++             ])
++         fi
++         ;;
++     esac
+      dnl But when linking statically, weak symbols don't work.
+      case " $LDFLAGS " in
+        *" -static "*) gl_cv_have_weak=no ;;
+-- 
+cgit v1.1
+
