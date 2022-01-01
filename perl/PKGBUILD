@@ -1,14 +1,14 @@
 # Maintainer: Alexey Pavlov <Alexpux@gmail.com>
 
 pkgbase=perl
-pkgname=('perl' 'perl-devel')
+pkgname=('perl' 'perl-doc' 'perl-devel')
 pkgver=5.32.1
-pkgrel=1
+pkgrel=2
 pkgdesc="A highly capable, feature-rich programming language"
 arch=(i686 x86_64)
 license=('GPL')
 url="https://www.perl.org/"
-makedepends=('libdb-devel' 'libgdbm-devel' 'libcrypt-devel')
+makedepends=('libdb-devel' 'libgdbm-devel' 'libcrypt-devel' 'gcc' 'make')
 source=(https://www.cpan.org/src/5.0/perl-${pkgver}.tar.xz
         perlbin.sh
         perlbin.csh
@@ -90,12 +90,101 @@ build() {
     -Accflags="$CFLAGS -fwrapv"
 
   LC_ALL=C make
+
+  _package "${srcdir}/_install"
 }
 
 check() {
   cd ${srcdir}/${pkgname}-${pkgver}
   TEST_JOBS=$(echo $MAKEFLAGS | sed 's/.*-j\([0-9][0-9]*\).*/\1/') make test_harness || true
   #make test
+}
+
+_package() {
+  local pkgdir="${1}"
+
+  make DESTDIR="${pkgdir}" install
+
+  for template in "${srcdir}/"*.template; do
+    install -Dm644 "${template}" "${pkgdir}/usr/share/makepkg-template/${template##*/}"
+  done
+  ln -s perl-binary-module-dependency-1.template "${pkgdir}/usr/share/makepkg-template/"perl-binary-module-dependency.template
+
+  ### Perl Settings ###
+  # Change man page extensions for site and vendor module builds.
+  # Set no mail address since bug reports should go to the bug tracker
+  # and not someone's email.
+  sed -e '/^man1ext=/ s/1perl/1p/' -e '/^man3ext=/ s/3perl/3pm/' \
+      -e "/^cf_email=/ s/'.*'/''/" \
+      -e "/^perladmin=/ s/'.*'/''/" \
+      -i ${pkgdir}/usr/lib/perl5/core_perl/Config_heavy.pl
+
+  ### CPAN Settings ###
+  # Set CPAN default config to use the site directories.
+  sed -e '/(makepl_arg =>/   s/""/"INSTALLDIRS=site"/' \
+      -e '/(mbuildpl_arg =>/ s/""/"installdirs=site"/' \
+      -i ${pkgdir}/usr/share/perl5/core_perl/CPAN/FirstTime.pm
+
+  # Profile script to set paths to perl scripts.
+  install -D -m755 ${srcdir}/perlbin.sh \
+                   ${pkgdir}/etc/profile.d/perlbin.sh
+  # Profile script to set paths to perl scripts on csh. (FS#22441)
+  install -D -m755 ${srcdir}/perlbin.csh \
+                  ${pkgdir}/etc/profile.d/perlbin.csh
+  # Profile script to set paths to perl scripts on fish. (FS#51191)
+  install -D -m755 ${srcdir}/perlbin.fish \
+                  ${pkgdir}/usr/share/fish/vendor_conf.d/perlbin.fish
+
+  # Add the dirs so new installs will already have them in PATH once they
+  # install their first perl programm
+  install -d -m755 "${pkgdir}/usr/bin/vendor_perl"
+  install -d -m755 "${pkgdir}/usr/bin/site_perl"
+
+  #(cd ${pkgdir}/usr/bin; mv perl${pkgver} perl)
+
+  # Remove all pod files *except* those under /usr/lib/perl5/core_perl/pods/
+  # (FS#16488)
+  rm -f ${pkgdir}/usr/share/perl5/core_perl/*.pod
+  for d in ${pkgdir}/usr/share/perl5/core_perl/*; do
+    if [ -d ${d} -a $(basename ${d}) != "pods" ]; then
+      find ${d} -name *.pod -delete
+    fi
+  done
+  find ${pkgdir}/usr/lib -name *.pod -delete
+  find ${pkgdir} -name .packlist -delete
+
+  find ${pkgdir}/usr/lib -type f -exec chmod 0644 {} \;
+  find ${pkgdir}/usr/share/perl5 -type f -exec chmod 0644 {} \;
+  # prevent xsinit-generated code from referencing boot_Win32CORE
+  sed -i -e "s/^\(static_ext\)=.*/\1=' '/" \
+    ${pkgdir}/usr/lib/perl5/core_perl/Config_heavy.pl
+
+  install -D -m755 ${srcdir}/${pkgname}-${pkgver}/lib/auto/XS/APItest/APItest.dll \
+                  ${pkgdir}/usr/lib/perl5/core_perl/auto/XS/APItest/APItest.dll
+  install -D -m755 ${srcdir}/${pkgname}-${pkgver}/lib/auto/XS/Typemap/Typemap.dll \
+                  ${pkgdir}/usr/lib/perl5/core_perl/auto/XS/Typemap/Typemap.dll
+  install -D -m755 ${srcdir}/${pkgname}-${pkgver}/lib/auto/Win32CORE/Win32CORE.a \
+                  ${pkgdir}/usr/lib/perl5/core_perl/auto/Win32CORE/Win32CORE.a
+}
+
+_find_doc_files() {
+  pushd "${1}" > /dev/null
+    echo usr/bin/core_perl/perldoc
+    echo usr/share/man/man1/perldoc.1perl
+    echo usr/share/perl5/core_perl/pods/
+
+    # everything else than section 1 goes as-is
+    find usr/share/man/ -maxdepth 1 -mindepth 1 -not -name man1
+
+    # section 1 manual pages for installed programs go in perl not perl-doc
+    find usr/share/man/man1 -type f -printf "%f\n" | \
+    while read man; do
+      prog=$(echo $man | sed 's/\.[13]perl$//')
+      if [ ! -f usr/bin/core_perl/$prog ] && [ ! -f usr/bin/$prog ]; then
+          echo usr/share/man/man1/$man
+      fi
+    done
+  popd > /dev/null
 }
 
 package_perl() {
@@ -222,70 +311,21 @@ provides=('perl-Archive-Tar=2.36'
   provides=(${provides[@]})
   replaces=('perl-Scalar-List-Utils')
 
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make DESTDIR="${pkgdir}" V=1 install
+  cp -r "${srcdir}/_install/"* "${pkgdir}"
 
-  for template in "${srcdir}/"*.template; do
-    install -Dm644 "${template}" "${pkgdir}/usr/share/makepkg-template/${template##*/}"
+  for file in $(_find_doc_files ${srcdir}/_install); do
+    rm -Rf "${pkgdir}/${file}"
   done
-  ln -s perl-binary-module-dependency-1.template "${pkgdir}/usr/share/makepkg-template/"perl-binary-module-dependency.template
+}
 
-  ### Perl Settings ###
-  # Change man page extensions for site and vendor module builds.
-  # Set no mail address since bug reports should go to the bug tracker
-  # and not someone's email.
-  sed -e '/^man1ext=/ s/1perl/1p/' -e '/^man3ext=/ s/3perl/3pm/' \
-      -e "/^cf_email=/ s/'.*'/''/" \
-      -e "/^perladmin=/ s/'.*'/''/" \
-      -i ${pkgdir}/usr/lib/perl5/core_perl/Config_heavy.pl
+package_perl-doc() {
+  pkgdesc="Perl documentation"
+  depends=("perl=${pkgver}")
 
-  ### CPAN Settings ###
-  # Set CPAN default config to use the site directories.
-  sed -e '/(makepl_arg =>/   s/""/"INSTALLDIRS=site"/' \
-      -e '/(mbuildpl_arg =>/ s/""/"installdirs=site"/' \
-      -i ${pkgdir}/usr/share/perl5/core_perl/CPAN/FirstTime.pm
-
-  # Profile script to set paths to perl scripts.
-  install -D -m755 ${srcdir}/perlbin.sh \
-                   ${pkgdir}/etc/profile.d/perlbin.sh
-  # Profile script to set paths to perl scripts on csh. (FS#22441)
-  install -D -m755 ${srcdir}/perlbin.csh \
-                  ${pkgdir}/etc/profile.d/perlbin.csh
-  # Profile script to set paths to perl scripts on fish. (FS#51191)
-  install -D -m755 ${srcdir}/perlbin.fish \
-                  ${pkgdir}/usr/share/fish/vendor_conf.d/perlbin.fish
-
-  # Add the dirs so new installs will already have them in PATH once they
-  # install their first perl programm
-  install -d -m755 "${pkgdir}/usr/bin/vendor_perl"
-  install -d -m755 "${pkgdir}/usr/bin/site_perl"
-
-  #(cd ${pkgdir}/usr/bin; mv perl${pkgver} perl)
-
-  # Remove all pod files *except* those under /usr/lib/perl5/core_perl/pods/
-  # (FS#16488)
-  rm -f ${pkgdir}/usr/share/perl5/core_perl/*.pod
-  for d in ${pkgdir}/usr/share/perl5/core_perl/*; do
-    if [ -d ${d} -a $(basename ${d}) != "pods" ]; then
-      find ${d} -name *.pod -delete
-    fi
+  for file in $(_find_doc_files ${srcdir}/_install); do
+    mkdir -p "${pkgdir}/$(dirname "${file}")"
+    cp -r "${srcdir}/_install/${file}" "${pkgdir}/${file}"
   done
-  find ${pkgdir}/usr/lib -name *.pod -delete
-  find ${pkgdir} -name .packlist -delete
-
-  find ${pkgdir}/usr/lib -type f -exec chmod 0644 {} \;
-  find ${pkgdir}/usr/share/perl5 -type f -exec chmod 0644 {} \;
-  # prevent xsinit-generated code from referencing boot_Win32CORE
-  sed -i -e "s/^\(static_ext\)=.*/\1=' '/" \
-    ${pkgdir}/usr/lib/perl5/core_perl/Config_heavy.pl
-
-  install -D -m755 ${srcdir}/${pkgname}-${pkgver}/lib/auto/XS/APItest/APItest.dll \
-                  ${pkgdir}/usr/lib/perl5/core_perl/auto/XS/APItest/APItest.dll
-  install -D -m755 ${srcdir}/${pkgname}-${pkgver}/lib/auto/XS/Typemap/Typemap.dll \
-                  ${pkgdir}/usr/lib/perl5/core_perl/auto/XS/Typemap/Typemap.dll
-  install -D -m755 ${srcdir}/${pkgname}-${pkgver}/lib/auto/Win32CORE/Win32CORE.a \
-                  ${pkgdir}/usr/lib/perl5/core_perl/auto/Win32CORE/Win32CORE.a
-
 }
 
 package_perl-devel() {
