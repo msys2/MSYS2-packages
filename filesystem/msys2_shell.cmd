@@ -49,8 +49,8 @@ if "x%~1" == "x-mintty" shift& set /a msys2_shiftCounter+=1& set MSYSCON=mintty.
 if "x%~1" == "x-conemu" shift& set /a msys2_shiftCounter+=1& set MSYSCON=conemu& goto :checkparams
 if "x%~1" == "x-defterm" shift& set /a msys2_shiftCounter+=1& set MSYSCON=defterm& goto :checkparams
 rem Other parameters
-if "x%~1" == "x-full-path" shift& set /a msys2_shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
-if "x%~1" == "x-use-full-path" shift& set /a msys2_shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
+if "x%~1" == "x-full-path" shift& set /a msys2_shiftCounter+=1& set ORIGINAL_PATH=& set MSYS2_PATH_TYPE=inherit& goto :checkparams
+if "x%~1" == "x-use-full-path" shift& set /a msys2_shiftCounter+=1& set ORIGINAL_PATH=& set MSYS2_PATH_TYPE=inherit& goto :checkparams
 if "x%~1" == "x-here" shift& set /a msys2_shiftCounter+=1& set CHERE_INVOKING=enabled_from_arguments& goto :checkparams
 if "x%~1" == "x-where" (
   if "x%~2" == "x" (
