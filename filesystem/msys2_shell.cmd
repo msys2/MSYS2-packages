@@ -206,8 +206,9 @@ echo Usage:
 echo     %~1 [options] [login shell parameters]
 echo.
 echo Options:
-echo     -mingw32 ^| -mingw64 ^| -ucrt64 ^| -clang64 ^| -msys[2]   Set shell type
-echo     -defterm ^| -mintty ^| -conemu                            Set terminal type
+echo     -mingw32 ^| -mingw64 ^| -ucrt64 ^| -clang32 ^| -clang64 ^|
+echo     -msys[2] ^| -clangarm64           Set shell type
+echo     -defterm ^| -mintty ^| -conemu     Set terminal type
 echo     -here                            Use current directory as working
 echo                                      directory
 echo     -where DIRECTORY                 Use specified DIRECTORY as working
