@@ -1,0 +1,52 @@
+From 576eff4d56dcac441fcc56ff59966e66f9e0f9b9 Mon Sep 17 00:00:00 2001
+From: Corinna Vinschen <corinna@vinschen.de>
+Date: Wed, 12 Jan 2022 11:57:35 +0100
+Subject: [PATCH 43/N] posix_spawn: fix get/set uid/gid calls for 32 bit
+ Cygwin
+
+32 bit Cygwin still exports function calls to support old applications.
+E. g., when switching from 16 to 32 bit uid/gid values, new function
+like getuid32 have been added and the old getuid function still only
+provides 16 bit values.  Newly built applications using getuid are
+actually calling getuid32.
+
+However, this link magic isn't performed inside Cygwin itself, so if
+newlib functions call getuid, they actually call the old getuid, not
+the new getuid32.  This leads to truncated uid/gid values.
+
+https://cygwin.com/pipermail/cygwin/2022-January/250453.html reports
+how this leads to problems in posix_spawn.
+
+Fix this temporarily. i686 support will go away soon in Cygwin and the
+fix can be dropped.
+
+Signed-off-by: Corinna Vinschen <corinna@vinschen.de>
+---
+ newlib/libc/posix/posix_spawn.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/newlib/libc/posix/posix_spawn.c b/newlib/libc/posix/posix_spawn.c
+index 005471f..cfec803 100644
+--- a/newlib/libc/posix/posix_spawn.c
++++ b/newlib/libc/posix/posix_spawn.c
+@@ -146,6 +146,17 @@ typedef struct __posix_spawn_file_actions_entry {
+  * Spawn routines
+  */
+ 
++#if defined (__CYGWIN__) && defined (__i386__)
++extern int getgid32 (void);
++extern int getuid32 (void);
++extern int setegid32 (gid_t egid);
++extern int seteuid32 (uid_t euid);
++#define setegid setegid32
++#define seteuid seteuid32
++#define getgid getgid32
++#define getuid getuid32
++#endif
++
+ static int
+ process_spawnattr(const posix_spawnattr_t sa)
+ {
+-- 
+2.34.1
+
