@@ -1,9 +1,10 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 # Contributor: Ray Donnelly <mingw.android@gmail.com>
 
-pkgname=autoconf
+_realname=autoconf
+pkgname=${_realname}2.71
 pkgver=2.71
-pkgrel=3
+pkgrel=1
 pkgdesc="A GNU tool for automatically configuring source code"
 arch=('any')
 license=('GPL2' 'GPL3' 'custom')
@@ -11,45 +12,52 @@ url="https://www.gnu.org/software/autoconf"
 depends=('awk' 'm4' 'diffutils' 'bash' 'perl' 'sed')
 # for test-suite
 makedepends=('gcc-fortran' 'make')
-source=(https://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz
+source=(https://ftp.gnu.org/pub/gnu/${_realname}/${_realname}-${pkgver}.tar.xz
         0001-autoconf-2.70-MSYS2-specifics-AC_CYGWIN.patch
         0002-autoconf-2.70-MSYS2-Autotest-Unify-EOLs-By-Default.patch
-        0003-autoconf-2.70-MSYS2-specifics-config.guess.patch)
+        0003-autoconf-2.70-MSYS2-specifics-config.guess.patch
+        0005-package.patch)
 sha256sums=('f14c83cfebcc9427f2c3cea7258bd90df972d92eb26752da4ddad81c87a0faa4'
             '3a5337e2269407405ee4c7feb12dbe2ae711610c3144c07cd085272676005db6'
             'c4e4952cc63a2ddaf7bf539f6e59353c4fadbf04cd48c3cfa789f8b175d0bd27'
-            'a7671bef559a5f3edbd811a7cf9b557f216f1d3e9502dc046fd3a0ea665da7da')
+            'a7671bef559a5f3edbd811a7cf9b557f216f1d3e9502dc046fd3a0ea665da7da'
+            '01894e38f901629373ff8ca6c55571b14450eacc625e717cd0da0ca65860f5e5')
 
 prepare() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/${_realname}-${pkgver}
 
   patch -p1 -i ${srcdir}/0001-autoconf-2.70-MSYS2-specifics-AC_CYGWIN.patch
   patch -p1 -i ${srcdir}/0002-autoconf-2.70-MSYS2-Autotest-Unify-EOLs-By-Default.patch
   patch -p1 -i ${srcdir}/0003-autoconf-2.70-MSYS2-specifics-config.guess.patch
+  patch -p1 -i ${srcdir}/0005-package.patch
 
   # NB: Do not run auto(re)conf and friends to avoid any self-dependency of the package.
 }
 
 build() {
-  mkdir -p build-${pkgname}-${pkgver}
-  cd build-${pkgname}-${pkgver}
-  ../${pkgname}-${pkgver}/configure --prefix=/usr
+  mkdir -p build-${_realname}-${pkgver}
+  cd build-${_realname}-${pkgver}
+  ../${_realname}-${pkgver}/configure --prefix=/usr --program-suffix=-2.71
   make
 }
 
 check() {
-  cd build-${pkgname}-${pkgver}
+  cd build-${_realname}-${pkgver}
   # CAUTION: The tests run very very long, even on a server.
   make check TESTSUITEFLAGS='-j16'
 }
 
 package() {
-  make -C build-${pkgname}-${pkgver} DESTDIR=${pkgdir} install
+  make -C build-${_realname}-${pkgver} DESTDIR=${pkgdir} install
 
   # license exception
-  install -Dm644 ${pkgname}-${pkgver}/COPYING.EXCEPTION \
-    $pkgdir/usr/share/licenses/autoconf/COPYING.EXCEPTION
+  install -Dm644 ${_realname}-${pkgver}/COPYING.EXCEPTION \
+    $pkgdir/usr/share/licenses/autoconf${pkgver}/COPYING.EXCEPTION
+
+  find ${pkgdir}/usr/share
 
   # conflict with bintuils
   rm -f ${pkgdir}/usr/share/info/standards.info
+  # conflicts with autoconf
+  rm -rf ${pkgdir}/usr/share/{emacs,info}
 }
