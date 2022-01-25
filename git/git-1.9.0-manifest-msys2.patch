@@ -49,26 +49,26 @@ Signed-off-by: Cesar Eduardo Barros <ces...@cesarb.net>
  create mode 100644 compat/win32/resource.rc
 
 diff --git a/Makefile b/Makefile
-index ddd1bdf..6ee4500 100644
+index 5580859afd..dddfcaac83 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -463,6 +463,7 @@ PTHREAD_LIBS = -lpthread
- PTHREAD_CFLAGS =
+@@ -558,6 +558,7 @@ CURL_CONFIG = curl-config
  GCOV = gcov
+ STRIP = strip
  SPATCH = spatch
 +WINDRES = windres
  
  export TCL_PATH TCLTK_PATH
  
-@@ -483,6 +484,7 @@ BUILTIN_OBJS =
+@@ -569,6 +570,7 @@ BUILTIN_OBJS =
  BUILT_INS =
  COMPAT_CFLAGS =
  COMPAT_OBJS =
 +RESOURCE_OBJS =
  XDIFF_OBJS =
- VCSSVN_OBJS =
  GENERATED_H =
-@@ -1473,6 +1475,11 @@ ifdef OVERRIDE_STRDUP
+ EXTRA_CPPFLAGS =
+@@ -1876,6 +1878,11 @@ ifdef OVERRIDE_STRDUP
  	COMPAT_OBJS += compat/strdup.o
  endif
  
@@ -80,27 +80,24 @@ index ddd1bdf..6ee4500 100644
  ifdef GIT_TEST_CMP_USE_COPIED_CONTEXT
  	export GIT_TEST_CMP_USE_COPIED_CONTEXT
  endif
-@@ -1546,6 +1553,7 @@ ifndef V
+@@ -1971,6 +1978,7 @@ ifndef V
  	QUIET_XGETTEXT = @echo '   ' XGETTEXT $@;
  	QUIET_MSGFMT   = @echo '   ' MSGFMT $@;
  	QUIET_GCOV     = @echo '   ' GCOV $@;
 +	QUIET_WINDRES  = @echo '   ' RC $@;
  	QUIET_SP       = @echo '   ' SP $<;
+ 	QUIET_HDR      = @echo '   ' HDR $(<:hcc=h);
  	QUIET_RC       = @echo '   ' RC $@;
- 	QUIET_SUBDIR0  = +@subdir=
-@@ -1754,9 +1762,9 @@ git.sp git.s git.o: EXTRA_CPPFLAGS = \
+@@ -2213,7 +2221,7 @@ git.sp git.s git.o: EXTRA_CPPFLAGS = \
  	'-DGIT_MAN_PATH="$(mandir_relative_SQ)"' \
  	'-DGIT_INFO_PATH="$(infodir_relative_SQ)"'
  
 -git$X: git.o GIT-LDFLAGS $(BUILTIN_OBJS) $(GITLIBS)
 +git$X: git.o GIT-LDFLAGS $(BUILTIN_OBJS) $(RESOURCE_OBJS) $(GITLIBS)
  	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) \
--		$(filter %.o,$^) $(LIBS)
-+		$(filter %.o,$^) $(LIBS)
+ 		$(filter %.o,$^) $(LIBS)
  
- help.sp help.s help.o: common-cmds.h
- 
-@@ -2046,17 +2054,17 @@ compat/nedmalloc/nedmalloc.sp compat/nedmalloc/nedmalloc.o: EXTRA_CPPFLAGS = \
+@@ -2607,17 +2615,17 @@ compat/nedmalloc/nedmalloc.sp compat/nedmalloc/nedmalloc.o: EXTRA_CPPFLAGS = \
  compat/nedmalloc/nedmalloc.sp: SP_EXTRA_FLAGS += -Wno-non-pointer-null
  endif
  
@@ -122,7 +119,7 @@ index ddd1bdf..6ee4500 100644
  	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) \
  		$(CURL_LIBCURL) $(EXPAT_LIBEXPAT) $(LIBS)
  
-@@ -2070,10 +2078,15 @@ $(REMOTE_CURL_ALIASES): $(REMOTE_CURL_PRIMARY)
+@@ -2627,10 +2635,14 @@ $(REMOTE_CURL_ALIASES): $(REMOTE_CURL_PRIMARY)
  	ln -s $< $@ 2>/dev/null || \
  	cp $< $@
  
@@ -135,22 +132,21 @@ index ddd1bdf..6ee4500 100644
 +	$(QUIET_WINDRES)$(WINDRES) $< $@
 +compat/win32/resource.o: compat/win32/git.manifest
 +
-+
- $(LIB_FILE): $(LIB_OBJS)
- 	$(QUIET_AR)$(RM) $@ && $(AR) $(ARFLAGS) $@ $^
+ contrib/scalar/scalar$X: $(SCALAR_OBJECTS) GIT-LDFLAGS $(GITLIBS)
+ 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) \
+ 		$(filter %.o,$^) $(LIBS)
+@@ -2945,7 +2957,7 @@ perf: all
  
-@@ -2284,7 +2297,7 @@ t/helper/test-svn-fe$X: $(VCSSVN_LIB)
+ t/helper/test-tool$X: $(patsubst %,t/helper/%,$(TEST_BUILTINS_OBJS))
  
- .PRECIOUS: $(TEST_OBJS)
- 
--t/helper/test-%$X: t/helper/test-%.o GIT-LDFLAGS $(GITLIBS)
-+t/helper/test-%$X: t/helper/test-%.o $(RESOURCE_OBJS) GIT-LDFLAGS $(GITLIBS)
+-t/helper/test-%$X: t/helper/test-%.o GIT-LDFLAGS $(GITLIBS) $(REFTABLE_TEST_LIB)
++t/helper/test-%$X: t/helper/test-%.o $(RESOURCE_OBJS) GIT-LDFLAGS $(GITLIBS) $(REFTABLE_TEST_LIB)
  	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) $(filter %.a,$^) $(LIBS)
  
- check-sha1:: t/helper/test-sha1$X
+ check-sha1:: t/helper/test-tool$X
 diff --git a/compat/win32/git.manifest b/compat/win32/git.manifest
 new file mode 100644
-index 0000000..325e3bb
+index 0000000000..325e3bb710
 --- /dev/null
 +++ b/compat/win32/git.manifest
 @@ -0,0 +1,11 @@
@@ -167,40 +163,40 @@ index 0000000..325e3bb
 +</assembly>
 diff --git a/compat/win32/resource.rc b/compat/win32/resource.rc
 new file mode 100644
-index 0000000..c2bf4a6
+index 0000000000..c2bf4a6abf
 --- /dev/null
 +++ b/compat/win32/resource.rc
 @@ -0,0 +1 @@
 +1 24 "git.manifest"
 diff --git a/config.mak.uname b/config.mak.uname
-index f20d4ce..fcc651f 100644
+index ab746e3512..8ade3c7032 100644
 --- a/config.mak.uname
 +++ b/config.mak.uname
-@@ -213,6 +213,8 @@ ifeq ($(uname_O),Msys)
+@@ -252,6 +252,8 @@ ifeq ($(uname_O),Msys)
  	NO_FAST_WORKING_DIRECTORY = UnfortunatelyYes
  	NO_ST_BLOCKS_IN_STRUCT_STAT = YesPlease
  	X = .exe
 +	APPLICATION_MANIFEST = YesPlease
 +	APPLICATION_MANIFEST = YesPlease
  	UNRELIABLE_FSTAT = UnfortunatelyYes
- 	SPARSE_FLAGS = -isystem /usr/include/w32api -Wno-one-bit-signed-bitfield
- endif
-@@ -398,6 +400,7 @@ ifeq ($(uname_S),Windows)
- 	NO_INET_PTON = YesPlease
- 	NO_INET_NTOP = YesPlease
+ 	OBJECT_CREATION_USES_RENAMES = UnfortunatelyNeedsTo
+ 	MMAP_PREVENTS_DELETE = UnfortunatelyYes
+@@ -474,6 +476,7 @@ ifeq ($(uname_S),Windows)
+ 	NO_PYTHON = YesPlease
+ 	ETAGS_TARGET = ETAGS
  	NO_POSIX_GOODIES = UnfortunatelyYes
 +	APPLICATION_MANIFEST = YesPlease
  	NATIVE_CRLF = YesPlease
  	DEFAULT_HELP_FORMAT = html
- 
-@@ -548,6 +551,7 @@ ifneq (,$(findstring MINGW,$(uname_S)))
- 	NO_INET_PTON = YesPlease
- 	NO_INET_NTOP = YesPlease
+ ifeq (/mingw64,$(subst 32,64,$(prefix)))
+@@ -657,6 +660,7 @@ ifeq ($(uname_S),MINGW)
+ 	NO_PYTHON = YesPlease
+ 	ETAGS_TARGET = ETAGS
  	NO_POSIX_GOODIES = UnfortunatelyYes
 +	APPLICATION_MANIFEST = YesPlease
  	DEFAULT_HELP_FORMAT = html
- 	COMPAT_CFLAGS += -DNOGDI -Icompat -Icompat/win32
- 	COMPAT_CFLAGS += -DSTRIP_EXTENSION=\".exe\"
+ 	HAVE_PLATFORM_PROCINFO = YesPlease
+ 	BASIC_LDFLAGS += -municode
 -- 
 2.10.1
 
