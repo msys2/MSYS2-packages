@@ -54,8 +54,12 @@ if [[ -n "$(command -v getent)" ]] && id -G | grep -q "$(getent -w group 'S-1-16
   then _ps1_symbol='\[\e[1m\]#\[\e[0m\]'
   else _ps1_symbol='\$'
 fi
-[[ $(declare -p PS1 2>/dev/null | cut -c 1-11) = 'declare -x ' ]] || \
+case "$(declare -p PS1 2>/dev/null)" in
+'declare -x '*) ;; # okay
+*)
   export PS1='\[\e]0;\w\a\]\n\[\e[32m\]\u@\h \[\e[35m\]$MSYSTEM\[\e[0m\] \[\e[33m\]\w\[\e[0m\]\n'"${_ps1_symbol}"' '
+  ;;
+esac
 unset _ps1_symbol
 
 # Uncomment to use the terminal colours set in DIR_COLORS
