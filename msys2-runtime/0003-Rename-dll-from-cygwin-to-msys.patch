@@ -1,4 +1,4 @@
-From 3eed7fcf29aa61b188037bbffbc7f8a8e5eea699 Mon Sep 17 00:00:00 2001
+From 7c11d96c3e9e55cc58800ed074bb844203940005 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?=D0=90=D0=BB=D0=B5=D0=BA=D1=81=D0=B5=D0=B8=CC=86=20=D0=9F?=
  =?UTF-8?q?=D0=B0=D0=B2=D0=BB=D0=BE=D0=B2?= <alexey.pawlow@gmail.com>
 Date: Sun, 14 Apr 2019 21:09:17 +0300
@@ -21,7 +21,7 @@ Subject: [PATCH 03/N] Rename dll from cygwin to msys
  winsup/cygwin/dtable.cc                   |  6 ++++
  winsup/cygwin/exceptions.cc               |  4 +--
  winsup/cygwin/fhandler_pipe.cc            |  4 +++
- winsup/cygwin/fhandler_tty.cc             | 12 +++++++
+ winsup/cygwin/fhandler_tty.cc             | 20 +++++++++++
  winsup/cygwin/fork.cc                     |  2 +-
  winsup/cygwin/hookapi.cc                  |  4 +++
  winsup/cygwin/i686.din                    |  6 ++--
@@ -52,7 +52,7 @@ Subject: [PATCH 03/N] Rename dll from cygwin to msys
  winsup/utils/mingw/strace.cc              | 11 +++---
  winsup/utils/path.cc                      | 12 +++----
  winsup/utils/ssp.c                        |  8 ++---
- 47 files changed, 238 insertions(+), 126 deletions(-)
+ 47 files changed, 246 insertions(+), 126 deletions(-)
 
 diff --git a/winsup/Makefile.am b/winsup/Makefile.am
 index 067f746..932882a 100644
@@ -97,7 +97,7 @@ index e101623..66272bc 100644
  
  /* Named pipes based transport, for security on NT */
 diff --git a/winsup/cygwin/Makefile.am b/winsup/cygwin/Makefile.am
-index 24d7499..6a53049 100644
+index 2b8e87f..5b8c255 100644
 --- a/winsup/cygwin/Makefile.am
 +++ b/winsup/cygwin/Makefile.am
 @@ -37,15 +37,15 @@ newlib_build=$(target_builddir)/newlib
@@ -122,7 +122,7 @@ index 24d7499..6a53049 100644
  
  #
  # sources
-@@ -613,32 +613,32 @@ LIBSERVER = $(cygserver_blddir)/libcygserver.a
+@@ -613,33 +613,33 @@ LIBSERVER = $(cygserver_blddir)/libcygserver.a
  $(LIBSERVER):
  	$(MAKE) -C $(cygserver_blddir) libcygserver.a
  
@@ -139,7 +139,8 @@ index 24d7499..6a53049 100644
  
 -# cygwin dll
 +# msys-2.0 dll
- $(TEST_DLL_NAME): $(LDSCRIPT) dllfixdbg libdll.a $(VERSION_OFILES) $(LIBSERVER)
+ $(TEST_DLL_NAME): $(LDSCRIPT) dllfixdbg libdll.a $(VERSION_OFILES) $(LIBSERVER)\
+ 		  $(newlib_build)/libm/libm.a $(newlib_build)/libc/libc.a
  	$(CXX) $(CXXFLAGS) \
  	-mno-use-libstdc-wrappers \
  	-Wl,--gc-sections -nostdlib -Wl,-T$(LDSCRIPT) -static \
@@ -163,7 +164,7 @@ index 24d7499..6a53049 100644
  toolopts=--cpu=@target_cpu@ --ar=@AR@ --as=@AS@ --nm=@NM@ --objcopy=@OBJCOPY@
  
  $(DEF_FILE): gendef $(srcdir)/$(TLSOFFSETS_H) $(DIN_FILE) common.din
-@@ -651,17 +651,18 @@ sigfe.s: $(DEF_FILE)
+@@ -652,17 +652,18 @@ sigfe.s: $(DEF_FILE)
  
  LIBCOS=$(addsuffix .o,$(basename $(LIB_FILES)))
  $(LIB_NAME): $(DEF_FILE) $(LIBCOS) | $(TEST_DLL_NAME)
@@ -185,7 +186,7 @@ index 24d7499..6a53049 100644
  	--exclude='(?i:dll)' \
  	--exclude='reloc' \
  	--exclude='^main$$' \
-@@ -708,7 +709,7 @@ all-local: $(LIB_NAME) $(TEST_LIB_NAME) $(SUBLIBS)
+@@ -709,7 +710,7 @@ all-local: $(LIB_NAME) $(TEST_LIB_NAME) $(SUBLIBS)
  clean-local:
  	-rm -f $(BUILT_SOURCES)
  	-rm -f $(DEF_FILE) sigfe.s
@@ -194,7 +195,7 @@ index 24d7499..6a53049 100644
  	-rm -f $(LIB_NAME) $(TEST_LIB_NAME) $(SUBLIBS)
  	-rm -f version.cc
  
-@@ -728,6 +729,7 @@ install-libs:
+@@ -729,6 +730,7 @@ install-libs:
  	@$(MKDIR_P) $(DESTDIR)$(bindir)
  	$(INSTALL_PROGRAM) $(TEST_DLL_NAME) $(DESTDIR)$(bindir)/$(DLL_NAME)
  	@$(MKDIR_P) $(DESTDIR)$(toollibdir)
@@ -202,7 +203,7 @@ index 24d7499..6a53049 100644
  	(cd $(DESTDIR)$(toollibdir) && ln -sf $(LIB_NAME) libg.a)
  
  install-headers:
-@@ -750,7 +752,7 @@ install-ldif:
+@@ -751,7 +753,7 @@ install-ldif:
  uninstall-hook: uninstall-headers uninstall-ldif uninstall-libs
  
  uninstall-libs:
@@ -505,10 +506,10 @@ index a914110..c638044 100644
  	  break;
  	}
 diff --git a/winsup/cygwin/fhandler_pipe.cc b/winsup/cygwin/fhandler_pipe.cc
-index 25a0922..9ce1400 100644
+index 71635cc..e4b71b5 100644
 --- a/winsup/cygwin/fhandler_pipe.cc
 +++ b/winsup/cygwin/fhandler_pipe.cc
-@@ -677,7 +677,11 @@ fhandler_pipe::close ()
+@@ -676,7 +676,11 @@ fhandler_pipe::close ()
    return ret;
  }
  
@@ -521,10 +522,10 @@ index 25a0922..9ce1400 100644
  /* Create a pipe, and return handles to the read and write ends,
     just like CreatePipe, but ensure that the write end permits
 diff --git a/winsup/cygwin/fhandler_tty.cc b/winsup/cygwin/fhandler_tty.cc
-index f523daf..42a54b6 100644
+index 7bef695..10566ac 100644
 --- a/winsup/cygwin/fhandler_tty.cc
 +++ b/winsup/cygwin/fhandler_tty.cc
-@@ -893,7 +893,11 @@ fhandler_pty_slave::open (int flags, mode_t)
+@@ -910,7 +910,11 @@ fhandler_pty_slave::open (int flags, mode_t)
        pipe_reply repl;
        DWORD len;
  
@@ -536,7 +537,19 @@ index f523daf..42a54b6 100644
  		       &cygheap->installation_key, get_minor ());
        termios_printf ("dup handles via master control pipe %s", buf);
        if (!CallNamedPipe (buf, &req, sizeof req, &repl, sizeof repl,
-@@ -2028,7 +2032,11 @@ fhandler_pty_master::close ()
+@@ -1172,7 +1176,11 @@ fhandler_pty_slave::reset_switch_to_pcon (void)
+ 		    {
+ 		      char pipe[MAX_PATH];
+ 		      __small_sprintf (pipe,
++#ifdef __MSYS__
++			       "\\\\.\\pipe\\msys-%S-pty%d-master-ctl",
++#else
+ 			       "\\\\.\\pipe\\cygwin-%S-pty%d-master-ctl",
++#endif
+ 			       &cygheap->installation_key, get_minor ());
+ 		      pipe_request req = { GetCurrentProcessId () };
+ 		      pipe_reply repl;
+@@ -2106,7 +2114,11 @@ fhandler_pty_master::close ()
  	  pipe_reply repl;
  	  DWORD len;
  
@@ -546,9 +559,9 @@ index f523daf..42a54b6 100644
  	  __small_sprintf (buf, "\\\\.\\pipe\\cygwin-%S-pty%d-master-ctl",
 +#endif
  			   &cygheap->installation_key, get_minor ());
- 	  acquire_output_mutex (INFINITE);
+ 	  acquire_output_mutex (mutex_timeout);
  	  if (master_ctl)
-@@ -2883,7 +2891,11 @@ fhandler_pty_master::setup ()
+@@ -3013,7 +3025,11 @@ fhandler_pty_master::setup ()
  
    /* Create master control pipe which allows the master to duplicate
       the pty pipe handles to processes which deserve it. */
@@ -560,6 +573,18 @@ index f523daf..42a54b6 100644
  		   &cygheap->installation_key, unit);
    master_ctl = CreateNamedPipe (buf, PIPE_ACCESS_DUPLEX
  				     | FILE_FLAG_FIRST_PIPE_INSTANCE,
+@@ -3856,7 +3872,11 @@ fhandler_pty_slave::transfer_input (tty::xfer_dir dir, HANDLE from, tty *ttyp,
+     {
+       char pipe[MAX_PATH];
+       __small_sprintf (pipe,
++#ifdef __MSYS__
++		       "\\\\.\\pipe\\msys-%S-pty%d-master-ctl",
++#else
+ 		       "\\\\.\\pipe\\cygwin-%S-pty%d-master-ctl",
++#endif
+ 		       &cygheap->installation_key, ttyp->get_minor ());
+       pipe_request req = { GetCurrentProcessId () };
+       pipe_reply repl;
 diff --git a/winsup/cygwin/fork.cc b/winsup/cygwin/fork.cc
 index 7192178..0fe112f 100644
 --- a/winsup/cygwin/fork.cc
@@ -672,7 +697,7 @@ index 56b4363..6bc948a 100644
  
  #endif /* __CYGWIN_CYGWIN_DLL_H__ */
 diff --git a/winsup/cygwin/include/cygwin/version.h b/winsup/cygwin/include/cygwin/version.h
-index ef8c1e2..29d404f 100644
+index 8625512..d783447 100644
 --- a/winsup/cygwin/include/cygwin/version.h
 +++ b/winsup/cygwin/include/cygwin/version.h
 @@ -533,7 +533,11 @@ details. */
