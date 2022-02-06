@@ -51,6 +51,7 @@ if "x%~1" == "x-defterm" shift& set /a msys2_shiftCounter+=1& set MSYSCON=defter
 rem Other parameters
 if "x%~1" == "x-full-path" shift& set /a msys2_shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
 if "x%~1" == "x-use-full-path" shift& set /a msys2_shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
+if "x%~1" == "x-strict-path" shift& set /a msys2_shiftCounter+=1& set MSYS2_PATH_TYPE=strict& goto :checkparams
 if "x%~1" == "x-here" shift& set /a msys2_shiftCounter+=1& set CHERE_INVOKING=enabled_from_arguments& goto :checkparams
 if "x%~1" == "x-where" (
   if "x%~2" == "x" (
@@ -149,10 +150,18 @@ exit /b %ERRORLEVEL%
 
 :startsh
 set MSYSCON=
-if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%WD%\%LOGINSHELL%" --login !SHELL_ARGS!
+if /I "%LOGINSHELL%"=="cmd" (
+  set SHELLPATH=%LOGINSHELL%
+  if exist "%~dp0%MSYSTEM%\bin\gcc.exe" (
+    set Path=%~dp0%MSYSTEM%\bin;%Path%
+  )
 ) else (
-  "%WD%\%LOGINSHELL%" --login !SHELL_ARGS!
+  set SHELLPATH=%WD%\%LOGINSHELL%
+)
+if not defined MSYS2_NOSTART (
+  start "%CONTITLE%" "%SHELLPATH%" --login !SHELL_ARGS!
+) else (
+  "%SHELLPATH%" --login !SHELL_ARGS!
 )
 exit /b %ERRORLEVEL%
 
@@ -214,6 +223,7 @@ echo     -where DIRECTORY                 Use specified DIRECTORY as working
 echo                                      directory
 echo     -[use-]full-path                 Use full current PATH variable
 echo                                      instead of trimming to minimal
+echo     -strict-path                     Do not inherit Windows path
 echo     -no-start                        Do not use "start" command and
 echo                                      return login shell resulting 
 echo                                      errorcode as this batch file 
