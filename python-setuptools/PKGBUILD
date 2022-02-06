@@ -3,8 +3,8 @@
 _realname=setuptools
 pkgbase="python-${_realname}"
 pkgname=("python-${_realname}")
-pkgver=47.1.1
-pkgrel=2
+pkgver=59.8.0
+pkgrel=1
 pkgdesc="Easily download, build, install, upgrade, and uninstall Python packages"
 arch=('any')
 license=('PSF')
@@ -14,27 +14,17 @@ provides=("python3-${_realname}" 'python3-distribute')
 replaces=("python3-${_realname}" 'python3-distribute')
 conflicts=("python3-${_realname}")
 source=("${_realname}-${pkgver}.tar.gz::https://github.com/pypa/setuptools/archive/v${pkgver}.tar.gz")
-sha512sums=('fad8a81f4f5650248f56f4f656957f047caed724e696507d602246fbc002ff893776fef41b7861197e20210dbbc4f076558679dce0c37e5860fb3d4bcc1be130')
+sha512sums=('9aaaf0565f54c0b998de67a79be7ffb54369d05d516b1294d4aecf4f47a38619111836262013053fd73d84a8b5206072e542f59afc011e8b0331009a8f3d2c69')
 
 prepare() {
-  # Don't download and install deps
-  sed -i '/pip.main(args)/d' setuptools-${pkgver}/bootstrap.py
-
-  # Remove post-release tag since we are using stable tags
-  sed -e '/tag_build = .post/d' \
-      -e '/tag_date = 1/d' \
-      -i setuptools-${pkgver}/setup.cfg
-
-  cd "${srcdir}"/setuptools-${pkgver}
-  sed -i -e "s|^#\!.*/usr/bin/env python|#!/usr/bin/env python3|" setuptools/command/easy_install.py
+  cd "${srcdir}/${_realname}-${pkgver}"
 
   export SETUPTOOLS_INSTALL_WINDOWS_SPECIFIC_FILES=0
 }
 
 build() {
-  # Build python module
-  cd "${srcdir}"/setuptools-${pkgver}
-  /usr/bin/python bootstrap.py
+  cd "${srcdir}/${_realname}-${pkgver}"
+
   /usr/bin/python setup.py build
 }
 
@@ -46,12 +36,14 @@ check() { (
   export PYTHONDONTWRITEBYTECODE=1
 
   # Check python module
-  # cd "${srcdir}"/setuptools-${pkgver}
+  # cd "${srcdir}/${_realname}-${pkgver}"
   # /usr/bin/python setup.py pytest
 )}
 
 package() {
-  cd "${srcdir}"/setuptools-${pkgver}
+  cd "${srcdir}/${_realname}-${pkgver}"
 
+  local _pyver=$(/usr/bin/python -c "import sys;sys.stdout.write('.'.join(map(str, sys.version_info[:2])))")
+  mkdir -p "build/scripts-${_pyver}"
   /usr/bin/python setup.py install --prefix=/usr --root="${pkgdir}" --optimize=1 --skip-build
 }
