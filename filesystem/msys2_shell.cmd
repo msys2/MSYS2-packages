@@ -129,9 +129,9 @@ if NOT EXIST "%WD%mintty.exe" goto startsh
 set MSYSCON=mintty.exe
 :startmintty
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%WD%mintty" -i "/%CONICON%" -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" --login !SHELL_ARGS!
+  start "%CONTITLE%" "%WD%mintty" -i "/%CONICON%" -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" -l !SHELL_ARGS!
 ) else (
-  "%WD%mintty" -i "/%CONICON%" -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" --login !SHELL_ARGS!
+  "%WD%mintty" -i "/%CONICON%" -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" -l !SHELL_ARGS!
 )
 exit /b %ERRORLEVEL%
 
@@ -141,18 +141,18 @@ call :conemudetect || (
   exit /b 1
 )
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\%CONICON%" /cmd "%WD%\%LOGINSHELL%" --login !SHELL_ARGS!
+  start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\%CONICON%" /cmd "%WD%\%LOGINSHELL%" -l !SHELL_ARGS!
 ) else (
-  "%ComEmuCommand%" /Here /Icon "%WD%..\..\%CONICON%" /cmd "%WD%\%LOGINSHELL%" --login !SHELL_ARGS!
+  "%ComEmuCommand%" /Here /Icon "%WD%..\..\%CONICON%" /cmd "%WD%\%LOGINSHELL%" -l !SHELL_ARGS!
 )
 exit /b %ERRORLEVEL%
 
 :startsh
 set MSYSCON=
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%WD%\%LOGINSHELL%" --login !SHELL_ARGS!
+  start "%CONTITLE%" "%WD%\%LOGINSHELL%" -l !SHELL_ARGS!
 ) else (
-  "%WD%\%LOGINSHELL%" --login !SHELL_ARGS!
+  "%WD%\%LOGINSHELL%" -l !SHELL_ARGS!
 )
 exit /b %ERRORLEVEL%
 
