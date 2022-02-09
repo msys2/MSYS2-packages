@@ -60,7 +60,7 @@ die "Could not stage new patch set"
 in_sources="$(echo "$patches" | sed "{s/^/        /;:1;N;s/\\n/\\\\n        /;b1}")"
 in_prepare="$(echo "$patches" | tr '\n' '\\' | sed -e 's/\\$//' -e 's/\\/ &&&n  /g')"
 sed -i -e "/^        0.*\.patch$/{:1;N;/[^)]$/b1;s|.*|$in_sources)|}" \
-	-e "/^ *apply_git_am_with_msg /{:2;N;/[^}]$/b2;s|.*| apply_git_am_with_msg $in_prepare\\n\\}|}" \
+	-e "/^ *apply_git_with_msg /{:2;N;/[^}]$/b2;s|.*| apply_git_with_msg $in_prepare\\n\\}|}" \
 	PKGBUILD ||
 die "Could not update the patch set in PKGBUILD"
 
