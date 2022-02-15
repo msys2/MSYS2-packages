@@ -1,0 +1,31 @@
+From fa46a437767f1ac66742a41f56b4e4b1f052ccef Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Sun, 13 Feb 2022 02:16:32 +0900
+Subject: [PATCH 41/N] Cygwin: pty: Discard input in from_master_nat pipe on
+ signal as well.
+
+- Currently, pty discards input only in from_master pipe on signal.
+  Due to this, if pty is started without pseudo console support and
+  start a non-cygwin process from cmd.exe, type adhead input is not
+  discarded on signals such as Ctrl-C. This patch fixes the issue.
+---
+ winsup/cygwin/fhandler_tty.cc | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/winsup/cygwin/fhandler_tty.cc b/winsup/cygwin/fhandler_tty.cc
+index 6217883..d80b530 100644
+--- a/winsup/cygwin/fhandler_tty.cc
++++ b/winsup/cygwin/fhandler_tty.cc
+@@ -438,6 +438,9 @@ fhandler_pty_master::discard_input ()
+   while (::bytes_available (bytes_in_pipe, from_master) && bytes_in_pipe)
+     ReadFile (from_master, buf, sizeof(buf), &n, NULL);
+   ResetEvent (input_available_event);
++  if (!get_ttyp ()->pcon_activated)
++    while (::bytes_available (bytes_in_pipe, from_master_nat) && bytes_in_pipe)
++      ReadFile (from_master_nat, buf, sizeof(buf), &n, NULL);
+   get_ttyp ()->discard_input = true;
+   ReleaseMutex (input_mutex);
+ }
+-- 
+2.35.1
+
