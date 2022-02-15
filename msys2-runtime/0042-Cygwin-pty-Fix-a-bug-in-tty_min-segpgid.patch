@@ -1,0 +1,29 @@
+From 9b90fed7c54215a1b958806f11825650e6196aa6 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Sun, 13 Feb 2022 05:12:18 +0900
+Subject: [PATCH 42/N] Cygwin: pty: Fix a bug in tty_min::segpgid().
+
+- In tty_min::setpgid(), a pointer to fhandler instance is casted to
+  fhandler_pty_slave and accessed even if terminal is not a pty slave.
+  This patch fixes the issue.
+---
+ winsup/cygwin/tty.cc | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/tty.cc b/winsup/cygwin/tty.cc
+index da75b8d..c0015ac 100644
+--- a/winsup/cygwin/tty.cc
++++ b/winsup/cygwin/tty.cc
+@@ -309,7 +309,8 @@ tty_min::setpgid (int pid)
+   fhandler_pty_slave *ptys = NULL;
+   cygheap_fdenum cfd (false);
+   while (cfd.next () >= 0 && ptys == NULL)
+-    if (cfd->get_device () == getntty ())
++    if (cfd->get_device () == getntty ()
++	&& cfd->get_major () == DEV_PTYS_MAJOR)
+       ptys = (fhandler_pty_slave *) (fhandler_base *) cfd;
+ 
+   if (ptys)
+-- 
+2.35.1
+
