@@ -6,7 +6,7 @@ if [ ! "${MINGW_PREFIX}" = "" ]; then
 fi
 
 # Warn the user on the first login shell in case we detect a too old Windows version
-function _warn_deprecated_winver()
+_warn_deprecated_winver()
 {
     if [ "$__MSYS2_WINDOWS_VERSION_WARNING_DONE" = "true" ]; then
         return;
