@@ -1,0 +1,74 @@
+# Contributor: Karol Babioch <karol@babioch.de>
+
+pkgbase=libfido2
+pkgname=("${pkgbase}" "fido2-tools" "${pkgbase}-devel" "${pkgbase}-docs")
+pkgver=1.10.0
+pkgrel=1
+pkgdesc="Library functionality for FIDO 2.0, including communication with a device over USB"
+arch=('i686' 'x86_64')
+url="https://developers.yubico.com/libfido2/"
+license=('BSD-2-Clause')
+depends=("libcbor" "openssl")
+makedepends=("libcbor-devel" "openssl-devel" "cmake" "make" "gcc")
+source=("https://developers.yubico.com/libfido2/Releases/libfido2-${pkgver}.tar.gz"{,.sig}
+        msys2-fix-ln.diff)
+sha256sums=('526efd3d56af706c05d09f3d21f18ee3b0b15ac0c1f5c5da1acbc27c2730b99b'
+            'SKIP'
+            '3134757a26e80eb1917036d4402551fa517e4e0e678c54dcf6c166b714de2bf2')
+validpgpkeys=(
+  'EE90AE0D19774C8386628FAAB428949EF7914718' # pedro martelletto <pedro@yubico.com>
+  '1D7308B0055F5AEF36944A8F27A9C24D9588EA0F' # Aveen Ismail <aveen.ismail@yubico.com>
+  '7FBB6186957496D58C751AC20E777DD85755AA4A' # Konstantinos Georgantas <kostas@yubico.com>
+)
+
+prepare() {
+  cd ${pkgname}-${pkgver}
+  patch -p1 -i ${srcdir}/msys2-fix-ln.diff
+}
+
+build() {
+  cd ${pkgname}-${pkgver}
+  cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DUSE_WINHELLO=ON
+  cmake --build build
+  DESTDIR="${srcdir}/dest" cmake --install build
+}
+
+package_libfido2() {
+  groups=("libraries")
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+}
+
+package_fido2-tools() {
+  pkgdesc="FIDO2 command line tools to access and configure a FIDO2 compliant authentication device"
+  depends=("$pkgbase=$pkgver")
+
+  mkdir -p ${pkgdir}/usr/bin
+  cp -f ${srcdir}/dest/usr/bin/*.exe ${pkgdir}/usr/bin/
+  mkdir -p ${pkgdir}/usr/share/man
+  cp -rf ${srcdir}/dest/usr/share/man/man1 ${pkgdir}/usr/share/man
+}
+
+package_libfido2-devel() {
+  pkgdesc="Development headers and library for libfido2"
+  depends=("$pkgbase=$pkgver")
+  groups=("development")
+
+  mkdir -p ${pkgdir}/usr/lib
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib/pkgconfig ${pkgdir}/usr/lib/ 
+  cp -f ${srcdir}/dest/usr/lib/*.a ${pkgdir}/usr/lib
+}
+
+package_libfido2-docs() {
+  pkgdesc="Documentation for libfido2"
+  depends=("libfido2-devel=$pkgver")  
+
+  mkdir -p ${pkgdir}/usr/share/man
+  cp -rf ${srcdir}/dest/usr/share/man/man3 ${pkgdir}/usr/share/man
+}
+
