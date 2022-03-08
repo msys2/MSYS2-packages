@@ -1,0 +1,37 @@
+From 1664911f85dfa5474a320097665752083cbbef40 Mon Sep 17 00:00:00 2001
+From: Corinna Vinschen <vinschen@redhat.com>
+Date: Tue, 15 Feb 2022 11:48:54 +0100
+Subject: [PATCH 3/6] sk_enroll: don't drop SSH_SK_USER_VERIFICATION_REQD flag
+ from response
+
+Generating two different keys with -O verify-required may have different
+results on different systems.  The resulting public key might become
+unusable with "uv" devices.  The decision whether to use "uv" or
+"clientPin" method should be performed when signing, not when enrolling.
+
+Signed-off-by: Corinna Vinschen <vinschen@redhat.com>
+---
+ sk-usbhid.c | 7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/sk-usbhid.c b/sk-usbhid.c
+index caa18216bab5..58c6a775959b 100644
+--- a/sk-usbhid.c
++++ b/sk-usbhid.c
+@@ -913,13 +913,6 @@ sk_enroll(uint32_t alg, const uint8_t *challenge, size_t challenge_len,
+ 		goto out;
+ 	}
+ 	response->flags = flags;
+-	if ((flags & SSH_SK_USER_VERIFICATION_REQD)) {
+-		if (check_sk_options(sk->dev, "uv", &internal_uv) == 0 &&
+-		    internal_uv != -1) {
+-			/* user verification handled by token */
+-			response->flags &= ~SSH_SK_USER_VERIFICATION_REQD;
+-		}
+-	}
+ 	if (pack_public_key(alg, cred, response) != 0) {
+ 		skdebug(__func__, "pack_public_key failed");
+ 		goto out;
+-- 
+2.35.1
+

@@ -1,0 +1,102 @@
+From f0a037193883a8d3dbedf8a363682c90a28435d2 Mon Sep 17 00:00:00 2001
+From: Corinna Vinschen <vinschen@redhat.com>
+Date: Fri, 11 Feb 2022 14:46:08 +0100
+Subject: [PATCH 6/6] Defer token PIN prompt to handle "uv" as well as
+ "clientPin" tokens gracefully
+
+Allow to support middlewares that handle PIN/UV gestures internally
+or OOB (like Windows Hello), as well as situations where it is
+preferable to have OpenSSH prompt for the PIN.
+
+To do that, first attempt the operation (sshsk_enroll, sshsk_sign)
+without passphrase.  Only if the middleware responds with
+SSH_ERR_KEY_WRONG_PASSPHRASE, prompt for one.
+
+Signed-off-by: Corinna Vinschen <vinschen@redhat.com>
+---
+ ssh-keygen.c  | 11 ++---------
+ sshconnect2.c | 23 ++++++++++++-----------
+ 2 files changed, 14 insertions(+), 20 deletions(-)
+
+diff --git a/ssh-keygen.c b/ssh-keygen.c
+index d4b7f4dcf800..da4027e9bc15 100644
+--- a/ssh-keygen.c
++++ b/ssh-keygen.c
+@@ -3241,7 +3241,7 @@ usage(void)
+ int
+ main(int argc, char **argv)
+ {
+-	char comment[1024], *passphrase;
++	char comment[1024], *passphrase = NULL;
+ 	char *rr_hostname = NULL, *ep, *fp, *ra;
+ 	struct sshkey *private, *public;
+ 	struct passwd *pw;
+@@ -3751,13 +3751,6 @@ main(int argc, char **argv)
+ 		}
+ 		if ((attest = sshbuf_new()) == NULL)
+ 			fatal("sshbuf_new failed");
+-		if ((sk_flags &
+-		    (SSH_SK_USER_VERIFICATION_REQD|SSH_SK_RESIDENT_KEY))) {
+-			passphrase = read_passphrase("Enter PIN for "
+-			    "authenticator: ", RP_ALLOW_STDIN);
+-		} else {
+-			passphrase = NULL;
+-		}
+ 		for (i = 0 ; ; i++) {
+ 			fflush(stdout);
+ 			r = sshsk_enroll(type, sk_provider, sk_device,
+@@ -3773,7 +3766,7 @@ main(int argc, char **argv)
+ 				freezero(passphrase, strlen(passphrase));
+ 				passphrase = NULL;
+ 			}
+-			if (i >= 3)
++			if (i > 3)
+ 				fatal("Too many incorrect PINs");
+ 			passphrase = read_passphrase("Enter PIN for "
+ 			    "authenticator: ", RP_ALLOW_STDIN);
+diff --git a/sshconnect2.c b/sshconnect2.c
+index b25225e645cb..f0610011e15c 100644
+--- a/sshconnect2.c
++++ b/sshconnect2.c
+@@ -1262,10 +1262,20 @@ identity_sign(struct identity *id, u_char **sigp, size_t *lenp,
+ 			goto out;
+ 		}
+ 		sign_key = prv;
+-		if (sshkey_is_sk(sign_key)) {
++		if (sshkey_is_sk(sign_key) &&
++		    (sign_key->sk_flags & SSH_SK_USER_PRESENCE_REQD)) {
++			fmprintf(stdout, "You may need to touch your "
++				 "authenticator.\n");
++		}
++	}
++ retry_pin:
++	if ((r = sshkey_sign(sign_key, sigp, lenp, data, datalen,
++	    alg, options.sk_provider, pin, compat)) != 0) {
++		debug_fr(r, "sshkey_sign");
++		if (pin == NULL && !retried && sshkey_is_sk(sign_key) &&
++		    r == SSH_ERR_KEY_WRONG_PASSPHRASE) {
+ 			if ((sign_key->sk_flags &
+ 			    SSH_SK_USER_VERIFICATION_REQD)) {
+- retry_pin:
+ 				xasprintf(&prompt, "Enter PIN for %s key %s: ",
+ 				    sshkey_type(sign_key), id->filename);
+ 				pin = read_passphrase(prompt, 0);
+@@ -1281,15 +1291,6 @@ identity_sign(struct identity *id, u_char **sigp, size_t *lenp,
+ 				    sshkey_type(sign_key), fp);
+ 				free(fp);
+ 			}
+-		}
+-	}
+-	if ((r = sshkey_sign(sign_key, sigp, lenp, data, datalen,
+-	    alg, options.sk_provider, pin, compat)) != 0) {
+-		debug_fr(r, "sshkey_sign");
+-		if (pin == NULL && !retried && sshkey_is_sk(sign_key) &&
+-		    r == SSH_ERR_KEY_WRONG_PASSPHRASE) {
+-			notify_complete(notifier, NULL);
+-			notifier = NULL;
+ 			retried = 1;
+ 			goto retry_pin;
+ 		}
+-- 
+2.35.1
+
