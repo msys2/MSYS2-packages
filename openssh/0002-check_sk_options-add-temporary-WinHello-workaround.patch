@@ -1,0 +1,37 @@
+From b9f7ac867f89d2bd3ca2c4cdd99db0a259e4b7b3 Mon Sep 17 00:00:00 2001
+From: Corinna Vinschen <vinschen@redhat.com>
+Date: Tue, 15 Feb 2022 11:28:08 +0100
+Subject: [PATCH 2/6] check_sk_options: add temporary WinHello workaround
+
+Up to libfido 1.10.0, WinHello advertises "clientPin" rather
+than "uv" capability.  This is fixed in 1.11.0.  For the time
+being, workaround it here.
+
+Signed-off-by: Corinna Vinschen <vinschen@redhat.com>
+---
+ sk-usbhid.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/sk-usbhid.c b/sk-usbhid.c
+index 721076c7f4a4..caa18216bab5 100644
+--- a/sk-usbhid.c
++++ b/sk-usbhid.c
+@@ -450,6 +450,15 @@ check_sk_options(fido_dev_t *dev, const char *opt, int *ret)
+ 		skdebug(__func__, "device is not fido2");
+ 		return 0;
+ 	}
++	/*
++	 * Workaround required up to libfido2 1.10.0.  As soon as 1.11.0
++	 * is released and updated in the Cygwin release, we can drop this.
++	 */
++	if (fido_dev_is_winhello(dev) && strcmp (opt, "uv") == 0) {
++		skdebug(__func__, "device is winhello");
++		*ret = 1;
++		return 0;
++	}
+ 	if ((info = fido_cbor_info_new()) == NULL) {
+ 		skdebug(__func__, "fido_cbor_info_new failed");
+ 		return -1;
+-- 
+2.35.1
+
