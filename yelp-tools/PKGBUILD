@@ -1,45 +1,45 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=yelp-tools
-pkgver=3.38.0
-pkgrel=2
+pkgver=42.0
+pkgrel=1
 pkgdesc="Tools for creating Yelp documentation"
 arch=('any')
 license=('GPL')
 url="https://www.gnome.org"
-depends=("yelp-xsl" "itstool" "libxml2-python")
+depends=("yelp-xsl" "python-lxml" "itstool" "libxml2-python" "docbook-xsl" "python-mallard-ducktype")
 options=('strip' '!libtool' 'staticlibs')
-makedepends=("libxml2-python" "intltool" "itstool" 'autotools')
-source=(https://download.gnome.org/sources/${pkgname}/${pkgver:0:4}/${pkgname}-$pkgver.tar.xz
+makedepends=("intltool" "meson")
+source=(https://download.gnome.org/sources/${pkgname}/${pkgver%.*}/${pkgname}-${pkgver}.tar.xz
         yelp-no-symlinks.patch)
-sha256sums=('607ce4b3ee8517c42db924a01a78660a03317595c75825731ea86a920e2b04b0'
+sha256sums=('2cd43063ffa7262df15dd8d379aa3ea3999d42661f07563f4802daa1149f7df4'
             '276286ade313f9c31a990e77742b20a34c59d50f84a21e5d05c38e5a8ee654be')
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
   patch -p1 -i ${srcdir}/yelp-no-symlinks.patch
-  autoreconf -ivf
 }
 
 build() {
-  mkdir -p ${srcdir}/build-${CHOST} && cd ${srcdir}/build-${CHOST}
+  cd ${srcdir}/${pkgname}-${pkgver}
 
-  ${srcdir}/${pkgname}-${pkgver}/configure \
+  meson build-${CARCH} \
+    --buildtype=plain \
     --prefix=/usr \
-    --build=${CHOST} \
-    --host=${CHOST}
+    -D help=true
 
-  make
+  meson compile -C build-${CARCH}
 }
 
 check() {
-  cd ${srcdir}/build-${CHOST}
-  make -k check
+  cd ${srcdir}/${pkgname}-${pkgver}
+  meson test -C build-${CARCH}
 }
 
 package() {
-  cd ${srcdir}/build-${CHOST}
-  make DESTDIR="${pkgdir}" install
+  cd ${srcdir}/${pkgname}-${pkgver}
+  DESTDIR=${pkgdir} meson install -C build-${CARCH}
+
   for ff in yelp-build yelp-check yelp-new; do
     sed -e "s| xsltproc| /usr/bin/xsltproc|g" -i ${pkgdir}/usr/bin/$ff
   done
