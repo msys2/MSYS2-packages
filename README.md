@@ -12,7 +12,7 @@
 Package scripts for MSYS2.
 
 To build these, run msys2_shell.cmd then from the bash prompt. Packages from
-the base-devel group is an implicit build time dependency.
+the base-devel package is an implicit build time dependency.
 Make sure it is installed before attempting to build any package:
 
     pacman -S --needed base-devel
