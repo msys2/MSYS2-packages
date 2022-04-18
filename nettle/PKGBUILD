@@ -2,7 +2,7 @@
 
 pkgname=('nettle' 'libnettle' 'libhogweed' 'libnettle-devel')
 pkgver=3.7.3
-pkgrel=1
+pkgrel=2
 pkgdesc="A low-level cryptographic library"
 arch=('i686' 'x86_64')
 url="https://www.lysator.liu.se/~nisse/nettle/"
@@ -11,28 +11,27 @@ groups=('net-utils')
 depends=('gmp')
 makedepends=('gmp-devel' 'autotools' 'gcc')
 source=(https://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.gz{,.sig}
-        nettle-2.6-msys2.patch
-        3.2-dlopen-test-msys-test.patch)
+        001-fix-dll-names.patch)
 validpgpkeys=('343C2FF0FBEE5EC2EDBEF399F3599FF828C67298') # Niels M├╢ller <nisse@lysator.liu.se>
 sha256sums=('661f5eb03f048a3b924c3a8ad2515d4068e40f67e774e8a26827658007e3bcf0'
             'SKIP'
-            '3c83eeb093ae056ba0a583d38ed171891509ab70e39057594ee8f30885db0d99'
-            'a922cc88086f0f1af1aea5a40ead773c5cc97d6c55bd6870b574f62dde812a51')
+            'b55a5b742e77215a8290d9adfd12378ff4b55a4e51285ac3662ac8ead9e4bfd3')
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
-  patch -p1 -i ${srcdir}/nettle-2.6-msys2.patch
-  patch -p1 -i ${srcdir}/3.2-dlopen-test-msys-test.patch
+  patch -p1 -i ${srcdir}/001-fix-dll-names.patch
   autoreconf -fi
 }
 
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
+
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
   ./configure \
     --prefix=/usr \
     --libdir=/usr/lib \
-    --build=${CHOST} \
+    --build=${CYGWIN_CHOST} \
     --enable-shared \
     --enable-static \
     --disable-assembler
@@ -48,7 +47,6 @@ check() {
 
 package_nettle() {
   depends=('libnettle')
-  install=$pkgname.install
 
   mkdir -p ${pkgdir}/usr/bin
   cp -rf ${srcdir}/dest/usr/bin/*.exe ${pkgdir}/usr/bin/
