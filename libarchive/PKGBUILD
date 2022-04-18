@@ -1,28 +1,30 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=('libarchive' 'libarchive-devel' 'bsdcpio' 'bsdtar')
-pkgver=3.5.3
-pkgrel=2
-pkgdesc="library that can create and read several streaming archive formats"
+pkgver=3.6.1
+pkgrel=1
+pkgdesc="Multi-format archive and compression library"
 arch=('i686' 'x86_64')
 url="https://libarchive.org/"
 license=('BSD')
 groups=('libraries')
-depends=('gcc-libs' 'libbz2' 'libiconv' 'libexpat' 'liblzma' 'liblz4' 'libnettle' 'libxml2' 'libzstd' 'zlib')
-makedepends=('libbz2-devel' 'libiconv-devel' 'libexpat-devel' 'liblzma-devel' 'liblz4-devel' 'libnettle-devel' 'libxml2-devel' 'libzstd-devel' 'zlib-devel' 'autotools' 'gcc')
+depends=('gcc-libs' 'libbz2' 'libiconv' 'libexpat' 'liblzma' 'liblz4' 'libopenssl' 'libzstd' 'zlib')
+makedepends=('libbz2-devel' 'libiconv-devel' 'libexpat-devel' 'liblzma-devel' 'liblz4-devel' 'openssl-devel' 'libzstd-devel' 'zlib-devel' 'autotools' 'gcc')
 options=('!strip' 'debug' 'libtool')
 source=("https://github.com/libarchive/libarchive/releases/download/v${pkgver}/${pkgname}-${pkgver}.tar.xz"{,.asc}
-        'libarchive-3.3.2-bcrypt-fix.patch')
-sha256sums=('5cac725dd4be31c4a10b65d30f29dc957ea29ef3d758df6e46e8ae90a996a19a'
+        '0002-fix-openssl-library-check.patch')
+sha256sums=('5a411aceb978f43e626f0c2d1812ddd8807b645ed892453acabd532376c148e6'
             'SKIP'
-            'ba26625c5ab8bcd4cf1b671a44f2b2f9241d4a43ed3223455e168672fe97ff95')
+            'fe51cc1f215239dbf39c65d1e70aabb72c2ec121b37d941fd8da23dbba4344dc')
 validpgpkeys=("A5A45B12AD92D964B89EEE2DEC560C81CEC2276E") # Martin Matuska <mm@FreeBSD.org>
 
 prepare() {
   cd "${pkgname}-${pkgver}"
 
-  patch -p1 -i "${srcdir}/libarchive-3.3.2-bcrypt-fix.patch"
-  autoreconf -ivf
+  # https://github.com/libarchive/libarchive/pull/1714
+  patch -p1 -i "${srcdir}/0002-fix-openssl-library-check.patch"
+
+  autoreconf -fiv
 }
 
 build() {
@@ -30,6 +32,7 @@ build() {
   cd "${pkgname}-${pkgver}"
 
   local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+  # Mention default options explicitly to clarify any confusion
   ./configure \
     --prefix=/usr \
     --build=${CYGWIN_CHOST} \
@@ -37,8 +40,10 @@ build() {
     --enable-static \
     --without-libiconv-prefix \
     --without-xml2 \
-    --without-cng \
-    --without-lzo2
+    --without-lzo2 \
+    --without-nettle \
+    --with-openssl \
+    --without-cng
 
 # CNG breaks pacman on Vista due to BCryptDeriveKeyPBKDF2
 
