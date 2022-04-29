@@ -5,7 +5,7 @@ pkgname=('libreadline' 'libreadline-devel')
 _basever=8.1
 _patchlevel=002 #prepare for some patches
 pkgver=${_basever}.${_patchlevel}
-pkgrel=1
+pkgrel=2
 pkgdesc="GNU readline library"
 arch=('i686' 'x86_64')
 url="https://tiswww.case.edu/php/chet/readline/rltop.html"
@@ -48,20 +48,36 @@ prepare() {
 }
 
 build() {
-  cd ${srcdir}/${pkgbase}-${_basever}
-
-  # Remove RPATH from shared objects (FS#14366)
-  sed -i 's|-Wl,-rpath,$(libdir) ||g' support/shobj-conf
-
   local CYGWIN_CHOST="$(echo "${CHOST}" | sed 's|-msys$|-cygwin|')"
 
-  ./configure \
+  mkdir -p ${srcdir}/build-static-${MSYSTEM} && cd ${srcdir}/build-static-${MSYSTEM}
+
+  ../${pkgbase}-${_basever}/configure \
     --prefix=/usr \
     --build=${CYGWIN_CHOST} \
     --host=${CYGWIN_CHOST} \
     --with-curses \
+    --disable-shared \
+    --enable-static \
+    bash_cv_termcap_lib=libncurses \
+    CFLAGS="${CFLAGS} -DNCURSES_STATIC"
+
+  make
+
+  make DESTDIR=${srcdir}/dest install
+
+  mkdir -p ${srcdir}/build-shared-${MSYSTEM} && cd ${srcdir}/build-shared-${MSYSTEM}
+
+  ../${pkgbase}-${_basever}/configure \
+    --prefix=/usr \
+    --build=${CYGWIN_CHOST} \
+    --host=${CYGWIN_CHOST} \
+    --with-curses \
+    --disable-static \
+    --enable-shared \
     bash_cv_termcap_lib=libncurses
-  make VERBOSE=1
+
+  make
 
   make DESTDIR=${srcdir}/dest install
 }
