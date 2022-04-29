@@ -1,32 +1,31 @@
-diff -urN git-2.8.2-orig/builtin/clone.c git-2.8.2/builtin/clone.c
---- git-2.8.2-orig/builtin/clone.c	2016-05-17 11:31:07.469884100 +0100
-+++ git-2.8.2/builtin/clone.c	2016-05-17 11:31:16.899423500 +0100
-@@ -887,7 +887,7 @@
+--- a/builtin/clone.c
++++ b/builtin/clone.c
+@@ -939,7 +939,7 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
  		die(_("depth %s is not a positive number"), option_depth);
  
  	if (argc == 2)
 -		dir = xstrdup(argv[1]);
 +		dir = maybe_xstrdup_cyg_conv_path(argv[1], 1);
  	else
- 		dir = guess_dir_name(repo_name, is_bundle, option_bare);
- 	strip_trailing_slashes(dir);
-diff -urN git-2.8.2-orig/cache.h git-2.8.2/cache.h
---- git-2.8.2-orig/cache.h	2016-05-17 11:31:07.561889400 +0100
-+++ git-2.8.2/cache.h	2016-05-17 11:31:16.884422600 +0100
-@@ -989,6 +989,7 @@
+ 		dir = git_url_basename(repo_name, is_bundle, option_bare);
+ 	strip_dir_trailing_slashes(dir);
+diff --git a/cache.h b/cache.h
+index 6226f6a8a5..e8c0158e46 100644
+--- a/cache.h
++++ b/cache.h
+@@ -1284,6 +1284,7 @@ int normalize_path_copy_len(char *dst, const char *src, int *prefix_len);
  int normalize_path_copy(char *dst, const char *src);
  int longest_ancestor_length(const char *path, struct string_list *prefixes);
  char *strip_path_suffix(const char *path, const char *suffix);
 +char *maybe_xstrdup_cyg_conv_path(const char *path, int always_dupe);
  int daemon_avoid_alias(const char *path);
- extern int is_ntfs_dotgit(const char *name);
  
-diff -urN git-2.8.2-orig/path.c git-2.8.2/path.c
---- git-2.8.2-orig/path.c	2016-05-17 11:31:06.252814500 +0100
-+++ git-2.8.2/path.c	2016-05-17 11:38:34.828471600 +0100
-@@ -6,6 +6,10 @@
- #include "string-list.h"
- #include "dir.h"
+ /*
+--- a/path.c
++++ b/path.c
+@@ -14,6 +14,10 @@
+ #include "lockfile.h"
+ #include "exec-cmd.h"
  
 +#if defined(__CYGWIN__)
 +#include <sys/cygwin.h>
@@ -35,8 +34,8 @@ diff -urN git-2.8.2-orig/path.c git-2.8.2/path.c
  static int get_st_mode_bits(const char *path, int *mode)
  {
  	struct stat st;
-@@ -1101,6 +1105,39 @@
- 	return xstrndup(path, chomp_trailing_dir_sep(path, path_len));
+@@ -1300,6 +1304,39 @@ char *strip_path_suffix(const char *path, const char *suffix)
+ 	return offset == -1 ? NULL : xstrndup(path, offset);
  }
  
 +/* We're deliberately not changing the normal has_dos_drive_prefix
@@ -75,10 +74,9 @@ diff -urN git-2.8.2-orig/path.c git-2.8.2/path.c
  int daemon_avoid_alias(const char *p)
  {
  	int sl, ndot;
-diff -urN git-2.8.2-orig/pathspec.c git-2.8.2/pathspec.c
---- git-2.8.2-orig/pathspec.c	2016-05-17 11:31:06.253814600 +0100
-+++ git-2.8.2/pathspec.c	2016-05-17 11:31:16.903423700 +0100
-@@ -397,6 +397,10 @@
+--- a/pathspec.c
++++ b/pathspec.c
+@@ -418,6 +418,10 @@ static void init_pathspec_item(struct pathspec_item *item, unsigned flags,
  			       const char *prefix, int prefixlen,
  			       const char *elt)
  {
@@ -89,7 +87,7 @@ diff -urN git-2.8.2-orig/pathspec.c git-2.8.2/pathspec.c
  	unsigned magic = 0, element_magic = 0;
  	const char *copyfrom = elt;
  	char *match;
-@@ -488,6 +492,10 @@
+@@ -514,6 +518,10 @@ static void init_pathspec_item(struct pathspec_item *item, unsigned flags,
  	    item->prefix         > item->len) {
  		BUG("error initializing pathspec_item");
  	}
@@ -100,10 +98,9 @@ diff -urN git-2.8.2-orig/pathspec.c git-2.8.2/pathspec.c
  }
  
  static int pathspec_item_cmp(const void *a_, const void *b_)
-diff -urN git-2.8.2-orig/strbuf.c git-2.8.2/strbuf.c
---- git-2.8.2-orig/strbuf.c	2016-05-17 11:31:06.336819300 +0100
-+++ git-2.8.2/strbuf.c	2016-05-17 11:31:16.893423100 +0100
-@@ -671,6 +671,10 @@
+--- a/strbuf.c
++++ b/strbuf.c
+@@ -894,6 +894,10 @@ void strbuf_humanise_rate(struct strbuf *buf, off_t bytes)
  
  void strbuf_add_absolute_path(struct strbuf *sb, const char *path)
  {
@@ -114,7 +111,7 @@ diff -urN git-2.8.2-orig/strbuf.c git-2.8.2/strbuf.c
  	if (!*path)
  		die("The empty string is not a valid path");
  	if (!is_absolute_path(path)) {
-@@ -692,6 +696,10 @@
+@@ -915,6 +919,10 @@ void strbuf_add_absolute_path(struct strbuf *sb, const char *path)
  		free(cwd);
  	}
  	strbuf_addstr(sb, path);
@@ -124,4 +121,4 @@ diff -urN git-2.8.2-orig/strbuf.c git-2.8.2/strbuf.c
 +#endif
  }
  
- int printf_ln(const char *fmt, ...)
+ void strbuf_add_real_path(struct strbuf *sb, const char *path)
