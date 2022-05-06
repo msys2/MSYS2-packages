@@ -20,35 +20,32 @@
  edit = sed \
  	-e 's|@bindir[@]|${bindir}|g' \
  	-e 's|@sysconfdir[@]|$(sysconfdir)|g' \
-diff -Naur pacman-contrib-1.0.0-orig/src/checkupdates.sh.in pacman-contrib-1.0.0/src/checkupdates.sh.in
---- pacman-contrib-1.0.0-orig/src/checkupdates.sh.in	2015-10-18 08:38:28.000000000 +0300
-+++ pacman-contrib-1.0.0/src/checkupdates.sh.in	2016-07-15 09:42:18.779037400 +0300
-@@ -35,11 +35,6 @@
- 	shift
- done
+--- pacman-contrib-v1.5.1/src/checkupdates.sh.in.orig	2022-05-06 22:27:02.828090100 +0200
++++ pacman-contrib-v1.5.1/src/checkupdates.sh.in	2022-05-06 22:27:39.442955500 +0200
+@@ -101,10 +101,6 @@
+ 	unset ALL_OFF BOLD BLUE GREEN RED YELLOW
+ fi
  
 -if ! type -P fakeroot >/dev/null; then
--	error 'Cannot find the fakeroot binary.'
--	exit 1
+-	die 'Cannot find the fakeroot binary'
 -fi
 -
  if [[ -z $CHECKUPDATES_DB ]]; then
- 	CHECKUPDATES_DB="${TMPDIR:-/tmp}/checkup-db-${USER}/"
+ 	CHECKUPDATES_DB="${TMPDIR:-/tmp}/checkup-db-${UID}/"
  fi
-@@ -48,7 +48,7 @@
- 
- mkdir -p "$CHECKUPDATES_DB"
- ln -s "${DBPath}/local" "$CHECKUPDATES_DB" &> /dev/null
--if ! fakeroot -- pacman -Sy --dbpath "$CHECKUPDATES_DB" --logfile /dev/null &> /dev/null; then
-+if ! pacman -Sy --dbpath "$CHECKUPDATES_DB" --logfile /dev/null &> /dev/null; then
- 	error 'Cannot fetch updates'
- 	exit 1
+@@ -119,7 +115,7 @@
+ if (( ${SYNC} )); then
+ 	mkdir -p "$CHECKUPDATES_DB"
+ 	ln -s "${DBPath}/local" "$CHECKUPDATES_DB" &> /dev/null
+-	if ! fakeroot -- pacman -Sy --dbpath "$CHECKUPDATES_DB" --logfile /dev/null &> /dev/null; then
++	if ! pacman -Sy --dbpath "$CHECKUPDATES_DB" --logfile /dev/null &> /dev/null; then
+ 	    die 'Cannot fetch updates'
+ 	fi
  fi
-diff -Naur pacman-contrib-1.0.0-orig/src/paccache.sh.in pacman-contrib-1.0.0/src/paccache.sh.in
---- pacman-contrib-1.0.0-orig/src/paccache.sh.in	2015-03-26 07:43:10.000000000 +0300
-+++ pacman-contrib-1.0.0/src/paccache.sh.in	2016-07-15 09:42:18.787037400 +0300
-@@ -24,7 +24,7 @@
- declare -r myver='@PACKAGE_VERSION@'
+--- pacman-contrib-v1.5.1/src/paccache.sh.in.orig	2022-05-04 07:27:40.000000000 +0200
++++ pacman-contrib-v1.5.1/src/paccache.sh.in	2022-05-06 22:30:33.109514700 +0200
+@@ -28,7 +28,7 @@
+ LIBRARY=${LIBRARY:-'@libmakepkgdir@'}
  
  declare -a cachedirs=() candidates=() cmdopts=() whitelist=() blacklist=()
 -declare -i delete=0 dryrun=0 filecount=0 move=0 needsroot=0 totalsaved=0 verbose=0
@@ -56,16 +53,16 @@ diff -Naur pacman-contrib-1.0.0-orig/src/paccache.sh.in pacman-contrib-1.0.0/src
  declare -i min_atime=0 min_mtime=0
  declare    delim=$'\n' keep=3 movedir= scanarch=
  
-@@ -123,16 +123,7 @@
- m4_include(../scripts/library/size_to_human.sh)
+@@ -137,16 +137,7 @@
+ m4_include(../lib/size_to_human.sh)
  
  runcmd() {
 -	if (( needsroot && EUID != 0 )); then
--		msg "Privilege escalation required"
+-		msg 'Escalating privileges using sudo'
 -		if sudo -v &>/dev/null && sudo -l &>/dev/null; then
 -			sudo "$@"
 -		else
--			die 'Unable to escalate privileges using sudo'
+-			die 'Failed to escalate'
 -		fi
 -	else
 -		"$@"
@@ -74,7 +71,7 @@ diff -Naur pacman-contrib-1.0.0-orig/src/paccache.sh.in pacman-contrib-1.0.0/src
  }
  
  summarize() {
-@@ -306,17 +297,12 @@
+@@ -340,17 +331,12 @@
  if (( move || delete )); then
  	# make it an absolute path since we're about to chdir
  	[[ $movedir && ${movedir:0:1} != '/' ]] && movedir=$PWD/$movedir
@@ -92,10 +89,9 @@ diff -Naur pacman-contrib-1.0.0-orig/src/paccache.sh.in pacman-contrib-1.0.0/src
  	# unlikely that this will fail, but better make sure
  	pushd "$cachedir" &>/dev/null || die "failed to chdir to '%s'" "$cachedir"
  
-diff -Naur pacman-contrib-1.0.0-orig/src/pacscripts.sh.in pacman-contrib-1.0.0/src/pacscripts.sh.in
---- pacman-contrib-1.0.0-orig/src/pacscripts.sh.in	2016-01-04 06:27:45.000000000 +0300
-+++ pacman-contrib-1.0.0/src/pacscripts.sh.in	2016-07-15 09:42:18.804037400 +0300
-@@ -42,7 +42,7 @@
+--- pacman-contrib-v1.5.1/src/pacscripts.sh.in.orig	2022-05-04 07:27:40.000000000 +0200
++++ pacman-contrib-v1.5.1/src/pacscripts.sh.in	2022-05-06 22:31:24.676027200 +0200
+@@ -29,7 +29,7 @@
  
  error() {
  	local mesg=$1; shift
@@ -104,7 +100,7 @@ diff -Naur pacman-contrib-1.0.0-orig/src/pacscripts.sh.in pacman-contrib-1.0.0/s
  }
  
  usage() {
-@@ -67,17 +67,7 @@
+@@ -61,17 +61,7 @@
  }
  
  spacman() {
@@ -123,7 +119,7 @@ diff -Naur pacman-contrib-1.0.0-orig/src/pacscripts.sh.in pacman-contrib-1.0.0/s
  }
  
  print_db() {
-@@ -94,7 +84,7 @@
+@@ -88,7 +78,7 @@
  }
  
  print_pkg() {
@@ -132,7 +128,7 @@ diff -Naur pacman-contrib-1.0.0-orig/src/pacscripts.sh.in pacman-contrib-1.0.0/s
  		error "Package $1 does not include any .INSTALL script"
  		return 1
  	fi
-@@ -103,7 +93,7 @@
+@@ -97,7 +87,7 @@
  
  print_scriptlet() {
  	if [ -f "$1" ]; then
@@ -141,15 +137,14 @@ diff -Naur pacman-contrib-1.0.0-orig/src/pacscripts.sh.in pacman-contrib-1.0.0/s
  			print_pkg "$1"
  			return
  		fi
-diff -Naur pacman-contrib-1.0.0-orig/src/updpkgsums.sh.in pacman-contrib-1.0.0/src/updpkgsums.sh.in
---- pacman-contrib-1.0.0-orig/src/updpkgsums.sh.in	2016-01-04 06:27:45.000000000 +0300
-+++ pacman-contrib-1.0.0/src/updpkgsums.sh.in	2016-07-15 09:42:18.816037400 +0300
+--- pacman-contrib-v1.5.1/src/updpkgsums.sh.in.orig	2022-05-06 22:28:24.662770100 +0200
++++ pacman-contrib-v1.5.1/src/updpkgsums.sh.in	2022-05-06 22:28:52.172291500 +0200
 @@ -98,7 +98,7 @@
  
  trap "rm -rf '$BUILDDIR' '$newbuildfile'" EXIT
  sumtypes=$(IFS='|'; echo "${known_hash_algos[*]}")
 -newsums=$(makepkg -g -p "$buildfile" "${MAKEPKG_OPTS[@]}") || die 'Failed to generate new checksums'
 +newsums=$(MINGW_PACKAGE_PREFIX=mingw-w64-i686 makepkg -g -p "$buildfile" "${MAKEPKG_OPTS[@]}") || die 'Failed to generate new checksums'
- awk -v sumtypes="$sumtypes" -v newsums="$newsums" '
- 	$0 ~"^[[:blank:]]*(" sumtypes ")sums(_[^=]+)?=", $0 ~ "\\)[[:blank:]]*(#.*)?$" {
- 		if (!w) {
+ 
+ if [[ -z $newsums ]]; then
+ 	die "$buildfile does not contain sources to update"
