@@ -3,6 +3,7 @@
 if [ ! "${MINGW_PREFIX}" = "" ]; then
     XDG_DATA_DIRS="/usr/local/share/:/usr/share/"
     export XDG_DATA_DIRS="$MINGW_PREFIX/share/:$XDG_DATA_DIRS"
+    export BASH_COMPLETION_COMPAT_DIR="$MINGW_PREFIX/etc/bash_completion.d/"
 fi
 
 # Warn the user on the first login shell in case we detect a too old Windows version
