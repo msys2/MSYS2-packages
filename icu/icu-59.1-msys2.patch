@@ -1,494 +1,3 @@
-diff -durN icu.orig/source/acinclude.m4 icu/source/acinclude.m4
---- icu.orig/source/acinclude.m4	2016-06-16 02:58:17.000000000 +0800
-+++ icu/source/acinclude.m4	2017-05-17 14:14:12.781250000 +0800
-@@ -46,6 +46,18 @@
- 	else
- 		icu_cv_host_frag=mh-cygwin-msvc
- 	fi ;;
-+i[[34567]]86-*-msys) 
-+	if test "$GCC" = yes; then
-+		icu_cv_host_frag=mh-msys
-+	else
-+		icu_cv_host_frag=mh-msys-msvc
-+	fi ;;
-+x86_64-*-msys) 
-+	if test "$GCC" = yes; then
-+		icu_cv_host_frag=mh-msys64
-+	else
-+		icu_cv_host_frag=mh-msys-msvc
-+	fi ;;
- *-*-mingw*)
- 	if test "$GCC" = yes; then
-                 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
-diff -durN icu.orig/source/config/mh-msys icu/source/config/mh-msys
---- icu.orig/source/config/mh-msys	1970-01-01 08:00:00.000000000 +0800
-+++ icu/source/config/mh-msys	2017-05-17 14:15:38.703125000 +0800
-@@ -0,0 +1,141 @@
-+## -*-makefile-*-
-+## MSYS2-specific setup
-+## Copyright (c) 2001-2010, International Business Machines Corporation and
-+## others. All Rights Reserved.
-+
-+## Commands to generate dependency files
-+GEN_DEPS.c=$(CC) -E -MM $(DEFS) $(CPPFLAGS)
-+GEN_DEPS.cc=$(CXX) -E -MM -std=c++11 $(DEFS) $(CPPFLAGS)
-+
-+## Flags to create/use a static library
-+ifneq ($(ENABLE_SHARED),YES)
-+## Make sure that the static libraries can be built and used
-+CPPFLAGS += -DU_STATIC_IMPLEMENTATION
-+else
-+## Make sure that the static libraries can be built
-+STATICCPPFLAGS = -DU_STATIC_IMPLEMENTATION
-+endif
-+
-+## Flags for position independent code
-+SHAREDLIBCFLAGS = 
-+SHAREDLIBCXXFLAGS = 
-+SHAREDLIBCPPFLAGS = -DPIC
-+
-+## Additional flags when building libraries and with threads
-+THREADSCPPFLAGS = -D_REENTRANT
-+LIBCPPFLAGS =
-+
-+# Commands to link. Link with C++ in case static libraries are used.
-+LINK.c=       $(CXX) $(CXXFLAGS) $(LDFLAGS)
-+#LINK.cc=      $(CXX) $(CXXFLAGS) $(LDFLAGS)
-+
-+## Shared library options
-+LD_SOOPTIONS= -Wl,-Bsymbolic
-+
-+## Commands to make a shared library
-+# $(subst) won't work in shell script.  #M# at the end omits these
-+# lines from the shell script (Make only)
-+SHLIB.c=$(CC) $(CFLAGS) $(LDFLAGS) -shared $(LD_SOOPTIONS) -Wl,--enable-auto-import -Wl,--out-implib=$(subst msys-,lib,$@).$(A)#M#
-+SHLIB.cc=$(CXX) $(CXXFLAGS) $(LDFLAGS) -shared $(LD_SOOPTIONS) -Wl,--enable-auto-import -Wl,--out-implib=$(subst msys-,lib,$@).$(A)#M#
-+# the #SH# lines don't go through further postprocessing. 
-+# so, they must be valid shell script starting from column 4
-+#SH#SHLIB_c="$(CC) $(CFLAGS) $(LDFLAGS) -shared "
-+#SH#SHLIB_cc="$(CXX) $(CXXFLAGS) $(LDFLAGS) -shared "
-+
-+
-+## Compiler switch to embed a runtime search path
-+LD_RPATH=
-+LD_RPATH_PRE=-Wl,-rpath,
-+
-+## Compiler switch to embed a library name
-+LD_SONAME =
-+
-+## Shared object suffix
-+SO = dll
-+## Non-shared intermediate object suffix
-+STATIC_O = ao
-+LIBICU = msys-$(ICUPREFIX)
-+## To have an import library is better on MSYS2
-+IMPORT_LIB_EXT = .dll.a
-+
-+## Compilation rules
-+%.$(STATIC_O): $(srcdir)/%.c
-+	$(COMPILE.c) $(STATICCPPFLAGS) $(STATICCFLAGS) -o $@ $<
-+%.o: $(srcdir)/%.c
-+	$(COMPILE.c) $(DYNAMICCPPFLAGS) $(DYNAMICCFLAGS) -o $@ $<
-+
-+%.$(STATIC_O): $(srcdir)/%.cpp
-+	$(COMPILE.cc) $(STATICCPPFLAGS) $(STATICCXXFLAGS) -o $@ $<
-+%.o: $(srcdir)/%.cpp
-+	$(COMPILE.cc) $(DYNAMICCPPFLAGS) $(DYNAMICCXXFLAGS) -o $@ $<
-+
-+
-+## Dependency rules
-+%.d: $(srcdir)/%.c
-+	@echo "generating dependency information for $<"
-+	@echo -n "$@ " > $@
-+	@$(GEN_DEPS.c) $< >> $@ || (rm -f $@ && FALSE)
-+
-+%.d: $(srcdir)/%.cpp
-+	@echo "generating dependency information for $<"
-+	@echo -n "$@ " > $@
-+	@$(GEN_DEPS.cc) $< >> $@ || (rm -f $@ && FALSE)
-+
-+## Versioned target for a shared library.
-+## Since symbolic links don't work the same way on Windows,
-+## we only use the version major number.
-+#FINAL_SO_TARGET=$(basename $(SO_TARGET))$(SO_TARGET_VERSION).$(SO)
-+FINAL_SO_TARGET=$(basename $(SO_TARGET))$(SO_TARGET_VERSION_MAJOR).$(SO)
-+MIDDLE_SO_TARGET=$(FINAL_SO_TARGET)
-+
-+IMPORT_LIB = $(subst msys-,lib,$(FINAL_SO_TARGET)).$(A)#M#
-+MIDDLE_IMPORT_LIB = $(subst msys-,lib,$(basename $(SO_TARGET)))$(SO_TARGET_VERSION_MAJOR).$(SO).$(A)#M#
-+FINAL_IMPORT_LIB = $(IMPORT_LIB)#M#
-+
-+# The following is for Makefile.inc's use.
-+ICULIBSUFFIX_VERSION = $(LIB_VERSION_MAJOR)
-+
-+## Versioned libraries rules
-+#%$(SO_TARGET_VERSION_MAJOR).$(SO): %$(SO_TARGET_VERSION).$(SO)
-+#$(RM) $@ && cp ${<F} $@
-+%.$(SO): %$(SO_TARGET_VERSION_MAJOR).$(SO)
-+	$(RM) $(subst msys-,lib,$@).$(A) && ln -s $(subst msys-,lib,${<F}).$(A) $(subst msys-,lib,$@).$(A)
-+
-+## Install libraries as executable
-+INSTALL-L=$(INSTALL_PROGRAM)
-+
-+##  Bind internal references
-+
-+# LDflags that pkgdata will use
-+BIR_LDFLAGS= -Wl,-Bsymbolic
-+
-+# Dependencies [i.e. map files] for the final library
-+BIR_DEPS=
-+
-+# Environment variable to set a runtime search path
-+LDLIBRARYPATH_ENVVAR = PATH
-+
-+# The type of assembly to write for generating an object file
-+GENCCODE_ASSEMBLY=-a gcc-cygwin
-+
-+# put this here again so it gets cyguc...
-+
-+#SH#ICULIBS_COMMON_LIB_NAME="${LIBICU}uc${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}.${SO}"
-+
-+# for icu-config
-+
-+#SH### copied from Makefile.inc
-+#SH#ICULIBS_COMMON="-l${LIBICU}uc${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_DATA="-l${LIBICU}${DATA_STUBNAME}${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_I18N="-l${LIBICU}${I18N_STUBNAME}${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_TOOLUTIL="-l${LIBICU}tu${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_CTESTFW="-l${LIBICU}ctestfw${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_ICUIO="-l${LIBICU}io${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_OBSOLETE="-l${LIBICU}obsolete${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_LAYOUT="-l${LIBICU}le${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_LAYOUTEX="-l${LIBICU}lx${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_BASE="${LIBS} -L${libdir}"
-+#SH#ICULIBS="${ICULIBS_BASE} ${ICULIBS_I18N} ${ICULIBS_COMMON} ${ICULIBS_DATA}" 
-+
-+## End MSYS2-specific setup
-+
-diff -durN icu.orig/source/config/mh-msys64 icu/source/config/mh-msys64
---- icu.orig/source/config/mh-msys64	1970-01-01 08:00:00.000000000 +0800
-+++ icu/source/config/mh-msys64	2017-05-17 14:14:13.000000000 +0800
-@@ -0,0 +1,141 @@
-+## -*-makefile-*-
-+## MSYS2-specific setup
-+## Copyright (c) 2001-2010, International Business Machines Corporation and
-+## others. All Rights Reserved.
-+
-+## Commands to generate dependency files
-+GEN_DEPS.c=$(CC) -E -MM $(DEFS) $(CPPFLAGS)
-+GEN_DEPS.cc=$(CXX) -E -MM -std=c++11 $(DEFS) $(CPPFLAGS)
-+
-+## Flags to create/use a static library
-+ifneq ($(ENABLE_SHARED),YES)
-+## Make sure that the static libraries can be built and used
-+CPPFLAGS += -DU_STATIC_IMPLEMENTATION
-+else
-+## Make sure that the static libraries can be built
-+STATICCPPFLAGS = -DU_STATIC_IMPLEMENTATION
-+endif
-+
-+## Flags for position independent code
-+SHAREDLIBCFLAGS = 
-+SHAREDLIBCXXFLAGS = 
-+SHAREDLIBCPPFLAGS = -DPIC
-+
-+## Additional flags when building libraries and with threads
-+THREADSCPPFLAGS = -D_REENTRANT
-+LIBCPPFLAGS =
-+
-+# Commands to link. Link with C++ in case static libraries are used.
-+LINK.c=$(CXX) $(CXXFLAGS) $(LDFLAGS)
-+#LINK.cc=$(CXX) $(CXXFLAGS) $(LDFLAGS)
-+
-+## Shared library options
-+LD_SOOPTIONS= -Wl,-Bsymbolic
-+
-+## Commands to make a shared library
-+# $(subst) won't work in shell script.  #M# at the end omits these
-+# lines from the shell script (Make only)
-+SHLIB.c=$(CC) $(CFLAGS) $(LDFLAGS) -shared $(LD_SOOPTIONS) -Wl,--enable-auto-import -Wl,--out-implib=$(subst msys-,lib,$@).$(A)#M#
-+SHLIB.cc=$(CXX) $(CXXFLAGS) $(LDFLAGS) -shared $(LD_SOOPTIONS) -Wl,--enable-auto-import -Wl,--out-implib=$(subst msys-,lib,$@).$(A)#M#
-+# the #SH# lines don't go through further postprocessing. 
-+# so, they must be valid shell script starting from column 4
-+#SH#SHLIB_c="$(CC) $(CFLAGS) $(LDFLAGS) -shared "
-+#SH#SHLIB_cc="$(CXX) $(CXXFLAGS) $(LDFLAGS) -shared "
-+
-+
-+## Compiler switch to embed a runtime search path
-+LD_RPATH=
-+LD_RPATH_PRE=
-+
-+## Compiler switch to embed a library name
-+LD_SONAME =
-+
-+## Shared object suffix
-+SO = dll
-+## Non-shared intermediate object suffix
-+STATIC_O = ao
-+LIBICU = msys-$(ICUPREFIX)
-+## To have an import library is better on MSYS2
-+IMPORT_LIB_EXT = .dll.a
-+
-+## Compilation rules
-+%.$(STATIC_O): $(srcdir)/%.c
-+	$(COMPILE.c) $(STATICCPPFLAGS) $(STATICCFLAGS) -o $@ $<
-+%.o: $(srcdir)/%.c
-+	$(COMPILE.c) $(DYNAMICCPPFLAGS) $(DYNAMICCFLAGS) -o $@ $<
-+
-+%.$(STATIC_O): $(srcdir)/%.cpp
-+	$(COMPILE.cc) $(STATICCPPFLAGS) $(STATICCXXFLAGS) -o $@ $<
-+%.o: $(srcdir)/%.cpp
-+	$(COMPILE.cc) $(DYNAMICCPPFLAGS) $(DYNAMICCXXFLAGS) -o $@ $<
-+
-+
-+## Dependency rules
-+%.d: $(srcdir)/%.c
-+	@echo "generating dependency information for $<"
-+	@echo -n "$@ " > $@
-+	@$(GEN_DEPS.c) $< >> $@ || (rm -f $@ && FALSE)
-+
-+%.d: $(srcdir)/%.cpp
-+	@echo "generating dependency information for $<"
-+	@echo -n "$@ " > $@
-+	@$(GEN_DEPS.cc) $< >> $@ || (rm -f $@ && FALSE)
-+
-+## Versioned target for a shared library.
-+## Since symbolic links don't work the same way on Windows,
-+## we only use the version major number.
-+#FINAL_SO_TARGET=$(basename $(SO_TARGET))$(SO_TARGET_VERSION).$(SO)
-+FINAL_SO_TARGET=$(basename $(SO_TARGET))$(SO_TARGET_VERSION_MAJOR).$(SO)
-+MIDDLE_SO_TARGET=$(FINAL_SO_TARGET)
-+
-+IMPORT_LIB = $(subst msys-,lib,$(FINAL_SO_TARGET)).$(A)#M#
-+MIDDLE_IMPORT_LIB = $(subst msys-,lib,$(basename $(SO_TARGET)))$(SO_TARGET_VERSION_MAJOR).$(SO).$(A)#M#
-+FINAL_IMPORT_LIB = $(IMPORT_LIB)#M#
-+
-+# The following is for Makefile.inc's use.
-+ICULIBSUFFIX_VERSION = $(LIB_VERSION_MAJOR)
-+
-+## Versioned libraries rules
-+#%$(SO_TARGET_VERSION_MAJOR).$(SO): %$(SO_TARGET_VERSION).$(SO)
-+#	$(RM) $@ && cp ${<F} $@
-+%.$(SO): %$(SO_TARGET_VERSION_MAJOR).$(SO)
-+	$(RM) $(subst msys-,lib,$@).$(A) && ln -s $(subst msys-,lib,${<F}).$(A) $(subst msys-,lib,$@).$(A)
-+
-+## Install libraries as executable
-+INSTALL-L=$(INSTALL_PROGRAM)
-+
-+##  Bind internal references
-+
-+# LDflags that pkgdata will use
-+BIR_LDFLAGS= -Wl,-Bsymbolic
-+
-+# Dependencies [i.e. map files] for the final library
-+BIR_DEPS=
-+
-+# Environment variable to set a runtime search path
-+LDLIBRARYPATH_ENVVAR = PATH
-+
-+# The type of assembly to write for generating an object file
-+GENCCODE_ASSEMBLY=-a gcc-mingw64
-+
-+# put this here again so it gets cyguc...
-+
-+#SH#ICULIBS_COMMON_LIB_NAME="${LIBICU}uc${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}.${SO}"
-+
-+# for icu-config
-+
-+#SH### copied from Makefile.inc
-+#SH#ICULIBS_COMMON="-l${LIBICU}uc${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_DATA="-l${LIBICU}${DATA_STUBNAME}${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_I18N="-l${LIBICU}${I18N_STUBNAME}${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_TOOLUTIL="-l${LIBICU}tu${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_CTESTFW="-l${LIBICU}ctestfw${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_ICUIO="-l${LIBICU}io${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_OBSOLETE="-l${LIBICU}obsolete${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_LAYOUT="-l${LIBICU}le${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_LAYOUTEX="-l${LIBICU}lx${ICULIBSUFFIX}${ICULIBSUFFIX_VERSION}"
-+#SH#ICULIBS_BASE="${LIBS} -L${libdir}"
-+#SH#ICULIBS="${ICULIBS_BASE} ${ICULIBS_I18N} ${ICULIBS_COMMON} ${ICULIBS_DATA}" 
-+
-+## End MSYS2-specific setup
-+
-diff -durN icu.orig/source/configure icu/source/configure
---- icu.orig/source/configure	2017-04-07 15:40:30.000000000 +0800
-+++ icu/source/configure	2017-05-17 14:14:13.218750000 +0800
-@@ -4293,7 +4293,7 @@
- # Check that the linker is usable
- 
- case "${host}" in
--    *-*-cygwin*|*-*-mingw*)
-+    *-*-cygwin*|*-*-msys*|*-*-mingw*)
-         if test "$GCC" != yes && test -n "`link --version 2>&1 | grep 'GNU coreutils'`"; then
-             as_fn_error $? "link.exe is not a valid linker. Your PATH is incorrect.
-                   Please follow the directions in ICU's readme." "$LINENO" 5
-@@ -4307,7 +4307,7 @@
- { $as_echo "$as_me:${as_lineno-$LINENO}: checking checking for executable suffix" >&5
- $as_echo_n "checking checking for executable suffix... " >&6; }
- case "${host}" in
--    *-*-cygwin*|*-*-mingw*)  EXEEXT=.exe ;;
-+    *-*-cygwin*|*-*-msys*|*-*-mingw*)  EXEEXT=.exe ;;
-     *)      EXEEXT="" ;;
- esac
- ac_exeext=$EXEEXT
-@@ -4354,7 +4354,7 @@
-             CFLAGS="$CFLAGS -Wall -pedantic -Wshadow -Wpointer-arith -Wmissing-prototypes -Wwrite-strings"
-         else
-             case "${host}" in
--            *-*-cygwin)
-+            *-*-cygwin | *-*-msys)
-                 if test "`$CC /help 2>&1 | head -c9`" = "Microsoft"
-                 then
-                     CFLAGS="$CFLAGS /W4"
-@@ -4368,7 +4368,7 @@
-             CXXFLAGS="$CXXFLAGS -W -Wall -pedantic -Wpointer-arith -Wwrite-strings -Wno-long-long"
-         else
-             case "${host}" in
--            *-*-cygwin)
-+            *-*-cygwin | *-*-msys)
-                 if test "`$CXX /help 2>&1 | head -c9`" = "Microsoft"
-                 then
-                     CXXFLAGS="$CXXFLAGS /W4"
-@@ -4898,7 +4898,7 @@
-                         fi
-                     fi
-                     ;;
--                *-*-cygwin)
-+                *-*-cygwin | *-*-msys)
-                     # vcvarsamd64.bat should have been used to enable 64-bit builds.
-                     # We only do this check to display the correct answer.
-                     ## TODO: cross compiler problem
-@@ -5147,6 +5147,18 @@
- 	else
- 		icu_cv_host_frag=mh-cygwin-msvc
- 	fi ;;
-+i[[34567]]86-*-msys) 
-+	if test "$GCC" = yes; then
-+		icu_cv_host_frag=mh-msys
-+	else
-+		icu_cv_host_frag=mh-msys-msvc
-+	fi ;;
-+x86_64-*-msys) 
-+	if test "$GCC" = yes; then
-+		icu_cv_host_frag=mh-msys64
-+	else
-+		icu_cv_host_frag=mh-msys-msvc
-+	fi ;;
- *-*-mingw*)
- 	if test "$GCC" = yes; then
-                 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-@@ -5173,6 +5185,7 @@
- 	        case "${host}" in
- 		*-*-mingw*) icu_cv_host_frag=mh-msys-msvc ;;
- 		*-*-cygwin) icu_cv_host_frag=mh-cygwin-msvc ;;
-+		*-*-msys)   icu_cv_host_frag=mh-msys-msvc ;;
- 		esac
- 	fi ;;
- *-*-*bsd*|*-*-dragonfly*) 	icu_cv_host_frag=mh-bsd-gcc ;;
-@@ -6267,7 +6280,7 @@
- fi
- # Check to see if we are using CygWin with MSVC
- case "${host}" in
--*-pc-cygwin*|*-pc-mingw*)
-+*-pc-cygwin*|*-pc-msys*|*-pc-mingw*)
-   # For gcc, the thread options are set by mh-mingw/mh-cygwin
-   # For msvc, the thread options are set by runConfigureICU
-   :
-@@ -7441,7 +7454,7 @@
-         CHECK_UTF16_STRING_RESULT="available"
-     fi
-     ;;
--*-*-cygwin)
-+*-*-cygwin | *-*-msys)
-     # wchar_t can be used
-     CHECK_UTF16_STRING_RESULT="available"
-     ;;
-@@ -7780,7 +7793,7 @@
- 	*-*-aix*) 	platform=U_AIX ;;
- 	*-*-hpux*) 	platform=U_HPUX ;;
- 	*-apple-darwin*|*-apple-rhapsody*)	platform=U_DARWIN ;;
--	*-*-cygwin*)	platform=U_CYGWIN ;;
-+	*-*-cygwin* | *-*-msys*)	platform=U_CYGWIN ;;
- 	*-*-mingw*)	platform=U_MINGW ;;
- 	*-*ibm-openedition*|*-*-os390*)	platform=OS390
- 			if test "${ICU_ENABLE_ASCII_STRINGS}" != "1"; then
-diff -durN icu.orig/source/configure.ac icu/source/configure.ac
---- icu.orig/source/configure.ac	2017-04-07 15:40:30.000000000 +0800
-+++ icu/source/configure.ac	2017-05-17 14:14:13.343750000 +0800
-@@ -224,7 +224,7 @@
- # files, which confuses the AC_EXEEXT macro.
- AC_MSG_CHECKING(checking for executable suffix)
- case "${host}" in
--    *-*-cygwin*|*-*-mingw*)  EXEEXT=.exe ;;
-+    *-*-cygwin*|*-*-msys*|*-*-mingw*)  EXEEXT=.exe ;;
-     *)      EXEEXT="" ;;
- esac
- ac_exeext=$EXEEXT
-@@ -571,7 +571,7 @@
- fi
- # Check to see if we are using CygWin with MSVC
- case "${host}" in
--*-pc-cygwin*|*-pc-mingw*)
-+*-pc-cygwin*|*-pc-msys*|*-pc-mingw*)
-   # For gcc, the thread options are set by mh-mingw/mh-cygwin
-   # For msvc, the thread options are set by runConfigureICU
-   :
-@@ -1023,7 +1023,7 @@
-         CHECK_UTF16_STRING_RESULT="available"
-     fi
-     ;;
--*-*-cygwin)
-+*-*-cygwin | *-*-msys)
-     # wchar_t can be used
-     CHECK_UTF16_STRING_RESULT="available"
-     ;;
-@@ -1257,7 +1257,7 @@
- 	*-*-aix*) 	platform=U_AIX ;;
- 	*-*-hpux*) 	platform=U_HPUX ;;
- 	*-apple-darwin*|*-apple-rhapsody*)	platform=U_DARWIN ;;
--	*-*-cygwin*)	platform=U_CYGWIN ;;
-+	*-*-cygwin*|*-*-msys*)	platform=U_CYGWIN ;;
- 	*-*-mingw*)	platform=U_MINGW ;;
- 	*-*ibm-openedition*|*-*-os390*)	platform=OS390
- 			if test "${ICU_ENABLE_ASCII_STRINGS}" != "1"; then
-diff -durN icu.orig/source/runConfigureICU icu/source/runConfigureICU
---- icu.orig/source/runConfigureICU	2017-01-23 08:38:28.000000000 +0800
-+++ icu/source/runConfigureICU	2017-05-17 14:14:13.421875000 +0800
-@@ -53,6 +53,7 @@
-     MacOSX              Use the default compilers on MacOS X (Darwin)
-     MacOSX/GCC          Use the GNU gcc/g++ compilers on MacOSX (Darwin)
-     MinGW               Use the GNU gcc/g++ compilers on MinGW
-+    MSYS                Use the GNU gcc/g++ compilers on MSYS
-     MSYS/MSVC           Use the Microsoft Visual C++ computer on MSYS
-     QNX                 Use the QNX QCC compiler on QNX/Neutrino
-     Solaris             Use the Sun cc/CC compilers on Solaris
-@@ -317,6 +318,12 @@
-         RELEASE_CXXFLAGS='-O3'
-         export CXXFLAGS
-         ;;
-+    MSYS)
-+        THE_OS="MSYS"
-+        THE_COMP="the GNU C++"
-+        RELEASE_CFLAGS='-O3'
-+        RELEASE_CXXFLAGS='-O3'
-+        ;;
-     MSYS/MSVC)
-         THE_OS="MSYS"
-         THE_COMP="Microsoft Visual C++"
-diff -durN icu.orig/source/tools/Makefile.in icu/source/tools/Makefile.in
---- icu.orig/source/tools/Makefile.in	2017-04-13 17:55:03.000000000 +0800
-+++ icu/source/tools/Makefile.in	2017-05-17 14:14:13.484375000 +0800
-@@ -23,6 +23,10 @@
- SUBDIRS += escapesrc
- endif
- 
-+ifneq (@platform_make_fragment_name@,mh-msys-msvc)
-+SUBDIRS += escapesrc
-+endif
-+
- ## List of phony targets
- .PHONY : all all-local all-recursive install install-local	\
- install-recursive clean clean-local clean-recursive distclean		\
 diff -durN icu.orig/source/tools/pkgdata/pkgdata.cpp icu/source/tools/pkgdata/pkgdata.cpp
 --- icu.orig/source/tools/pkgdata/pkgdata.cpp	2017-03-21 09:03:49.000000000 +0800
 +++ icu/source/tools/pkgdata/pkgdata.cpp	2017-05-17 14:14:13.578125000 +0800
@@ -528,18 +37,111 @@ diff -durN icu.orig/source/tools/pkgdata/pkgtypes.h icu/source/tools/pkgdata/pkg
  # define LIB_STATIC_PREFIX "lib"
  # define OBJ_SUFFIX ".o"
  # define UDATA_LIB_SUFFIX ".a"
-diff -durN icu.orig/source/tools/toolutil/udbgutil.cpp icu/source/tools/toolutil/udbgutil.cpp
---- icu.orig/source/tools/toolutil/udbgutil.cpp	2017-04-10 22:22:16.000000000 +0800
-+++ icu/source/tools/toolutil/udbgutil.cpp	2017-05-17 14:14:13.765625000 +0800
-@@ -354,7 +354,11 @@
- #if U_PLATFORM_USES_ONLY_WIN32_API
-     return "Windows";
- #elif U_PLATFORM == U_PF_CYGWIN
-+#ifdef __MSYS__
-+    return "MSYS";
-+#else
-     return "Cygwin";
-+#endif
- #elif U_PLATFORM == U_PF_UNKNOWN
-     return "unknown";
- #elif U_PLATFORM == U_PF_DARWIN
+--- icu/source/config/mh-cygwin64.orig	2021-10-28 18:04:57.000000000 +0200
++++ icu/source/config/mh-cygwin64	2022-05-12 07:50:24.169385700 +0200
+@@ -5,6 +5,11 @@
+ ## Copyright (c) 2014, International Business Machines Corporation and
+ ## others. All Rights Reserved.
+ 
++# On Windows we generally have the DLLs in the bin directory rather than the lib directory.
++# This setting moves the ICU DLLs into the bin folder for MinGW/MSYS2 when "make install" is run.
++# If you prefer to have the DLLs in the lib folder, then set this to NO instead.
++MINGW_MOVEDLLSTOBINDIR = YES
++
+ ## Commands to generate dependency files
+ GEN_DEPS.c=	$(CC) -E -MM $(DEFS) $(CPPFLAGS)
+ GEN_DEPS.cc=	$(CXX) -E -MM $(DEFS) $(CPPFLAGS) $(CXXFLAGS)
+@@ -41,8 +46,8 @@
+ ## Commands to make a shared library
+ # $(subst) won't work in shell script.  #M# at the end omits these
+ # lines from the shell script (Make only)
+-SHLIB.c=	$(CC) $(CFLAGS) $(LDFLAGS) -shared $(LD_SOOPTIONS) -Wl,--enable-auto-import -Wl,--out-implib=$(subst cyg,lib,$@).$(A)#M#
+-SHLIB.cc=	$(CXX) $(CXXFLAGS) $(LDFLAGS) -shared $(LD_SOOPTIONS) -Wl,--enable-auto-import -Wl,--out-implib=$(subst cyg,lib,$@).$(A)#M#
++SHLIB.c=	$(CC) $(CFLAGS) $(LDFLAGS) -shared $(LD_SOOPTIONS) -Wl,--enable-auto-import -Wl,--out-implib=$(subst msys-,lib,$@).$(A)#M#
++SHLIB.cc=	$(CXX) $(CXXFLAGS) $(LDFLAGS) -shared $(LD_SOOPTIONS) -Wl,--enable-auto-import -Wl,--out-implib=$(subst msys-,lib,$@).$(A)#M#
+ # the #SH# lines don't go through further postprocessing. 
+ # so, they must be valid shell script starting from column 4
+ #SH#SHLIB_c="$(CC) $(CFLAGS) $(LDFLAGS) -shared "
+@@ -60,7 +65,7 @@
+ SO = dll
+ ## Non-shared intermediate object suffix
+ STATIC_O = ao
+-LIBICU = cyg$(ICUPREFIX)
++LIBICU = msys-$(ICUPREFIX)
+ ## To have an import library is better on Cygwin
+ IMPORT_LIB_EXT = .dll.a
+ 
+@@ -94,8 +99,8 @@
+ FINAL_SO_TARGET=$(basename $(SO_TARGET))$(SO_TARGET_VERSION_MAJOR).$(SO)
+ MIDDLE_SO_TARGET=$(FINAL_SO_TARGET)
+ 
+-IMPORT_LIB = $(subst cyg,lib,$(FINAL_SO_TARGET)).$(A)#M#
+-MIDDLE_IMPORT_LIB = $(subst cyg,lib,$(basename $(SO_TARGET)))$(SO_TARGET_VERSION_MAJOR).$(SO).$(A)#M#
++IMPORT_LIB = $(subst msys-,lib,$(FINAL_SO_TARGET)).$(A)#M#
++MIDDLE_IMPORT_LIB = $(subst msys-,lib,$(basename $(SO_TARGET)))$(SO_TARGET_VERSION_MAJOR).$(SO).$(A)#M#
+ FINAL_IMPORT_LIB = $(IMPORT_LIB)#M#
+ 
+ # The following is for Makefile.inc's use.
+@@ -105,7 +110,7 @@
+ #%$(SO_TARGET_VERSION_MAJOR).$(SO): %$(SO_TARGET_VERSION).$(SO)
+ #	$(RM) $@ && cp ${<F} $@
+ %.$(SO): %$(SO_TARGET_VERSION_MAJOR).$(SO)
+-	ln -fs $(subst cyg,lib,${<F}).$(A) $(subst cyg,lib,$@).$(A)
++	ln -fs $(subst msys-,lib,${<F}).$(A) $(subst msys-,lib,$@).$(A)
+ 
+ ## Install libraries as executable
+ INSTALL-L=$(INSTALL_PROGRAM)
+--- icu/source/config/mh-cygwin.orig	2021-10-28 18:04:57.000000000 +0200
++++ icu/source/config/mh-cygwin	2022-05-12 09:09:19.521071800 +0200
+@@ -5,6 +5,11 @@
+ ## Copyright (c) 2001-2010, International Business Machines Corporation and
+ ## others. All Rights Reserved.
+ 
++# On Windows we generally have the DLLs in the bin directory rather than the lib directory.
++# This setting moves the ICU DLLs into the bin folder for MinGW/MSYS2 when "make install" is run.
++# If you prefer to have the DLLs in the lib folder, then set this to NO instead.
++MINGW_MOVEDLLSTOBINDIR = YES
++
+ ## Commands to generate dependency files
+ GEN_DEPS.c=	$(CC) -E -MM $(DEFS) $(CPPFLAGS)
+ GEN_DEPS.cc=	$(CXX) -E -MM $(DEFS) $(CPPFLAGS) $(CXXFLAGS)
+@@ -41,8 +46,8 @@
+ ## Commands to make a shared library
+ # $(subst) won't work in shell script.  #M# at the end omits these
+ # lines from the shell script (Make only)
+-SHLIB.c=	$(CC) $(CFLAGS) $(LDFLAGS) -shared $(LD_SOOPTIONS) -Wl,--enable-auto-import -Wl,--out-implib=$(subst cyg,lib,$@).$(A)#M#
+-SHLIB.cc=	$(CXX) $(CXXFLAGS) $(LDFLAGS) -shared $(LD_SOOPTIONS) -Wl,--enable-auto-import -Wl,--out-implib=$(subst cyg,lib,$@).$(A)#M#
++SHLIB.c=	$(CC) $(CFLAGS) $(LDFLAGS) -shared $(LD_SOOPTIONS) -Wl,--enable-auto-import -Wl,--out-implib=$(subst msys-,lib,$@).$(A)#M#
++SHLIB.cc=	$(CXX) $(CXXFLAGS) $(LDFLAGS) -shared $(LD_SOOPTIONS) -Wl,--enable-auto-import -Wl,--out-implib=$(subst msys-,lib,$@).$(A)#M#
+ # the #SH# lines don't go through further postprocessing. 
+ # so, they must be valid shell script starting from column 4
+ #SH#SHLIB_c="$(CC) $(CFLAGS) $(LDFLAGS) -shared "
+@@ -60,7 +65,7 @@
+ SO = dll
+ ## Non-shared intermediate object suffix
+ STATIC_O = ao
+-LIBICU = cyg$(ICUPREFIX)
++LIBICU = msys-$(ICUPREFIX)
+ ## To have an import library is better on Cygwin
+ IMPORT_LIB_EXT = .dll.a
+ 
+@@ -94,8 +99,8 @@
+ FINAL_SO_TARGET=$(basename $(SO_TARGET))$(SO_TARGET_VERSION_MAJOR).$(SO)
+ MIDDLE_SO_TARGET=$(FINAL_SO_TARGET)
+ 
+-IMPORT_LIB = $(subst cyg,lib,$(FINAL_SO_TARGET)).$(A)#M#
+-MIDDLE_IMPORT_LIB = $(subst cyg,lib,$(basename $(SO_TARGET)))$(SO_TARGET_VERSION_MAJOR).$(SO).$(A)#M#
++IMPORT_LIB = $(subst msys-,lib,$(FINAL_SO_TARGET)).$(A)#M#
++MIDDLE_IMPORT_LIB = $(subst msys-,lib,$(basename $(SO_TARGET)))$(SO_TARGET_VERSION_MAJOR).$(SO).$(A)#M#
+ FINAL_IMPORT_LIB = $(IMPORT_LIB)#M#
+ 
+ # The following is for Makefile.inc's use.
+@@ -105,7 +110,7 @@
+ #%$(SO_TARGET_VERSION_MAJOR).$(SO): %$(SO_TARGET_VERSION).$(SO)
+ #	$(RM) $@ && cp ${<F} $@
+ %.$(SO): %$(SO_TARGET_VERSION_MAJOR).$(SO)
+-	ln -fs $(subst cyg,lib,${<F}).$(A) $(subst cyg,lib,$@).$(A)
++	ln -fs $(subst cmsys-yg,lib,${<F}).$(A) $(subst msys-,lib,$@).$(A)
+ 
+ ## Install libraries as executable
+ INSTALL-L=$(INSTALL_PROGRAM)
