@@ -1,4 +1,4 @@
-From eab174266ee10ff0c2b6612ffcfdaba4557c6111 Mon Sep 17 00:00:00 2001
+From 3ef504360259c25283aa576a0dbe46ce0c7c305e Mon Sep 17 00:00:00 2001
 From: Johannes Schindelin <johannes.schindelin@gmx.de>
 Date: Fri, 20 Mar 2015 09:56:28 +0000
 Subject: [PATCH 29/N] Emulate GenerateConsoleCtrlEvent() upon Ctrl+C
@@ -87,13 +87,13 @@ also correctly, which mean we should kill all the process using
 Co-authored-by: Naveen M K <naveen@syrusdark.website>
 Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
 ---
- winsup/cygwin/exceptions.cc                 |  20 +-
+ winsup/cygwin/exceptions.cc                 |  24 +-
  winsup/cygwin/include/cygwin/exit_process.h | 364 ++++++++++++++++++++
- 2 files changed, 382 insertions(+), 2 deletions(-)
+ 2 files changed, 384 insertions(+), 4 deletions(-)
  create mode 100644 winsup/cygwin/include/cygwin/exit_process.h
 
 diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
-index c638044..86e154d 100644
+index 5fe6b4d..ed4b427 100644
 --- a/winsup/cygwin/exceptions.cc
 +++ b/winsup/cygwin/exceptions.cc
 @@ -29,6 +29,7 @@ details. */
@@ -104,11 +104,13 @@ index c638044..86e154d 100644
  
  /* Definitions for code simplification */
  #ifdef __x86_64__
-@@ -1555,8 +1556,23 @@ exit_sig:
+@@ -1580,10 +1581,25 @@ exit_sig:
  dosig:
    if (have_execed)
      {
 -      sigproc_printf ("terminating captive process");
+-      if (::cygheap->ctty)
+-	::cygheap->ctty->cleanup_before_exit ();
 -      TerminateProcess (ch_spawn, sigExeced = si.si_signo);
 +      switch (si.si_signo)
 +        {
@@ -124,6 +126,8 @@ index c638044..86e154d 100644
 +          goto done;
 +        default:
 +          sigproc_printf ("terminating captive process");
++          if (::cygheap->ctty)
++	    ::cygheap->ctty->cleanup_before_exit ();
 +          rc = exit_process_tree (ch_spawn, 128 + (sigExeced = si.si_signo));
 +          goto done;
 +        }
@@ -501,5 +505,5 @@ index 0000000..0486a0c
 +
 +#endif
 -- 
-2.35.3
+2.36.1
 
