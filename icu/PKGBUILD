@@ -3,7 +3,7 @@
 pkgbase=icu
 pkgname=('icu' 'icu-devel')
 pkgver=70.1
-pkgrel=1
+pkgrel=2
 pkgdesc="International Components for Unicode library"
 arch=('i686' 'x86_64')
 url="https://icu.unicode.org"
@@ -11,19 +11,16 @@ license=('custom:"icu"')
 depends=('gcc-libs' 'sh')
 makedepends=('autoconf-archive' 'autotools' 'gcc')
 source=("https://github.com/unicode-org/${pkgname}/releases/download/release-${pkgver//./-}/${pkgname}4c-${pkgver//./_}-src.tgz"{,.asc}
-        toolutil-Makefile-ln-force.patch
         icu-59.1-msys2.patch)
 # https://github.com/unicode-org/icu/releases/download/release-70-1/SHASUM512.txt
 sha512sums=('0b26ae7207155cb65a8fdb25f7b2fa4431e74b12bccbed0884a17feaae3c96833d12451064dd152197fd6ea5fd3adfd95594284a463e66c82e0d860f645880c9'
             'SKIP'
-            'e74024b4ba20ab5f928e62a8842671f28241e8d5909074d5dff756d7200f01ae8f633a9aa5e5fc920f818cd824a645015dc14a857e8c20ae50b7bb02ef57a0c0'
-            'f42353f8632b4f32fd35e9375033739983c2fef482fa910465d77d751a75813737769423170d7000a9d7c463efa5d68e53972b4f832c306a2ce195b23ab5cb22')
+            '04aebf56ee4514c22f1a5eac02fd3ae8cdae54d614d459845cad0308e337e1f928ffb91b93cb3dfba1e3418937479d27189750cc9abeb233659e58d99bbd6ba4')
 validpgpkeys=('0E51E7F06EF719FBD072782A5F56E5AFA63CCD33') # Craig Cornelius (For use with ICU releases) <ccornelius@google.com>
 
 prepare() {
   cd ${srcdir}/icu/source
 
-  patch -p2 -i ${srcdir}/toolutil-Makefile-ln-force.patch
   patch -p2 -i ${srcdir}/icu-59.1-msys2.patch
 
   libtoolize --force --copy
@@ -32,32 +29,34 @@ prepare() {
 
 build() {
   cd ${srcdir}/icu/source
-  
+
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+
   CC=/usr/bin/gcc \
   CXX=/usr/bin/g++ \
   ./configure \
     --prefix=/usr \
-    --build=${CHOST} \
+    --build=${CYGWIN_CHOST} \
     --sysconfdir=/etc \
     --mandir=/usr/share/man \
     --sbindir=/usr/bin
   make
 
   make -j1 DESTDIR=${srcdir}/dest install
+
+  # remove extra implib
+  rm ${srcdir}/dest/usr/bin/libicudata${pkgver%%.*}.dll.a
+  # remove unversioned DLL
+  rm ${srcdir}/dest/usr/bin/msys-icudata.dll
+
   pushd ${srcdir}/dest/usr/lib
-    # fix installation directory
-    mv msys-icu*${pkgver%%.*}.dll ${srcdir}/dest/usr/bin/
-    # remove unversioned DLL symlinks
-    rm -f *.dll
     # create unversioned implib symlinks
     for l in *.dll.a; do
-      #dosym ${l} /usr/lib/${l//${pkgver%%.*}}
       cp ${l} ${l//${pkgver%%.*}}
     done
   popd
 
-  sed -e '/^ICUUC_FILE=/ s/libdir/bindir/' \
-    -e 's/l${LIBICU}/l${ICUPREFIX}/g' \
+  sed -e 's/l${LIBICU}/l${ICUPREFIX}/g' \
     -e '/l${ICUPREFIX}/ s/${ICULIBSUFFIX_VERSION}//g' \
     -i ${srcdir}/dest/usr/bin/icu-config \
     || error "sed icu-config failed"
