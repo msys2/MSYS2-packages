@@ -2,7 +2,7 @@
 
 pkgname=gnupg
 pkgver=2.2.32
-pkgrel=2
+pkgrel=3
 pkgdesc='Complete and free implementation of the OpenPGP standard'
 provides=('dirmngr' "gnupg2=${pkgver}")
 url='https://gnupg.org/'
@@ -48,11 +48,13 @@ depends=('bzip2'
          'zlib'
         )
 source=("https://gnupg.org/ftp/gcrypt/${pkgname}/${pkgname}-${pkgver}.tar.bz2"{,.sig}
+        'avoid-beta-warning.patch'
         '0001-gnupg-2.2.8-msys2.patch'
         '0002-fix-pcsc_io_request_s-layout-for-SCardTransmit-in-64.patch')
 sha256sums=('b2571b35f82c63e7d278aa6a1add0d73453dc14d3f0854be490c844fca7e0614'
             'SKIP'
-            'cb23f1a61fd213c25e85b6ba8afb190b7da14a8cfa59cc56ce82df941db8c3c9'
+            '22fdf9490fad477f225e731c417867d9e7571ac654944e8be63a1fbaccd5c62d'
+            '902563c91c72ed9222343de3482f4ca7b141775235625af5ad790f3d86419370'
             '8c28135361d628296aff5e51facabb2f0dd99b93488a7b417f2e70296d63eded')
 validpgpkeys=('D8692123C4065DEA5E0F3AB5249B39D24F25E3B6'
               '46CC730865BB5C78EBABADCF04376F3EE0856959'
@@ -63,21 +65,21 @@ install=${pkgname}.install
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  sed '/noinst_SCRIPTS = gpg-zip/c sbin_SCRIPTS += gpg-zip' -i tools/Makefile.in
 
+  patch -p1 -i ${srcdir}/avoid-beta-warning.patch
   patch -p1 -i ${srcdir}/0001-gnupg-2.2.8-msys2.patch
   # https://dev.gnupg.org/T4454
   patch -p1 -i ${srcdir}/0002-fix-pcsc_io_request_s-layout-for-SCardTransmit-in-64.patch
   
   ./autogen.sh --force
-
-  sed 's/development_version=yes/development_version=no/' -i configure
 }
 
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
+
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
   ./configure \
-    --build=${CHOST} \
+    --build=${CYGWIN_CHOST} \
     --prefix=/usr \
     --sysconfdir=/etc \
     --localstatedir=/var \
