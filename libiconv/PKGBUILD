@@ -6,15 +6,19 @@ pkgrel=2
 pkgdesc='Libiconv is a conversion library'
 groups=('libraries')
 arch=('i686' 'x86_64')
-makedepends=('autotools' 'gcc')
+makedepends=('autotools' 'gcc' 'gettext-devel')
 url='https://www.gnu.org/software/libiconv/'
 license=('LGPL')
 source=("https://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.gz"
-        1.14-cross-install.patch
+        1.16-aliases.patch
+        1.16-cross-install.patch
+        1.16-wchar.patch
         libiconv-1.16-msysize.patch)
 sha256sums=('e6a1b1b589654277ee790cce3734f07876ac4ccfaecbee8afa0b649cf529cc04'
-            'e1e7aec604732219f9985458db46042b2bafe0459d1a6a0fb245c5810f65b066'
-            '7320176061251170c1af9f088e1ad0080dda9febafd4dc5358d1453f233fd1f5')
+            'af92deee987d6258729a3b938ef841e63312de860c87f8a4821f272082b42e6a'
+            '8d4622bd319e0820fd52ae2cdd4a017c13a58b168cd571a646eb8276c5c48d33'
+            '4e34425c3de2a2c976c703438521314101409e3af8f410e02679714737a8b76f'
+            '8a43391e9402e99f70ef3f5dfbb8dda7ab7a30d91c00189ce5ab38c1bc6352d8')
 options=(!libtool)
 
 apply_patch_with_msg() {
@@ -25,37 +29,28 @@ apply_patch_with_msg() {
   done
 }
 
-del_file_exists() {
-  for _fname in "$@"
-  do
-    if [ -f ${_fname} ]; then
-      rm -rf ${_fname}
-    fi
-  done
-}
-# =========================================== #
-
-
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
 
   apply_patch_with_msg \
-    1.14-cross-install.patch \
+    1.16-aliases.patch \
+    1.16-cross-install.patch \
+    1.16-wchar.patch \
     libiconv-1.16-msysize.patch
 
-  rm build-aux/ltmain.sh
-  rm m4/{libtool,lt~obsolete,ltoptions,ltsugar}.m4
-  rm libcharset/build-aux/ltmain.sh
-  rm libcharset/m4/{libtool,lt~obsolete,ltoptions,ltsugar}.m4
   cp -f srcm4/* m4/
 
+  (cd libcharset && autoreconf -fiv)
   autoreconf -fiv
 }
 
 build() {
   cd ${srcdir}/${pkgname}-${pkgver}
+
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
   ./configure \
     --prefix=/usr \
+    --build=${CYGWIN_CHOST} \
     --without-libintl-prefix \
     --enable-static \
     --enable-shared \
