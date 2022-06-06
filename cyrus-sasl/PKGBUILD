@@ -1,67 +1,46 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=(cyrus-sasl libsasl libsasl-devel)
-_basever=2.1.27
-_rc=
-pkgver=${_basever}${_rc//-/}
+_basever=2.1.28
+pkgver=${_basever}
 pkgrel=1
 pkgdesc="Cyrus Simple Authentication Service Layer (SASL) library"
 arch=('i686' 'x86_64')
-url="http://cyrusimap.web.cmu.edu/"
+url="https://www.cyrusimap.org/sasl/"
 license=('custom')
 groups=('sys-utils')
 makedepends=('heimdal-devel' 'openssl-devel' 'libsqlite-devel' 'libcrypt-devel' 'libserf-devel' 'autotools' 'gcc')
 options=('emptydirs' 'strip' '!makeflags')
-source=(#http://ftp.cyrusimap.org/cyrus-sasl/cyrus-sasl-${pkgver}.tar.gz
-        https://ftp.osuosl.org/pub/blfs/conglomeration/cyrus-sasl/cyrus-sasl-${_basever}${_rc}.tar.gz
-        02-exeext.patch
+source=(https://github.com/cyrusimap/cyrus-sasl/releases/download/cyrus-sasl-2.1.28/cyrus-sasl-2.1.28.tar.gz{,.sig}
         03-fix-plugins.patch
-        04-manpage-paths.patch
         09-digest-md5-Remove-annoying-debug-message.patch)
-sha256sums=('26866b1549b00ffd020f188a43c258017fa1c382b3ddadd8201536f72efb05d5'
-            'b32d9e333ec68b949a60805cc663589f868062bac4f59bbb7624149e88fc66a4'
+sha256sums=('7ccfc6abd01ed67c1a0924b353e526f1b766b21f42d4562ee635a8ebfc5bb38c'
+            'SKIP'
             '62fca7407d288e021fac6fed47d8a94ef2775c257ddcb79071428fe7719485f5'
-            'a4abc51b2509e0792f7dc019afcb0bf6dacfdcf1132d28cf7562bbb18828a8fc'
             '8eec9903e048bf01633df93cea505a8f77aceb933dd5609fd85602c0c0baa5c0')
+validpgpkeys=(
+  '829F339F8C296FE80F409D93E3D7C118C7B9F46A'  # Partha Susarla <mail@spartha.org>
+  'DEA1999F0CDB1AAEBA001E0DBEE3E3B4D2F06546'  # Quanah Gibson-Mount <quanah@fast-mail.org>
+)
 
 prepare() {
   cd ${srcdir}/${pkgname}-${_basever}
 
-  patch -p1 -i ${srcdir}/02-exeext.patch
   patch -p1 -i ${srcdir}/03-fix-plugins.patch
-  patch -p1 -i ${srcdir}/04-manpage-paths.patch
   patch -p1 -i ${srcdir}/09-digest-md5-Remove-annoying-debug-message.patch
 
-  # sed 's/AM_CONFIG_HEADER/AC_CONFIG_HEADERS/' -i configure.in
-  # rm -f config/config.guess config/config.sub
-  # rm -f config/ltconfig config/ltmain.sh config/libtool.m4
-  # rm -fr autom4te.cache
-  # libtoolize -c
-  # aclocal -I config -I cmulocal
-  # automake -a -c
-  # autoheader
-  # autoconf
-
-  # pushd saslauthd
-    # rm -f config/config.guess config/config.sub
-    # rm -f config/ltconfig config/ltmain.sh config/libtool.m4
-    # rm -fr autom4te.cache
-    # libtoolize -c
-    # aclocal -I config -I ../cmulocal -I ../config
-    # automake -a -c
-    # autoheader
-    # autoconf
-  # popd
   autoreconf -fiv
 }
 
 build() {
   cd ${srcdir}/${pkgname}-${_basever}
+
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
   ./configure \
     --prefix=/usr \
     --sbindir=/usr/bin \
-    --build=${CHOST} \
-    --host=${CHOST} \
+    --build=${CYGWIN_CHOST} \
+    --host=${CYGWIN_CHOST} \
     --with-configdir=/etc/sasl2:/etc/sasl:/usr/lib/sasl2 \
     --with-plugindir=/usr/lib/sasl2 \
     --disable-static --enable-shared \
@@ -76,7 +55,6 @@ build() {
 package_cyrus-sasl() {
   depends=("libsasl=${pkgver}")
   pkgdesc="Cyrus saslauthd SASL authentication daemon"
-  #backup=('etc/conf.d/saslauthd')
 
   cd cyrus-sasl-${_basever}/saslauthd
   make DESTDIR="${pkgdir}" install
@@ -98,16 +76,12 @@ package_libsasl() {
     popd
   done
   rm -f "${pkgdir}"/usr/lib/sasl2/*.a
+  rm -f "${pkgdir}"/usr/lib/sasl2/*.la
   rm -f "${pkgdir}"/usr/lib/*.a
   rm -f "${pkgdir}"/usr/lib/*.la
   rm -rf "${pkgdir}"/usr/include
   install -m755 -d "${pkgdir}/usr/share/licenses/libsasl"
   install -m644 COPYING "${pkgdir}/usr/share/licenses/libsasl/"
-  # pushd "${pkgdir}"/usr/lib/sasl2
-    # for x in .dll; do
-      # mv $x $(echo $x | sed e 's/^msys-/lib/' e 's/[0-9][0-9]\.dll$/.so/')
-    # done
-  # popd
 }
 
 package_libsasl-devel() {
