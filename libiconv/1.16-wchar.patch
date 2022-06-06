@@ -1,13 +1,5 @@
-commit 6a8348e65546fab85e79cea7da5c5b44c3ac80c9
-Author: Lemures Lemniscati <lemures.lemniscati@gmail.com>
-Date:   Sat Jul 11 10:11:35 2020 +0900
-
-    1.16-wchar.patch
-
-diff --git a/libcharset/lib/localcharset.c b/libcharset/lib/localcharset.c
-index 3effe1d..462aade 100644
---- a/libcharset/lib/localcharset.c
-+++ b/libcharset/lib/localcharset.c
+--- libiconv-1.17/libcharset/lib/localcharset.c.orig	2020-04-04 14:50:22.000000000 +0200
++++ libiconv-1.17/libcharset/lib/localcharset.c	2022-06-06 09:21:01.741854500 +0200
 @@ -51,10 +51,6 @@
  #   include <locale.h>
  #  endif
@@ -19,7 +11,7 @@ index 3effe1d..462aade 100644
  #elif defined WINDOWS_NATIVE
  # define WIN32_LEAN_AND_MEAN
  # include <windows.h>
-@@ -692,64 +688,12 @@ locale_charset (void)
+@@ -843,70 +839,12 @@
  
  # if HAVE_LANGINFO_CODESET
  
@@ -33,7 +25,7 @@ index 3effe1d..462aade 100644
 -  if (codeset != NULL && strcmp (codeset, "US-ASCII") == 0)
 -    {
 -      const char *locale;
--      static char buf[2 + 10 + 1];
+-      static char resultbuf[2 + 10 + 1];
 -
 -      locale = getenv ("LC_ALL");
 -      if (locale == NULL || locale[0] == '\0')
@@ -57,11 +49,12 @@ index 3effe1d..462aade 100644
 -              modifier = strchr (dot, '@');
 -              if (modifier == NULL)
 -                return dot;
--              if (modifier - dot < sizeof (buf))
+-              if (modifier - dot < sizeof (resultbuf))
 -                {
--                  memcpy (buf, dot, modifier - dot);
--                  buf [modifier - dot] = '\0';
--                  return buf;
+-                  /* This way of filling resultbuf is multithread-safe.  */
+-                  memcpy (resultbuf, dot, modifier - dot);
+-                  resultbuf [modifier - dot] = '\0';
+-                  return resultbuf;
 -                }
 -            }
 -        }
@@ -77,8 +70,13 @@ index 3effe1d..462aade 100644
 -         converting to GetConsoleOutputCP().  This leads to correct results,
 -         except when SetConsoleOutputCP has been called and a raster font is
 -         in use.  */
--      sprintf (buf, "CP%u", GetACP ());
--      codeset = buf;
+-      {
+-        char buf[2 + 10 + 1];
+-
+-        sprintf (buf, "CP%u", GetACP ());
+-        strcpy (resultbuf, buf);
+-        codeset = resultbuf;
+-      }
 -    }
 -#  endif
 +  /* Most systems support nl_langinfo (CODESET) nowadays.
