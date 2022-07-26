@@ -1,0 +1,34 @@
+# Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
+
+_bootstrapping=yes
+
+_realname=wheel
+pkgname="python-${_realname}"
+pkgver=0.37.1
+pkgrel=1
+pkgdesc="A built-package format for Python"
+arch=('any')
+url="https://pypi.python.org/pypi/wheel"
+license=('spdx:MIT')
+depends=("python")
+if [[ "${_bootstrapping}" == "no" ]]; then
+  makedepends=("python-installer")
+fi
+source=("https://pypi.debian.net/wheel/wheel-${pkgver}-py2.py3-none-any.whl"
+        "install_wheel.py")
+sha256sums=('4bdcd7d840138086126cd09254dc6195fb4fc6f01c050a1d7236f2630db1d22a'
+            '668e64f912d6360330c403edb6100b21f6aa6dd6a7803d342fab8c35d8176ad9')
+
+package() {
+  if [[ "${_bootstrapping}" == "no" ]]; then
+      python -m installer --destdir="${pkgdir}" *.whl
+  else
+    _pythonpath=`python -c "import sysconfig; print(sysconfig.get_path('platlib'))"`
+    _site_packages="${pkgdir}${_pythonpath}"
+    mkdir -p "$_site_packages"
+    python "${srcdir}/install_wheel.py" -i"${_site_packages}" *.whl
+    python -m compileall -o 0 -o 1 -q "${pkgdir}/usr/lib/python"*
+  fi
+
+  install -Dm644 *.dist-info/LICENSE.txt "${pkgdir}/usr/share/licenses/python-${_realname}/COPYING"
+}
