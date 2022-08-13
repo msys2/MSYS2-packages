@@ -1,8 +1,8 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=('xz' 'liblzma' 'liblzma-devel')
-pkgver=5.2.5
-pkgrel=2
+pkgver=5.2.6
+pkgrel=1
 pkgdesc='Library and command line tools for XZ and LZMA compressed files'
 arch=('i686' 'x86_64')
 url='https://tukaani.org/xz/'
@@ -10,28 +10,23 @@ license=('GPL' 'LGPL' 'custom')
 depends=('sh' 'libiconv' 'gettext')
 makedepends=('libiconv-devel' 'gettext-devel' 'autotools' 'gcc')
 options=('staticlibs')
-source=("https://tukaani.org/${pkgname}/${pkgname}-${pkgver}.tar.gz"{,.sig}
-        "https://tukaani.org/xz/xzgrep-ZDI-CAN-16587.patch"{,.sig}
-        xz-5.0.5-msys2.patch)
-sha256sums=('f6f4910fd033078738bd82bfba4f49219d03b17eb0794eb91efbae419f4aba10'
-            'SKIP'
-            '98c6cb1042284fe704ec30083f3fc87364ce9ed2ea51f62bbb0ee9d3448717ec'
-            'SKIP'
-            'dcdc78794cbab03c2f88a4d52dee9e2606774e443e5ba1e4836426488410dd45')
+source=("https://tukaani.org/${pkgname}/${pkgname}-${pkgver}.tar.gz"{,.sig})
+sha256sums=('a2105abee17bcd2ebd15ced31b4f5eda6e17efd6b10f921a01cda4a44c91b3a0'
+            'SKIP')
 validpgpkeys=('3690C240CE51B4670D30AD1C38EE757D69184620')  # Lasse Collin <lasse.collin@tukaani.org>
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
 
-  patch -p1 -i "${srcdir}/xzgrep-ZDI-CAN-16587.patch"
-  patch -p1 -i ${srcdir}/xz-5.0.5-msys2.patch
   autoreconf -ivf
 }
 
 build() {
-  export lt_cv_deplibs_check_method='pass_all'
   cd ${srcdir}/${pkgname}-${pkgver}
 
+  export lt_cv_deplibs_check_method='pass_all'
+  export MSYSTEM=CYGWIN
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
   ./configure \
     --build=${CHOST} \
     --prefix=/usr \
@@ -54,10 +49,6 @@ package_xz() {
   cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
   rm -f ${pkgdir}/usr/bin/*.dll
   cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
-
-  #install -d -m755 ${pkgdir}/usr/share/licenses/xz/
-  #ln -sf /usr/share/doc/xz/COPYING ${pkgdir}/usr/share/licenses/xz/
-  #ln -sf /usr/share/licenses/common/GPL2/license.txt ${pkgdir}/usr/share/doc/xz/COPYING.GPLv2
 }
 
 package_liblzma() {
@@ -72,6 +63,7 @@ package_liblzma-devel() {
   pkgdesc="Liblzma headers and libraries"
   groups=('development')
   depends=("liblzma=${pkgver}" 'libiconv-devel' 'gettext-devel')
+
   mkdir -p ${pkgdir}/usr
   cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
   cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
