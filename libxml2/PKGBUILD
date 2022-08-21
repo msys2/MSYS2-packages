@@ -2,8 +2,8 @@
 
 pkgbase=libxml2
 pkgname=('libxml2' 'libxml2-devel' 'libxml2-python')
-pkgver=2.9.14
-pkgrel=5
+pkgver=2.10.0
+pkgrel=1
 pkgdesc="XML parsing library, version 2"
 arch=(i686 x86_64)
 license=('spdx:MIT')
@@ -13,15 +13,11 @@ url="https://gitlab.gnome.org/GNOME/libxml2/-/wikis/"
 source=("https://download.gnome.org/sources/libxml2/${pkgver%.*}/${pkgbase}-${pkgver}.tar.xz"
         https://www.w3.org/XML/Test/xmlts20130923.tar.gz
         libxml2-2.9.8-python3-unicode-errors.patch
-        libxml2-2.9.0-do-not-check-crc.patch
-        libxml2-2.7.3-doc-install.patch
         libxml2-2.9.1-msys2.patch)
-sha256sums=('60d74a257d1ccec0475e749cba2f21559e48139efba6ff28224357c7c798dfee'
+sha256sums=('2dd33110ea778676de14bea4999ee1173c4ca55d5ff1452bca224e06f0152595'
             '9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f'
             '37eb81a8ec6929eed1514e891bff2dd05b450bcf0c712153880c485b7366c17c'
-            '5a53d640ebce5a96e35fbdf5f644c37642dfa3345a1dc4fc355728897c19b7e7'
-            'bdf77197548da2eb57adff789fa4dacf1b0500ac4bdd72177d871122f53ae75c'
-            '19be37833b77a5c46cf266fdb4b9bcd068e301e4d26583d307ce22688ffb7587')
+            '8a464e7c2bacb2336e88ce6b830549b49455bed3b4c8252942b9d7c387a7c430')
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -55,33 +51,31 @@ prepare() {
     libxml2-2.9.8-python3-unicode-errors.patch
 
   apply_patch_with_msg \
-    libxml2-2.9.0-do-not-check-crc.patch \
-    libxml2-2.7.3-doc-install.patch \
-    libxml2-2.9.1-msys2.patch 
+    libxml2-2.9.1-msys2.patch
 
   autoreconf -fi
 }
 
 build() {
   export lt_cv_deplibs_check_method='pass_all'
-  export gl_cv_have_weak=no
 
-  CFLAGS+=" -fcommon"
   cd ${pkgbase}-${pkgver}
+  export MSYSTEM=CYGWIN
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
   ./configure \
     --prefix=/usr \
     --sysconfdir=/etc \
     --localstatedir=/var \
-    --build=${CHOST} \
-    --host=${CHOST} \
-    --target=${CHOST} \
+    --build=${CYGWIN_CHOST} \
+    --host=${CYGWIN_CHOST} \
+    --target=${CYGWIN_CHOST} \
     --enable-ipv6 \
     --with-history \
     --with-iconv \
     --without-icu \
-    --with-python=/usr/bin/python \
-    --with-html-dir=/usr/share/doc \
-    --with-html-subdir=libxml2/html
+    --enable-shared \
+    --enable-static \
+    --with-python=/usr/bin/python
   make
   make DESTDIR=${srcdir}/dest install
 
@@ -105,7 +99,7 @@ package_libxml2() {
   rm -f ${pkgdir}/usr/bin/*-config
   mkdir -p ${pkgdir}/usr/share
   cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
-  install -Dm644 ${srcdir}/${pkgbase}-${pkgver}/COPYING "${pkgdir}/usr/share/licenses/${pkgbase}/COPYING"
+  install -Dm644 ${srcdir}/${pkgbase}-${pkgver}/Copyright "${pkgdir}/usr/share/licenses/${pkgbase}/Copyright"
 }
 
 package_libxml2-devel() {
@@ -122,7 +116,7 @@ package_libxml2-devel() {
   rm -rf ${pkgdir}${PYTHON_SITELIB}
   cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
   cp -rf ${srcdir}/dest/usr/share/doc ${pkgdir}/usr/share/
-  rm -rf ${pkgdir}/usr/share/doc/python-libxml2
+  rm -rf ${pkgdir}/usr/share/doc/libxml2/python
   cp -rf ${srcdir}/dest/usr/share/gtk-doc ${pkgdir}/usr/share/
 }
 
@@ -136,7 +130,7 @@ package_libxml2-python(){
   mkdir -p ${pkgdir}/${PYTHON_SITELIB}
   mkdir -p ${pkgdir}/usr/share/doc
   cp -rf ${srcdir}/dest${PYTHON_SITELIB}/* ${pkgdir}${PYTHON_SITELIB}/
-  cp -rf ${srcdir}/dest/usr/share/doc/python-libxml2 ${pkgdir}/usr/share/doc/
+  cp -rf ${srcdir}/dest/usr/share/doc/libxml2/python ${pkgdir}/usr/share/doc/python-libxml2
 
   python -m compileall \
     -o 0 -o 1 -q -s"${pkgdir}" -p"/" "${pkgdir}${PYTHON_SITELIB}/"
