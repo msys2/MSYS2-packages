@@ -35,6 +35,9 @@ repo-add $PWD/artifacts/ci.db.tar.gz
 sed -i '1s|^|[ci]\nServer = file://'"$PWD"'/artifacts/\nSigLevel = Never\n|' /etc/pacman.conf
 pacman -Sy
 
+# Enable linting
+export MAKEPKG_LINT_PKGBUILD=1
+
 message 'Building packages'
 for package in "${packages[@]}"; do
     echo "::group::[build] ${package}"
