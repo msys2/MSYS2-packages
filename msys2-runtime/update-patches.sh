@@ -74,5 +74,13 @@ fi
 updpkgsums ||
 die "Could not update the patch set checksums in PKGBUILD"
 
+# bump pkgrel
+if ! git diff @{u} -- PKGBUILD | grep -q '^+pkgver'
+then
+	pkgrel=$((1+$(sed -n -e 's/^pkgrel=//p' <PKGBUILD))) &&
+	sed -i -e "s/^\(pkgrel=\).*/\1$pkgrel/" PKGBUILD ||
+	die "Could not increment pkgrel"
+fi
+
 git add PKGBUILD ||
 die "Could not stage updates in PKGBUILD"
