@@ -1,0 +1,62 @@
+From 352824aac18f887d8071c3525ade68c8dec5237c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Hannes=20M=C3=BCller?= <>
+Date: Mon, 15 Aug 2022 16:50:19 +0200
+Subject: [PATCH] Add convert a standard shared library name for MSYS
+
+---
+ module/system/foreign-library.scm | 25 +++++++++++++++++++++++--
+ 1 file changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/module/system/foreign-library.scm b/module/system/foreign-library.scm
+index dc426385f..199920ec0 100644
+--- a/module/system/foreign-library.scm
++++ b/module/system/foreign-library.scm
+@@ -172,13 +172,32 @@ name."
+          (else
+           name)))))
+ 
++(define (lib->msys name)
++  "Convert a standard shared library name to a MSYS shared library
++name."
++  (if (not name)
++      #f
++      (let ((start (1+ (or (string-index-right
++                            name
++                            (lambda (c) (or (char=? #\\ c) (char=? #\/ c))))
++                           -1))))
++        (cond
++         ((>= (+ 3 start) (string-length name))
++          name)
++         ((string= name "lib" start (+ start 3))
++          (string-append (substring name 0 start)
++                         "msys-"
++                         (substring name (+ start 3))))
++         (else
++          name)))))
++
+ (define* (load-foreign-library #:optional filename #:key
+                                (extensions system-library-extensions)
+                                (search-ltdl-library-path? #t)
+                                (search-path (default-search-path
+                                               search-ltdl-library-path?))
+                                (search-system-paths? #t)
+-                               (lazy? #t) (global? #f) (rename-on-cygwin? #t))
++                               (lazy? #t) (global? #f) (host-type-rename? #t))
+   (define (error-not-found)
+     (scm-error 'misc-error "load-foreign-library"
+                "file: ~S, message: ~S"
+@@ -188,8 +207,10 @@ name."
+     (logior (if lazy? RTLD_LAZY RTLD_NOW)
+             (if global? RTLD_GLOBAL RTLD_LOCAL)))
+   (define (dlopen* name) (dlopen name flags))
+-  (if (and rename-on-cygwin? (string-contains %host-type "cygwin"))
++  (if (and host-type-rename? (string-contains %host-type "cygwin"))
+       (set! filename (lib->cyg filename)))
++  (if (and host-type-rename? (string-contains %host-type "msys"))
++      (set! filename (lib->msys filename)))
+   (make-foreign-library
+    filename
+    (cond
+-- 
+2.30.2
+
