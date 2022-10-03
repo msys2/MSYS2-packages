@@ -1,0 +1,51 @@
+From 6549b46942e8154e37ffbba3ad1ef88dc809e7a3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Hannes=20M=C3=BCller?= <>
+Date: Tue, 23 Nov 2021 14:38:05 +0100
+Subject: [PATCH] Fix warning if libguile is used with compile option
+ -Wsign-conversion
+
+Avoid a warning if glib.h is included in a code project using compile option
+-Wsign-conversion
+---
+ libguile/array-handle.h | 4 ++--
+ libguile/arrays.h       | 2 +-
+ 2 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/libguile/array-handle.h b/libguile/array-handle.h
+index 6ad80eb41..ae62df48e 100644
+--- a/libguile/array-handle.h
++++ b/libguile/array-handle.h
+@@ -105,7 +105,7 @@ scm_array_handle_ref (scm_t_array_handle *h, ssize_t p)
+     /* catch overflow */
+     scm_out_of_range (NULL, scm_from_ssize_t (p));
+   /* perhaps should catch overflow here too */
+-  return h->vref (h->vector, h->base + p);
++  return h->vref (h->vector, h->base + (size_t)p);
+ }
+ 
+ SCM_INLINE_IMPLEMENTATION void
+@@ -115,7 +115,7 @@ scm_array_handle_set (scm_t_array_handle *h, ssize_t p, SCM v)
+     /* catch overflow */
+     scm_out_of_range (NULL, scm_from_ssize_t (p));
+   /* perhaps should catch overflow here too */
+-  h->vset (h->vector, h->base + p, v);
++  h->vset (h->vector, h->base + (size_t)p, v);
+ }
+ 
+ #endif
+diff --git a/libguile/arrays.h b/libguile/arrays.h
+index 5457ddb..4e76c81 100644
+--- a/libguile/arrays.h
++++ b/libguile/arrays.h
+@@ -106,7 +106,7 @@ typedef struct scm_t_array_dim
+ static inline SCM
+ scm_i_raw_array (int ndim)
+ {
+-  return scm_words (((scm_t_bits) ndim << 17) + scm_tc7_array, 3 + ndim*3);
++  return scm_words (((scm_t_bits) ndim << 17) + scm_tc7_array, 3 + (uint32_t)ndim*3);
+ }
+
+ SCM_INTERNAL SCM scm_i_make_array (int ndim);
+-- 
+2.30.2
+
