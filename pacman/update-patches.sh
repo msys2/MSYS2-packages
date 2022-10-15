@@ -36,6 +36,7 @@ git -c core.abbrev=7 \
 	-c format.useAutoBase=false \
 	-C msys2-pacman \
 	format-patch \
+		--no-signature \
 		--topo-order \
 		--diff-algorithm=default \
 		--no-attach \

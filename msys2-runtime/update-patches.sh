@@ -34,6 +34,7 @@ git -c core.abbrev=7 \
 	-c format.useAutoBase=false \
 	-C msys2-runtime \
 	format-patch \
+		--no-signature \
 		--topo-order \
 		--diff-algorithm=default \
 		--no-attach \
