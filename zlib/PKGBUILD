@@ -1,41 +1,54 @@
 # Maintainer: Alexey Pavlov <Alexpux@gmail.com>
 
 pkgname=('zlib' 'zlib-devel')
-pkgver=1.2.12
-pkgrel=2
+pkgver=1.2.13
+pkgrel=1
 pkgdesc='Compression library implementing the deflate compression method found in gzip and PKZIP'
 arch=('i686' 'x86_64')
 groups=('libraries')
 license=('custom')
 url="https://www.zlib.net/"
 makedepends=('gcc' 'make' 'autotools')
-source=("https://zlib.net/current/zlib-${pkgver}.tar.gz"
-        #"https://sourceforge.net/projects/libpng/files/zlib/${pkgver}/zlib-${pkgver}.tar.gz"
-        1.2.7-minizip-cygwin.patch
-        1.2.7-zlib-symbols.patch
-        zlib-1.2.11-msys2.patch
-        "https://patch-diff.githubusercontent.com/raw/madler/zlib/pull/607.patch")
-sha256sums=('91844808532e5ce316b3c010929493c0244f3d37593afd6de04f71821d5136d9'
-            '58daf0d9041ed6687fa17cfa244562a0f8db1ef9924d57b8a427adf40a8ecfb0'
-            '16e9ce18df14a700dda0572843cdb42b5cb3d398c64706af0acc7cd77c181b7e'
-            '65c946a22df5f7beab8fbf556e69c66269c8c0e251f370378d566afe10defe5d'
-            'f35eb05334a4f8d7b40b6c5610a6369f654863b5fa1a19c2507888f918025238')
+source=("https://github.com/madler/zlib/releases/download/v${pkgver}/zlib-${pkgver}.tar.gz"
+        zlib-1.2.13-configure.patch
+        zlib-1.2.13-gzopen_w.patch
+        zlib-1.2.13-minizip-fixuncrypt.patch)
+sha256sums=('b3a24de97a8fdbc835b9833169501030b8977031bcb54b3b3ac13740f846ab30'
+            '43726a2170b298059391c0faec0c893aa7ca59b1201afd9f807c49d39ce25527'
+            '3c5186940741cf380ab598362c564c792965e9d25906ef75087e9e7389becbc5'
+            '3022d46bd933076cff754d8247eb12125cf72e4dbecdb8e90805cbe5393bd0b7')
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
-  grep -A 24 '^  Copyright' zlib.h > LICENSE
 
-  patch -p2 -i ${srcdir}/1.2.7-minizip-cygwin.patch
-  patch -p2 -i ${srcdir}/1.2.7-zlib-symbols.patch
-  patch -p1 -i ${srcdir}/zlib-1.2.11-msys2.patch
-  patch -p1 -i ${srcdir}/607.patch
+  patch -p2 -i ${srcdir}/zlib-1.2.13-configure.patch
+  patch -p2 -i ${srcdir}/zlib-1.2.13-gzopen_w.patch
+  patch -p2 -i ${srcdir}/zlib-1.2.13-minizip-fixuncrypt.patch
 }
 
 build() {
   cd ${srcdir}/${pkgname}-${pkgver}
+
+  # configure doesn't really work.. but leave it here in case things improve
+  export MSYSTEM=CYGWIN
+  export CHOST="${CHOST/-msys/-cygwin}"
   ./configure --prefix=/usr
-  make
-  make install DESTDIR="${srcdir}/dest"
+
+  # Instead we use some "other" makefile
+  make -j1 -f win32/Makefile.gcc \
+    CFLAGS="${CFLAGS}" \
+    SHAREDLIB=msys-z.dll
+
+  make -f win32/Makefile.gcc install \
+    DESTDIR="${srcdir}/dest" \
+    SHAREDLIB=msys-z.dll \
+    BINARY_PATH=/usr/bin \
+    INCLUDE_PATH=/usr/include \
+    LIBRARY_PATH=/usr/lib \
+    prefix=/usr \
+    SHARED_MODE=1
+
+  install -D zlib.3 "${srcdir}/dest/usr/share/man/man3/zlib.3"
 }
 
 check() {
