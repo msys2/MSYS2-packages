@@ -1,6 +1,8 @@
---- bash-4.4/bashline.c	2017-01-27 12:21:44.670146700 -0600
-+++ bash-4.4/bashline.c	2017-01-27 13:11:50.793821100 -0600
-@@ -76,6 +76,16 @@
+diff --git a/bashline.c b/bashline.c
+index c85b05b..8f69bc6 100644
+--- a/bashline.c
++++ b/bashline.c
+@@ -80,6 +80,16 @@
  #  include "pcomplete.h"
  #endif
  
@@ -17,7 +19,7 @@
  /* These should agree with the defines for emacs_mode and vi_mode in
     rldefs.h, even though that's not a public readline header file. */
  #ifndef EMACS_EDITING_MODE
-@@ -271,6 +281,11 @@ int no_empty_command_completion;
+@@ -290,6 +300,11 @@ int no_empty_command_completion;
     are the only possible matches, even if FIGNORE says to. */
  int force_fignore = 1;
  
@@ -29,7 +31,7 @@
  /* Perform spelling correction on directory names during word completion */
  int dircomplete_spelling = 0;
  
-@@ -498,11 +513,12 @@ initialize_readline ()
+@@ -536,11 +551,12 @@ initialize_readline ()
    kseq[0] = CTRL('J');
    kseq[1] = '\0';
    func = rl_function_of_keyseq (kseq, emacs_meta_keymap, (int *)NULL);
@@ -43,8 +45,8 @@
 +  if (func == rl_vi_editing_mode || func == IMP(rl_vi_editing_mode))
      rl_unbind_key_in_map (CTRL('M'), emacs_meta_keymap);
  #if defined (VI_MODE)
-   rl_unbind_key_in_map (CTRL('E'), vi_movement_keymap);
-@@ -521,7 +537,8 @@ initialize_readline ()
+   kseq[0] = CTRL('E');
+@@ -562,7 +578,8 @@ initialize_readline ()
    kseq[0] = '~';
    kseq[1] = '\0';
    func = rl_function_of_keyseq (kseq, emacs_meta_keymap, (int *)NULL);
@@ -54,7 +56,7 @@
      rl_bind_keyseq_in_map (kseq, bash_complete_username, emacs_meta_keymap);
  
    rl_bind_key_if_unbound_in_map ('~', bash_possible_username_completions, emacs_ctlx_keymap);
-@@ -544,7 +561,8 @@ initialize_readline ()
+@@ -585,7 +602,8 @@ initialize_readline ()
    kseq[0] = TAB;
    kseq[1] = '\0';
    func = rl_function_of_keyseq (kseq, emacs_meta_keymap, (int *)NULL);
@@ -64,7 +66,7 @@
      rl_bind_key_in_map (TAB, dynamic_complete_history, emacs_meta_keymap);
  
    /* Tell the completer that we want a crack first. */
-@@ -2194,6 +2212,21 @@ globword:
+@@ -2377,6 +2395,21 @@ globword:
  
        if (match && executable_completion ((searching_path ? val : cval), searching_path))
  	{
@@ -86,7 +88,7 @@
  	  if (cval != val)
  	    free (cval);
  	  free (val);
-@@ -2929,6 +2962,17 @@ test_for_directory (name)
+@@ -3124,6 +3157,17 @@ test_for_directory (name)
    int r;
  
    fn = bash_tilde_expand (name, 0);
@@ -104,9 +106,11 @@
    r = file_isdir (fn);
    free (fn);
  
---- bash-4.4/builtins/read.def	2017-01-27 12:21:44.732540800 -0600
-+++ bash-4.4/builtins/read.def	2017-01-27 13:11:50.793821100 -0600
-@@ -85,7 +85,6 @@ $END
+diff --git a/builtins/read.def b/builtins/read.def
+index 3c38bc0..62a5e07 100644
+--- a/builtins/read.def
++++ b/builtins/read.def
+@@ -86,7 +86,6 @@ $END
  
  #ifdef __CYGWIN__
  #  include <fcntl.h>
@@ -114,7 +118,7 @@
  #endif
  
  #include "../bashintl.h"
-@@ -530,10 +529,6 @@ read_builtin (list)
+@@ -611,10 +610,6 @@ read_builtin (list)
        fflush (stderr);
      }
  
@@ -125,7 +129,7 @@
    ps2 = 0;
    for (print_ps2 = eof = retval = 0;;)
      {
-@@ -664,6 +659,14 @@ read_builtin (list)
+@@ -768,6 +763,14 @@ read_builtin (list)
        if (c == '\0' && delim != '\0')
  	continue;		/* skip NUL bytes in input */
  
@@ -140,19 +144,21 @@
        if ((skip_ctlesc == 0 && c == CTLESC) || (skip_ctlnul == 0 && c == CTLNUL))
  	{
  	  saw_escape++;
---- bash-5.1/builtins/set.def.orig	2020-08-03 20:31:43.000000000 +0200
-+++ bash-5.1/builtins/set.def	2020-12-19 16:38:45.649368400 +0100
-@@ -85,6 +85,9 @@
+diff --git a/builtins/set.def b/builtins/set.def
+index 44f1769..51f28d2 100644
+--- a/builtins/set.def
++++ b/builtins/set.def
+@@ -84,6 +84,9 @@ Options:
+ #endif /* BANG_HISTORY */
  #if defined (HISTORY)
            history      enable command history
- #endif
++#endif
 +#ifdef __CYGWIN__
 +          igncr        on Cygwin, ignore \r in line endings
-+#endif
+ #endif
            ignoreeof    the shell will not exit upon reading EOF
            interactive-comments
-                        allow comments to appear in interactive commands
-@@ -176,6 +179,14 @@
+@@ -176,6 +179,14 @@ static const char * const off = "off";
  
  static int previous_option_value;
  
@@ -167,7 +173,7 @@
  /* A struct used to match long options for set -o to the corresponding
     option letter or internal variable.  The functions can be called to
     dynamically generate values.  If you add a new variable name here
-@@ -187,29 +198,39 @@
+@@ -187,29 +198,39 @@ const struct {
    int *variable;
    setopt_set_func_t *set_func;
    setopt_get_func_t *get_func;
@@ -211,7 +217,7 @@
  #endif
    { "noclobber",  'C', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
    { "noexec",	  'n', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
-@@ -228,7 +249,7 @@
+@@ -228,7 +249,7 @@ const struct {
    { "privileged", 'p', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
    { "verbose",	  'v', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
  #if defined (READLINE)
@@ -220,7 +226,7 @@
  #endif
    { "xtrace",	  'x', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
    {(char *)NULL, 0 , (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL },
-@@ -486,6 +507,15 @@
+@@ -486,6 +507,15 @@ int
  set_minus_o_option (on_or_off, option_name)
       int on_or_off;
       char *option_name;
@@ -236,7 +242,7 @@
  {
    register int i;
  
-@@ -496,6 +526,10 @@
+@@ -496,6 +526,10 @@ set_minus_o_option (on_or_off, option_name)
        return (EX_USAGE);
      }
  
@@ -247,7 +253,7 @@
    if (o_options[i].letter == 0)
      {
        previous_option_value = GET_BINARY_O_OPTION_VALUE (i, o_options[i].name);
-@@ -616,7 +650,11 @@
+@@ -616,7 +650,11 @@ parse_shellopts (value)
    vptr = 0;
    while (vname = extract_colon_unit (value, &vptr))
      {
@@ -259,11 +265,13 @@
        free (vname);
      }
  }
---- bash-5.1/builtins/shopt.def.orig	2020-12-19 16:11:42.347711100 +0100
-+++ bash-5.1/builtins/shopt.def	2020-12-19 16:11:50.709182800 +0100
-@@ -94,6 +94,10 @@
- extern int localvar_inherit;
- extern int localvar_unset;
+diff --git a/builtins/shopt.def b/builtins/shopt.def
+index 33d61d4..21eff3b 100644
+--- a/builtins/shopt.def
++++ b/builtins/shopt.def
+@@ -98,6 +98,10 @@ extern int varassign_redir_autoclose;
+ extern int singlequote_translations;
+ extern int patsub_replacement;
  
 +#ifdef __CYGWIN__
 +extern int completion_strip_exe;
@@ -272,7 +280,7 @@
  #if defined (EXTENDED_GLOB)
  extern int extended_glob;
  #endif
-@@ -182,6 +186,9 @@
+@@ -191,6 +195,9 @@ static struct {
    { "compat42", &shopt_compat42, set_compatibility_level },
    { "compat43", &shopt_compat43, set_compatibility_level },
    { "compat44", &shopt_compat44, set_compatibility_level },
@@ -282,9 +290,11 @@
  #if defined (READLINE)
    { "complete_fullquote", &complete_fullquote, (shopt_set_func_t *)NULL},
    { "direxpand", &dircomplete_expand, shopt_set_complete_direxpand },
---- bash-4.4/config-top.h	2016-05-19 13:34:02.000000000 -0500
-+++ bash-4.4/config-top.h	2017-01-27 13:11:50.793821100 -0600
-@@ -87,10 +87,10 @@
+diff --git a/config-top.h b/config-top.h
+index db4ab6e..8720ec8 100644
+--- a/config-top.h
++++ b/config-top.h
+@@ -97,10 +97,10 @@
  #define DEFAULT_BASHRC "~/.bashrc"
  
  /* System-wide .bashrc file for interactive shells. */
@@ -297,27 +307,29 @@
  
  /* Define this to make non-interactive shells begun with argv[0][0] == '-'
     run the startup files when not in posix mode. */
-@@ -100,7 +100,7 @@
+@@ -110,7 +110,7 @@
     sshd and source the .bashrc if so (like the rshd behavior).  This checks
     for the presence of SSH_CLIENT or SSH2_CLIENT in the initial environment,
     which can be fooled under certain not-uncommon circumstances. */
 -/* #define SSH_SOURCE_BASHRC */
 +#define SSH_SOURCE_BASHRC
  
- /* Define if you want the case-capitalizing operators (~[~]) and the
+ /* Define if you want the case-toggling operators (~[~]) and the
     `capcase' variable attribute (declare -c). */
---- bash-4.4/doc/Makefile.in	2015-12-06 18:55:56.000000000 -0600
-+++ bash-4.4/doc/Makefile.in	2017-01-27 13:11:50.793821100 -0600
-@@ -189,7 +189,7 @@ bashref.html: $(BASHREF_FILES) $(HSUSER)
- 	$(MAKEINFO) --html --no-split -I$(TEXINPUTDIR) $(srcdir)/bashref.texi
+diff --git a/doc/Makefile.in b/doc/Makefile.in
+index 8bf775e..923c9c3 100644
+--- a/doc/Makefile.in
++++ b/doc/Makefile.in
+@@ -191,7 +191,7 @@ bashref.html: $(BASHREF_FILES) $(HSUSER) $(RLUSER)
  
- bash.info: bashref.info
--	${SHELL} ${INFOPOST} < $(srcdir)/bashref.info > $@ ; \
-+	${SHELL} ${INFOPOST} < bashref.info > $@ ; \
+ bash.info: $(BASHREF_FILES) $(HSUSER) $(RLUSER)
+ 	$(RM) $@
+-	$(MAKEINFO) -o $@ --no-split -I$(TEXINPUTDIR) $(srcdir)/bashref.texi
++	$(MAKEINFO) -o $@ --no-split -I$(TEXINPUTDIR) bashref.texi
  
  bash.txt: bash.1
  bash.ps: bash.1
-@@ -252,9 +252,9 @@ install: info installdirs
+@@ -254,9 +254,9 @@ install: info installdirs
  	-$(INSTALL_DATA) $(srcdir)/bashbug.1 $(DESTDIR)$(man1dir)/bashbug${man1ext}
  	-$(INSTALL_DATA) $(OTHER_DOCS) $(DESTDIR)$(docdir)
  # uncomment the next lines to install the builtins man page
@@ -330,9 +342,11 @@
  	-if test -f bash.info; then d=.; else d=$(srcdir); fi; \
  	  $(INSTALL_DATA) $$d/bash.info $(DESTDIR)$(infodir)/bash.info
  # run install-info if it is present to update the info directory
---- bash-4.4/doc/bash.1	2016-08-26 08:45:17.000000000 -0500
-+++ bash-4.4/doc/bash.1	2017-01-27 13:11:50.809402700 -0600
-@@ -9607,6 +9607,10 @@ filenames.
+diff --git a/doc/bash.1 b/doc/bash.1
+index 55c5622..18f9676 100644
+--- a/doc/bash.1
++++ b/doc/bash.1
+@@ -10359,6 +10359,10 @@ filenames.
  This variable is set by default, which is the default bash behavior in
  versions through 4.2.
  .TP 8
@@ -343,9 +357,11 @@
  .B direxpand
  If set,
  .B bash
---- bash-4.4/doc/bashref.texi	2016-09-07 16:13:36.000000000 -0500
-+++ bash-4.4/doc/bashref.texi	2017-01-27 13:11:50.809402700 -0600
-@@ -5123,6 +5123,10 @@ filenames.
+diff --git a/doc/bashref.texi b/doc/bashref.texi
+index b0dc2fa..3793830 100644
+--- a/doc/bashref.texi
++++ b/doc/bashref.texi
+@@ -5650,6 +5650,10 @@ filenames.
  This variable is set by default, which is the default Bash behavior in
  versions through 4.2.
  
@@ -356,9 +372,11 @@
  @item direxpand
  If set, Bash
  replaces directory names with the results of word expansion when performing
---- bash-4.4/doc/builtins.1	2012-02-21 13:32:05.000000000 -0600
-+++ bash-4.4/doc/builtins.1	2017-01-27 13:11:50.809402700 -0600
-@@ -19,6 +19,6 @@ shift, shopt, source, suspend, test, tim
+diff --git a/doc/builtins.1 b/doc/builtins.1
+index 43d92a2..3824dd7 100644
+--- a/doc/builtins.1
++++ b/doc/builtins.1
+@@ -19,6 +19,6 @@ shift, shopt, source, suspend, test, times, trap, true, type, typeset,
  ulimit, umask, unalias, unset, wait \- bash built-in commands, see \fBbash\fR(1)
  .SH BASH BUILTIN COMMANDS
  .nr zZ 1
@@ -366,8 +384,10 @@
 +.so man1/bash.1
  .SH SEE ALSO
  bash(1), sh(1)
---- bash-5.1/general.c.orig	2020-07-28 20:35:53.000000000 +0200
-+++ bash-5.1/general.c	2020-12-19 16:06:23.582528400 +0100
+diff --git a/general.c b/general.c
+index 85c5a8b..f4c2a2f 100644
+--- a/general.c
++++ b/general.c
 @@ -54,6 +54,10 @@
  
  #include <tilde/tilde.h>
@@ -379,7 +399,7 @@
  #if !defined (errno)
  extern int errno;
  #endif /* !errno */
-@@ -830,7 +834,7 @@
+@@ -839,7 +843,7 @@ make_absolute (string, dot_path)
        char pathbuf[PATH_MAX + 1];
  
        /* WAS cygwin_conv_to_full_posix_path (string, pathbuf); */
@@ -388,10 +408,12 @@
        result = savestring (pathbuf);
      }
  #else
---- bash-4.4/input.c	2015-09-24 18:49:23.000000000 -0500
-+++ bash-4.4/input.c	2017-01-27 13:11:50.809402700 -0600
-@@ -44,6 +44,10 @@
- #include "quit.h"
+diff --git a/input.c b/input.c
+index 7b439f8..3944585 100644
+--- a/input.c
++++ b/input.c
+@@ -41,6 +41,10 @@
+ #include "externs.h"
  #include "trap.h"
  
 +#ifdef __CYGWIN__
@@ -401,9 +423,9 @@
  #if !defined (errno)
  extern int errno;
  #endif /* !errno */
-@@ -561,6 +565,19 @@ buffered_getchar ()
- {
-   CHECK_TERMSIG;
+@@ -572,6 +576,19 @@ buffered_getchar ()
+   if (bash_input.location.buffered_fd < 0 || buffers[bash_input.location.buffered_fd] == 0)
+     return EOF;
  
 +#ifdef __CYGWIN__
 +  /* shopt igncr discards carriage returns from the input stream.
@@ -421,8 +443,10 @@
  #if !defined (DJGPP)
    return (bufstream_getc (buffers[bash_input.location.buffered_fd]));
  #else
---- bash-4.4/lib/sh/pathphys.c	2013-05-28 14:33:58.000000000 -0500
-+++ bash-4.4/lib/sh/pathphys.c	2017-01-27 13:11:50.809402700 -0600
+diff --git a/lib/sh/pathphys.c b/lib/sh/pathphys.c
+index 95b72f1..f7edbed 100644
+--- a/lib/sh/pathphys.c
++++ b/lib/sh/pathphys.c
 @@ -35,6 +35,7 @@
  #include <stdio.h>
  #include <chartypes.h>
@@ -453,8 +477,10 @@
  	      double_slash_path = DOUBLE_SLASH (workpath);
  	      qbase += double_slash_path;
      
---- bash-4.4/lib/sh/tmpfile.c	2016-08-11 10:05:58.000000000 -0500
-+++ bash-4.4/lib/sh/tmpfile.c	2017-01-27 13:11:50.809402700 -0600
+diff --git a/lib/sh/tmpfile.c b/lib/sh/tmpfile.c
+index ef8b067..2c18ee3 100644
+--- a/lib/sh/tmpfile.c
++++ b/lib/sh/tmpfile.c
 @@ -101,7 +101,7 @@ get_tmpdir (flags)
    if (tdir && (file_iswdir (tdir) == 0 || strlen (tdir) > PATH_MAX))
      tdir = 0;
@@ -464,8 +490,10 @@
      tdir = get_sys_tmpdir ();
  
  #if defined (HAVE_PATHCONF) && defined (_PC_NAME_MAX)
---- bash-4.4/mksyntax.c	2012-07-29 18:48:38.000000000 -0500
-+++ bash-4.4/mksyntax.c	2017-01-27 13:11:50.809402700 -0600
+diff --git a/mksyntax.c b/mksyntax.c
+index 0385686..ccdbc69 100644
+--- a/mksyntax.c
++++ b/mksyntax.c
 @@ -29,13 +29,13 @@
  
  #ifdef HAVE_UNISTD_H
@@ -483,9 +511,11 @@
  #ifndef errno
  extern int errno;
  #endif
---- bash-4.4/parse.y	2016-09-11 10:31:46.000000000 -0500
-+++ bash-4.4/parse.y	2017-01-27 13:11:50.809402700 -0600
-@@ -1539,14 +1539,20 @@ yy_string_get ()
+diff --git a/parse.y b/parse.y
+index d887eec..0ae3458 100644
+--- a/parse.y
++++ b/parse.y
+@@ -1620,14 +1620,20 @@ yy_string_get ()
    string = bash_input.location.string;
  
    /* If the string doesn't exist, or is empty, EOF found. */
@@ -509,8 +539,10 @@
  }
  
  static int
---- bash-5.1/subst.c.orig	2020-11-16 16:33:15.000000000 +0100
-+++ bash-5.1/subst.c	2020-12-19 16:56:42.074812800 +0100
+diff --git a/subst.c b/subst.c
+index d9feabc..2001b4e 100644
+--- a/subst.c
++++ b/subst.c
 @@ -43,6 +43,7 @@
  #include "posixstat.h"
  #include "bashintl.h"
@@ -518,8 +550,8 @@
 +#define NEED_SH_SETLINEBUF_DECL
  #include "shell.h"
  #include "parser.h"
- #include "flags.h"
-@@ -6216,6 +6217,13 @@
+ #include "redir.h"
+@@ -6821,6 +6822,13 @@ read_comsub (fd, quoted, flags, rflag)
  #endif
  	  continue;
  	}
@@ -533,7 +565,7 @@
  
        /* Add the character to ISTRING, possibly after resizing it. */
        RESIZE_MALLOCED_BUFFER (istring, istring_index, mb_cur_max+1, istring_size, 512);
-@@ -6354,6 +6371,28 @@
+@@ -6982,6 +6990,28 @@ command_substitute (string, quoted, flags)
        goto error_exit;
      }
  
@@ -561,9 +593,11 @@
 +
  #if defined (JOB_CONTROL)
    old_pipeline_pgrp = pipeline_pgrp;
-   /* Don't reset the pipeline pgrp if we're already a subshell in a pipeline. */
---- bash-4.4/support/bashversion.c	2008-09-09 08:31:53.000000000 -0500
-+++ bash-4.4/support/bashversion.c	2017-01-27 13:11:50.809402700 -0600
+   /* Don't reset the pipeline pgrp if we're already a subshell in a pipeline or
+diff --git a/support/bashversion.c b/support/bashversion.c
+index ad02d46..2c9ac36 100644
+--- a/support/bashversion.c
++++ b/support/bashversion.c
 @@ -26,6 +26,9 @@
  
  #if defined (HAVE_UNISTD_H)
@@ -584,8 +618,10 @@
  extern char *dist_version;
  extern int patch_level;
  
---- bash-4.4/support/mkversion.sh	2008-08-13 07:25:57.000000000 -0500
-+++ bash-4.4/support/mkversion.sh	2017-01-27 13:11:50.809402700 -0600
+diff --git a/support/mkversion.sh b/support/mkversion.sh
+index 5960a42..d72c44c 100755
+--- a/support/mkversion.sh
++++ b/support/mkversion.sh
 @@ -29,7 +29,7 @@ source_dir="."
  while [ $# -gt 0 ]; do
  	case "$1" in
@@ -595,9 +631,11 @@
  	-s)	shift; rel_status=$1; shift ;;
  	-p)	shift; patch_level=$1; shift ;;
  	-d)	shift; dist_version=$1; shift ;;
---- bash-4.4/variables.c	2016-06-15 15:05:52.000000000 -0500
-+++ bash-4.4/variables.c	2017-01-27 13:11:50.809402700 -0600
-@@ -5239,6 +5239,7 @@ sv_winsize (name)
+diff --git a/variables.c b/variables.c
+index 1a0c2c4..028667c 100644
+--- a/variables.c
++++ b/variables.c
+@@ -6098,6 +6098,7 @@ sv_winsize (name)
  /* Update the value of HOME in the export environment so tilde expansion will
     work on cygwin. */
  #if defined (__CYGWIN__)
