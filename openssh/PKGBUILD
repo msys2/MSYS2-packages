@@ -1,8 +1,8 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=openssh
-pkgver=8.9p1
-pkgrel=3
+pkgver=9.1p1
+pkgrel=1
 pkgdesc='Free version of the SSH connectivity tools'
 url='https://www.openssh.com/portable.html'
 license=('custom:BSD')
@@ -14,23 +14,13 @@ source=("https://ftp.openbsd.org/pub/OpenBSD/OpenSSH/portable/${pkgname}-${pkgve
         openssh-7.3p1-msys2.patch
         openssh-7.3p1-msys2-setkey.patch
         openssh-7.3p1-msys2-drive-name-in-path.patch
-        0001-compat-code-for-fido_dev_is_winhello.patch
-        0002-check_sk_options-add-temporary-WinHello-workaround.patch
-        0003-sk_enroll-don-t-drop-SSH_SK_USER_VERIFICATION_REQD-f.patch
-        0004-sk_sign-set-FIDO2-uv-attribute-explicitely-for-WinHe.patch
-        0005-if-WinHello-device-is-present-use-it-exclusively.patch
-        0006-Defer-token-PIN-prompt-to-handle-uv-as-well-as-clien.patch)
-sha256sums=('fd497654b7ab1686dac672fb83dfb4ba4096e8b5ffcdaccd262380ae58bec5e7'
+        openssh-9.1p1-1.src.patch)
+sha256sums=('19f85009c7e3e23787f0236fbb1578392ab4d4bf9f8ec5fe6bc1cd7e8bfdd288'
             'SKIP'
-            'd03aabd023ddb655f3c7fe82df489e73d01c0311e8e3fa055e6c91f9cb0f35d0'
+            '4ac8da8f0933eae61e3b973e627c0c152ea4168c28cdc27066f9a5d54432f578'
             '25079cf4a10c1ab70d60302bccaabee513762520dffd7c35285f7aae3ea36087'
             '903b3eee51e492a125cab9c724ad967450307d53e457f025e4432b81cb145af5'
-            '61579f2a0550863fad9ae0dac1ffdee6019eb104c15a710e4acc0f335bff79ba'
-            '8236ef3fc6a7367f60d9f63ea537c5ea01b007756d039b77837e664db6148647'
-            '5671b81770125aae1298928d64fa5055a2b3114cfc8546e37685fbbcb28e23bd'
-            '5876afa65f2456b200429a73f49461cdebf4b60d034a4c8da8a3905de5ba94ea'
-            'e35425d67cb830190e4dcf46e7dc16ddb0670bef0e4cbf5f0fe8c9af121fd722'
-            '1e480ed27950ab7c276181007d855490b1754ee5620d8fd19472dedea754cb94')
+            '4c95b577fe40cddfeb6edca5e3c145e495c79e50ae01f683685174d36db4cb79')
 validpgpkeys=('7168B983815A5EEF59A4ADFD2A3F414E736060BA') # Damien Miller <djm@mindrot.org>
 
 backup=('etc/ssh/ssh_config' 'etc/ssh/sshd_config')
@@ -43,12 +33,7 @@ prepare() {
 
   # patches from cygwin:
   # https://cygwin.com/git-cygwin-packages/?p=git/cygwin-packages/openssh.git;a=tree
-  patch -p1 -i ${srcdir}/0001-compat-code-for-fido_dev_is_winhello.patch
-  patch -p1 -i ${srcdir}/0002-check_sk_options-add-temporary-WinHello-workaround.patch
-  patch -p1 -i ${srcdir}/0003-sk_enroll-don-t-drop-SSH_SK_USER_VERIFICATION_REQD-f.patch
-  patch -p1 -i ${srcdir}/0004-sk_sign-set-FIDO2-uv-attribute-explicitely-for-WinHe.patch
-  patch -p1 -i ${srcdir}/0005-if-WinHello-device-is-present-use-it-exclusively.patch
-  patch -p1 -i ${srcdir}/0006-Defer-token-PIN-prompt-to-handle-uv-as-well-as-clien.patch
+  patch -p2 -i ${srcdir}/openssh-9.1p1-1.src.patch
 
   autoreconf -fvi
 }
@@ -56,9 +41,11 @@ prepare() {
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+  export MSYSTEM=CYGWIN
   TEST_SSH_UTF8=no \
   ./configure \
-    --build=${CHOST} \
+    --build=${CYGWIN_CHOST} \
     --prefix=/usr \
     --sbindir=/usr/bin \
     --libexecdir=/usr/lib/ssh \
@@ -76,6 +63,7 @@ build() {
 check() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
+  export MSYSTEM=CYGWIN
   make tests ||
   grep $USER /etc/passwd | grep -q /bin/false
   # connect.sh fails when run with stupid login shell
@@ -86,15 +74,9 @@ package() {
 
   make DESTDIR="${pkgdir}" install
 
-  #ln -sf ssh.1.gz "${pkgdir}"/usr/share/man/man1/slogin.1.gz
   install -Dm644 LICENCE "${pkgdir}/usr/share/licenses/${pkgname}/LICENCE"
 
   install -Dm755 contrib/findssl.sh "${pkgdir}"/usr/bin/findssl.sh
   install -Dm755 contrib/ssh-copy-id "${pkgdir}"/usr/bin/ssh-copy-id
   install -Dm644 contrib/ssh-copy-id.1 "${pkgdir}"/usr/share/man/man1/ssh-copy-id.1
-
-  #rm -f "${pkgdir}"/etc/ssh/sshd_config
-  #rm -f "${pkgdir}"/usr/bin/sshd.exe
-  #rm -f "${pkgdir}"/usr/sbin/sshd.exe
-  #rm -f "${pkgdir}"/usr/lib/ssh/sftp-server.exe
 }
