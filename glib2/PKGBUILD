@@ -2,45 +2,50 @@
 
 pkgbase=glib2
 pkgname=(glib2 glib2-devel glib2-docs)
-pkgver=2.72.2
-pkgrel=2
+pkgver=2.74.3
+pkgrel=1
 pkgdesc="Common C routines used by GTK+ and other libs"
 license=(LGPL2)
 url="https://www.gtk.org/"
 arch=('i686' 'x86_64')
 makedepends=('docbook-xsl'
-             'gamin-devel'
              'gcc'
              'gtk-doc'
              'libffi-devel'
              'libiconv-devel'
              'libxslt-devel'
-             'pcre-devel'
+             'pcre2-devel'
              'pkgconf'
              'python3'
              'meson'
              'ninja'
              'zlib-devel')
 source=(https://download.gnome.org/sources/glib/${pkgver%.*}/glib-$pkgver.tar.xz
-        001-gmodule-lib-prefix.patch)
-sha256sums=('78d599a133dba7fe2036dfa8db8fb6131ab9642783fc9578b07a20995252d2de'
-            '31bce1aff2dab2262ea372d101081162a77e9310fe0d68400da8c85d698ce65e')
+        001-gmodule-lib-prefix.patch
+        https://gitlab.gnome.org/GNOME/glib/-/merge_requests/3105.patch)
+noextract=("glib-$pkgver.tar.xz")
+sha256sums=('e9bc41ecd9690d9bc6a970cc7380119b828e5b6a4b16c393c638b3dc2b87cbcb'
+            '31bce1aff2dab2262ea372d101081162a77e9310fe0d68400da8c85d698ce65e'
+            '3918540a86a5367819cdfb9d9c8a587faea13aab762caaaab48cff9d89020e58')
 
 prepare() {
+  bsdtar -zxf "glib-${pkgver}.tar.xz" || true
+
   cd glib-${pkgver}
 
   patch -p1 -i ${srcdir}/001-gmodule-lib-prefix.patch
+  # https://gitlab.gnome.org/GNOME/glib/-/merge_requests/3105
+  patch -p1 -i ${srcdir}/3105.patch
 }
 
 build() {
   mkdir "${srcdir}"/build && cd "${srcdir}"/build
 
-  meson \
+  meson setup \
     --wrap-mode=nodownload \
     --auto-features=enabled \
     --buildtype=plain \
     --prefix=/usr \
-    -Dfam=true \
     -Dgtk_doc=true \
     -Dlibelf=disabled \
     "../glib-${pkgver}"
@@ -62,9 +67,8 @@ check() {
 }
 
 package_glib2() {
-  depends=('libxslt' 'libpcre' 'libffi' 'libiconv' 'zlib')
-  optdepends=('gamin: for gio fam module'
-              'python3: for gdbus-codegen and gtester-report')
+  depends=('libxslt' 'libpcre2_8' 'libffi' 'libiconv' 'zlib')
+  optdepends=('python3: for gdbus-codegen and gtester-report')
   options=('!docs' '!emptydirs')
   license=('LGPL')
 
@@ -74,7 +78,6 @@ package_glib2() {
     cp -f ${srcdir}/dest/usr/bin/${file}.exe ${pkgdir}/usr/bin/
   done
 
-  cp -rf ${srcdir}/dest/usr/lib/gio ${pkgdir}/usr/lib/
   cp -rf ${srcdir}/dest/usr/share/gdb ${pkgdir}/usr/share/
 
   mkdir -p ${pkgdir}/usr/share/{man,glib-2.0}
@@ -92,7 +95,7 @@ package_glib2() {
 package_glib2-devel() {
   pkgdesc="glib2 headers and libraries"
   groups=('development')
-  depends=("glib2=${pkgver}" 'gettext-devel' 'libffi-devel' 'libiconv-devel' 'pcre-devel' 'zlib-devel')
+  depends=("glib2=${pkgver}" 'gettext-devel' 'libffi-devel' 'libiconv-devel' 'pcre2-devel' 'zlib-devel')
   options=('emptydirs')
 
   mkdir -p ${pkgdir}/usr/{bin,lib,share}
