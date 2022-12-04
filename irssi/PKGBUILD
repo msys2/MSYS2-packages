@@ -5,36 +5,33 @@
 pkgname=irssi
 replaces=(irssi-git)
 conflicts=(irssi-git)
-pkgver=1.2.3
-pkgrel=2
+pkgver=1.4.3
+pkgrel=1
 pkgdesc="Modular text mode IRC client with Perl scripting"
 arch=('i686' 'x86_64')
 url="https://irssi.org/"
-license=('GPL')
+license=('spdx:GPL-2.0-or-later')
 depends=('openssl' 'gettext' 'perl' 'ncurses' 'glib2')
 makedepends=('gettext-devel' 'glib2-devel' 'openssl-devel' 'perl-devel' 'ncurses-devel' 'pcre-devel' 'elinks' 'autotools' 'gcc')
 optdepends=('perl-libwww: for the scriptassist script')
 backup=('etc/irssi.conf')
-source=("https://github.com/irssi/${pkgname}/releases/download/${pkgver}/${pkgname}-${pkgver}.tar.xz"{,.asc}
-        "0000_msysize.patch")
-options=('!strip')
-sha256sums=('a647bfefed14d2221fa77b6edac594934dc672c4a560417b1abcbbc6b88d769f'
-            'SKIP'
-            'ec2dc647191717c4abd9b86a51c085e9bb8ca13998726ef0be97f4d213577eb3')
+source=("https://github.com/irssi/${pkgname}/releases/download/${pkgver}/${pkgname}-${pkgver}.tar.xz"{,.asc})
+sha256sums=('b93f715223a322e67f42b61a08a512ae29e34bd4a53d7f223766660aaa5a0434'
+            'SKIP')
 validpgpkeys=('7EE65E3082A5FB06AC7C368D00CCB587DDBEF0E1') # The Irssi project <staff@irssi.org>
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  # echo 'Autogen preventing configure until later'
-  # NOCONFIGURE=1 ./autogen.sh
-  echo 'Applying patches simply adding #msys2 to default config'
-  patch -p1 -i ${srcdir}/0000_msysize.patch
+
 }
 
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
-  ./configure \
+  # it hardcodes paths and only supports out-of-tree with the source being one level up
+  mkdir build && cd build
+
+  ../configure \
     --build=${CHOST} \
     --sysconfdir=/etc \
     --prefix=/usr \
@@ -46,9 +43,10 @@ build() {
 }
 
 package() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  cd "${srcdir}/${pkgname}-${pkgver}/build"
+
   echo 'Applying patches to Perl MakeMaker library misname'
   find . -name "Makefile" -type f | while read line; do sed -i 's/\([i|c|I]\)\.dll$/\1.a/' $line; done
-  
+
   make DESTDIR="${pkgdir}" install
 }
