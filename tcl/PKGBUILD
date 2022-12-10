@@ -2,8 +2,8 @@
 # Maintainer (ArchLinux): Eric Bélanger <eric@archlinux.org>
 
 pkgname=tcl
-pkgver=8.6.10
-pkgrel=2
+pkgver=8.6.12
+pkgrel=1
 pkgdesc="The Tcl scripting language"
 arch=('i686' 'x86_64')
 url="https://tcl.sourceforge.io/"
@@ -12,24 +12,20 @@ depends=('zlib')
 makedepends=('autotools' 'gcc')
 options=('staticlibs')
 source=(https://downloads.sourceforge.net/sourceforge/tcl/tcl${pkgver}-src.tar.gz
-        8.6.6-cygwin-unix.patch
-        tcl-8.5.18-msysize.patch
-        tcl.m4)
-sha256sums=('5196dbf6638e3df8d5c87b5815c8c2b758496eb6f0e41446596c9a4e638d87ed'
-            'a9abbd94cdc4354a04cd5dc5bbf599cc3a71cc84b40e08f9607f90e12d7bb3cd'
-            'c690f41ae5a16ce62ade62d46016387b2d326c5ad4a3888e02f94f1aaf78083d'
-            '2162a7f2a58cc5d31de1a6e3c47907b2bdf5b12aa44d9a4787ddd01c7745a60c')
+        tcl-8.6.12-1.src.patch)
+sha256sums=('26c995dd0f167e48b11961d891ee555f680c175f7173ff8cb829f4ebcde4c1a6'
+            '322c7e17c63249fc5f6b0d89b1c77fa67406aa91f44efa4964be3f75bb271568')
 
 prepare() {
   cd tcl${pkgver}
   # we build the tcl sqlite interface in sqlite-tcl package
   rm -rf pkgs/sqlite3*
-  patch -p2 -i ${srcdir}/8.6.6-cygwin-unix.patch
-  patch -p1 -i ${srcdir}/tcl-8.5.18-msysize.patch
 
-  for _dd in itcl4.2.0 tdbc1.1.1 tdbcmysql1.1.1 tdbcodbc1.1.1 tdbcpostgres1.1.1 tdbcsqlite3-1.1.1 thread2.8.5; do
+  # taken from cygwin
+  patch -p2 -i ${srcdir}/tcl-8.6.12-1.src.patch
+
+  for _dd in itcl4.2.2 tdbc1.1.3 tdbcmysql1.1.3 tdbcodbc1.1.3 tdbcpostgres1.1.3 tdbcsqlite3-1.1.3 thread2.8.7; do
     pushd pkgs/${_dd}
-      cp -f ${srcdir}/tcl.m4 tclconfig/tcl.m4
       autoreconf -fiv
     popd
   done
@@ -39,14 +35,18 @@ prepare() {
 
 build() {
   cd tcl${pkgver}/unix
+
+  export MSYSTEM=CYGWIN
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
   local BIT=
   [[ $CARCH == "x86_64" ]] && BIT="--enable-64bit"
   ./configure \
+    --build="${CYGWIN_CHOST}" \
     --prefix=/usr \
     --mandir=/usr/share/man \
     --enable-threads \
     tcl_cv_strtod_buggy=no \
-    tcl_cv_sys_version=MSYS_NT \
+    tcl_cv_sys_version=CYGWIN_NT \
     $BIT
   make
 }
@@ -61,21 +61,31 @@ package() {
   make INSTALL_ROOT="${pkgdir}" install
 
   install -Dm644 libtcl${pkgver%.*}.dll.a "${pkgdir}"/usr/lib/libtcl${pkgver%.*}.dll.a
-  #mv ${pkgdir}/usr/lib/libtcl${pkgver%.*}.dll ${pkgdir}/usr/bin/
 
   install -Dm644 ../license.terms "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 
   # install build system macros
-  install -Dm644 tcl.m4 "${pkgdir}"/usr/share/aclocal/tcl-sc.m4
-  install -Dm644 ${srcdir}/tcl.m4 "${pkgdir}"/usr/share/aclocal/tcl-tea.m4
+  install -Dm644 tcl.m4 "${pkgdir}"/usr/share/aclocal/tcl.m4
 
-  sed -i \
-    -e "s|^\(TCL_BUILD_LIB_SPEC\)='.*|\1='-Wl,/usr/lib/libtcl${pkgver%.*}.dll.a'|" \
-    -e "s|^\(TCL_SRC_DIR\)='.*'|\1='/usr/include/tcl${pkgver%.*}'|" \
-    -e "s|^\(TCL_BUILD_STUB_LIB_SPEC\)='.*|\1='-Wl,/usr/lib/libtclstub${pkgver%.*}.a'|" \
-    -e "s|^\(TCL_BUILD_STUB_LIB_PATH\)='.*/unix|\1='/usr/lib|" \
-    -e "s|^\(TCL_STUB_LIB_SPEC\)='.*|\1='-Wl,-ltclstub${pkgver%.*}'|" \
-    ${pkgdir}/usr/lib/tclConfig.sh
+  # remove buildroot traces
+  _tclver=8.6
+  sed -e "s#${srcdir}/tcl${pkgver}/unix#/usr/lib#" \
+      -e "s#${srcdir}/tcl${pkgver}#/usr/include#" \
+      -e "s#'{/usr/lib} '#'/usr/lib/tcl$_tclver'#" \
+      -i "${pkgdir}/usr/lib/tclConfig.sh"
+
+  tdbcver=tdbc1.1.3
+  sed -e "s#${srcdir}/tcl${pkgver}/unix/pkgs/$tdbcver#/usr/lib/$tdbcver#" \
+      -e "s#${srcdir}/tcl${pkgver}/pkgs/$tdbcver/generic#/usr/include#" \
+      -e "s#${srcdir}/tcl${pkgver}/pkgs/$tdbcver/library#/usr/lib/tcl${pkgver%.*}#" \
+      -e "s#${srcdir}/tcl${pkgver}/pkgs/$tdbcver#/usr/include#" \
+      -i "${pkgdir}/usr/lib/$tdbcver/tdbcConfig.sh"
+
+  itclver=itcl4.2.2
+  sed -e "s#${srcdir}/tcl${pkgver}/unix/pkgs/$itclver#/usr/lib/$itclver#" \
+      -e "s#${srcdir}/tcl${pkgver}/pkgs/$itclver/generic#/usr/include#" \
+      -e "s#${srcdir}/tcl${pkgver}/pkgs/$itclver#/usr/include#" \
+      -i "${pkgdir}/usr/lib/$itclver/itclConfig.sh"
 
   # Install private headers
   mkdir -p "${pkgdir}/usr/include/tcl${pkgver%.*}/"{generic,unix}
