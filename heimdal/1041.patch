@@ -1,0 +1,2138 @@
+From 96ae6bbd142190b1504a82499fb3b4772c16efd1 Mon Sep 17 00:00:00 2001
+From: Nicolas Williams <nico@twosigma.com>
+Date: Mon, 21 Nov 2022 12:06:59 -0600
+Subject: [PATCH 01/12] cf: Check for OpenSSL 3.0
+
+This check is admittedly lame.  But it's all I have time for at the
+moment.  A better check would be a program that includes the correct
+headers and succeeds if the OpenSSL version macro indicates it's at
+3.0 or higher.  Or perhaps we could run the openssl(1) version command-
+line and parse its output.  But checking for functions that are in 3.0
+and not 1.1 will do for the time being.
+
+(cherry picked from commit ac8c1341fbb1d03b32d6feb0c18e1276c3d43c75)
+---
+ cf/crypto.m4 | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/cf/crypto.m4 b/cf/crypto.m4
+index b8b011dd15..059b0aa9e5 100644
+--- a/cf/crypto.m4
++++ b/cf/crypto.m4
+@@ -134,6 +134,14 @@ if test "$with_openssl" != "no"; then
+         LDFLAGS="${saved_LDFLAGS}"
+ fi
+ 
++if test "$openssl" = "yes"; then
++    AC_CHECK_LIB([crypto],
++                 [OSSL_EC_curve_nid2name],
++                 [AC_DEFINE_UNQUOTED([HAVE_OPENSSL_30], 1,
++                                     [whether OpenSSL is 3.0 or higher])]
++                 )
++fi
++
+ LIB_hcrypto='$(top_builddir)/lib/hcrypto/libhcrypto.la'
+ LIB_hcrypto_a='$(top_builddir)/lib/hcrypto/.libs/libhcrypto.a'
+ LIB_hcrypto_so='$(top_builddir)/lib/hcrypto/.libs/libhcrypto.so'
+
+From 3d0f1cc3ff28829803420057af2669454ad11421 Mon Sep 17 00:00:00 2001
+From: Nicolas Williams <nico@twosigma.com>
+Date: Mon, 21 Nov 2022 12:09:07 -0600
+Subject: [PATCH 02/12] cf: Check for OpenSSL FIPS
+
+(cherry picked from commit 83cd1255f69dd5fff535fcc2c2147ca021c75d95)
+---
+ cf/crypto.m4 | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/cf/crypto.m4 b/cf/crypto.m4
+index 059b0aa9e5..a8ef519841 100644
+--- a/cf/crypto.m4
++++ b/cf/crypto.m4
+@@ -140,6 +140,15 @@ if test "$openssl" = "yes"; then
+                  [AC_DEFINE_UNQUOTED([HAVE_OPENSSL_30], 1,
+                                      [whether OpenSSL is 3.0 or higher])]
+                  )
++    AC_CHECK_HEADERS([openssl/fips.h],
++                     [AC_DEFINE_UNQUOTED([HAVE_OPENSSL_FIPS_H], 1,
++                                         [whether openssl/fips.h is available])]
++                     )
++    AC_CHECK_LIB([crypto],
++                 [FIPS_mode_set],
++                 [AC_DEFINE_UNQUOTED([HAVE_OPENSSL_FIPS_MODE_SET_API], 1,
++                                     [whether FIPS_mode_set API is available])]
++                 )
+ fi
+ 
+ LIB_hcrypto='$(top_builddir)/lib/hcrypto/libhcrypto.la'
+
+From 3f668b6e7a13bfc50ea28cc32b7ad4ed67c0f0e7 Mon Sep 17 00:00:00 2001
+From: Nicolas Williams <nico@twosigma.com>
+Date: Thu, 17 Nov 2022 18:57:35 -0600
+Subject: [PATCH 03/12] hcrypto: OpenSSL's EVP_Cipher() returns a length
+
+(cherry picked from commit 47e6c68de8594e03a7b73ecbc759dc0451cb3966)
+---
+ lib/hcrypto/evp-openssl.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/hcrypto/evp-openssl.c b/lib/hcrypto/evp-openssl.c
+index ae38e27c00..e7b119475e 100644
+--- a/lib/hcrypto/evp-openssl.c
++++ b/lib/hcrypto/evp-openssl.c
+@@ -158,7 +158,7 @@ cipher_do_cipher(hc_EVP_CIPHER_CTX *ctx, unsigned char *out,
+     struct ossl_cipher_ctx *ossl_ctx = ctx->cipher_data;
+ 
+     assert(ossl_ctx != NULL);
+-    return EVP_Cipher(ossl_ctx->ossl_cipher_ctx, out, in, len);
++    return EVP_Cipher(ossl_ctx->ossl_cipher_ctx, out, in, len) == 0 ? 0 : 1;
+ }
+ 
+ static int
+
+From cc5897eae61da950d6bc8df9eb0fb0627e6fe4c9 Mon Sep 17 00:00:00 2001
+From: Nicolas Williams <nico@twosigma.com>
+Date: Mon, 21 Nov 2022 14:24:31 -0600
+Subject: [PATCH 04/12] hcrypto: Fix EVP_CipherUpdate() bugs
+
+(cherry picked from commit 11846fcabb8f98e12bd9b5b950e650de6eb42451)
+---
+ lib/hcrypto/evp.c | 33 +++++++++++++++++----------------
+ 1 file changed, 17 insertions(+), 16 deletions(-)
+
+diff --git a/lib/hcrypto/evp.c b/lib/hcrypto/evp.c
+index 06935449e4..2b7df3ddef 100644
+--- a/lib/hcrypto/evp.c
++++ b/lib/hcrypto/evp.c
+@@ -857,37 +857,34 @@ EVP_CipherUpdate(EVP_CIPHER_CTX *ctx, void *out, int *outlen,
+ 
+     *outlen = 0;
+ 
+-    /**
+-     * If there in no spare bytes in the left from last Update and the
+-     * input length is on the block boundery, the EVP_CipherUpdate()
+-     * function can take a shortcut (and preformance gain) and
+-     * directly encrypt the data, otherwise we hav to fix it up and
+-     * store extra it the EVP_CIPHER_CTX.
++    /*
++     * If there in no bytes left over from the last Update and the
++     * input length is on a block boundary, then we can take a
++     * shortcut (and preformance gain) and directly encrypt the
++     * data.
+      */
+-    if (ctx->buf_len == 0 && (inlen & ctx->block_mask) == 0) {
++    if (ctx->buf_len == 0 && inlen && (inlen & ctx->block_mask) == 0) {
+ 	ret = (*ctx->cipher->do_cipher)(ctx, out, in, inlen);
+ 	if (ret == 1)
+ 	    *outlen = inlen;
+-	else
++        else
+ 	    *outlen = 0;
+ 	return ret;
+     }
+ 
+-
+     blocksize = EVP_CIPHER_CTX_block_size(ctx);
+     left = blocksize - ctx->buf_len;
+     assert(left > 0);
+ 
+     if (ctx->buf_len) {
+-
+-	/* if total buffer is smaller then input, store locally */
++	/* If we can't fill one block in the buffer, save the input there */
+ 	if (inlen < left) {
+ 	    memcpy(ctx->buf + ctx->buf_len, in, inlen);
+ 	    ctx->buf_len += inlen;
+ 	    return 1;
+ 	}
+ 
+-	/* fill in local buffer and encrypt */
++	/* Fill the buffer and encrypt */
+ 	memcpy(ctx->buf + ctx->buf_len, in, left);
+ 	ret = (*ctx->cipher->do_cipher)(ctx, out, ctx->buf, blocksize);
+ 	memset(ctx->buf, 0, blocksize);
+@@ -905,12 +902,16 @@ EVP_CipherUpdate(EVP_CIPHER_CTX *ctx, void *out, int *outlen,
+ 	ctx->buf_len = (inlen & ctx->block_mask);
+ 	inlen &= ~ctx->block_mask;
+ 
+-	ret = (*ctx->cipher->do_cipher)(ctx, out, in, inlen);
+-	if (ret != 1)
+-	    return ret;
++        if (inlen) {
++            /* Encrypt all the whole blocks of input that we have */
++            ret = (*ctx->cipher->do_cipher)(ctx, out, in, inlen);
++            if (ret != 1)
++                return ret;
++        }
+ 
+ 	*outlen += inlen;
+ 
++        /* Save the tail of the input, if any */
+ 	in = ((unsigned char *)in) + inlen;
+ 	memcpy(ctx->buf, in, ctx->buf_len);
+     }
+@@ -969,7 +970,7 @@ EVP_CipherFinal_ex(EVP_CIPHER_CTX *ctx, void *out, int *outlen)
+  * @param in in data to the operation.
+  * @param size length of data.
+  *
+- * @return 1 on success.
++ * @return bytes encrypted on success, zero on failure.
+  */
+ 
+ int
+
+From 30d589528e8477a37711cc1d7a2b88c26f4bd324 Mon Sep 17 00:00:00 2001
+From: Nicolas Williams <nico@twosigma.com>
+Date: Thu, 17 Nov 2022 19:00:49 -0600
+Subject: [PATCH 05/12] hcrypto: Use builtin 1DES/RC2/RC4 (OpenSSL 3)
+
+At some point before we make an 8.0 release we'll probably just remove
+all the legacy, weak ciphers and hashes (except MD5, most likely).
+
+To drop these we'll have to re-generate PKCS#12 test samples using
+stronger PBEs, and possible add new PBE types.
+
+(cherry picked from commit 2ddea96ba231433dd74e707e14b42cd88b92d8b7)
+---
+ lib/hcrypto/evp-openssl.c  | 24 +++++++++++++++++
+ lib/hcrypto/evp.c          | 55 ++++++++++++++++++++++++++++++++++++++
+ lib/hcrypto/evp.h          |  2 +-
+ lib/hcrypto/test_cipher.c  |  6 -----
+ lib/hcrypto/test_crypto.in | 10 +++----
+ 5 files changed, 85 insertions(+), 12 deletions(-)
+
+diff --git a/lib/hcrypto/evp-openssl.c b/lib/hcrypto/evp-openssl.c
+index e7b119475e..c6ab8034c8 100644
+--- a/lib/hcrypto/evp-openssl.c
++++ b/lib/hcrypto/evp-openssl.c
+@@ -80,6 +80,24 @@
+ #define EVP_MD_CTX_free EVP_MD_CTX_destroy
+ #endif
+ 
++#if defined(HAVE_OPENSSL_FIPS_H) || defined(HAVE_OPENSSL_FIPS_MODE_SET_API)
++int _heim_openssl_fips_enabled(void);
++int
++_heim_openssl_fips_enabled(void)
++{
++    static int fips_enabled_res = -1;
++
++    if (fips_enabled_res != -1)
++        return fips_enabled_res;
++
++#ifdef HAVE_OPENSSL_30
++    return fips_enabled_res = !!EVP_default_properties_is_fips_enabled(NULL);
++#else
++    return fips_enabled_res = !!FIPS_mode();
++#endif
++}
++#endif
++
+ /* A HEIM_BASE_ONCE argument struct for per-EVP one-time initialization */
+ struct once_init_cipher_ctx {
+     const hc_EVP_CIPHER **hc_memoizep;
+@@ -438,7 +456,9 @@ OSSL_CIPHER_ALGORITHM(des_ede3_cbc, hc_EVP_CIPH_CBC_MODE)
+  *
+  * @ingroup hcrypto_evp
+  */
++#ifndef HAVE_OPENSSL_30
+ OSSL_CIPHER_ALGORITHM(des_cbc, hc_EVP_CIPH_CBC_MODE)
++#endif
+ 
+ /**
+  * The AES-128 cipher type (OpenSSL provider)
+@@ -494,6 +514,7 @@ OSSL_CIPHER_ALGORITHM(aes_192_cfb8, hc_EVP_CIPH_CFB8_MODE)
+  */
+ OSSL_CIPHER_ALGORITHM(aes_256_cfb8, hc_EVP_CIPH_CFB8_MODE)
+ 
++#ifndef HAVE_OPENSSL_30
+ /*
+  * RC2 is only needed for tests of PKCS#12 support, which currently uses
+  * the RC2 PBE.  So no RC2 -> tests fail.
+@@ -530,6 +551,7 @@ OSSL_CIPHER_ALGORITHM(rc2_40_cbc,
+ OSSL_CIPHER_ALGORITHM(rc2_64_cbc,
+                       hc_EVP_CIPH_CBC_MODE |
+                       hc_EVP_CIPH_VARIABLE_LENGTH)
++#endif
+ 
+ /**
+  * The Camellia-128 cipher type - OpenSSL
+@@ -558,6 +580,7 @@ OSSL_CIPHER_ALGORITHM(camellia_192_cbc, hc_EVP_CIPH_CBC_MODE)
+  */
+ OSSL_CIPHER_ALGORITHM(camellia_256_cbc, hc_EVP_CIPH_CBC_MODE)
+ 
++#ifndef HAVE_OPENSSL_30
+ /**
+  * The RC4 cipher type (OpenSSL provider)
+  *
+@@ -588,6 +611,7 @@ OSSL_CIPHER_ALGORITHM(rc4_40,
+  * @ingroup hcrypto_evp
+  */
+ OSSL_MD_ALGORITHM(md4)
++#endif
+ 
+ /**
+  * The MD5 hash algorithm (OpenSSL provider)
+diff --git a/lib/hcrypto/evp.c b/lib/hcrypto/evp.c
+index 2b7df3ddef..54fa32be64 100644
+--- a/lib/hcrypto/evp.c
++++ b/lib/hcrypto/evp.c
+@@ -59,6 +59,7 @@
+ #  define HCRYPTO_DEF_PROVIDER pkcs11_hcrypto
+ # elif HAVE_HCRYPTO_W_OPENSSL
+ #  define HCRYPTO_DEF_PROVIDER ossl
++#  define HCRYPTO_DEF_PROVIDER_IS_OPENSSL
+ # else
+ #  define HCRYPTO_DEF_PROVIDER hcrypto
+ # endif
+@@ -69,6 +70,11 @@
+ 
+ #define EVP_DEF_OP(_prov,_op) HC_CONCAT4(EVP_,_prov,_,_op)()
+ 
++#if defined(HAVE_OPENSSL_FIPS_H) || defined(HAVE_OPENSSL_FIPS_MODE_SET_API)
++extern int _heim_openssl_fips_enabled(void);
++#endif
++
++
+ /**
+  * @page page_evp EVP - generic crypto interface
+  *
+@@ -463,6 +469,13 @@ const EVP_MD *
+ EVP_md4(void) HC_DEPRECATED_CRYPTO
+ {
+     hcrypto_validate();
++#if defined(HCRYPTO_DEF_PROVIDER_IS_OPENSSL) && defined(HAVE_OPENSSL_30)
++#if defined(HAVE_OPENSSL_FIPS_H) || defined(HAVE_OPENSSL_FIPS_MODE_SET_API)
++    if (_heim_openssl_fips_enabled())
++        return NULL;
++#endif
++    return EVP_DEF_OP(hcrypto, md4);
++#endif
+     return EVP_DEF_OP(HCRYPTO_DEF_PROVIDER, md4);
+ }
+ 
+@@ -1049,6 +1062,13 @@ const EVP_CIPHER *
+ EVP_rc2_cbc(void)
+ {
+     hcrypto_validate();
++#if defined(HCRYPTO_DEF_PROVIDER_IS_OPENSSL) && defined(HAVE_OPENSSL_30)
++#if defined(HAVE_OPENSSL_FIPS_H) || defined(HAVE_OPENSSL_FIPS_MODE_SET_API)
++    if (_heim_openssl_fips_enabled())
++        return NULL;
++#endif
++    return EVP_DEF_OP(hcrypto, rc2_cbc);
++#endif
+     return EVP_DEF_OP(HCRYPTO_DEF_PROVIDER, rc2_cbc);
+ }
+ 
+@@ -1064,6 +1084,13 @@ const EVP_CIPHER *
+ EVP_rc2_40_cbc(void)
+ {
+     hcrypto_validate();
++#if defined(HCRYPTO_DEF_PROVIDER_IS_OPENSSL) && defined(HAVE_OPENSSL_30)
++#if defined(HAVE_OPENSSL_FIPS_H) || defined(HAVE_OPENSSL_FIPS_MODE_SET_API)
++    if (_heim_openssl_fips_enabled())
++        return NULL;
++#endif
++    return EVP_DEF_OP(hcrypto, rc2_40_cbc);
++#endif
+     return EVP_DEF_OP(HCRYPTO_DEF_PROVIDER, rc2_40_cbc);
+ }
+ 
+@@ -1079,6 +1106,13 @@ const EVP_CIPHER *
+ EVP_rc2_64_cbc(void)
+ {
+     hcrypto_validate();
++#if defined(HCRYPTO_DEF_PROVIDER_IS_OPENSSL) && defined(HAVE_OPENSSL_30)
++#if defined(HAVE_OPENSSL_FIPS_H) || defined(HAVE_OPENSSL_FIPS_MODE_SET_API)
++    if (_heim_openssl_fips_enabled())
++        return NULL;
++#endif
++    return EVP_DEF_OP(hcrypto, rc2_64_cbc);
++#endif
+     return EVP_DEF_OP(HCRYPTO_DEF_PROVIDER, rc2_64_cbc);
+ }
+ 
+@@ -1094,6 +1128,13 @@ const EVP_CIPHER *
+ EVP_rc4(void)
+ {
+     hcrypto_validate();
++#if defined(HCRYPTO_DEF_PROVIDER_IS_OPENSSL) && defined(HAVE_OPENSSL_30)
++#if defined(HAVE_OPENSSL_FIPS_H) || defined(HAVE_OPENSSL_FIPS_MODE_SET_API)
++    if (_heim_openssl_fips_enabled())
++        return NULL;
++#endif
++    return EVP_DEF_OP(hcrypto, rc4);
++#endif
+     return EVP_DEF_OP(HCRYPTO_DEF_PROVIDER, rc4);
+ }
+ 
+@@ -1109,6 +1150,13 @@ const EVP_CIPHER *
+ EVP_rc4_40(void)
+ {
+     hcrypto_validate();
++#if defined(HCRYPTO_DEF_PROVIDER_IS_OPENSSL) && defined(HAVE_OPENSSL_30)
++#if defined(HAVE_OPENSSL_FIPS_H) || defined(HAVE_OPENSSL_FIPS_MODE_SET_API)
++    if (_heim_openssl_fips_enabled())
++        return NULL;
++#endif
++    return EVP_DEF_OP(hcrypto, rc4_40);
++#endif
+     return EVP_DEF_OP(HCRYPTO_DEF_PROVIDER, rc4_40);
+ }
+ 
+@@ -1124,6 +1172,13 @@ const EVP_CIPHER *
+ EVP_des_cbc(void)
+ {
+     hcrypto_validate();
++#if defined(HCRYPTO_DEF_PROVIDER_IS_OPENSSL) && defined(HAVE_OPENSSL_30)
++#if defined(HAVE_OPENSSL_FIPS_H) || defined(HAVE_OPENSSL_FIPS_MODE_SET_API)
++    if (_heim_openssl_fips_enabled())
++        return NULL;
++#endif
++    return EVP_DEF_OP(hcrypto, des_cbc);
++#endif
+     return EVP_DEF_OP(HCRYPTO_DEF_PROVIDER, des_cbc);
+ }
+ 
+diff --git a/lib/hcrypto/evp.h b/lib/hcrypto/evp.h
+index 820c500f42..7019abafd6 100644
+--- a/lib/hcrypto/evp.h
++++ b/lib/hcrypto/evp.h
+@@ -193,7 +193,7 @@ struct hc_CIPHER_CTX {
+     unsigned long flags;
+     void *cipher_data;
+     int final_used;
+-    int block_mask;
++    unsigned block_mask;
+     unsigned char final[EVP_MAX_BLOCK_LENGTH];
+ };
+ 
+diff --git a/lib/hcrypto/test_cipher.c b/lib/hcrypto/test_cipher.c
+index 26bf42c1b0..f648b657a6 100644
+--- a/lib/hcrypto/test_cipher.c
++++ b/lib/hcrypto/test_cipher.c
+@@ -421,14 +421,8 @@ main(int argc, char **argv)
+ 	ret += test_cipher(i, EVP_ossl_aes_256_cbc(), &aes_tests[i]);
+     for (i = 0; i < sizeof(aes_cfb_tests)/sizeof(aes_cfb_tests[0]); i++)
+ 	ret += test_cipher(i, EVP_ossl_aes_128_cfb8(), &aes_cfb_tests[i]);
+-    for (i = 0; i < sizeof(rc2_tests)/sizeof(rc2_tests[0]); i++)
+-	ret += test_cipher(i, EVP_ossl_rc2_cbc(), &rc2_tests[i]);
+-    for (i = 0; i < sizeof(rc2_40_tests)/sizeof(rc2_40_tests[0]); i++)
+-	ret += test_cipher(i, EVP_ossl_rc2_40_cbc(), &rc2_40_tests[i]);
+     for (i = 0; i < sizeof(des_ede3_tests)/sizeof(des_ede3_tests[0]); i++)
+ 	ret += test_cipher(i, EVP_ossl_des_ede3_cbc(), &des_ede3_tests[i]);
+-    for (i = 0; i < sizeof(rc4_tests)/sizeof(rc4_tests[0]); i++)
+-	ret += test_cipher(i, EVP_ossl_rc4(), &rc4_tests[i]);
+ #endif /* PKCS11_MODULE_PATH */
+ 
+     return ret;
+diff --git a/lib/hcrypto/test_crypto.in b/lib/hcrypto/test_crypto.in
+index d5b3893164..91c4d8f109 100644
+--- a/lib/hcrypto/test_crypto.in
++++ b/lib/hcrypto/test_crypto.in
+@@ -82,11 +82,11 @@ for a in unix fortuna egd w32crypto ;do
+ 	    { echo "rand output same!" ; exit 1; }
+ done
+ 
+-./example_evp_cipher 1 ${srcdir}/test_crypto.in test-out-1 || \
+-    { echo "1 failed" ; exit 1; }
+-
+-for a in 7 15 16 17 31 32 33 ; do
+-    ./example_evp_cipher $a ${srcdir}/test_crypto.in test-out-$a
++for a in 1 7 15 16 17 31 32 33 ; do
++    ./example_evp_cipher $a ${srcdir}/test_crypto.in test-out-$a ||
++        { echo "$s failed" ; exit 1; }
++done
++for a in   7 15 16 17 31 32 33 ; do
+     cmp test-out-1 test-out-$a || { echo "cmp $a failed" ; exit 1; }
+ done
+ 
+
+From 6aab05177295e2bc79ec81311eb622b1e9329fbb Mon Sep 17 00:00:00 2001
+From: Nicolas Williams <nico@twosigma.com>
+Date: Sun, 16 Aug 2020 16:58:51 -0500
+Subject: [PATCH 06/12] hx509: Add hx509_enomem()
+
+---
+ lib/hx509/error.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/lib/hx509/error.c b/lib/hx509/error.c
+index be09414bff..58abf0f003 100644
+--- a/lib/hx509/error.c
++++ b/lib/hx509/error.c
+@@ -119,6 +119,21 @@ hx509_set_error_string(hx509_context context, int flags, int code,
+     va_end(ap);
+ }
+ 
++/**
++ * Sets ENOMEM as the error on a hx509 context.
++ *
++ * @param context A hx509 context.
++ *
++ * @ingroup hx509_error
++ */
++
++int
++hx509_enomem(hx509_context context)
++{
++    hx509_set_error_string(context, 0, ENOMEM, "Out of memory");
++    return ENOMEM;
++}
++
+ /**
+  * Get an error string from context associated with error_code.
+  *
+
+From 917e18ba53c822e7b679dc36a7a0c205801b85ca Mon Sep 17 00:00:00 2001
+From: Nicolas Williams <nico@twosigma.com>
+Date: Thu, 4 Jul 2019 17:57:18 -0500
+Subject: [PATCH 07/12] hx509: Add PKCS#8 private key format option
+
+---
+ lib/hx509/crypto.c | 66 ++++++++++++++++++++++++++++++++++++++++++++++
+ lib/hx509/hx509.h  |  3 ++-
+ 2 files changed, 68 insertions(+), 1 deletion(-)
+
+diff --git a/lib/hx509/crypto.c b/lib/hx509/crypto.c
+index 0df91699b5..84382d8ad3 100644
+--- a/lib/hx509/crypto.c
++++ b/lib/hx509/crypto.c
+@@ -1302,6 +1302,34 @@ hx509_parse_private_key(hx509_context context,
+ 
+     *private_key = NULL;
+ 
++    if (format == HX509_KEY_FORMAT_PKCS8) {
++        PKCS8PrivateKeyInfo ki;
++        hx509_private_key key;
++
++        ret = decode_PKCS8PrivateKeyInfo(data, len, &ki, NULL);
++        if (ret) {
++	    hx509_set_error_string(context, 0, HX509_PARSING_KEY_FAILED,
++				   "Failed to parse PKCS#8-encoded private "
++                                   "key");
++	    return HX509_PARSING_KEY_FAILED;
++        }
++
++        /* Re-enter to parse DER-encoded key from PKCS#8 envelope */
++        ret = hx509_parse_private_key(context, &ki.privateKeyAlgorithm,
++                                      ki.privateKey.data, ki.privateKey.length,
++                                      HX509_KEY_FORMAT_DER, &key);
++        free_PKCS8PrivateKeyInfo(&ki);
++        if (ret) {
++	    hx509_set_error_string(context, 0, HX509_PARSING_KEY_FAILED,
++				   "Failed to parse RSA key from PKCS#8 "
++                                   "envelope");
++	    return HX509_PARSING_KEY_FAILED;
++        }
++
++        *private_key = key;
++        return ret;
++    }
++
+     ops = hx509_find_private_alg(&keyai->algorithm);
+     if (ops == NULL) {
+ 	hx509_clear_error_string(context);
+@@ -1601,6 +1629,44 @@ _hx509_private_key_export(hx509_context context,
+ 	hx509_clear_error_string(context);
+ 	return HX509_UNIMPLEMENTED_OPERATION;
+     }
++    if (format == HX509_KEY_FORMAT_PKCS8) {
++        PKCS8PrivateKeyInfo ki;
++        size_t size;
++        int ret;
++
++        memset(&ki, 0, sizeof(ki));
++        ki.attributes = NULL; /* No localKeyId needed */
++        ki.privateKey.data = NULL;
++        ki.privateKeyAlgorithm.algorithm.components = NULL;
++        ret = der_parse_hex_heim_integer("00", &ki.version);
++        if (ret == 0)
++            ret = _hx509_private_key_oid(context, key,
++                                         &ki.privateKeyAlgorithm.algorithm);
++        if (ret == 0)
++            /* Re-enter */
++            ret = _hx509_private_key_export(context, key, HX509_KEY_FORMAT_DER,
++                                            &ki.privateKey);
++
++        /*
++         * XXX To set ki.privateKeyAlgorithm.parameters we'll need to either
++         * move this code into the *key->ops->export() functions, or expand
++         * their signature to allow them to set it for us, or add a method to
++         * hx509_private_key_ops that allows us to get the parameters from the
++         * backend.
++         */
++        ki.privateKeyAlgorithm.parameters = NULL;
++
++        if (ret == 0)
++            ASN1_MALLOC_ENCODE(PKCS8PrivateKeyInfo, data->data, data->length,
++                               &ki, &size, ret);
++        free_PKCS8PrivateKeyInfo(&ki);
++        if (ret == 0 && size != data->length)
++            ret = EINVAL;
++        if (ret)
++            hx509_set_error_string(context, 0, ret,
++                                   "Private key PKCS#8 encoding failed");
++        return ret;
++    }
+     return (*key->ops->export)(context, key, format, data);
+ }
+ 
+diff --git a/lib/hx509/hx509.h b/lib/hx509/hx509.h
+index 781f4a59cc..10f3c083ab 100644
+--- a/lib/hx509/hx509.h
++++ b/lib/hx509/hx509.h
+@@ -81,7 +81,8 @@ enum {
+ enum {
+     HX509_KEY_FORMAT_GUESS = 0,
+     HX509_KEY_FORMAT_DER = 1,
+-    HX509_KEY_FORMAT_WIN_BACKUPKEY = 2
++    HX509_KEY_FORMAT_WIN_BACKUPKEY = 2,
++    HX509_KEY_FORMAT_PKCS8 = 3,
+ };
+ typedef uint32_t hx509_key_format_t;
+ 
+
+From 7e91cd0123c9b7f216cd0447456cc27dfc3341f5 Mon Sep 17 00:00:00 2001
+From: Nicolas Williams <nico@twosigma.com>
+Date: Sat, 19 Nov 2022 23:43:27 -0600
+Subject: [PATCH 08/12] hx509: Pass PKCS#8 keys to lower layers
+
+OpenSSL's d2i_ECPrivateKey() is deprecated, so we have to use
+d2i_PrivateKey(), but d2i_PrivateKey() wants the whole PKCS#8 blob so it
+can know what kind of key it is.  So we need to let the hx509 EC layer
+get that blob.  The internal APIs need some refactoring, so for now we
+use a hack where we try to parse the private key with and without the
+PKCS#8 wrapper.
+
+(cherry picked from commit cce8ae99274619daa9c765490757e771e9d04a64)
+---
+ lib/hx509/collector.c | 10 ++++++++++
+ lib/hx509/crypto.c    | 46 ++++++++++++++++++++-----------------------
+ 2 files changed, 31 insertions(+), 25 deletions(-)
+
+diff --git a/lib/hx509/collector.c b/lib/hx509/collector.c
+index 15f8163f80..d02f07095c 100644
+--- a/lib/hx509/collector.c
++++ b/lib/hx509/collector.c
+@@ -147,6 +147,16 @@ _hx509_collector_private_key_add(hx509_context context,
+ 				       key_data->data, key_data->length,
+ 				       HX509_KEY_FORMAT_DER,
+ 				       &key->private_key);
++        if (ret && localKeyId) {
++            int ret2;
++
++            ret2 = hx509_parse_private_key(context, alg,
++                                           localKeyId->data, localKeyId->length,
++                                           HX509_KEY_FORMAT_PKCS8,
++                                           &key->private_key);
++            if (ret2 == 0)
++                ret = 0;
++        }
+ 	if (ret)
+ 	    goto out;
+     }
+diff --git a/lib/hx509/crypto.c b/lib/hx509/crypto.c
+index 84382d8ad3..169d35f7c2 100644
+--- a/lib/hx509/crypto.c
++++ b/lib/hx509/crypto.c
+@@ -1302,10 +1302,27 @@ hx509_parse_private_key(hx509_context context,
+ 
+     *private_key = NULL;
+ 
+-    if (format == HX509_KEY_FORMAT_PKCS8) {
++    ops = hx509_find_private_alg(&keyai->algorithm);
++    if (ops == NULL) {
++	hx509_clear_error_string(context);
++	return HX509_SIG_ALG_NO_SUPPORTED;
++    }
++
++    ret = hx509_private_key_init(private_key, ops, NULL);
++    if (ret) {
++	hx509_set_error_string(context, 0, ret, "out of memory");
++	return ret;
++    }
++
++    ret = (*ops->import)(context, keyai, data, len, format, *private_key);
++    if (ret)
++	hx509_private_key_free(private_key);
++
++    if (ret && format == HX509_KEY_FORMAT_PKCS8) {
+         PKCS8PrivateKeyInfo ki;
+         hx509_private_key key;
+ 
++        /* Re-enter to try parsing the DER-encoded key from PKCS#8 envelope */
+         ret = decode_PKCS8PrivateKeyInfo(data, len, &ki, NULL);
+         if (ret) {
+ 	    hx509_set_error_string(context, 0, HX509_PARSING_KEY_FAILED,
+@@ -1313,39 +1330,18 @@ hx509_parse_private_key(hx509_context context,
+                                    "key");
+ 	    return HX509_PARSING_KEY_FAILED;
+         }
+-
+-        /* Re-enter to parse DER-encoded key from PKCS#8 envelope */
+         ret = hx509_parse_private_key(context, &ki.privateKeyAlgorithm,
+                                       ki.privateKey.data, ki.privateKey.length,
+                                       HX509_KEY_FORMAT_DER, &key);
+         free_PKCS8PrivateKeyInfo(&ki);
+         if (ret) {
+-	    hx509_set_error_string(context, 0, HX509_PARSING_KEY_FAILED,
+-				   "Failed to parse RSA key from PKCS#8 "
++            hx509_set_error_string(context, 0, HX509_PARSING_KEY_FAILED,
++                                   "Failed to parse RSA key from PKCS#8 "
+                                    "envelope");
+-	    return HX509_PARSING_KEY_FAILED;
++            return HX509_PARSING_KEY_FAILED;
+         }
+-
+         *private_key = key;
+-        return ret;
+-    }
+-
+-    ops = hx509_find_private_alg(&keyai->algorithm);
+-    if (ops == NULL) {
+-	hx509_clear_error_string(context);
+-	return HX509_SIG_ALG_NO_SUPPORTED;
+     }
+-
+-    ret = hx509_private_key_init(private_key, ops, NULL);
+-    if (ret) {
+-	hx509_set_error_string(context, 0, ret, "out of memory");
+-	return ret;
+-    }
+-
+-    ret = (*ops->import)(context, keyai, data, len, format, *private_key);
+-    if (ret)
+-	hx509_private_key_free(private_key);
+-
+     return ret;
+ }
+ 
+
+From f266859ce927571abd0feeb478cd2d4952382ae8 Mon Sep 17 00:00:00 2001
+From: Nicolas Williams <nico@twosigma.com>
+Date: Tue, 22 Nov 2022 11:57:49 -0500
+Subject: [PATCH 09/12] hx509: PKCS#12 missing error check
+
+lib/hx509/test_req.in change left out due to conflicts.
+
+(Partial cherry-pick from commit 0d5b2381861f14fed24be2ca73592a06d17e5adc)
+---
+ lib/hx509/ks_p12.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/lib/hx509/ks_p12.c b/lib/hx509/ks_p12.c
+index b7df0be32a..941b104137 100644
+--- a/lib/hx509/ks_p12.c
++++ b/lib/hx509/ks_p12.c
+@@ -84,14 +84,14 @@ keyBag_parser(hx509_context context,
+     if (ret)
+ 	return ret;
+ 
+-    _hx509_collector_private_key_add(context,
+-				     c,
+-				     &ki.privateKeyAlgorithm,
+-				     NULL,
+-				     &ki.privateKey,
+-				     os);
++    ret = _hx509_collector_private_key_add(context,
++                                           c,
++                                           &ki.privateKeyAlgorithm,
++                                           NULL,
++                                           &ki.privateKey,
++                                           os);
+     free_PKCS8PrivateKeyInfo(&ki);
+-    return 0;
++    return ret;
+ }
+ 
+ static int
+
+From 55c186b86ee1a93caa6bffe87455f9c159575cd3 Mon Sep 17 00:00:00 2001
+From: Jeffrey Altman <jaltman@auristor.com>
+Date: Tue, 22 Nov 2022 12:15:37 -0500
+Subject: [PATCH 10/12] hx509: OpenSSL 3.0 support
+
+(cherry-picked from commit 264f0bd1a2477640143e5d11fd4027cbdcd619bf)
+---
+ lib/hx509/crypto-ec.c          | 506 ++++++++++++++++++++++++++-------
+ lib/hx509/libhx509-exports.def |   5 +
+ lib/hx509/version-script.map   |   2 +-
+ lib/libedit/config.h.in        | 100 +++++--
+ 4 files changed, 493 insertions(+), 120 deletions(-)
+
+diff --git a/lib/hx509/crypto-ec.c b/lib/hx509/crypto-ec.c
+index 4777171cae..0f3c1f14c4 100644
+--- a/lib/hx509/crypto-ec.c
++++ b/lib/hx509/crypto-ec.c
+@@ -34,11 +34,15 @@
+ #include <config.h>
+ 
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
++#include <openssl/evp.h>
+ #include <openssl/ec.h>
+ #include <openssl/ecdsa.h>
+ #include <openssl/rsa.h>
+ #include <openssl/bn.h>
+ #include <openssl/objects.h>
++#ifdef HAVE_OPENSSL_30
++#include <openssl/core_names.h>
++#endif
+ #define HEIM_NO_CRYPTO_HDRS
+ #endif /* HAVE_HCRYPTO_W_OPENSSL */
+ 
+@@ -53,43 +57,50 @@ void
+ _hx509_private_eckey_free(void *eckey)
+ {
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
++#ifdef HAVE_OPENSSL_30
++    EVP_PKEY_free(eckey);
++#else
+     EC_KEY_free(eckey);
+ #endif
++#endif
+ }
+ 
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
+-static int
+-heim_oid2ecnid(heim_oid *oid)
+-{
+-    /*
+-     * Now map to openssl OID fun
+-     */
+-
+-    if (der_heim_oid_cmp(oid, ASN1_OID_ID_EC_GROUP_SECP256R1) == 0)
+-	return NID_X9_62_prime256v1;
++static struct oid2nid_st {
++    const heim_oid *oid;
++    int nid;
++} oid2nid[] = {
++    { ASN1_OID_ID_EC_GROUP_SECP256R1, NID_X9_62_prime256v1 },
+ #ifdef NID_secp521r1
+-    else if (der_heim_oid_cmp(oid, ASN1_OID_ID_EC_GROUP_SECP521R1) == 0)
+-        return NID_secp521r1;
++    { ASN1_OID_ID_EC_GROUP_SECP521R1, NID_secp521r1 },
+ #endif
+ #ifdef NID_secp384r1
+-    else if (der_heim_oid_cmp(oid, ASN1_OID_ID_EC_GROUP_SECP384R1) == 0)
+-        return NID_secp384r1;
++    { ASN1_OID_ID_EC_GROUP_SECP384R1, NID_secp384r1 },
+ #endif
+ #ifdef NID_secp160r1
+-    else if (der_heim_oid_cmp(oid, ASN1_OID_ID_EC_GROUP_SECP160R1) == 0)
+-	return NID_secp160r1;
++    { ASN1_OID_ID_EC_GROUP_SECP160R1, NID_secp160r1 },
+ #endif
+ #ifdef NID_secp160r2
+-    else if (der_heim_oid_cmp(oid, ASN1_OID_ID_EC_GROUP_SECP160R2) == 0)
+-	return NID_secp160r2;
++    { ASN1_OID_ID_EC_GROUP_SECP160R2, NID_secp160r2 },
+ #endif
++    /* XXX Add more!  Add X25519! */
++};
++
++int
++_hx509_ossl_oid2nid(heim_oid *oid)
++{
++    size_t i;
+ 
++    for (i = 0; i < sizeof(oid2nid)/sizeof(oid2nid[0]); i++)
++        if (der_heim_oid_cmp(oid, oid2nid[i].oid) == 0)
++            return oid2nid[i].nid;
+     return NID_undef;
+ }
+ 
+ static int
+-parse_ECParameters(hx509_context context,
+-		   heim_octet_string *parameters, int *nid)
++ECParameters2nid(hx509_context context,
++                 heim_octet_string *parameters,
++                 int *nid)
+ {
+     ECParameters ecparam;
+     size_t size;
+@@ -117,7 +128,7 @@ parse_ECParameters(hx509_context context,
+ 	return HX509_CRYPTO_SIG_INVALID_FORMAT;
+     }
+ 
+-    *nid = heim_oid2ecnid(&ecparam.u.namedCurve);
++    *nid = _hx509_ossl_oid2nid(&ecparam.u.namedCurve);
+     free_ECParameters(&ecparam);
+     if (*nid == NID_undef) {
+ 	hx509_set_error_string(context, 0, ret,
+@@ -127,6 +138,39 @@ parse_ECParameters(hx509_context context,
+     return 0;
+ }
+ 
++#ifdef HAVE_OPENSSL_30
++static const EVP_MD *
++signature_alg2digest_evp_md(hx509_context context,
++                            const AlgorithmIdentifier *digest_alg)
++{
++    if ((&digest_alg->algorithm == &asn1_oid_id_sha512 ||
++         der_heim_oid_cmp(&digest_alg->algorithm, &asn1_oid_id_sha512) == 0))
++        return EVP_sha512();
++    if ((&digest_alg->algorithm == &asn1_oid_id_sha384 ||
++         der_heim_oid_cmp(&digest_alg->algorithm, &asn1_oid_id_sha384) == 0))
++        return EVP_sha384();
++    if ((&digest_alg->algorithm == &asn1_oid_id_sha256 ||
++         der_heim_oid_cmp(&digest_alg->algorithm, &asn1_oid_id_sha256) == 0))
++        return EVP_sha256();
++    if ((&digest_alg->algorithm == &asn1_oid_id_secsig_sha_1 ||
++         der_heim_oid_cmp(&digest_alg->algorithm, &asn1_oid_id_secsig_sha_1) == 0))
++        return EVP_sha1();
++    if ((&digest_alg->algorithm == &asn1_oid_id_rsa_digest_md5 ||
++         der_heim_oid_cmp(&digest_alg->algorithm,
++                          &asn1_oid_id_rsa_digest_md5) == 0))
++        return EVP_md5();
++
++    /*
++     * XXX Decode the `digest_alg->algorithm' OID and include it in the error
++     * message.
++     */
++    hx509_set_error_string(context, 0, EINVAL,
++                           "Digest algorithm not found");
++    return NULL;
++}
++#endif
++
++
+ 
+ /*
+  *
+@@ -140,6 +184,106 @@ ecdsa_verify_signature(hx509_context context,
+ 		       const heim_octet_string *data,
+ 		       const heim_octet_string *sig)
+ {
++#ifdef HAVE_OPENSSL_30
++    const AlgorithmIdentifier *digest_alg = sig_alg->digest_alg;
++    const EVP_MD *md = signature_alg2digest_evp_md(context, digest_alg);
++    const SubjectPublicKeyInfo *spi;
++    const char *curve_sn = NULL; /* sn == short name in OpenSSL parlance */
++    OSSL_PARAM params[2];
++    EVP_PKEY_CTX *pctx = NULL;
++    EVP_MD_CTX *mdctx = NULL;
++    EVP_PKEY *template = NULL;
++    EVP_PKEY *public = NULL;
++    const unsigned char *p;
++    size_t len;
++    char *curve_sn_dup = NULL;
++    int groupnid;
++    int ret = 0;
++
++    spi = &signer->tbsCertificate.subjectPublicKeyInfo;
++    if (der_heim_oid_cmp(&spi->algorithm.algorithm,
++                         ASN1_OID_ID_ECPUBLICKEY) != 0)
++        hx509_set_error_string(context, 0,
++                               ret =  HX509_CRYPTO_SIG_INVALID_FORMAT,
++                               /* XXX Include the OID in the message */
++                               "Unsupported subjectPublicKey algorithm");
++    if (ret == 0)
++        ret = ECParameters2nid(context, spi->algorithm.parameters, &groupnid);
++    if (ret == 0 && (curve_sn = OBJ_nid2sn(groupnid)) == NULL)
++        hx509_set_error_string(context, 0,
++                               ret = HX509_CRYPTO_SIG_INVALID_FORMAT,
++                               "Could not resolve curve NID %d to its short name",
++                               groupnid);
++    if (ret == 0 && (curve_sn_dup = strdup(curve_sn)) == NULL)
++        ret = hx509_enomem(context);
++    if (ret == 0 && (mdctx = EVP_MD_CTX_new()) == NULL)
++        ret = hx509_enomem(context);
++
++    /*
++     * In order for d2i_PublicKey() to work we need to create a template key
++     * that has the curve parameters for the subjectPublicKey.
++     *
++     * Or maybe we could learn to use the OSSL_DECODER(3) API.  But this works,
++     * at least until OpenSSL deprecates d2i_PublicKey() and forces us to use
++     * OSSL_DECODER(3).
++     */
++    if (ret == 0) {
++        /*
++         * Apparently there's no error checking to be done here?  Why does
++         * OSSL_PARAM_construct_utf8_string() want a non-const for the value?
++         * Is that a bug in OpenSSL?
++         */
++        params[0] = OSSL_PARAM_construct_utf8_string(OSSL_PKEY_PARAM_GROUP_NAME,
++                                                     curve_sn_dup, 0);
++        params[1] = OSSL_PARAM_construct_end();
++
++        if ((pctx = EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL)) == NULL)
++            ret = hx509_enomem(context);
++    }
++    if (ret == 0 && EVP_PKEY_fromdata_init(pctx) != 1)
++        ret = hx509_enomem(context);
++    if (ret == 0 &&
++        EVP_PKEY_fromdata(pctx, &template,
++                          OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS, params) != 1)
++        hx509_set_error_string(context, 0,
++                               ret = HX509_CRYPTO_SIG_INVALID_FORMAT,
++                               "Could not set up to parse key for curve %s",
++                               curve_sn);
++
++    /* Finally we can decode the subjectPublicKey */
++    p = spi->subjectPublicKey.data;
++    len = spi->subjectPublicKey.length / 8;
++    if (ret == 0 &&
++        (public = d2i_PublicKey(EVP_PKEY_EC, &template, &p, len)) == NULL)
++        ret = HX509_CRYPTO_SIG_INVALID_FORMAT;
++
++    /* EVP_DigestVerifyInit() will allocate a new pctx */
++    EVP_PKEY_CTX_free(pctx);
++    pctx = NULL;
++
++    if (ret == 0 &&
++        EVP_DigestVerifyInit(mdctx, &pctx, md, NULL, public) != 1)
++        hx509_set_error_string(context, 0,
++                               ret = HX509_CRYPTO_SIG_INVALID_FORMAT,
++                               "Could not initialize "
++                               "OpenSSL signature verification");
++    if (ret == 0 &&
++        EVP_DigestVerifyUpdate(mdctx, data->data, data->length) != 1)
++        hx509_set_error_string(context, 0,
++                               ret = HX509_CRYPTO_SIG_INVALID_FORMAT,
++                               "Could not initialize "
++                               "OpenSSL signature verification");
++    if (ret == 0 &&
++        EVP_DigestVerifyFinal(mdctx, sig->data, sig->length) != 1)
++        hx509_set_error_string(context, 0,
++                               ret = HX509_CRYPTO_SIG_INVALID_FORMAT,
++                               "Signature verification failed");
++
++    EVP_MD_CTX_free(mdctx);
++    EVP_PKEY_free(template);
++    free(curve_sn_dup);
++    return ret;
++#else
+     const AlgorithmIdentifier *digest_alg;
+     const SubjectPublicKeyInfo *spi;
+     heim_octet_string digest;
+@@ -153,28 +297,28 @@ ecdsa_verify_signature(hx509_context context,
+     digest_alg = sig_alg->digest_alg;
+ 
+     ret = _hx509_create_signature(context,
+-				  NULL,
+-				  digest_alg,
+-				  data,
+-				  NULL,
+-				  &digest);
++                                 NULL,
++                                 digest_alg,
++                                 data,
++                                 NULL,
++                                 &digest);
+     if (ret)
+-	return ret;
++       return ret;
+ 
+     /* set up EC KEY */
+     spi = &signer->tbsCertificate.subjectPublicKeyInfo;
+ 
+     if (der_heim_oid_cmp(&spi->algorithm.algorithm, ASN1_OID_ID_ECPUBLICKEY) != 0)
+-	return HX509_CRYPTO_SIG_INVALID_FORMAT;
++       return HX509_CRYPTO_SIG_INVALID_FORMAT;
+ 
+     /*
+      * Find the group id
+      */
+ 
+-    ret = parse_ECParameters(context, spi->algorithm.parameters, &groupnid);
++    ret = ECParameters2nid(context, spi->algorithm.parameters, &groupnid);
+     if (ret) {
+-	der_free_octet_string(&digest);
+-	return ret;
++       der_free_octet_string(&digest);
++       return ret;
+     }
+ 
+     /*
+@@ -190,20 +334,21 @@ ecdsa_verify_signature(hx509_context context,
+     len = spi->subjectPublicKey.length / 8;
+ 
+     if (o2i_ECPublicKey(&key, &p, len) == NULL) {
+-	EC_KEY_free(key);
+-	return HX509_CRYPTO_SIG_INVALID_FORMAT;
++       EC_KEY_free(key);
++       return HX509_CRYPTO_SIG_INVALID_FORMAT;
+     }
+ 
+     ret = ECDSA_verify(-1, digest.data, digest.length,
+-		       sig->data, sig->length, key);
++                      sig->data, sig->length, key);
+     der_free_octet_string(&digest);
+     EC_KEY_free(key);
+     if (ret != 1) {
+-	ret = HX509_CRYPTO_SIG_INVALID_FORMAT;
+-	return ret;
++       ret = HX509_CRYPTO_SIG_INVALID_FORMAT;
++       return ret;
+     }
+ 
+     return 0;
++#endif
+ }
+ 
+ static int
+@@ -215,6 +360,56 @@ ecdsa_create_signature(hx509_context context,
+ 		       AlgorithmIdentifier *signatureAlgorithm,
+ 		       heim_octet_string *sig)
+ {
++#ifdef HAVE_OPENSSL_30
++    const AlgorithmIdentifier *digest_alg = sig_alg->digest_alg;
++    const EVP_MD *md = signature_alg2digest_evp_md(context, digest_alg);
++    EVP_MD_CTX *mdctx = NULL;
++    EVP_PKEY_CTX *pctx = NULL;
++    const heim_oid *sig_oid;
++    int ret = 0;
++
++    sig->data = NULL;
++    sig->length = 0;
++    if (signer->ops && der_heim_oid_cmp(signer->ops->key_oid, ASN1_OID_ID_ECPUBLICKEY) != 0)
++	_hx509_abort("internal error passing private key to wrong ops");
++
++    sig_oid = sig_alg->sig_oid;
++    digest_alg = sig_alg->digest_alg;
++
++    if (signatureAlgorithm)
++        ret = _hx509_set_digest_alg(signatureAlgorithm, sig_oid,
++                                    "\x05\x00", 2);
++    mdctx = EVP_MD_CTX_new();
++    if (mdctx == NULL)
++        ret = hx509_enomem(context);
++    if (ret == 0 && EVP_DigestSignInit(mdctx, &pctx, md, NULL,
++                                       signer->private_key.ecdsa) != 1)
++        ret = HX509_CMS_FAILED_CREATE_SIGATURE;
++    if (ret == 0 && EVP_DigestSignUpdate(mdctx, data->data, data->length) != 1)
++        ret = HX509_CMS_FAILED_CREATE_SIGATURE;
++    if (ret == 0 && EVP_DigestSignFinal(mdctx, NULL, &sig->length) != 1)
++        ret = HX509_CMS_FAILED_CREATE_SIGATURE;
++    if (ret == 0 && (sig->data = malloc(sig->length)) == NULL)
++        ret = hx509_enomem(context);
++    if (ret == 0 && EVP_DigestSignFinal(mdctx, sig->data, &sig->length) != 1)
++        ret = HX509_CMS_FAILED_CREATE_SIGATURE;
++
++    if (ret == HX509_CMS_FAILED_CREATE_SIGATURE) {
++        /* XXX Extract error detail from OpenSSL */
++	hx509_set_error_string(context, 0, ret,
++			       "ECDSA sign failed");
++    }
++
++    if (ret) {
++        if (signatureAlgorithm)
++            free_AlgorithmIdentifier(signatureAlgorithm);
++        free(sig->data);
++        sig->data = NULL;
++        sig->length = 0;
++    }
++    EVP_MD_CTX_free(mdctx);
++    return ret;
++#else
+     const AlgorithmIdentifier *digest_alg;
+     heim_octet_string indata;
+     const heim_oid *sig_oid;
+@@ -222,7 +417,7 @@ ecdsa_create_signature(hx509_context context,
+     int ret;
+ 
+     if (signer->ops && der_heim_oid_cmp(signer->ops->key_oid, ASN1_OID_ID_ECPUBLICKEY) != 0)
+-	_hx509_abort("internal error passing private key to wrong ops");
++        _hx509_abort("internal error passing private key to wrong ops");
+ 
+     sig_oid = sig_alg->sig_oid;
+     digest_alg = sig_alg->digest_alg;
+@@ -230,59 +425,63 @@ ecdsa_create_signature(hx509_context context,
+     if (signatureAlgorithm) {
+         ret = _hx509_set_digest_alg(signatureAlgorithm, sig_oid,
+                                     "\x05\x00", 2);
+-	if (ret) {
+-	    hx509_clear_error_string(context);
+-	    return ret;
+-	}
++        if (ret) {
++            hx509_clear_error_string(context);
++            return ret;
++        }
+     }
+ 
+     ret = _hx509_create_signature(context,
+-				  NULL,
+-				  digest_alg,
+-				  data,
+-				  NULL,
+-				  &indata);
++                                  NULL,
++                                  digest_alg,
++                                  data,
++                                  NULL,
++                                  &indata);
+     if (ret)
+-	goto error;
++        goto error;
+ 
+     sig->length = ECDSA_size(signer->private_key.ecdsa);
+     sig->data = malloc(sig->length);
+     if (sig->data == NULL) {
+-	der_free_octet_string(&indata);
+-	ret = ENOMEM;
+-	hx509_set_error_string(context, 0, ret, "out of memory");
+-	goto error;
++        der_free_octet_string(&indata);
++        ret = ENOMEM;
++        hx509_set_error_string(context, 0, ret, "out of memory");
++        goto error;
+     }
+ 
+     siglen = sig->length;
+ 
+     ret = ECDSA_sign(-1, indata.data, indata.length,
+-		     sig->data, &siglen, signer->private_key.ecdsa);
++                     sig->data, &siglen, signer->private_key.ecdsa);
+     der_free_octet_string(&indata);
+     if (ret != 1) {
+-	ret = HX509_CMS_FAILED_CREATE_SIGATURE;
+-	hx509_set_error_string(context, 0, ret,
+-			       "ECDSA sign failed: %d", ret);
+-	goto error;
++        ret = HX509_CMS_FAILED_CREATE_SIGATURE;
++        hx509_set_error_string(context, 0, ret,
++                               "ECDSA sign failed: %d", ret);
++        goto error;
+     }
+     if (siglen > sig->length)
+-	_hx509_abort("ECDSA signature prelen longer the output len");
++        _hx509_abort("ECDSA signature prelen longer the output len");
+ 
+     sig->length = siglen;
+ 
+     return 0;
+- error:
++error:
+     if (signatureAlgorithm)
+-	free_AlgorithmIdentifier(signatureAlgorithm);
++        free_AlgorithmIdentifier(signatureAlgorithm);
+     return ret;
++#endif
+ }
+ 
+ static int
+ ecdsa_available(const hx509_private_key signer,
+ 		const AlgorithmIdentifier *sig_alg)
+ {
++#ifdef HAVE_OPENSSL_30
+     const struct signature_alg *sig;
+-    const EC_GROUP *group;
++    size_t group_name_len = 0;
++    char group_name_buf[96];
++    EC_GROUP *group = NULL;
+     BN_CTX *bnctx = NULL;
+     BIGNUM *order = NULL;
+     int ret = 0;
+@@ -291,34 +490,75 @@ ecdsa_available(const hx509_private_key signer,
+ 	_hx509_abort("internal error passing private key to wrong ops");
+ 
+     sig = _hx509_find_sig_alg(&sig_alg->algorithm);
+-
+     if (sig == NULL || sig->digest_size == 0)
+ 	return 0;
+ 
++    if (EVP_PKEY_get_group_name(signer->private_key.ecdsa, group_name_buf,
++                                sizeof(group_name_buf),
++                                &group_name_len) != 1 ||
++        group_name_len >= sizeof(group_name_buf)) {
++        return 0;
++    }
++    group = EC_GROUP_new_by_curve_name(OBJ_txt2nid(group_name_buf));
++    bnctx = BN_CTX_new();
++    order = BN_new();
++    if (group && bnctx && order &&
++        EC_GROUP_get_order(group, order, bnctx) == 1)
++	ret = 1;
++
++#if 0
++    /*
++     * If anything, require a digest at least as wide as the EC key size
++     *
++     *  if (BN_num_bytes(order) > sig->digest_size)
++     *      ret = 0;
++     */
++#endif
++
++    BN_CTX_free(bnctx);
++    BN_clear_free(order);
++    EC_GROUP_free(group);
++    return ret;
++#else
++    const struct signature_alg *sig;
++    const EC_GROUP *group;
++    BN_CTX *bnctx = NULL;
++    BIGNUM *order = NULL;
++    int ret = 0;
++
++    if (der_heim_oid_cmp(signer->ops->key_oid, &asn1_oid_id_ecPublicKey) != 0)
++       _hx509_abort("internal error passing private key to wrong ops");
++
++    sig = _hx509_find_sig_alg(&sig_alg->algorithm);
++
++    if (sig == NULL || sig->digest_size == 0)
++       return 0;
++
+     group = EC_KEY_get0_group(signer->private_key.ecdsa);
+     if (group == NULL)
+-	return 0;
++       return 0;
+ 
+     bnctx = BN_CTX_new();
+     order = BN_new();
+     if (order == NULL)
+-	goto err;
++       goto err;
+ 
+     if (EC_GROUP_get_order(group, order, bnctx) != 1)
+-	goto err;
++       goto err;
+ 
+ #if 0
+     /* If anything, require a digest at least as wide as the EC key size */
+     if (BN_num_bytes(order) > sig->digest_size)
+ #endif
+-	ret = 1;
++       ret = 1;
+  err:
+     if (bnctx)
+-	BN_CTX_free(bnctx);
++       BN_CTX_free(bnctx);
+     if (order)
+-	BN_clear_free(order);
++       BN_clear_free(order);
+ 
+-    return ret;
++     return ret;
++#endif
+ }
+ 
+ static int
+@@ -347,55 +587,119 @@ ecdsa_private_key_import(hx509_context context,
+ 			 hx509_key_format_t format,
+ 			 hx509_private_key private_key)
+ {
++#ifdef HAVE_OPENSSL_30
++    const unsigned char *p = data;
++    EVP_PKEY *key = NULL;
++    int ret = 0;
++
++    switch (format) {
++    case HX509_KEY_FORMAT_PKCS8:
++        key = d2i_PrivateKey(EVP_PKEY_EC, NULL, &p, len);
++	if (key == NULL) {
++	    hx509_set_error_string(context, 0, HX509_PARSING_KEY_FAILED,
++				   "Failed to parse EC private key");
++	    return HX509_PARSING_KEY_FAILED;
++	}
++	break;
++
++    default:
++	return HX509_CRYPTO_KEY_FORMAT_UNSUPPORTED;
++    }
++
++    /*
++     * We used to have to call EC_KEY_new(), then EC_KEY_set_group() the group
++     * (curve) on the resulting EC_KEY _before_ we could d2i_ECPrivateKey() the
++     * key, but that's all deprecated in OpenSSL 3.0.
++     *
++     * In fact, it's not clear how ever to assign a group to a private key,
++     * but that's what the documentation for d2i_PrivateKey() says: that
++     * its `EVP_PKEY **' argument must be non-NULL pointing to a key that
++     * has had the group set.
++     *
++     * However, from code inspection it's clear that when the ECParameters
++     * are present in the private key payload passed to d2i_PrivateKey(),
++     * the group will be taken from that.
++     *
++     * What we'll do is that if we have `keyai->parameters' we'll check if the
++     * key we got is for the same group.
++     */
++    if (keyai->parameters) {
++        size_t gname_len = 0;
++        char buf[96];
++        int got_group_nid = NID_undef;
++        int want_groupnid = NID_undef;
++
++        ret = ECParameters2nid(context, keyai->parameters, &want_groupnid);
++        if (ret == 0 &&
++            (EVP_PKEY_get_group_name(key, buf, sizeof(buf), &gname_len) != 1 ||
++             gname_len >= sizeof(buf)))
++            ret = HX509_ALG_NOT_SUPP;
++        if (ret == 0)
++            got_group_nid = OBJ_txt2nid(buf);
++        if (ret == 0 &&
++            (got_group_nid == NID_undef || want_groupnid != got_group_nid))
++            ret = HX509_ALG_NOT_SUPP;
++    }
++
++    if (ret == 0) {
++        private_key->private_key.ecdsa = key;
++        private_key->signature_alg = ASN1_OID_ID_ECDSA_WITH_SHA256;
++        key = NULL;
++    }
++
++    EVP_PKEY_free(key);
++    return ret;
++#else
+     const unsigned char *p = data;
+     EC_KEY **pkey = NULL;
+     EC_KEY *key;
+ 
+     if (keyai->parameters) {
+-	EC_GROUP *group;
+-	int groupnid;
+-	int ret;
+-
+-	ret = parse_ECParameters(context, keyai->parameters, &groupnid);
+-	if (ret)
+-	    return ret;
+-
+-	key = EC_KEY_new();
+-	if (key == NULL)
+-	    return ENOMEM;
+-
+-	group = EC_GROUP_new_by_curve_name(groupnid);
+-	if (group == NULL) {
+-	    EC_KEY_free(key);
+-	    return ENOMEM;
+-	}
+-	EC_GROUP_set_asn1_flag(group, OPENSSL_EC_NAMED_CURVE);
+-	if (EC_KEY_set_group(key, group) == 0) {
+-	    EC_KEY_free(key);
+-	    EC_GROUP_free(group);
+-	    return ENOMEM;
+-	}
+-	EC_GROUP_free(group);
+-	pkey = &key;
++       EC_GROUP *group;
++       int groupnid;
++       int ret;
++
++       ret = ECParameters2nid(context, keyai->parameters, &groupnid);
++       if (ret)
++           return ret;
++
++       key = EC_KEY_new();
++       if (key == NULL)
++           return ENOMEM;
++
++       group = EC_GROUP_new_by_curve_name(groupnid);
++       if (group == NULL) {
++           EC_KEY_free(key);
++           return ENOMEM;
++       }
++       EC_GROUP_set_asn1_flag(group, OPENSSL_EC_NAMED_CURVE);
++       if (EC_KEY_set_group(key, group) != 1) {
++           EC_KEY_free(key);
++           EC_GROUP_free(group);
++           return ENOMEM;
++       }
++       EC_GROUP_free(group);
++       pkey = &key;
+     }
+ 
+     switch (format) {
+     case HX509_KEY_FORMAT_DER:
+ 
+-	private_key->private_key.ecdsa = d2i_ECPrivateKey(pkey, &p, len);
+-	if (private_key->private_key.ecdsa == NULL) {
+-	    hx509_set_error_string(context, 0, HX509_PARSING_KEY_FAILED,
+-				   "Failed to parse EC private key");
+-	    return HX509_PARSING_KEY_FAILED;
+-	}
+-	private_key->signature_alg = ASN1_OID_ID_ECDSA_WITH_SHA256;
+-	break;
++       private_key->private_key.ecdsa = d2i_ECPrivateKey(pkey, &p, len);
++       if (private_key->private_key.ecdsa == NULL) {
++           hx509_set_error_string(context, 0, HX509_PARSING_KEY_FAILED,
++                                  "Failed to parse EC private key");
++           return HX509_PARSING_KEY_FAILED;
++       }
++       private_key->signature_alg = ASN1_OID_ID_ECDSA_WITH_SHA256;
++       break;
+ 
+     default:
+-	return HX509_CRYPTO_KEY_FORMAT_UNSUPPORTED;
++       return HX509_CRYPTO_KEY_FORMAT_UNSUPPORTED;
+     }
+ 
+     return 0;
++#endif
+ }
+ 
+ static int
+diff --git a/lib/hx509/libhx509-exports.def b/lib/hx509/libhx509-exports.def
+index f441773015..8bd98fc349 100644
+--- a/lib/hx509/libhx509-exports.def
++++ b/lib/hx509/libhx509-exports.def
+@@ -14,6 +14,11 @@ EXPORTS
+ 	_hx509_generate_private_key_is_ca
+ 	_hx509_map_file_os
+ 	_hx509_name_from_Name
++	_hx509_private_key_export
++	_hx509_private_key_exportable
++	_hx509_private_key_get_internal
++	_hx509_private_key_oid
++	_hx509_private_key_ref
+ 	hx509_private_key2SPKI
+ 	hx509_private_key_free
+ 	_hx509_private_key_ref
+diff --git a/lib/hx509/version-script.map b/lib/hx509/version-script.map
+index f040cd8344..15a8aa7d4d 100644
+--- a/lib/hx509/version-script.map
++++ b/lib/hx509/version-script.map
+@@ -16,6 +16,7 @@ HEIMDAL_X509_1.2 {
+ 		_hx509_generate_private_key_is_ca;
+ 		_hx509_map_file_os;
+ 		_hx509_name_from_Name;
++		_hx509_ossl_oid2nid;
+ 		_hx509_private_key_ref;
+ 		_hx509_request_add_dns_name;
+ 		_hx509_request_add_email;
+@@ -252,4 +253,3 @@ HEIMDAL_X509_1.3 {
+ 	global:
+ 		hx509_ca_tbs_set_signature_algorithm;
+ };
+-
+From 7e818fa77eb980a7bddd043c26c3d2028a1c9450 Mon Sep 17 00:00:00 2001
+From: Nicolas Williams <nico@twosigma.com>
+Date: Sat, 19 Nov 2022 15:09:47 -0600
+Subject: [PATCH 11/12] krb5: OpenSSL 3.0 support
+
+(cherry picked from commit 6336cf69d43665a6e97434be453ed895f4b25509)
+---
+ lib/krb5/pkinit-ec.c | 73 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 73 insertions(+)
+
+diff --git a/lib/krb5/pkinit-ec.c b/lib/krb5/pkinit-ec.c
+index 33bc62c8dc..34cefd506f 100644
+--- a/lib/krb5/pkinit-ec.c
++++ b/lib/krb5/pkinit-ec.c
+@@ -56,6 +56,7 @@
+ #include <openssl/ecdh.h>
+ #include <openssl/evp.h>
+ #include <openssl/bn.h>
++#include <openssl/dh.h>
+ #define HEIM_NO_CRYPTO_HDRS
+ #endif
+ 
+@@ -125,6 +126,9 @@ _krb5_build_authpack_subjectPK_EC(krb5_context context,
+     if (ret)
+         return ret;
+ 
++#ifdef HAVE_OPENSSL_30
++    ctx->u.eckey = EVP_EC_gen(OSSL_EC_curve_nid2name(NID_X9_62_prime256v1));
++#else
+     ctx->u.eckey = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+     if (ctx->u.eckey == NULL)
+         return krb5_enomem(context);
+@@ -132,8 +136,13 @@ _krb5_build_authpack_subjectPK_EC(krb5_context context,
+     ret = EC_KEY_generate_key(ctx->u.eckey);
+     if (ret != 1)
+         return EINVAL;
++#endif
+ 
++#ifdef HAVE_OPENSSL_30
++    xlen = i2d_PublicKey(ctx->u.eckey, NULL);
++#else
+     xlen = i2o_ECPublicKey(ctx->u.eckey, NULL);
++#endif
+     if (xlen <= 0)
+         return EINVAL;
+ 
+@@ -143,7 +152,11 @@ _krb5_build_authpack_subjectPK_EC(krb5_context context,
+ 
+     a->clientPublicValue->subjectPublicKey.data = p;
+ 
++#ifdef HAVE_OPENSSL_30
++    xlen = i2d_PublicKey(ctx->u.eckey, &p);
++#else
+     xlen = i2o_ECPublicKey(ctx->u.eckey, &p);
++#endif
+     if (xlen <= 0) {
+         a->clientPublicValue->subjectPublicKey.data = NULL;
+         free(p);
+@@ -171,6 +184,61 @@ _krb5_pk_rd_pa_reply_ecdh_compute_key(krb5_context context,
+                                       int *out_sz)
+ {
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
++#ifdef HAVE_OPENSSL_30
++    krb5_error_code ret = 0;
++    EVP_PKEY_CTX *pctx = NULL;
++    EVP_PKEY *template = NULL;
++    EVP_PKEY *public = NULL;
++    size_t shared_len = 0;
++
++    if ((template = EVP_PKEY_new()) == NULL)
++        ret = krb5_enomem(context);
++    if (ret == 0 &&
++        EVP_PKEY_copy_parameters(template, ctx->u.eckey) != 1)
++        ret = krb5_enomem(context);
++    if (ret == 0 && (pctx = EVP_PKEY_CTX_new(ctx->u.eckey, NULL)) == NULL)
++        ret = krb5_enomem(context);
++    if (ret == 0 && EVP_PKEY_derive_init(pctx) != 1)
++        ret = krb5_enomem(context);
++    if (ret == 0 &&
++        EVP_PKEY_CTX_set_ecdh_kdf_type(pctx, EVP_PKEY_ECDH_KDF_NONE) != 1)
++        ret = krb5_enomem(context);
++    if (ret == 0 &&
++        (public = d2i_PublicKey(EVP_PKEY_EC, &template, &in, in_sz)) == NULL)
++        krb5_set_error_message(context,
++                               ret = HX509_PARSING_KEY_FAILED,
++                               "PKINIT: Can't parse the KDC's ECDH public key");
++    if (ret == 0 &&
++        EVP_PKEY_derive_set_peer_ex(pctx, public, 1) != 1)
++        krb5_set_error_message(context,
++                               ret = KRB5KRB_ERR_GENERIC,
++                               "Could not derive ECDH shared secret for PKINIT key exchange "
++                               "(EVP_PKEY_derive_set_peer_ex)");
++    if (ret == 0 &&
++        (EVP_PKEY_derive(pctx, NULL, &shared_len) != 1 || shared_len == 0))
++        krb5_set_error_message(context,
++                               ret = KRB5KRB_ERR_GENERIC,
++                               "Could not derive ECDH shared secret for PKINIT key exchange "
++                               "(EVP_PKEY_derive to get length)");
++    if (ret == 0 && shared_len > INT_MAX)
++        krb5_set_error_message(context,
++                               ret = KRB5KRB_ERR_GENERIC,
++                               "Could not derive ECDH shared secret for PKINIT key exchange "
++                               "(shared key too large)");
++    if (ret == 0 && (*out = malloc(shared_len)) == NULL)
++        ret = krb5_enomem(context);
++    if (ret == 0 && EVP_PKEY_derive(pctx, *out, &shared_len) != 1)
++        krb5_set_error_message(context,
++                               ret = KRB5KRB_ERR_GENERIC,
++                               "Could not derive ECDH shared secret for PKINIT key exchange "
++                               "(EVP_PKEY_derive)");
++    if (ret == 0)
++        *out_sz = shared_len;
++    EVP_PKEY_CTX_free(pctx); // move
++    EVP_PKEY_free(template);
++
++    return ret;
++#else
+     krb5_error_code ret = 0;
+     int dh_gen_keylen;
+ 
+@@ -219,6 +287,7 @@ _krb5_pk_rd_pa_reply_ecdh_compute_key(krb5_context context,
+     *out_sz = dh_gen_keylen;
+ 
+     return ret;
++#endif
+ #else
+     krb5_set_error_message(context, ENOTSUP,
+                            N_("PKINIT: ECDH not supported", ""));
+@@ -230,8 +299,12 @@ void
+ _krb5_pk_eckey_free(void *eckey)
+ {
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
++#ifdef HAVE_OPENSSL_30
++    EVP_PKEY_free(eckey);
++#else
+     EC_KEY_free(eckey);
+ #endif
++#endif
+ }
+ 
+ #else
+
+From cad7cd5ce178b2e5f03b383c559f980a00b20063 Mon Sep 17 00:00:00 2001
+From: Nicolas Williams <nico@twosigma.com>
+Date: Sat, 19 Nov 2022 22:03:50 -0600
+Subject: [PATCH 12/12] kdc: OpenSSL 3.0 support
+
+(cherry picked from commit cd02c50be56e4345373e009ed6950b9550df94ff)
+---
+ kdc/pkinit-ec.c | 350 +++++++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 290 insertions(+), 60 deletions(-)
+
+diff --git a/kdc/pkinit-ec.c b/kdc/pkinit-ec.c
+index c718aa7996..31a5fe7dec 100644
+--- a/kdc/pkinit-ec.c
++++ b/kdc/pkinit-ec.c
+@@ -52,10 +52,16 @@
+  */
+ 
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
+-#include <openssl/ec.h>
+-#include <openssl/ecdh.h>
+ #include <openssl/evp.h>
++#include <openssl/ec.h>
++#include <openssl/ecdsa.h>
++#include <openssl/rsa.h>
+ #include <openssl/bn.h>
++#include <openssl/dh.h>
++#include <openssl/objects.h>
++#ifdef HAVE_OPENSSL_30
++#include <openssl/core_names.h>
++#endif
+ #define HEIM_NO_CRYPTO_HDRS
+ #endif /* HAVE_HCRYPTO_W_OPENSSL */
+ 
+@@ -69,37 +75,101 @@
+ #include <pkinit_asn1.h>
+ 
+ #include <hx509.h>
+-
+-#ifdef HAVE_HCRYPTO_W_OPENSSL
+-static void
+-free_client_ec_param(krb5_context context,
+-                     EC_KEY *ec_key_pk,
+-                     EC_KEY *ec_key_key)
+-{
+-    if (ec_key_pk != NULL)
+-        EC_KEY_free(ec_key_pk);
+-    if (ec_key_key != NULL)
+-        EC_KEY_free(ec_key_key);
+-}
+-#endif
++#include "../lib/hx509/hx_locl.h"
++#include <hx509-private.h>
+ 
+ void
+ _kdc_pk_free_client_ec_param(krb5_context context,
+-                             void *ec_key_pk,
+-                             void *ec_key_key)
++                             void *k0,
++                             void *k1)
+ {
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
+-    free_client_ec_param(context, ec_key_pk, ec_key_key);
++#ifdef HAVE_OPENSSL_30
++    EVP_PKEY_free(k0);
++    EVP_PKEY_free(k1);
++#else
++    EC_KEY_free(k0);
++    EC_KEY_free(k1);
++#endif
+ #endif
+ }
+ 
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
++#ifdef HAVE_OPENSSL_30
++static krb5_error_code
++generate_ecdh_keyblock_ossl30(krb5_context context,
++                              EVP_PKEY *ec_key_pub,   /* the client's public key */
++                              EVP_PKEY **ec_key_priv, /* the KDC's ephemeral private */
++                              unsigned char **dh_gen_key, /* shared secret */
++                              size_t *dh_gen_keylen)
++{
++    EVP_PKEY_CTX *pctx = NULL;
++    EVP_PKEY *ephemeral = NULL;
++    krb5_error_code ret = 0;
++    unsigned char *p = NULL;
++    size_t size = 0;
++
++    if (ec_key_pub == NULL)
++        /* XXX This seems like an internal error that should be impossible */
++        krb5_set_error_message(context, ret = KRB5KRB_ERR_GENERIC,
++                               "Missing client ECDH key agreement public key");
++    if (ret == 0 &&
++        (ephemeral =
++             EVP_EC_gen(OSSL_EC_curve_nid2name(NID_X9_62_prime256v1))) == NULL)
++        krb5_set_error_message(context, ret = KRB5KRB_ERR_GENERIC,
++                               "Could not generate an ECDH key agreement private key");
++    if (ret == 0 &&
++        (pctx = EVP_PKEY_CTX_new(ephemeral, NULL)) == NULL)
++        ret = krb5_enomem(context);
++    if (ret == 0 && EVP_PKEY_derive_init(pctx) != 1)
++        ret = krb5_enomem(context);
++    if (ret == 0 &&
++        EVP_PKEY_CTX_set_ecdh_kdf_type(pctx, EVP_PKEY_ECDH_KDF_NONE) != 1)
++        krb5_set_error_message(context, ret = KRB5KRB_ERR_GENERIC,
++                               "Could not generate an ECDH key agreement private key "
++                               "(EVP_PKEY_CTX_set_dh_kdf_type)");
++    if (ret == 0 &&
++        EVP_PKEY_derive_set_peer_ex(pctx, ec_key_pub, 1) != 1)
++        krb5_set_error_message(context, ret = KRB5KRB_ERR_GENERIC,
++                               "Could not generate an ECDH key agreement private key "
++                               "(EVP_PKEY_derive_set_peer_ex)");
++    if (ret == 0 &&
++        (EVP_PKEY_derive(pctx, NULL, &size) != 1 || size == 0))
++        krb5_set_error_message(context, ret = KRB5KRB_ERR_GENERIC,
++                               "Could not generate an ECDH key agreement private key "
++                               "(EVP_PKEY_derive)");
++    if (ret == 0 && (p = malloc(size)) == NULL)
++        ret = krb5_enomem(context);
++    if (ret == 0 &&
++        (EVP_PKEY_derive(pctx, p, &size) != 1 || size == 0))
++        krb5_set_error_message(context, ret = KRB5KRB_ERR_GENERIC,
++                               "Could not generate an ECDH key agreement private key "
++                               "(EVP_PKEY_derive)");
++
++    if (ret) {
++        EVP_PKEY_free(ephemeral);
++        ephemeral = NULL;
++        free(p);
++        p = NULL;
++        size = 0;
++    }
++
++    *ec_key_priv = ephemeral;
++    *dh_gen_keylen = size;
++    *dh_gen_key = p;
++
++    EVP_PKEY_CTX_free(pctx);
++    return ret;
++}
++#else
++
++/* The empty line above is intentional to work around an mkproto bug */
+ static krb5_error_code
+-generate_ecdh_keyblock(krb5_context context,
+-                       EC_KEY *ec_key_pk,    /* the client's public key */
+-                       EC_KEY **ec_key_key,  /* the KDC's ephemeral private */
+-                       unsigned char **dh_gen_key, /* shared secret */
+-                       size_t *dh_gen_keylen)
++generate_ecdh_keyblock_ossl11(krb5_context context,
++                              EC_KEY *ec_key_pk,    /* the client's public key */
++                              EC_KEY **ec_key_key,  /* the KDC's ephemeral private */
++                              unsigned char **dh_gen_key, /* shared secret */
++                              size_t *dh_gen_keylen)
+ {
+     const EC_GROUP *group;
+     EC_KEY *ephemeral;
+@@ -136,7 +206,7 @@ generate_ecdh_keyblock(krb5_context context,
+     EC_KEY_set_group(ephemeral, group);
+ 
+     if (EC_KEY_generate_key(ephemeral) != 1) {
+-	EC_KEY_free(ephemeral);
++       EC_KEY_free(ephemeral);
+         return krb5_enomem(context);
+     }
+ 
+@@ -165,6 +235,7 @@ generate_ecdh_keyblock(krb5_context context,
+ 
+     return 0;
+ }
++#endif
+ #endif /* HAVE_HCRYPTO_W_OPENSSL */
+ 
+ krb5_error_code
+@@ -175,20 +246,128 @@ _kdc_generate_ecdh_keyblock(krb5_context context,
+                             size_t *dh_gen_keylen)
+ {
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
+-    return generate_ecdh_keyblock(context, ec_key_pk,
+-                                  (EC_KEY **)ec_key_key,
+-                                  dh_gen_key, dh_gen_keylen);
++#ifdef HAVE_OPENSSL_30
++    return generate_ecdh_keyblock_ossl30(context, ec_key_pk,
++                                         (EVP_PKEY **)ec_key_key,
++                                         dh_gen_key, dh_gen_keylen);
++#else
++    return generate_ecdh_keyblock_ossl11(context, ec_key_pk,
++                                         (EC_KEY **)ec_key_key,
++                                         dh_gen_key, dh_gen_keylen);
++#endif
+ #else
+     return ENOTSUP;
+ #endif /* HAVE_HCRYPTO_W_OPENSSL */
+ }
+ 
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
++#ifdef HAVE_OPENSSL_30
+ static krb5_error_code
+-get_ecdh_param(krb5_context context,
+-               krb5_kdc_configuration *config,
+-               SubjectPublicKeyInfo *dh_key_info,
+-               EC_KEY **out)
++get_ecdh_param_ossl30(krb5_context context,
++                      krb5_kdc_configuration *config,
++                      SubjectPublicKeyInfo *dh_key_info,
++                      EVP_PKEY **out)
++{
++    EVP_PKEY_CTX *pctx = NULL;
++    EVP_PKEY *template = NULL;
++    EVP_PKEY *public = NULL;
++    OSSL_PARAM params[2];
++    krb5_error_code ret = 0;
++    ECParameters ecp;
++    const unsigned char *p;
++    const char *curve_sn = NULL;
++    size_t len;
++    char *curve_sn_dup = NULL;
++    int groupnid = NID_undef;
++
++    /* XXX Algorithm agility; XXX KRB5_BADMSGTYPE?? */
++
++    /*
++     * In order for d2i_PublicKey() to work we need to create a template key
++     * that has the curve parameters for the subjectPublicKey.
++     *
++     * Or maybe we could learn to use the OSSL_DECODER(3) API.  But this works,
++     * at least until OpenSSL deprecates d2i_PublicKey() and forces us to use
++     * OSSL_DECODER(3).
++     */
++
++    memset(&ecp, 0, sizeof(ecp));
++
++    if (dh_key_info->algorithm.parameters == NULL)
++	krb5_set_error_message(context, ret = KRB5_BADMSGTYPE,
++			       "PKINIT missing algorithm parameter "
++			       "in clientPublicValue");
++    if (ret == 0)
++        ret = decode_ECParameters(dh_key_info->algorithm.parameters->data,
++                                  dh_key_info->algorithm.parameters->length,
++                                  &ecp, &len);
++    if (ret == 0 && ecp.element != choice_ECParameters_namedCurve)
++        krb5_set_error_message(context, ret = KRB5_BADMSGTYPE,
++                               "PKINIT client used an unnamed curve");
++    if (ret == 0 &&
++        (groupnid = _hx509_ossl_oid2nid(&ecp.u.namedCurve)) == NID_undef)
++        krb5_set_error_message(context, ret = KRB5_BADMSGTYPE,
++                               "PKINIT client used an unsupported curve");
++    if (ret == 0 && (curve_sn = OBJ_nid2sn(groupnid)) == NULL)
++        krb5_set_error_message(context, ret = KRB5_BADMSGTYPE,
++                               "Could not resolve curve NID %d to its short name",
++                               groupnid);
++    if (ret == 0 && (curve_sn_dup = strdup(curve_sn)) == NULL)
++        ret = krb5_enomem(context);
++    if (ret == 0) {
++        if (der_heim_oid_cmp(&ecp.u.namedCurve, &asn1_oid_id_ec_group_secp256r1) != 0)
++            krb5_set_error_message(context, ret = KRB5_BADMSGTYPE,
++                                   "PKINIT client used an unsupported curve");
++    }
++    if (ret == 0) {
++        /*
++         * Apparently there's no error checking to be done here?  Why does
++         * OSSL_PARAM_construct_utf8_string() want a non-const for the value?
++         * Is that a bug in OpenSSL?
++         */
++        params[0] = OSSL_PARAM_construct_utf8_string(OSSL_PKEY_PARAM_GROUP_NAME,
++                                                     curve_sn_dup, 0);
++        params[1] = OSSL_PARAM_construct_end();
++
++        if ((pctx = EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL)) == NULL)
++            ret = krb5_enomem(context);
++    }
++    if (ret == 0 && EVP_PKEY_fromdata_init(pctx) != 1)
++        ret = krb5_enomem(context);
++    if (ret == 0 &&
++        EVP_PKEY_fromdata(pctx, &template, OSSL_KEYMGMT_SELECT_DOMAIN_PARAMETERS,
++                          params) != 1)
++        krb5_set_error_message(context, ret = KRB5_BADMSGTYPE,
++                               "Could not set up to parse key for curve %s",
++                               curve_sn);
++
++    p = dh_key_info->subjectPublicKey.data;
++    len = dh_key_info->subjectPublicKey.length / 8;
++    if (ret == 0 &&
++        (public = d2i_PublicKey(EVP_PKEY_EC, &template, &p, len)) == NULL)
++        krb5_set_error_message(context, ret = KRB5_BADMSGTYPE,
++                               "Could not decode PKINIT client ECDH key");
++
++    if (ret) {
++        EVP_PKEY_free(public);
++        public = NULL;
++    }
++
++    *out = public;
++
++    /* FYI the EVP_PKEY_CTX takes ownership of the `template' key */
++    EVP_PKEY_CTX_free(pctx);
++    free_ECParameters(&ecp);
++    free(curve_sn_dup);
++    return ret;
++}
++#else
++
++static krb5_error_code
++get_ecdh_param_ossl11(krb5_context context,
++                      krb5_kdc_configuration *config,
++                      SubjectPublicKeyInfo *dh_key_info,
++                      EC_KEY **out)
+ {
+     ECParameters ecp;
+     EC_KEY *public = NULL;
+@@ -198,30 +377,31 @@ get_ecdh_param(krb5_context context,
+     int nid;
+ 
+     if (dh_key_info->algorithm.parameters == NULL) {
+-	krb5_set_error_message(context, KRB5_BADMSGTYPE,
+-			       "PKINIT missing algorithm parameter "
+-			       "in clientPublicValue");
+-	return KRB5_BADMSGTYPE;
++       krb5_set_error_message(context, KRB5_BADMSGTYPE,
++                              "PKINIT missing algorithm parameter "
++                              "in clientPublicValue");
++       return KRB5_BADMSGTYPE;
+     }
++    /* XXX Algorithm agility; XXX KRB5_BADMSGTYPE?? */
+ 
+     memset(&ecp, 0, sizeof(ecp));
+ 
+     ret = decode_ECParameters(dh_key_info->algorithm.parameters->data,
+-			      dh_key_info->algorithm.parameters->length, &ecp, &len);
++                             dh_key_info->algorithm.parameters->length, &ecp, &len);
+     if (ret)
+-	goto out;
++       goto out;
+ 
+     if (ecp.element != choice_ECParameters_namedCurve) {
+-	ret = KRB5_BADMSGTYPE;
+-	goto out;
++       ret = KRB5_BADMSGTYPE;
++       goto out;
+     }
+ 
+     if (der_heim_oid_cmp(&ecp.u.namedCurve, &asn1_oid_id_ec_group_secp256r1) == 0)
+-	nid = NID_X9_62_prime256v1;
++       nid = NID_X9_62_prime256v1;
+     else {
+-	ret = KRB5_BADMSGTYPE;
+-	goto out;
+-    }
++       ret = KRB5_BADMSGTYPE;
++       goto out;
++   }
+ 
+     /* XXX verify group is ok */
+ 
+@@ -230,20 +410,21 @@ get_ecdh_param(krb5_context context,
+     p = dh_key_info->subjectPublicKey.data;
+     len = dh_key_info->subjectPublicKey.length / 8;
+     if (o2i_ECPublicKey(&public, &p, len) == NULL) {
+-	ret = KRB5_BADMSGTYPE;
+-	krb5_set_error_message(context, ret,
+-			       "PKINIT failed to decode ECDH key");
+-	goto out;
++       ret = KRB5_BADMSGTYPE;
++       krb5_set_error_message(context, ret,
++                              "PKINIT failed to decode ECDH key");
++       goto out;
+     }
+     *out = public;
+     public = NULL;
+ 
+  out:
+     if (public)
+-	EC_KEY_free(public);
++       EC_KEY_free(public);
+     free_ECParameters(&ecp);
+     return ret;
+ }
++#endif
+ #endif /* HAVE_HCRYPTO_W_OPENSSL */
+ 
+ krb5_error_code
+@@ -253,7 +434,11 @@ _kdc_get_ecdh_param(krb5_context context,
+                     void **out)
+ {
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
+-    return get_ecdh_param(context, config, dh_key_info, (EC_KEY **)out);
++#ifdef HAVE_OPENSSL_30
++    return get_ecdh_param_ossl30(context, config, dh_key_info, (EVP_PKEY **)out);
++#else
++    return get_ecdh_param_ossl11(context, config, dh_key_info, (EC_KEY **)out);
++#endif
+ #else
+     return ENOTSUP;
+ #endif /* HAVE_HCRYPTO_W_OPENSSL */
+@@ -265,13 +450,51 @@ _kdc_get_ecdh_param(krb5_context context,
+  */
+ 
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
++#ifdef HAVE_OPENSSL_30
+ static krb5_error_code
+-serialize_ecdh_key(krb5_context context,
+-                   EC_KEY *key,
+-                   unsigned char **out,
+-                   size_t *out_len)
++serialize_ecdh_key_ossl30(krb5_context context,
++                          EVP_PKEY *key,
++                          unsigned char **out,
++                          size_t *out_len)
++{
++    unsigned char *p;
++    int len;
++
++    *out = NULL;
++    *out_len = 0;
++
++    len = i2d_PublicKey(key, NULL);
++    if (len <= 0) {
++        krb5_set_error_message(context, EOVERFLOW,
++                               "PKINIT failed to encode ECDH key");
++        return EOVERFLOW;
++    }
++
++    *out = malloc(len);
++    if (*out == NULL)
++        return krb5_enomem(context);
++
++    p = *out;
++    len = i2d_PublicKey(key, &p);
++    if (len <= 0) {
++        free(*out);
++        *out = NULL;
++	krb5_set_error_message(context, EINVAL /* XXX Better error please */,
++			       "PKINIT failed to encode ECDH key");
++        return EINVAL;
++    }
++
++    *out_len = len * 8;
++    return 0;
++}
++#else
++
++static krb5_error_code
++serialize_ecdh_key_ossl11(krb5_context context,
++                          EC_KEY *key,
++                          unsigned char **out,
++                          size_t *out_len)
+ {
+-    krb5_error_code ret = 0;
+     unsigned char *p;
+     int len;
+ 
+@@ -279,8 +502,11 @@ serialize_ecdh_key(krb5_context context,
+     *out_len = 0;
+ 
+     len = i2o_ECPublicKey(key, NULL);
+-    if (len <= 0)
++    if (len <= 0) {
++        krb5_set_error_message(context, EOVERFLOW,
++                               "PKINIT failed to encode ECDH key");
+         return EOVERFLOW;
++    }
+ 
+     *out = malloc(len);
+     if (*out == NULL)
+@@ -291,16 +517,16 @@ serialize_ecdh_key(krb5_context context,
+     if (len <= 0) {
+         free(*out);
+         *out = NULL;
+-        ret = EINVAL; /* XXX Better error please */
+-	krb5_set_error_message(context, ret,
++	krb5_set_error_message(context, EINVAL /* XXX Better error please */,
+ 			       "PKINIT failed to encode ECDH key");
+-        return ret;
++        return EINVAL;
+     }
+ 
+     *out_len = len * 8;
+-    return ret;
++    return 0;
+ }
+ #endif
++#endif
+ 
+ krb5_error_code
+ _kdc_serialize_ecdh_key(krb5_context context,
+@@ -309,7 +535,11 @@ _kdc_serialize_ecdh_key(krb5_context context,
+                         size_t *out_len)
+ {
+ #ifdef HAVE_HCRYPTO_W_OPENSSL
+-    return serialize_ecdh_key(context, key, out, out_len);
++#ifdef HAVE_OPENSSL_30
++    return serialize_ecdh_key_ossl30(context, key, out, out_len);
++#else
++    return serialize_ecdh_key_ossl11(context, key, out, out_len);
++#endif
+ #else
+     return ENOTSUP;
+ #endif
