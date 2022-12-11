@@ -1,4 +1,4 @@
-From 332528c3af7669e5a25e85aa659bf84f194720d0 Mon Sep 17 00:00:00 2001
+From 90e47caebf5e3dc0320b7b79bd397d6b08351330 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?=D0=90=D0=BB=D0=B5=D0=BA=D1=81=D0=B5=D0=B8=CC=86=20=D0=9F?=
  =?UTF-8?q?=D0=B0=D0=B2=D0=BB=D0=BE=D0=B2?= <alexey.pawlow@gmail.com>
 Date: Sun, 14 Apr 2019 21:09:17 +0300
@@ -11,7 +11,7 @@ Subject: [PATCH 03/N] Rename dll from cygwin to msys
  winsup/cygwin/Makefile.am                     | 42 +++++++++---------
  winsup/cygwin/crt0.c                          |  8 ++++
  winsup/cygwin/cygthread.cc                    |  2 +-
- winsup/cygwin/cygwin.din                      |  4 +-
+ winsup/cygwin/cygwin.din                      |  6 +--
  winsup/cygwin/cygwin.sc.in                    |  4 ++
  winsup/cygwin/dcrt0.cc                        | 16 ++++---
  winsup/cygwin/dlfcn.cc                        |  5 +++
@@ -36,7 +36,6 @@ Subject: [PATCH 03/N] Rename dll from cygwin to msys
  winsup/cygwin/syscalls.cc                     |  4 +-
  winsup/cygwin/syslog.cc                       |  4 ++
  winsup/cygwin/winver.rc                       |  2 +-
- winsup/cygwin/x86_64.din                      | 14 ++++++
  winsup/testsuite/config/default.exp           |  8 ++--
  winsup/testsuite/cygrun.c                     |  6 +--
  winsup/testsuite/winsup.api/cygload.cc        | 12 +++---
@@ -49,8 +48,7 @@ Subject: [PATCH 03/N] Rename dll from cygwin to msys
  winsup/utils/mingw/strace.cc                  | 11 +++--
  winsup/utils/path.cc                          | 12 +++---
  winsup/utils/ssp.c                            |  8 ++--
- 44 files changed, 226 insertions(+), 109 deletions(-)
- create mode 100644 winsup/cygwin/x86_64.din
+ 43 files changed, 213 insertions(+), 110 deletions(-)
 
 diff --git a/winsup/Makefile.am b/winsup/Makefile.am
 index 9efdd4c..0946152 100644
@@ -95,7 +93,7 @@ index e101623..66272bc 100644
  
  /* Named pipes based transport, for security on NT */
 diff --git a/winsup/cygwin/Makefile.am b/winsup/cygwin/Makefile.am
-index 1d57e84..1a59ce1 100644
+index 8ba5ae2..56e72b2 100644
 --- a/winsup/cygwin/Makefile.am
 +++ b/winsup/cygwin/Makefile.am
 @@ -37,15 +37,15 @@ newlib_build=$(target_builddir)/newlib
@@ -122,7 +120,7 @@ index 1d57e84..1a59ce1 100644
  
  #
  # sources
-@@ -550,32 +550,32 @@ LIBSERVER = $(cygserver_blddir)/libcygserver.a
+@@ -555,32 +555,32 @@ LIBSERVER = $(cygserver_blddir)/libcygserver.a
  $(LIBSERVER):
  	$(MAKE) -C $(cygserver_blddir) libcygserver.a
  
@@ -161,7 +159,7 @@ index 1d57e84..1a59ce1 100644
  $(DBG_DLL_NAME): $(PRE_DLL_NAME)
  	$(AM_V_GEN)$(OBJCOPY) --add-gnu-debuglink=/dev/null \
  			      --only-keep-debug \
-@@ -588,7 +588,7 @@ $(NEW_DLL_NAME): $(PRE_DLL_NAME) $(DBG_DLL_NAME)
+@@ -593,7 +593,7 @@ $(NEW_DLL_NAME): $(PRE_DLL_NAME) $(DBG_DLL_NAME)
  			      --add-gnu-debuglink=$(DBG_DLL_NAME) \
  			      $(PRE_DLL_NAME) $(NEW_DLL_NAME)
  
@@ -170,7 +168,7 @@ index 1d57e84..1a59ce1 100644
  toolopts=--cpu=@target_cpu@ --ar=@AR@ --as=@AS@ --nm=@NM@ --objcopy=@OBJCOPY@
  
  $(DEF_FILE): scripts/gendef cygwin.din
-@@ -601,17 +601,18 @@ sigfe.s: $(DEF_FILE) tlsoffsets
+@@ -606,17 +606,18 @@ sigfe.s: $(DEF_FILE) tlsoffsets
  
  LIBCOS=$(addsuffix .o,$(basename $(LIB_FILES)))
  $(LIB_NAME): $(DEF_FILE) $(LIBCOS) | $(NEW_DLL_NAME)
@@ -192,7 +190,7 @@ index 1d57e84..1a59ce1 100644
  	--exclude='(?i:dll)' \
  	--exclude='reloc' \
  	--exclude='^main$$' \
-@@ -658,7 +659,7 @@ all-local: $(LIB_NAME) $(TEST_LIB_NAME) $(SUBLIBS)
+@@ -663,7 +664,7 @@ all-local: $(LIB_NAME) $(TEST_LIB_NAME) $(SUBLIBS)
  clean-local:
  	-rm -f $(BUILT_SOURCES)
  	-rm -f $(DEF_FILE) sigfe.s
@@ -201,7 +199,7 @@ index 1d57e84..1a59ce1 100644
  	-rm -f $(PRE_DLL_NAME) $(DBG_DLL_NAME) $(NEW_DLL_NAME)
  	-rm -f $(LIB_NAME) $(TEST_LIB_NAME) $(SUBLIBS)
  	-rm -f version.cc
-@@ -680,6 +681,7 @@ install-libs:
+@@ -685,6 +686,7 @@ install-libs:
  	@$(MKDIR_P) $(DESTDIR)$(bindir)
  	$(INSTALL_PROGRAM) $(NEW_DLL_NAME) $(DESTDIR)$(bindir)/$(DLL_NAME)
  	@$(MKDIR_P) $(DESTDIR)$(toollibdir)
@@ -209,7 +207,7 @@ index 1d57e84..1a59ce1 100644
  	(cd $(DESTDIR)$(toollibdir) && ln -sf $(LIB_NAME) libg.a)
  
  install-headers:
-@@ -702,7 +704,7 @@ install-ldif:
+@@ -707,7 +709,7 @@ install-ldif:
  uninstall-hook: uninstall-headers uninstall-ldif uninstall-libs
  
  uninstall-libs:
@@ -257,9 +255,15 @@ index 54918e7..518d11f 100644
    else
      thread_printf ("overflowed cygwin thread pool");
 diff --git a/winsup/cygwin/cygwin.din b/winsup/cygwin/cygwin.din
-index f1371af..d24c7d2 100644
+index f1371af..3167f04 100644
 --- a/winsup/cygwin/cygwin.din
 +++ b/winsup/cygwin/cygwin.din
+@@ -1,4 +1,4 @@
+-LIBRARY "cygwin1.dll" BASE=0x180040000
++LIBRARY "msys-2.0.dll" BASE=0x180040000
+ 
+ EXPORTS
+ # Exported variables
 @@ -398,8 +398,8 @@ cygwin_attach_handle_to_fd SIGFE
  cygwin_conv_path SIGFE
  cygwin_conv_path_list SIGFE
@@ -426,10 +430,10 @@ index c3433ab..b154a3b 100644
  	  break;
  	}
 diff --git a/winsup/cygwin/fhandler/pipe.cc b/winsup/cygwin/fhandler/pipe.cc
-index 720e4ef..2ba517b 100644
+index e231316..283319c 100644
 --- a/winsup/cygwin/fhandler/pipe.cc
 +++ b/winsup/cygwin/fhandler/pipe.cc
-@@ -657,7 +657,11 @@ fhandler_pipe::close ()
+@@ -671,7 +671,11 @@ fhandler_pipe::close ()
    return ret;
  }
  
@@ -577,7 +581,7 @@ index 1e4cf98..b77598b 100644
        }									      \
      }									      \
 diff --git a/winsup/cygwin/include/cygwin/version.h b/winsup/cygwin/include/cygwin/version.h
-index 4a9de4c..d09782a 100644
+index b05fcaf..032b6b0 100644
 --- a/winsup/cygwin/include/cygwin/version.h
 +++ b/winsup/cygwin/include/cygwin/version.h
 @@ -495,7 +495,11 @@ details. */
@@ -834,26 +838,6 @@ index 980d512..58878d4 100644
        VALUE "ProductVersion", STRINGIFY(CYGWIN_VERSION)
        VALUE "APIVersion", CYGWIN_API_VERSION
        VALUE "SharedMemoryVersion", STRINGIFY(CYGWIN_VERSION_SHARED_DATA)
-diff --git a/winsup/cygwin/x86_64.din b/winsup/cygwin/x86_64.din
-new file mode 100644
-index 0000000..38332c7
---- /dev/null
-+++ b/winsup/cygwin/x86_64.din
-@@ -0,0 +1,14 @@
-+LIBRARY "msys-2.0.dll" BASE=0x180040000
-+
-+EXPORTS
-+#Exported variables
-+environ = __cygwin_environ DATA
-+
-+#Exported functions
-+__wrap__Znam NOSIGFE                # void *operator new[](std::size_t sz) throw (std::bad_alloc)
-+__wrap__ZnamRKSt9nothrow_t NOSIGFE  # void *operator new[](std::size_t sz, const std::nothrow_t &nt) throw()
-+__wrap__Znwm NOSIGFE                # void *operator new(std::size_t sz) throw (std::bad_alloc)
-+__wrap__ZnwmRKSt9nothrow_t NOSIGFE  # void *operator new(std::size_t sz, const std::nothrow_t &nt) throw()
-+_alloca = __alloca NOSIGFE
-+_dll_crt0 NOSIGFE
-+dll_entry NOSIGFE
 diff --git a/winsup/testsuite/config/default.exp b/winsup/testsuite/config/default.exp
 index 7ef16ee..fd592c3 100644
 --- a/winsup/testsuite/config/default.exp
