@@ -1,0 +1,74 @@
+commit 7f4684c0d362fefee8697ceed3f4f8642ed147ce
+Author: William Marlow <william.marlow@ibm.com>
+Date:   Sat Jun 18 21:43:31 2022 +0100
+
+    Initial OpenSSL 3.0 support
+    
+    * Don't use deprecated functions when building against OpenSSL 3.0.
+    * Recognise that OpenSSL 3.0 can signal a dirty shutdown as a protocol.
+      error in addition to the expected IO error produced by OpenSSL 1.1.1
+    * Update regress_mbedtls.c for compatibility with OpenSSL 3
+    
+    (cherry picked from commit 29c420c418aeb497e5e8b7abd45dee39194ca5fc)
+    
+     Conflicts:
+            bufferevent_openssl.c
+            sample/becat.c
+            test/regress_mbedtls.c
+
+diff --git a/bufferevent_openssl.c b/bufferevent_openssl.c
+index b51b834b..520e2d6f 100644
+--- a/bufferevent_openssl.c
++++ b/bufferevent_openssl.c
+@@ -514,7 +514,9 @@ conn_closed(struct bufferevent_openssl *bev_ssl, int when, int errcode, int ret)
+ 		put_error(bev_ssl, errcode);
+ 		break;
+ 	case SSL_ERROR_SSL:
+-		/* Protocol error. */
++		/* Protocol error; possibly a dirty shutdown. */
++		if (ret == 0 && SSL_is_init_finished(bev_ssl->ssl) == 0)
++			dirty_shutdown = 1;
+ 		put_error(bev_ssl, errcode);
+ 		break;
+ 	case SSL_ERROR_WANT_X509_LOOKUP:
+diff --git a/sample/le-proxy.c b/sample/le-proxy.c
+index 13e0e2ae..e9af3c68 100644
+--- a/sample/le-proxy.c
++++ b/sample/le-proxy.c
+@@ -112,10 +112,15 @@ eventcb(struct bufferevent *bev, short what, void *ctx)
+ 				    ERR_reason_error_string(err);
+ 				const char *lib = (const char*)
+ 				    ERR_lib_error_string(err);
++#if OPENSSL_VERSION_MAJOR >= 3
++				fprintf(stderr,
++					"%s in %s\n", msg, lib);
++#else
+ 				const char *func = (const char*)
+ 				    ERR_func_error_string(err);
+ 				fprintf(stderr,
+ 				    "%s in %s %s\n", msg, lib, func);
++#endif
+ 			}
+ 			if (errno)
+ 				perror("connection error");
+diff --git a/test/regress_ssl.c b/test/regress_ssl.c
+index 37dc334d..490be9b2 100644
+--- a/test/regress_ssl.c
++++ b/test/regress_ssl.c
+@@ -374,7 +374,16 @@ eventcb(struct bufferevent *bev, short what, void *ctx)
+ 		++n_connected;
+ 		ssl = bufferevent_openssl_get_ssl(bev);
+ 		tt_assert(ssl);
++#if OPENSSL_VERSION_MAJOR >= 3
++		/* SSL_get1_peer_certificate() means we want
++		 * to increase the reference count on the cert
++		 * and so we will need to free it ourselves later
++		 * when we're done with it. The non-reference count
++		 * increasing version is not available in OpenSSL 1.1.1. */
++		peer_cert = SSL_get1_peer_certificate(ssl);
++#else
+ 		peer_cert = SSL_get_peer_certificate(ssl);
++#endif
+ 		if (type & REGRESS_OPENSSL_SERVER) {
+ 			tt_assert(peer_cert == NULL);
+ 		} else {
