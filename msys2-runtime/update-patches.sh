@@ -17,7 +17,7 @@ die "Clean worktree required"
 git rm 0*.patch ||
 die "Could not remove previous patches"
 
-base_tag=refs/tags/cygwin-"$(sed -ne 'y/./_/' -e 's/^pkgver=//p' <PKGBUILD)"-release
+base_tag=refs/tags/cygwin-"$(sed -ne 's/^pkgver=//p' <PKGBUILD)"
 msys2_branch=refs/heads/msys2-${base_tag#refs/tags/cygwin-}
 url=https://github.com/msys2/Cygwin
 
@@ -44,7 +44,8 @@ git -c core.abbrev=7 \
 		--suffix=.patch \
 		--subject-prefix=PATCH \
 		--output-directory .. \
-			$base_tag..$msys2_branch ||
+		$base_tag..$msys2_branch \
+		-- ':(exclude).github/' ||
 die "Could not generate new patch set"
 
 patches="$(ls -1 0*.patch)" &&
