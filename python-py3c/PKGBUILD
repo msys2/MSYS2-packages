@@ -4,13 +4,20 @@ _realname=py3c
 pkgbase="python-${_realname}"
 pkgname=("python-${_realname}")
 pkgver=1.4
-pkgrel=1
+pkgrel=2
 pkgdesc="A Python 2/3 compatibility layer for C extensions"
 arch=('i686' 'x86_64')
-license=('MIT')
+license=('spdx:MIT')
 url="https://github.com/encukou/py3c"
 depends=("python")
-makedepends=("python-setuptools" 'make' 'gcc')
+makedepends=(
+  'make'
+  'gcc'
+  "python-setuptools"
+  "python-wheel"
+  "python-build"
+  "python-installer"
+)
 source=("${_realname}-${pkgver}.tar.gz::https://github.com/encukou/py3c/archive/v${pkgver}.tar.gz")
 sha256sums=('abc745079ef906148817f4472c3fb4bc41d62a9ea51a746b53e09819494ac006')
 noextract=(${_realname}-${pkgver}.tar.gz)
@@ -20,14 +27,15 @@ build() {
   tar -xzf ${srcdir}/${_realname}-${pkgver}.tar.gz -C $srcdir || true
 
   cd "${srcdir}/${_realname}-${pkgver}"
-  /usr/bin/python setup.py build
+  python -m build --wheel --skip-dependency-check --no-isolation
   make prefix=/usr py3c.pc
 }
 
 package() {
   cd "${srcdir}/${_realname}-${pkgver}"
   make prefix="${pkgdir}"/usr install
-  /usr/bin/python setup.py install --prefix=/usr --root="${pkgdir}" -O1
+
+  python -m installer --destdir="${pkgdir}" dist/*.whl
 
   # Remove headers in broken location
   rm -r "${pkgdir}"/usr/include/python*
