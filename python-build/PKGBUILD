@@ -3,7 +3,7 @@
 _realname=build
 pkgname="python-${_realname}"
 pkgver=0.9.0
-pkgrel=1
+pkgrel=2
 pkgdesc="A simple, correct PEP517 package builder"
 arch=('any')
 url='https://github.com/pypa/build'
@@ -11,20 +11,32 @@ license=('spdx:MIT')
 depends=("python-packaging"
          "python-pep517"
          "python-tomli")
-makedepends=("python-setuptools")
-source=("${_realname}-$pkgver.tar.gz"::"https://pypi.org/packages/source/${_realname::1}/${_realname}/${_realname}-${pkgver}.tar.gz")
-sha256sums=('1a07724e891cbd898923145eb7752ee7653674c511378eb9c7691aab1612bc3c')
+makedepends=(
+  "python-flit-core"
+  "python-installer"
+)
+source=("${_realname}-$pkgver.tar.gz"::"https://pypi.org/packages/source/${_realname::1}/${_realname}/${_realname}-${pkgver}.tar.gz"
+        "001-use-flit.patch")
+sha256sums=('1a07724e891cbd898923145eb7752ee7653674c511378eb9c7691aab1612bc3c'
+            'ae7f1a3a1f39e517d280a6015dc9cde0e09155ad8ca86f3ba28614b8d42022f9')
+
+prepare() {
+  cd "${srcdir}/${_realname}-${pkgver}"
+
+  # https://github.com/pypa/build/pull/471
+  patch -Np1 -i "${srcdir}/001-use-flit.patch"
+}
 
 build() {
   cd "${srcdir}/${_realname}-${pkgver}"
 
-  python setup.py build
+  python -m flit_core.wheel
 }
 
 package() {
   cd "${srcdir}/${_realname}-${pkgver}"
 
-  python setup.py install --root="${pkgdir}" --optimize=1 --skip-build
+  python -m installer --destdir="${pkgdir}" dist/*.whl
 
   install -D -m644 LICENSE "${pkgdir}"/usr/share/licenses/python-${_realname}/LICENSE
 }
