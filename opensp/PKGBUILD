@@ -1,0 +1,50 @@
+pkgname=opensp
+pkgver=1.5.2
+pkgrel=1
+pkgdesc="A library and a set of tools for validating, parsing and manipulating SGML and XML documents"
+arch=('i686' 'x86_64')
+url="http://openjade.sourceforge.net/"
+license=('spdx:MIT')
+depends=('sgml-common' 'perl')
+makedepends=('xmlto' 'docbook-xsl' 'autotools' 'gcc')
+source=("https://downloads.sourceforge.net/project/openjade/opensp/$pkgver/OpenSP-$pkgver.tar.gz")
+sha256sums=('57f4898498a368918b0d49c826aa434bb5b703d2c3b169beb348016ab25617ce')
+
+build() {
+  cd OpenSP-$pkgver
+
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+  ./configure \
+    --build="${CYGWIN_CHOST}" \
+    --prefix=/usr \
+    --mandir=/usr/share/man \
+    --disable-nls \
+    --enable-http \
+    --enable-default-catalog=/etc/sgml/catalog \
+    --enable-default-search-path=/usr/share/sgml:/usr/share/xml \
+    --enable-xml-messages
+
+  make
+}
+
+check() {
+  cd OpenSP-$pkgver
+  make check || /bin/true
+}
+
+package() {
+  cd OpenSP-$pkgver
+  make DESTDIR="${pkgdir}" install
+
+  # add symlinks for compatibility with jade, see FS#49775
+  for file in nsgmls sgmlnorm spam spcat spent sx ; do
+    ln -s o$file "$pkgdir"/usr/bin/$file
+    echo ".so man1/o${file}.1" > "$pkgdir"/usr/share/man/man1/${file}.1
+  done
+
+  # Rename sx to sgml2xml; FS#49792
+  mv "$pkgdir"/usr/bin/sx "$pkgdir"/usr/bin/sgml2xml
+  mv "$pkgdir"/usr/share/man/man1/{sx,sgml2xml}.1
+  
+  install -D -m644 COPYING "${pkgdir}"/usr/share/licenses/$pkgname/LICENSE
+}
