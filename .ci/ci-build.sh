@@ -11,8 +11,6 @@ DIR="$( cd "$( dirname "$0" )" && pwd )"
 # Configure
 source "$DIR/ci-library.sh"
 mkdir artifacts
-git_config user.email 'ci@msys2.org'
-git_config user.name  'MSYS2 Continuous Integration'
 git remote add upstream 'https://github.com/MSYS2/MSYS2-packages'
 git fetch --quiet upstream
 # reduce time required to install packages by disabling pacman's disk space checking
@@ -21,9 +19,8 @@ sed -i 's/^CheckSpace/#CheckSpace/g' /etc/pacman.conf
 pacman --noconfirm -Fy
 
 # Detect
-list_commits  || failure 'Could not detect added commits'
 list_packages || failure 'Could not detect changed files'
-message 'Processing changes' "${commits[@]}"
+message 'Processing changes'
 test -z "${packages}" && success 'No changes in package recipes'
 
 # Build
@@ -35,59 +32,38 @@ repo-add $PWD/artifacts/ci.db.tar.gz
 sed -i '1s|^|[ci]\nServer = file://'"$PWD"'/artifacts/\nSigLevel = Never\n|' /etc/pacman.conf
 pacman -Sy
 
+# Remove git and python
+pacman -R --recursive --unneeded --noconfirm --noprogressbar git python
+
 # Enable linting
 export MAKEPKG_LINT_PKGBUILD=1
 
 message 'Building packages'
 for package in "${packages[@]}"; do
     echo "::group::[build] ${package}"
+    execute 'Clear cache' pacman -Scc --noconfirm
     execute 'Fetch keys' "$DIR/fetch-validpgpkeys.sh"
-    # Ensure the toolchain is installed before building the package
-    execute 'Installing the toolchain' pacman -S --needed --noconfirm --noprogressbar base-devel
     execute 'Building binary' makepkg --noconfirm --noprogressbar --nocheck --syncdeps --rmdeps --cleanbuild
-    execute 'Building source' makepkg --noconfirm --noprogressbar --allsource
+    repo-add $PWD/artifacts/ci.db.tar.gz $PWD/$package/*.pkg.tar.*
+    pacman -Sy
+    cp $PWD/$package/*.pkg.tar.* $PWD/artifacts
     echo "::endgroup::"
 
-    if [ -f $package/.ci-sequential ]; then
-        cd "$package"
-        for pkg in *.pkg.tar.*; do
-            pkgname="$(echo "$pkg" | rev | cut -d- -f4- | rev)"
-            echo "::group::[install] ${pkgname}"
-            grep -qFx "${package}" "$DIR/ci-dont-install-list.txt" || pacman --noprogressbar --upgrade --noconfirm $pkg
-            echo "::endgroup::"
-
-            echo "::group::[diff] ${pkgname}"
-            message "Package info diff for ${pkgname}"
-            diff -Nur <(pacman -Si "${pkgname}") <(pacman -Qip "${pkg}") || true
-
-            message "File listing diff for ${pkgname}"
-            diff -Nur <(pacman -Fl "$pkgname" | sed -e 's|^[^ ]* |/|' | sort) <(pacman -Ql "$pkgname" | sed -e 's|^[^/]*||' | sort) || true
-            echo "::endgroup::"
-
-            echo "::group::[uninstall] ${pkgname}"
-            message "Uninstalling $pkgname"
-            repo-add $PWD/../artifacts/ci.db.tar.gz $PWD/$pkg
-            pacman -Sy
-            pacman -R --recursive --unneeded --noconfirm --noprogressbar "$pkgname"
-            echo "::endgroup::"
-        done
-        cd - > /dev/null
-    else
-        echo "::group::[install] ${package}"
-        grep -qFx "${package}" "$DIR/ci-dont-install-list.txt" || execute 'Installing' install_packages
+    cd "$package"
+    for pkg in *.pkg.tar.*; do
+        pkgname="$(echo "$pkg" | rev | cut -d- -f4- | rev)"
+        echo "::group::[install] ${pkgname}"
+        grep -qFx "${package}" "$DIR/ci-dont-install-list.txt" || pacman --noprogressbar --upgrade --noconfirm $pkg
         echo "::endgroup::"
 
-        echo "::group::[diff] ${package}"
-        cd "$package"
-        for pkg in *.pkg.tar.*; do
-            pkgname="$(echo "$pkg" | rev | cut -d- -f4- | rev)"
-            message "Package info diff for ${pkgname}"
-            diff -Nur <(pacman -Si "${pkgname}") <(pacman -Qip "${pkg}") || true
+        echo "::group::[meta-diff] ${pkgname}"
+        message "Package info diff for ${pkgname}"
+        diff -Nur <(pacman -Si ${MSYSTEM,,}/"${pkgname}") <(pacman -Qip "${pkg}") || true
+        echo "::endgroup::"
 
-            message "File listing diff for ${pkgname}"
-            diff -Nur <(pacman -Fl "$pkgname" | sed -e 's|^[^ ]* |/|' | sort) <(pacman -Ql "$pkgname" | sed -e 's|^[^/]*||' | sort) || true
-        done
-        cd - > /dev/null
+        echo "::group::[file-diff] ${pkgname}"
+        message "File listing diff for ${pkgname}"
+        diff -Nur <(pacman -Fl ${MSYSTEM,,}/"$pkgname" | sed -e 's|^[^ ]* |/|' | sort) <(pacman -Ql "$pkgname" | sed -e 's|^[^/]*||' | sort) || true
         echo "::endgroup::"
 
         echo "::group::[dll check] ${package}"
@@ -95,23 +71,14 @@ for package in "${packages[@]}"; do
         execute 'Checking dll bases' list_dll_bases ./pkg
         echo "::endgroup::"
 
-        echo "::group::[uninstall] ${package}"
-        repo-add $PWD/artifacts/ci.db.tar.gz "${package}"/*.pkg.tar.*
-        pacman -Sy
-        message "Uninstalling $package"
-        cd "$package"
-        export installed_packages=()
-        for pkg in *.pkg.tar.*; do
-            installed_packages+=("$(echo "$pkg" | rev | cut -d- -f4- | rev)")
-        done
-        grep -qFx "${package}" "$DIR/ci-dont-install-list.txt" || pacman -R --recursive --unneeded --noconfirm --noprogressbar "${installed_packages[@]}"
-        unset installed_packages
-        cd - > /dev/null
+        echo "::group::[uninstall] ${pkgname}"
+        message "Uninstalling $pkgname"
+        pacman -R --recursive --unneeded --noconfirm --noprogressbar "$pkgname"
         echo "::endgroup::"
-    fi
+    done
+    cd - > /dev/null
 
-    mv "${package}"/*.pkg.tar.* artifacts
-    mv "${package}"/*.src.tar.* artifacts
+    rm -f "${package}"/*.pkg.tar.*
     unset package
 done
 success 'All packages built successfully'

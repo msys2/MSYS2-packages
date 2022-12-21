@@ -11,23 +11,44 @@ on:
 jobs:
   build:
     if: ${{ github.event_name != 'push' || github.ref != 'refs/heads/master'}}
-    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include: [
+          { msystem: MSYS, runner: windows-2022 },
+        ]
+    name: ${{ matrix.msystem }}
+    runs-on: ${{ matrix.runner }}
 
     steps:
+      - name: Get CPU Name
+        run : |
+          Get-CIMInstance -Class Win32_Processor | Select-Object -Property Name
+
+      - name: Configure Pagefile
+        if: ${{ matrix.msystem != 'CLANGARM64' }}
+        uses: al-cheb/configure-pagefile-action@86589fd789a4de3e62ba628dda2cb10027b66d67
+        with:
+          minimum-size: 4GB
+          maximum-size: 16GB
+          disk-root: "C:"
+
       - uses: actions/checkout@v3
         with:
           path: temp
           fetch-depth: 0
+          persist-credentials: false
 
       # to match the autobuild environment
       - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
+          architecture: 'x64'
 
       - uses: msys2/setup-msys2@v2
         with:
-          msystem: MSYS
-          install: VCS base-devel pactoys
+          msystem: ${{ matrix.msystem }}
+          install: git python base-devel pactoys
           update: true
 
       - name: Add staging repo
@@ -42,6 +63,7 @@ jobs:
 
       - name: Move Checkout
         run: |
+          If (Test-Path "C:\_") { rm -r -fo "C:\_" }
           Copy-Item -Path ".\temp" -Destination "C:\_" -Recurse
 
       - name: CI-Build
@@ -51,16 +73,11 @@ jobs:
           ./.ci/ci-build.sh
 
       - name: "Upload binaries"
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v3
         with:
-          name: msys2-packages
+          name: ${{ matrix.msystem }}-packages
           path: C:/_/artifacts/*.pkg.tar.*
-
-      - name: "Upload sources"
-        uses: actions/upload-artifact@v3
-        with:
-          name: sources
-          path: C:/_/artifacts/*.src.tar.*
 
   package-grokker:
     runs-on: ubuntu-latest
