@@ -1,0 +1,48 @@
+pkgname=lynx
+pkgver=2.8.9
+_relver=${pkgver}rel.1
+pkgrel=1
+pkgdesc="A text browser for the World Wide Web"
+url="https://lynx.invisible-island.net/"
+arch=('i686' 'x86_64')
+license=('GPL')
+depends=('openssl' 'libidn' 'ncurses')
+makedepends=('gcc' 'autotools' 'openssl-devel' 'libidn-devel' 'ncurses-devel')
+backup=('etc/lynx.cfg')
+source=("https://invisible-mirror.net/archives/lynx/tarballs/${pkgname}${_relver}.tar.bz2"{,.asc}
+        'CVE-2021-38165.diff')
+sha256sums=('387f193d7792f9cfada14c60b0e5c0bff18f227d9257a39483e14fa1aaf79595'
+            'SKIP'
+            '693f025a6886b555cc8d7b655de8e62bd8af870a74909e6a4b6cec6e3736dd0d')
+validpgpkeys=('C52048C0C0748FEE227D47A2702353E0F7E48EDB')
+
+prepare() {
+  cd "${srcdir}/${pkgname}${_relver}"
+  patch --forward --strip=1 --input="${srcdir}/CVE-2021-38165.diff"
+}
+
+build() {
+  cd "${srcdir}/${pkgname}${_relver}"
+
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+  ./configure \
+    --build=${CYGWIN_CHOST} \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --with-ssl=/usr \
+    --enable-nls \
+    --enable-ipv6 \
+    --mandir=/usr/share/man
+  make
+}
+
+package() {
+  cd "${srcdir}/${pkgname}${_relver}"
+  make DESTDIR="${pkgdir}" install
+
+  # FS#20404 - points to local help
+  sed -i -e "s|^HELPFILE.*$|HELPFILE:file:///usr/share/doc/lynx/lynx_help/lynx_help_main.html|" "${pkgdir}/etc/lynx.cfg"
+
+  install -d "${pkgdir}/usr/share/doc/lynx"
+  cp -rf lynx_help "${pkgdir}/usr/share/doc/lynx"
+}
