@@ -49,6 +49,11 @@ for package in "${packages[@]}"; do
     cp $PWD/$package/*.pkg.tar.* $PWD/artifacts
     echo "::endgroup::"
 
+    echo "::group::[dll check] ${package}"
+    execute 'Checking dll depencencies' list_dll_deps ./pkg
+    execute 'Checking dll bases' list_dll_bases ./pkg
+    echo "::endgroup::"
+
     cd "$package"
     for pkg in *.pkg.tar.*; do
         pkgname="$(echo "$pkg" | rev | cut -d- -f4- | rev)"
@@ -64,11 +69,6 @@ for package in "${packages[@]}"; do
         echo "::group::[file-diff] ${pkgname}"
         message "File listing diff for ${pkgname}"
         diff -Nur <(pacman -Fl ${MSYSTEM,,}/"$pkgname" | sed -e 's|^[^ ]* |/|' | sort) <(pacman -Ql "$pkgname" | sed -e 's|^[^/]*||' | sort) || true
-        echo "::endgroup::"
-
-        echo "::group::[dll check] ${package}"
-        execute 'Checking dll depencencies' list_dll_deps ./pkg
-        execute 'Checking dll bases' list_dll_bases ./pkg
         echo "::endgroup::"
 
         echo "::group::[uninstall] ${pkgname}"
