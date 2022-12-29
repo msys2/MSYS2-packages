@@ -1,0 +1,47 @@
+# Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
+
+pkgname=libbsd
+pkgver=0.11.7
+pkgrel=1
+pkgdesc='Provides useful functions commonly found on BSD systems like strlcpy()'
+arch=('i686' 'x86_64')
+url="https://libbsd.freedesktop.org"
+license=('custom')
+depends=('libmd')
+makedepends=("gcc" "autotools" "make")
+source=("https://libbsd.freedesktop.org/releases/$pkgname-$pkgver.tar.xz"{,.asc}
+        "001-random-hackery.patch")
+sha256sums=('9baa186059ebbf25c06308e9f991fda31f7183c0f24931826d83aa6abd8a0261'
+            'SKIP'
+            'f598c878c1ec81feae3edc562f014f5293b9b50f24ff227b3e9773297c973d13')
+validpgpkeys=('4F3E74F436050C10F5696574B972BF3EA4AE57A3') # Guillem Jover
+
+prepare() {
+  cd "${pkgname}-${pkgver}"
+
+  patch -p1 -i "${srcdir}/001-random-hackery.patch"
+
+  autoreconf -vfi
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+  ./configure \
+    --build="${CYGWIN_CHOST}" \
+    --prefix=/usr
+  make
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  make check
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+
+  make DESTDIR="$pkgdir" install
+  install -D -m644 COPYING "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
