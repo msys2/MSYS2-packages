@@ -1,38 +1,41 @@
 # Maintainer: LoveSy <shana@zju.edu.cn>
 
 pkgname="openbsd-netcat"
-pkgver=1.217_2
+pkgver=1.219_1
 pkgrel=1
 pkgdesc="TCP/IP swiss army knife. OpenBSD variant."
 arch=('i686' 'x86_64')
 url="https://packages.debian.org/sid/netcat-openbsd"
 license=('BSD')
+depends=('libbsd')
 makedepends=('make' 'gcc')
 provides=('netcat')
 conflicts=('gnu-netcat')
-source=("http://ftp.debian.org/debian/pool/main/n/netcat-openbsd/netcat-openbsd_${pkgver%_*}.orig.tar.gz"
-        "http://ftp.debian.org/debian/pool/main/n/netcat-openbsd/netcat-openbsd_${pkgver/_/-}.debian.tar.xz"
-        "openbsd-netcat.patch")
-sha256sums=('fcb551d9987fd51d020c62b6d81df0c2bb17ce1887bbc3fda4d28313791cc0f5'
-            'ffc8e45798103942c8b4cf573c9f993a0e257e2f80c06d451043d96cd36b1712'
-            'a55a35b0dc3a600324295235a7eea5dc5abada6e5506ba318087abd6c0c7766c')
+source=("https://salsa.debian.org/debian/netcat-openbsd/-/archive/debian/${pkgver/_/-}/netcat-openbsd-debian-${pkgver/_/-}.tar.gz"
+        "001-msys2-build-fix.patch")
+sha256sums=('25fb463ba60d2c54f3f44ddd45d122e9a95b9cc2a2f4dfb264b5b2d0adfc9265'
+            '60d725e13cebeb3b40574d41f0218f89c4fe2982118fb80c4ecc9c19b3df9892')
 
 prepare() {
-  cd "$srcdir"/netcat-openbsd-${pkgver%_*}
-  for i in `cat ../debian/patches/series`; do
+  cd netcat-openbsd-debian-${pkgver/_/-}
+  for i in `cat debian/patches/series`; do
     echo "** patch $i" 1>&2
-    cat "../debian/patches/$i"
+    cat "debian/patches/$i"
   done | patch -p1
-  patch -p1 -i "${srcdir}/openbsd-netcat.patch"
+
+  patch -p1 -i "${srcdir}/001-msys2-build-fix.patch"
 }
 
 build() {
-  cd "$srcdir"/netcat-openbsd-${pkgver%_*}
-  make
+  cd netcat-openbsd-debian-${pkgver/_/-}
+
+  make \
+    CFLAGS="$CFLAGS -DDEBIAN_VERSION=\"\\\"${pkgrel}\\\"\"" \
+    LDFLAGS="$LDFLAGS -lbsd"
 }
 
 package() {
-  cd "$srcdir"/netcat-openbsd-${pkgver%_*}
+  cd netcat-openbsd-debian-${pkgver/_/-}
   install -Dm0755 nc "$pkgdir"/usr/bin/nc
   ln -s nc "$pkgdir"/usr/bin/netcat
   install -Dm0644 nc.1 "$pkgdir"/usr/share/man/man1/nc.1
