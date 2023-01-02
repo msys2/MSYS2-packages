@@ -2,38 +2,44 @@
 
 pkgbase=bisoncpp
 pkgname=bisonc++
-pkgver=6.04.00
+pkgver=6.04.04
 pkgrel=1
 pkgdesc='C++ parser generator'
 arch=('i686' 'x86_64')
 url='https://fbb-git.gitlab.io/bisoncpp/'
 license=('GPL')
-# Versions taken from the 'required' file in sources
-depends=('libbobcat>=4.02.00')
-makedepends=('icmake>=8.01.00' 'yodl>=3.08.01' 'libbobcat-devel>=4.02.00' 'gcc')
-optdepends=()
-source=("${pkgbase}::git+https://gitlab.com/fbb-git/bisoncpp.git#tag=${pkgver}"
-        "manual_license.patch")
-sha256sums=('SKIP'
+depends=('libbobcat')
+makedepends=('icmake'
+             'gcc'
+             'libbobcat-devel'
+             'yodl'
+            )
+source=("https://gitlab.com/fbb-git/bisoncpp/-/archive/${pkgver}/bisoncpp-${pkgver}.tar.gz"
+        'manual_license.patch'
+        )
+# need to untar gz-file manually, since makepkg's untar program seems
+# not to be able to handle symlinks in the gz-file
+noextract=("bisoncpp-${pkgver}.tar.gz")
+sha256sums=('55df315fb925933ddd0ec4537e67275a62e454768badd4cf0baa1c84ec6237ab'
             '6f41ebf87253fe458bd4ed5df297e2c69f10bdb73b929297a233df5bd0cd993e')
 
-build() {
-  cd "${srcdir}/${pkgbase}/bisonc++"
+prepare() {
+  # unzip manually
+  tar -xf "bisoncpp-${pkgver}.tar.gz"
 
+  cd "${srcdir}/${pkgbase}-${pkgver}/bisonc++"
   patch -p1 -i "$srcdir/manual_license.patch"
-  CXXFLAGS="$CXXFLAGS --std=c++17"
-  # Add the -P option not to use precompiled headers, which can be useful since
-  # they require a lot of free space, compared to a normal compilation:
-  # ./build -P program
+}
+
+build() {
+  cd "${srcdir}/${pkgbase}-${pkgver}/bisonc++"
   ./build program
   ./build man
-  ./build manual
 }
 
 package() {
-  cd "${srcdir}/${pkgbase}/bisonc++"
+  cd "${srcdir}/${pkgbase}-${pkgver}/bisonc++"
 
-  # Since 4.12.00, first argument to install is <what to install> (x = all),
-  # and second is the base directory
-  ./build install x "${pkgdir}"
+  ./build install bm "${pkgdir}"
+  rm -fr "${pkgdir}/usr/share/doc/"
 }
