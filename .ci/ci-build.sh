@@ -73,7 +73,7 @@ for package in "${packages[@]}"; do
 
         echo "::group::[uninstall] ${pkgname}"
         message "Uninstalling $pkgname"
-        pacman -R --recursive --unneeded --noconfirm --noprogressbar "$pkgname"
+        grep -qFx "${package}" "$DIR/ci-dont-install-list.txt" || pacman -R --recursive --unneeded --noconfirm --noprogressbar "$pkgname"
         echo "::endgroup::"
     done
     cd - > /dev/null
