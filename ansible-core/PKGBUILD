@@ -1,0 +1,45 @@
+# Maintainer: Alexandre Ferreira <contact@alexjorgef.com>
+
+pkgname=ansible-core
+pkgver=2.14.1
+pkgrel=1
+pkgdesc='Radically simple IT automation platform'
+arch=('any')
+url='https://pypi.org/project/ansible-core'
+license=('spdx:GPL-3.0-or-later')
+depends=('python' 'python-yaml' 'python-jinja' 'python-packaging' 'msys2-runtime-devel')
+provides=('python-ansible' 'ansible-base')
+optdepends=(
+	'sshpass: for ssh connections with password'
+)
+makedepends=('tar' 'python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+replaces=('ansible-base')
+backup=('etc/ansible/ansible.cfg')
+source=("https://pypi.python.org/packages/source/a/ansible-core/ansible-core-${pkgver}.tar.gz")
+sha512sums=('d3710aff1dbb04746b663b7c987c3597005dd8633df82f645312e20ddb9c679e7315968c0cf2876ae22ba91d17e4c54ef9cbdb6b825ee1d6f4229e887f8b4571')
+noextract=("${pkgname}-${pkgver}.tar.gz")
+
+prepare() {
+  [[ -d ${pkgname}-${pkgver} ]] && rm -rf ${pkgname}-${pkgver}
+  # Workaround an issue with symbolic links in the tarball.
+  tar zxf "${srcdir}/${pkgname}-${pkgver}.tar.gz" || true
+  MSYS=winsymlinks:lnk tar zxf "${srcdir}/${pkgname}-${pkgver}.tar.gz"
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  python -m build --wheel --skip-dependency-check --no-isolation
+}
+
+package() {
+  cd ${pkgname}-${pkgver}
+  python -m installer --destdir="${pkgdir}" dist/*.whl
+  install -Dm644 COPYING "${pkgdir}"/usr/share/doc/${pkgname}/COPYING
+
+  install -d "${pkgdir}"/usr/share/ansible/doc
+  cp -dpr --no-preserve=ownership ./examples "${pkgdir}"/usr/share/ansible/doc/
+  install -Dm644 examples/ansible.cfg "${pkgdir}"/etc/ansible/ansible.cfg
+
+  install -d "${pkgdir}"/usr/share/man/man1
+  cp -dpr --no-preserve=ownership docs/man/man1/*.1 "${pkgdir}"/usr/share/man/man1
+}
