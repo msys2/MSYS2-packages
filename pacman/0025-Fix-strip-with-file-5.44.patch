@@ -1,0 +1,41 @@
+From e782c7968f1eb004204c22cc6e602e01f146745f Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Mon, 16 Jan 2023 18:08:32 +0100
+Subject: [PATCH 25/N] Fix strip with file >= 5.44
+
+file 5.44 no longer reports .exe and .dll as "application/x-dosexec",
+but as "application/vnd.microsoft.portable-executable".
+Likely related to https://github.com/file/file/commit/d22701be6a71b946eacb
+
+This leads to pacman no longer stripping binaries resulting in very larger
+packages.
+
+When looking for files to strip check for both strings instead.
+---
+ scripts/libmakepkg/tidy/strip.sh.in | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/scripts/libmakepkg/tidy/strip.sh.in b/scripts/libmakepkg/tidy/strip.sh.in
+index 7324fc3..cd9cd9a 100644
+--- a/scripts/libmakepkg/tidy/strip.sh.in
++++ b/scripts/libmakepkg/tidy/strip.sh.in
+@@ -40,7 +40,7 @@ strip_file() {
+ 	local binary=$1; shift
+ 
+ 	case "$(file -bi "$binary")" in
+-	*application/x-dosexec*)
++	*application/x-dosexec* | *application/vnd.microsoft.portable-executable*)
+ 		if check_option "debug" "y"; then
+ 			if [[ -f "$dbgdir/$binary.debug" ]]; then
+ 				return
+@@ -201,7 +201,9 @@ tidy_strip() {
+ 			chmod 0755 "${binary}";
+ 
+ 			case "$(@FILECMD@ -bi "$binary")" in
+-				*application/x-dosexec*) # Windows executables and dlls
++				*application/x-dosexec*) # Windows executables and dlls (file <=5.43)
++					strip_flags="$STRIP_SHARED";;
++				*application/vnd.microsoft.portable-executable*) # Windows executables and dlls (file >=5.44)
+ 					strip_flags="$STRIP_SHARED";;
+ 				*application/x-archive*) # Static and Import Libraries (*.a and *.dll.a)
+ 					strip_flags="$STRIP_STATIC"
