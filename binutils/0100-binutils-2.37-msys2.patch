@@ -601,8 +601,8 @@ diff -Naur binutils-2.37-orig/configure binutils-2.37/configure
  # Disable the go frontend on systems where it is known to not work. Please keep
  # this in sync with contrib/config-list.mk.
  case "${target}" in
--*-*-darwin* | *-*-cygwin* | *-*-mingw*)
-+*-*-darwin* | *-*-cygwin* | *-*-msys* | *-*-mingw*)
+-*-*-darwin* | *-*-cygwin* | *-*-mingw* | bpf-* )
++*-*-darwin* | *-*-cygwin* | *-*-msys* | *-*-mingw* | bpf-* )
      unsupported_languages="$unsupported_languages go"
      ;;
  esac
@@ -703,8 +703,8 @@ diff -Naur binutils-2.37-orig/configure.ac binutils-2.37/configure.ac
  # Disable the go frontend on systems where it is known to not work. Please keep
  # this in sync with contrib/config-list.mk.
  case "${target}" in
--*-*-darwin* | *-*-cygwin* | *-*-mingw*)
-+*-*-darwin* | *-*-cygwin* | *-*-msys* | *-*-mingw*)
+-*-*-darwin* | *-*-cygwin* | *-*-mingw* | bpf-* )
++*-*-darwin* | *-*-cygwin* | *-*-msys* | *-*-mingw* | bpf-* )
      unsupported_languages="$unsupported_languages go"
      ;;
  esac
@@ -1259,36 +1259,33 @@ diff -Naur binutils-2.37-orig/ld/configure binutils-2.37/ld/configure
  
  $as_echo "#define USE_BINARY_FOPEN 1" >>confdefs.h
   ;;
-diff -Naur binutils-2.37-orig/ld/configure.tgt binutils-2.37/ld/configure.tgt
---- binutils-2.37-orig/ld/configure.tgt	2021-11-30 08:19:34.438848400 +0100
-+++ binutils-2.37/ld/configure.tgt	2021-11-30 09:22:49.586172000 +0100
-@@ -380,7 +380,7 @@
+--- binutils-2.40/ld/configure.tgt.orig	2023-01-14 01:00:00.000000000 +0100
++++ binutils-2.40/ld/configure.tgt	2023-01-20 15:35:12.691627700 +0100
+@@ -428,7 +428,7 @@
  i[3-7]86-*-pe)		targ_emul=i386pe ;
- 			targ_extra_ofiles="deffilep.o pe-dll.o"
+ 			targ_extra_ofiles="deffilep.o pdb.o pe-dll.o"
  			;;
 -i[3-7]86-*-cygwin*)	targ_emul=i386pe ;
 +i[3-7]86-*-cygwin* | i[3-7]86-*-msys*)	targ_emul=i386pe ;
- 			targ_extra_ofiles="deffilep.o pe-dll.o" ;
+ 			targ_extra_ofiles="deffilep.o pdb.o pe-dll.o" ;
  			test "$targ" != "$host" && LIB_PATH='${tooldir}/lib/w32api'
  			;;
-@@ -992,7 +992,7 @@
+@@ -1049,7 +1049,7 @@
  			targ_extra_emuls=i386pe ;
- 			targ_extra_ofiles="deffilep.o pep-dll.o pe-dll.o"
+ 			targ_extra_ofiles="deffilep.o pdb.o pep-dll-x86_64.o pe-dll.o"
  			;;
 -x86_64-*-cygwin)	targ_emul=i386pep ;
 +x86_64-*-cygwin | x86_64-*-msys)	targ_emul=i386pep ;
  			targ_extra_emuls=i386pe
- 			targ_extra_ofiles="deffilep.o pep-dll.o pe-dll.o"
+ 			targ_extra_ofiles="deffilep.o pdb.o pep-dll.o pe-dll.o"
  			test "$targ" != "$host" && LIB_PATH='${tooldir}/lib/w32api'
-@@ -1075,6 +1075,10 @@
-   NATIVE_LIB_DIRS='/usr/lib /usr/lib/w32api'
+@@ -1134,7 +1134,7 @@
+   NATIVE_LIB_DIRS='/lib'
    ;;
  
-+i[03-9x]86-*-msys* | x86_64-*-msys*)
-+  NATIVE_LIB_DIRS='/usr/lib /usr/lib/w32api'
-+  ;;
-+
- *-*-linux*)
+-i[03-9x]86-*-cygwin* | x86_64-*-cygwin*)
++i[03-9x]86-*-cygwin* | x86_64-*-cygwin* | i[03-9x]86-*-msys* | x86_64-*-msys*)
+   NATIVE_LIB_DIRS='/usr/lib /usr/lib/w32api'
    ;;
  
 --- binutils-2.39/ld/emultempl/pe.em.orig	2022-07-08 11:46:48.000000000 +0200
@@ -1323,15 +1320,14 @@ diff -Naur binutils-2.37-orig/ld/emultempl/pep.em binutils-2.37/ld/emultempl/pep
      move_default_addr_high=1
      ;;
    *)
-diff -Naur binutils-2.37-orig/ld/pe-dll.c binutils-2.37/ld/pe-dll.c
---- binutils-2.37-orig/ld/pe-dll.c	2021-11-30 08:19:34.460975500 +0100
-+++ binutils-2.37/ld/pe-dll.c	2021-11-30 09:10:49.291698800 +0100
+--- binutils-2.40/ld/pe-dll.c.orig	2023-01-14 01:00:00.000000000 +0100
++++ binutils-2.40/ld/pe-dll.c	2023-01-20 15:26:23.296956500 +0100
 @@ -209,6 +209,7 @@
    { STRING_COMMA_LEN ("_NULL_IMPORT_DESCRIPTOR") },
    /* Entry point symbols, and entry hooks.  */
    { STRING_COMMA_LEN ("cygwin_crt0") },
 +  { STRING_COMMA_LEN ("msys_crt0") },
- #ifdef pe_use_x86_64
+ #ifdef pe_use_plus
    { STRING_COMMA_LEN ("DllMain") },
    { STRING_COMMA_LEN ("DllEntryPoint") },
 @@ -216,6 +217,9 @@
@@ -1355,7 +1351,7 @@ diff -Naur binutils-2.37-orig/ld/pe-dll.c binutils-2.37/ld/pe-dll.c
  #endif
    { STRING_COMMA_LEN ("cygwin_premain0") },
    { STRING_COMMA_LEN ("cygwin_premain1") },
-@@ -337,6 +345,7 @@
+@@ -347,6 +355,7 @@
  {
    { STRING_COMMA_LEN ("libcegcc") },
    { STRING_COMMA_LEN ("libcygwin") },
