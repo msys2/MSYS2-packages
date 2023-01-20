@@ -1,16 +1,13 @@
 # Maintainer: Jeremy Drake <github@jdrake.com>
 
 pkgname=cygutils
-pkgver=1.4.16.7
+pkgver=1.4.17
 pkgrel=1
 pkgdesc="${pkgname} is a collection of simple utilities"
 arch=('i686' 'x86_64')
 url="https://cygwin.org/"
-license=('GPL')
-#options=('debug' '!strip')
-# Nothing in this package directly depends on libintl/libiconv, only indirectly
-# via popt
-depends=('gcc-libs' 'popt')
+license=('spdx:GPL-3.0-or-later')
+depends=('gcc-libs' 'popt' 'libiconv' 'libintl')
 makedepends=('gcc'
              'gettext-devel'
              'git'
@@ -20,15 +17,12 @@ makedepends=('gcc'
 conflicts=('winln')
 replaces=('winln')
 provides=('winln')
-_commit='936dce44b5799e3fd6926b9faacd9046cf5f2aaa'
-source=("${pkgname}-${pkgver}::git+https://sourceware.org/git/cygwin-apps/${pkgname}.git#commit=${_commit}"
-        msysize.patch)
-sha256sums=(SKIP
-            '814b5a1df4f5a5071387feb948a951ba3756e3be13d405bf8180a80cc6443ac0')
+_commit='a804501b8c33c55a45a87b6e505b4e5db41e4f2f'
+source=("${pkgname}-${pkgver}::git+https://sourceware.org/git/cygwin-apps/${pkgname}.git#commit=${_commit}")
+sha256sums=('SKIP')
 
 prepare(){
   cd ${pkgname}-${pkgver}
-  patch -p1 -i ${srcdir}/msysize.patch
 
   autoreconf -fi
 }
@@ -37,11 +31,15 @@ build() {
   mkdir -p "${srcdir}/build-${CHOST}"
   cd "${srcdir}/build-${CHOST}"
 
+  CXXFLAGS+=" -std=gnu++14"
+
+  export MSYSTEM=CYGWIN
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
   ../${pkgname}-${pkgver}/configure \
     --prefix=/usr \
-    --build=${CHOST} \
-    --host=${CHOST} \
-    --target=${CHOST}
+    --build=${CYGWIN_CHOST} \
+    --host=${CYGWIN_CHOST} \
+    --target=${CYGWIN_CHOST}
 
   make
 }
@@ -49,6 +47,6 @@ build() {
 package() {
   cd "${srcdir}/build-${CHOST}"
   make DESTDIR="${pkgdir}" install
-  cd "${srcdir}/${pkgname}-${pkgver}"
-  install -Dm644 COPYING "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+  install -Dm644 "${srcdir}/${pkgname}-${pkgver}/COPYING" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
