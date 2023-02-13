@@ -4,7 +4,7 @@
 pkgbase=python
 pkgname=('python' 'python-devel')
 pkgver=3.10.10
-pkgrel=1
+pkgrel=2
 _pybasever=${pkgver%.*}
 pkgdesc="Next generation of the python high-level scripting language"
 arch=('i686' 'x86_64')
@@ -63,7 +63,7 @@ sha256sums=('0419e9085bf51b7a672009b3f50dbf1859acdf18ba725d0ec19aa5c8503f0ea3'
             '437332e1a7195dd0adcd505ecdeab5c3a7a793efdd7fea7bec55f97957bb8934'
             '3e6c115c9b8e044193c0524b94275dfb13c1adfba3d250131b065f632b6d5512'
             '9d0efb7e7e913e96b9f7953802311bbc2d046a7bfdcc3ffaf11fc509731b4d18'
-            'ce55a5e343158d7b1cd114cc7d7d53bcedfcd8616c533f816b3a0f1b2fe13682'
+            '5dfed4be015e93ab6f4e99a69fc5b3eece9c801ea504c8d0517c3cb6bb7dbe89'
             '85d9d042e0fa3493ec54b364e6b4fb6d2b12ba09641e01047bc84a09605ef76b'
             '17e4ac1b5f0fa8a6c410fb80d1ad99ec9185efef51b8450a31932b553c354ed1'
             'b439ff4f0a1f13858f8fb596414b74ed2c14fc3103d90287bb8e461ee89288b9'
@@ -81,9 +81,6 @@ apply_patch_with_msg() {
 
 prepare() {
   cd "${srcdir}/Python-${pkgver}"
-
-  # FS#23997
-  sed -i -e "s|^#.* /usr/local/bin/python|#!/usr/bin/python|" Lib/cgi.py
 
   apply_patch_with_msg \
     001-3.1-enable-new-dtags.patch \
@@ -125,11 +122,8 @@ prepare() {
 build() {
   cd "${srcdir}/Python-${pkgver}"
 
-  CPPFLAGS+=" -I/usr/include/ncursesw"
-  LDFLAGS+=" -L."
-
+  export MSYSTEM=CYGWIN
   local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
-  CXX=/usr/bin/g++ \
   ./configure \
     --prefix=/usr \
     --build=${CYGWIN_CHOST} \
@@ -143,10 +137,9 @@ build() {
     --with-system-ffi \
     --with-system-libmpdec \
     --enable-loadable-sqlite-extensions \
-    --without-ensurepip \
-    ac_cv_func_bind_textdomain_codeset=yes
+    --without-ensurepip
 
-  LC_CTYPE=en_US.UTF-8 make EXTRA_CFLAGS="$CFLAGS" > >(tee make-python.log)
+  make > >(tee make-python.log)
   sed -ne '/^\s*Failed to build these modules/,$ {p; /^\s*$/q42}' make-python.log
 }
 
@@ -156,13 +149,12 @@ check() {
 }
 
 package_python() {
-  #optdepends=('tk: for tkinter' 'sqlite')
   depends=('libbz2' 'libexpat' 'libffi' 'liblzma' 'ncurses' 'libopenssl' 'libreadline' 'mpdecimal' 'libsqlite' 'zlib')
   provides=('python3')
   replaces=('python3')
 
   cd "${srcdir}/Python-${pkgver}"
-  make DESTDIR="${pkgdir}" EXTRA_CFLAGS="$CFLAGS" install
+  make DESTDIR="${pkgdir}" install
 
   # Why are these not done by default...
   ln -sf python3               "${pkgdir}"/usr/bin/python.exe
