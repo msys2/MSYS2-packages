@@ -1,0 +1,58 @@
+From e17f32548b02f143ec175dedd3130fdeee101787 Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Tue, 28 Feb 2023 20:30:23 +0100
+Subject: [PATCH 05/N] makepkg: find_libprovides: port to Windows
+
+---
+ scripts/makepkg.sh.in | 35 ++++++++++++++---------------------
+ 1 file changed, 14 insertions(+), 21 deletions(-)
+
+diff --git a/scripts/makepkg.sh.in b/scripts/makepkg.sh.in
+index 2a85702..6384c35 100644
+--- a/scripts/makepkg.sh.in
++++ b/scripts/makepkg.sh.in
+@@ -539,30 +539,23 @@ find_libprovides() {
+ 		missing=0
+ 		versioned_provides=()
+ 		case "$p" in
+-			*.so)
+-				mapfile -t filename < <(find "$pkgdir" -type f -name $p\* | LC_ALL=C sort)
++			*.dll)
++				mapfile -t filename < <(find "$pkgdir" -type f -name $p)
+ 				if [[ $filename ]]; then
+ 					# packages may provide multiple versions of the same library
+ 					for fn in "${filename[@]}"; do
+-						# check if we really have a shared object
+-						if LC_ALL=C readelf -h "$fn" 2>/dev/null | grep -q '.*Type:.*DYN (Shared object file).*'; then
+-							# get the string binaries link to (e.g. libfoo.so.1.2 -> libfoo.so.1)
+-							local sofile=$(LC_ALL=C readelf -d "$fn" 2>/dev/null | sed -n 's/.*Library soname: \[\(.*\)\].*/\1/p')
+-							if [[ -z "$sofile" ]]; then
+-								warning "$(gettext "Library listed in %s is not versioned: %s")" "'provides'" "$p"
+-								continue
+-							fi
+-
+-							# get the library architecture (32 or 64 bit)
+-							local soarch=$(LC_ALL=C readelf -h "$fn" | sed -n 's/.*Class.*ELF\(32\|64\)/\1/p')
+-
+-							# extract the library major version
+-							local soversion="${sofile##*\.so\.}"
+-
+-							versioned_provides+=("${p}=${soversion}-${soarch}")
+-						else
+-							warning "$(gettext "Library listed in %s is not a shared object: %s")" "'provides'" "$p"
+-						fi
++						# get the library architecture (32 or 64 bit)
++						local soarch=$(LC_ALL=C objdump -a "$fn" | sed -n 's/.*file format.*pei-\(i386\|x86-64\)/\1/p')
++						case "$soarch" in
++							i386)
++								soarch=i686
++							;;
++							x86-64)
++								soarch=x86_64
++							;;
++						esac
++
++						versioned_provides+=("${p}=${soarch}")
+ 					done
+ 				else
+ 					missing=1
