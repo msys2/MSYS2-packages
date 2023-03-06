@@ -1,42 +1,43 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=cgdb
-pkgver=0.7.1
-pkgrel=4
+pkgver=0.8.0
+pkgrel=1
 pkgdesc="Curses-based interface to the GNU Debugger"
 arch=('i686' 'x86_64')
-url="https://cgdb.sourceforge.io/"
-license=('GPL')
+url="https://cgdb.github.io/"
+license=('spdx:GPL-2.0-or-later')
 depends=('libreadline' 'ncurses' 'gdb')
 makedepends=('help2man' 'libreadline-devel' 'ncurses-devel' 'autotools' 'gcc')
-source=("https://cgdb.me/files/${pkgname}-${pkgver}.tar.gz"
-        01-msysize.patch
-        10-ncursesw-link-tinfow.patch)
-sha512sums=('34f1fa53cfc9fbf7a2603db169e8338c0bf32200ed7a63e9944951f446e295e49f4ff3c5d0998a4c70bc872376263e1469d7e518becc13b4959f66495d5b9521'
-            '31d2f2573fec3e6569b0c236d60898e5fced21bd3510add98613ce2e75f966a923917ed6eeec475844c3545004d0a17b55de96cfa3eb6f68d5a84636c563ef0e'
-            '0e905af78ddc55f2d57cc9a64a7180f0605d9756caa1d6621def5e26cc445c8327673824506b8790d64f8fa15aa175216ff3f13506b0dea0e44a5df99425afa4')
+source=("https://cgdb.me/files/${pkgname}-${pkgver}.tar.gz")
+sha256sums=('0d38b524d377257b106bad6d856d8ae3304140e1ee24085343e6ddf1b65811f1')
 
 prepare() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  patch -p1 -i ${srcdir}/01-msysize.patch
-  patch -p1 -i ${srcdir}/10-ncursesw-link-tinfow.patch
+  cd "${srcdir}/${pkgname}-${pkgver}"
 
-  autoreconf -fi -I config
+  echo "$pkgver" > VERSION
+  autoreconf -vfi -I config
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  export MSYSTEM=CYGWIN
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+
   CFLAGS+=" -D_GNU_SOURCE"
-  CXXFLAGS+=" -std=c++11 -D_GNU_SOURCE"
+  CXXFLAGS+="   -D_GNU_SOURCE"
   ./configure \
     --prefix=/usr \
-    --build=${CHOST} \
+    --build=${CYGWIN_CHOST} \
     --with-readline=/usr \
     --with-ncurses=/usr
+  
   make
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
   make DESTDIR="${pkgdir}/" install
 }
