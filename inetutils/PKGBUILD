@@ -1,84 +1,57 @@
 # Maintainer: Martell Malone <martellmalone@gmail.com>
 
 pkgname=inetutils
-pkgver=1.9.4
-pkgrel=5
+pkgver=2.4
+pkgrel=1
 pkgdesc="A collection of common network programs."
 arch=('i686' 'x86_64')
 url="https://www.gnu.org/software/inetutils/"
-license=('GPL3')
+license=('spdx:GPL-3.0-or-later')
 depends=('gcc-libs' 'libintl' 'libcrypt' 'libreadline' 'ncurses')
 makedepends=('gettext-devel' 'libcrypt-devel' 'libreadline-devel' 'ncurses-devel' 'autotools' 'gcc' 'tftp-hpa' 'help2man')
 options=('!emptydirs')
-install=inetutils.install
 source=(https://ftp.gnu.org/gnu/inetutils/${pkgname}-${pkgver}.tar.xz
-        01-buildsystem-updates.patch
-        07-other-buildsys-updates.patch
-        08-libinetutils.patch
-        09-inetd.patch
-        11-telnet.patch
-        13-ftp.patch
-        14-ftpd.patch
-        15-syslogd.patch
-        16-talk.patch
-        17-talkd.patch
-        inetutils-1.9.4-1.src.patch
+        inetutils-2.4-1.src.patch
+        icmp6.h
         osockaddr.h
-        talkd.h
-        tftp.h
-        inetutils-1.9.4-update-gnulib.patch)
-sha256sums=('849d96f136effdef69548a940e3e0ec0624fc0c81265296987986a0dd36ded37'
-            'e88387223e1559bc4919dc8963149ecdb6ee8d812bdd07afa0342bd35de4fd65'
-            'ba3131b7825bb1b23280515a104391f69ae00f4e0caf285b2487080e008a979d'
-            'bd5308733b610233b23af51760d849f53aae038253ead1430193be03b89c0e45'
-            'b760c8adf10fa630101370a7cbb1c602d4ee10f18378dbffa98d1c1fbc6653c3'
-            '2751a47380c59d0d99a4d5c9eea0cf14ef9f40469a33fa32af1b12c3cac1d90d'
-            '277491be3779b4993f3e1a200c8fa899201c4630e18e62fd268556d4c8e1a3c5'
-            '90bc197ed42fe646b44b40fa68c0b76c1baf82daa047bd9e63758513f4e0e6f3'
-            '09f4b2375eb350613aea8c2ae6726bf3df6f7d4cc737f3ea7473e6d2e0ba0257'
-            '4260c0a18a7a16e4485aeb7cd8acc998cbb8e4c29d4b8d6bcbc535d86c79452c'
-            'd749005e6733f3ab7912a1c5952713499b76155386c2bfa9235a3e02dbce4fd8'
-            '66fa288a99beed6d7b885b980d06c8b13ce43f5c34461e515875f8705fbb84c1'
+        talkd.h)
+sha256sums=('1789d6b1b1a57dfe2a7ab7b533ee9f5dfd9cbf5b59bb1bb3c2612ed08d0f68b2'
+            'f70555d075a9c02cbc9b3580d4401b27a3069febac86152da06a76ee4da91df3'
+            'efad23dea555319c503c0b6ed7ec6b46c8faa48c138c763749686fc66e98c4b8'
             'e19596afff3b2ed163cf1a5c8a8d034208f9f996ace1ac76fd877a2d16aa448d'
-            '5ad3115e95be02f1d0467ec13750f2d9096c7dfd6cf723a775e8718954e58018'
-            'f486d5235c54c03af270c85a9c519e21315534412d0787e159116e132f1b47da'
-            '22d6de583f4313a37eec070fb2a15bac576b95d62acc4ad759ec25cb2133dc6c')
+            'b9e2401b0756c9bebcb0b0835d3c8f218198a121013f4990637ed1b9af0c72fd')
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
+
+  # from cygwin
   mkdir -p headers/protocols
   cp ${srcdir}/osockaddr.h headers/protocols/osockaddr.h
   cp ${srcdir}/talkd.h     headers/protocols/talkd.h
-  # mkdir -p headers/arpa
-  # cp ${srcdir}/tftp.h     headers/arpa/tftp.h
-
-  patch -p1 -i ${srcdir}/01-buildsystem-updates.patch
-  patch -p1 -i ${srcdir}/07-other-buildsys-updates.patch
-  patch -p1 -i ${srcdir}/08-libinetutils.patch
-  patch -p1 -i ${srcdir}/09-inetd.patch
-  patch -p1 -i ${srcdir}/11-telnet.patch
-  patch -p1 -i ${srcdir}/13-ftp.patch
-  patch -p1 -i ${srcdir}/14-ftpd.patch
-  patch -p1 -i ${srcdir}/15-syslogd.patch
-  patch -p1 -i ${srcdir}/16-talk.patch
-  patch -p1 -i ${srcdir}/17-talkd.patch
-  patch -p1 -i ${srcdir}/inetutils-1.9.4-1.src.patch
-  patch -p1 -i ${srcdir}/inetutils-1.9.4-update-gnulib.patch
+  mkdir -p headers/netinet
+  cp ${srcdir}/icmp6.h     headers/netinet/icmp6.h
+  patch -p2 -i ${srcdir}/inetutils-2.4-1.src.patch
 
   autoreconf -fiv
 }
 
 build() {
-  CPPFLAGS+=" -I${srcdir}/${pkgname}-${pkgver}/headers"
   cd ${srcdir}/${pkgname}-${pkgver}
 
-  cat > config.cache << EOF
-gl_cv_func_getcwd_path_max=yes
-ac_cv_func_mmap_fixed_mapped=no
-EOF
+  mkdir -p "${srcdir}/build-${MSYSTEM}" && cd "${srcdir}/build-${MSYSTEM}"
+
+  # copied from cygwin
+  export ac_cv_func_mmap_fixed_mapped=no
+
+  # the cygwin patch adds talkd.h, but not in a way configure can detect it
+  # so force it here
+  export ac_cv_header_protocols_talkd_h=yes
+
+  # this isn't set in ./configure but needed to get a valid Makefile -- don't ask me...
+  export EXEEXT=.exe
 
   local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
-  ./configure --prefix=/usr \
+  ../${pkgbase}-${pkgver}/configure --prefix=/usr \
     --build=${CYGWIN_CHOST} \
     --libexec=/usr/bin \
     --localstatedir=/var \
@@ -102,13 +75,13 @@ EOF
     --disable-inetd --disable-whois \
     --disable-uucpd --disable-ifconfig \
     --enable-dnsdomainname \
-    --disable-traceroute \
-    --cache-file=config.cache
+    --disable-traceroute
 
   make
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${srcdir}/build-${MSYSTEM}"
+
   make DESTDIR="${pkgdir}" install
 }
