@@ -1,0 +1,41 @@
+# Maintainer: Darryl L. Miles <darryl.miles@darrylmiles.org>
+
+pkgname=joe
+pkgver=4.6
+pkgrel=1
+pkgdesc="Joe's own editor"
+arch=('any')
+url="https://joe-editor.sourceforge.io/"
+license=('spdx:GPL-2.0-or-later')
+depends=('ncurses')
+makedepends=('make' 'gcc' 'autotools' 'ncurses-devel')
+backup=('etc/joe/ftyperc' 'etc/joe/jicerc.ru' 'etc/joe/jmacsrc'
+        'etc/joe/joerc' 'etc/joe/jpicorc' 'etc/joe/jstarrc' 'etc/joe/rjoerc')
+source=("https://downloads.sourceforge.net/joe-editor/${pkgname}-${pkgver}.tar.gz")
+sha256sums=('495a0a61f26404070fe8a719d80406dc7f337623788e445b92a9f6de512ab9de')
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  # Moved joe's configure data into /usr/share/joe otherwise it pollutes the space
+  ./configure --prefix=/usr --sysconfdir=/etc --datarootdir=/usr/share/joe --mandir=/usr/share/man
+
+  # This symlink substitute is problematic, disable it.
+  # LN_S = cp -pR
+  find -type f -name Makefile -exec sed -i "s/LN_S = .*/LN_S = echo/" {} \;
+
+  make
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  make DESTDIR="${pkgdir}" install
+
+  # Replace LN_S function, it is aliasing alternative binary names
+  for i in jmacs jstar rjoe jpico ; do cp -p "${pkgdir}/usr/bin/joe" "${pkgdir}/usr/bin/$i" ; done
+
+  # Licenses
+  install -Dm644 "${srcdir}/${pkgname}-${pkgver}/README.md"  "${pkgdir}/usr/share/licenses/${pkgname}/README.md"
+  install -Dm644 "${srcdir}/${pkgname}-${pkgver}/COPYING"    "${pkgdir}/usr/share/licenses/${pkgname}/COPYING"
+}
