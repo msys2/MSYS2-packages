@@ -1,0 +1,47 @@
+From 5f8eaff6c86f890ec2fcc366d4d7b9b7050e6bc2 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 31 Jan 2023 09:32:08 +0100
+Subject: [PATCH 47/N] dumper: avoid linker problem when `libbfd` depends on
+ `libsframe`
+
+A recent binutils version introduced `libsframe` and made it a
+dependency of `libbfd`. Which means that we have to link that library
+into `dumper.exe`, too, if it exists.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/configure.ac      | 5 +++++
+ winsup/utils/Makefile.am | 4 ++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/winsup/configure.ac b/winsup/configure.ac
+index 5eb3273..ca2b8c0 100644
+--- a/winsup/configure.ac
++++ b/winsup/configure.ac
+@@ -110,6 +110,11 @@ AC_CHECK_LIB([bfd], [bfd_init], [true],
+ 
+ AM_CONDITIONAL(BUILD_DUMPER, [test "x$ac_cv_lib_bfd_bfd_init" = "xyes"])
+ 
++AC_CHECK_LIB([sframe], [sframe_decode],
++	     AC_MSG_NOTICE([Detected libsframe; Assuming that libbfd depends on it]), [true])
++
++AM_CONDITIONAL(HAVE_LIBSFRAME, [test "x$ac_cv_lib_sframe_sframe_decode" = "xyes"])
++
+ AC_CONFIG_FILES([
+     Makefile
+     cygwin/Makefile
+diff --git a/winsup/utils/Makefile.am b/winsup/utils/Makefile.am
+index e12dfdd..08f6212 100644
+--- a/winsup/utils/Makefile.am
++++ b/winsup/utils/Makefile.am
+@@ -87,6 +87,10 @@ profiler_CXXFLAGS = -I$(srcdir) -idirafter ${top_srcdir}/cygwin -idirafter ${top
+ profiler_LDADD = $(LDADD) -lntdll
+ cygps_LDADD = $(LDADD) -lpsapi -lntdll
+ 
++if HAVE_LIBSFRAME
++dumper_LDADD += -lsframe
++endif
++
+ if CROSS_BOOTSTRAP
+ SUBDIRS = mingw
+ endif
