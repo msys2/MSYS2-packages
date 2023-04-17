@@ -1,4 +1,4 @@
-From 101e2c4c61627e67ce69e1303d671cca4342388d Mon Sep 17 00:00:00 2001
+From 53515154eb8905b1bfce007653771ed7c91b1508 Mon Sep 17 00:00:00 2001
 From: Christoph Reiter <reiter.christoph@gmail.com>
 Date: Sun, 16 Apr 2023 14:41:39 +0200
 Subject: [PATCH] peflags: add support for IMAGE_DLLCHARACTERISTICS_GUARD_CF
@@ -6,18 +6,20 @@ Subject: [PATCH] peflags: add support for IMAGE_DLLCHARACTERISTICS_GUARD_CF
 This allows for setting, clearing, and displaying the value of the
 "control flow guard" dll characteristics flag.
 
-For the option naming something like cfguard would probably be
-easier to understand, but the MSVC flag is "/guard:cf" and the macro
-contains GUARD_CF, so use "guard-cf" for consistency.
+The flag for MSVC is called "/guard:cf" and the macro ends with "GUARD_CF".
+To keep things consistent, it would make sense to name the option "guard-cf".
+However, there's already "-c"/"control-flow-guard" in genpeimg for this flag,
+and genpeimg shares all other options with peflags so far.
+So, follow genpeimg and go with "-c" and "--control-flow-guard".
 
 This is motivated by mingw-w64 and llvm v16 gaining support for
 CFG (Control Flow Guard).
 ---
- peflags.c | 11 +++++++++--
- 1 file changed, 9 insertions(+), 2 deletions(-)
+ peflags.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
 
 diff --git a/peflags.c b/peflags.c
-index b1cd7a8..83ce48e 100644
+index b1cd7a8..93eaa0b 100644
 --- a/peflags.c
 +++ b/peflags.c
 @@ -121,7 +121,7 @@ static const symbolic_flags_t pe_symbolic_flags[] = {
@@ -25,7 +27,7 @@ index b1cd7a8..83ce48e 100644
  /*CF(0x1000, reserved_0x1000),*/
    CF(0x2000, wdmdriver),
 -/*CF(0x4000, reserved_0x4000),*/
-+  CF(0x4000, guard-cf),
++  CF(0x4000, control-flow-guard),
    CF(0x8000, tsaware),
    {0, 0, 0}
  };
@@ -33,7 +35,7 @@ index b1cd7a8..83ce48e 100644
  static struct option long_options[] = {
    {"dynamicbase",  optional_argument, NULL, 'd'},
    {"high-entropy-va", optional_argument, NULL, 'e'},
-+  {"guard-cf",     optional_argument, NULL, 'g'},
++  {"control-flow-guard", optional_argument, NULL, 'c'},
    {"forceinteg",   optional_argument, NULL, 'f'},
    {"nxcompat",     optional_argument, NULL, 'n'},
    {"no-isolation", optional_argument, NULL, 'i'},
@@ -42,7 +44,7 @@ index b1cd7a8..83ce48e 100644
  };
  static const char *short_options
 -	= "d::e::f::n::i::s::b::W::t::w::l::S::x::X::y::Y::z::T:vhV";
-+	= "d::e::g::f::n::i::s::b::W::t::w::l::S::x::X::y::Y::z::T:vhV";
++	= "d::e::c::f::n::i::s::b::W::t::w::l::S::x::X::y::Y::z::T:vhV";
  
  static void short_usage (FILE *f);
  static void help (FILE *f);
@@ -50,7 +52,7 @@ index b1cd7a8..83ce48e 100644
  	                         optarg,
  	                         IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA);
  	  break;
-+	case 'g':
++	case 'c':
 +	  handle_pe_flag_option (long_options[option_index].name,
 +	                         optarg,
 +	                         IMAGE_DLLCHARACTERISTICS_GUARD_CF);
@@ -58,11 +60,12 @@ index b1cd7a8..83ce48e 100644
  	case 'n':
  	  handle_pe_flag_option (long_options[option_index].name,
  	                         optarg,
-@@ -1079,6 +1085,7 @@ help (FILE *f)
+@@ -1079,6 +1085,8 @@ help (FILE *f)
  "  -e,\n"
  "  --high-entropy-va  [BOOL]   Image is compatible with 64-bit address space\n"
  "                              layout randomization (ASLR).\n"
-+"  -g, --guard-cf     [BOOL]   Image supports Control Flow Guard.\n"
++"  -c,\n"
++"  --control-flow-guard [BOOL] Image supports Control Flow Guard.\n"
  "  -f, --forceinteg   [BOOL]   Code integrity checks are enforced.\n"
  "  -n, --nxcompat     [BOOL]   Image is compatible with data execution\n"
  "                              prevention (DEP).\n"
