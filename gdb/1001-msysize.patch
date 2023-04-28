@@ -1,7 +1,7 @@
-From 667e2e2e0edd0906276e0e9f58c598590afa88c4 Mon Sep 17 00:00:00 2001
+From d4ad2628ceed110122af319dea50bb80280f36cb Mon Sep 17 00:00:00 2001
 From: Orgad Shaneh <orgads@gmail.com>
 Date: Mon, 3 May 2021 11:56:43 +0300
-Subject: [PATCH 1/2] msysize
+Subject: [PATCH 5/6] msysize
 
 ---
  ar-lib                                     |  4 +-
@@ -30,7 +30,7 @@ Subject: [PATCH 1/2] msysize
  gdb/testsuite/gdb.dwarf2/dw2-dos-drive.exp |  3 +-
  gdb/testsuite/gdb.server/wrapper.exp       |  3 +-
  gdb/testsuite/lib/gdb.exp                  | 22 ++++++---
- gdb/windows-nat.c                          |  6 +++
+ gdb/windows-nat.c                          |  8 ++++
  gdbserver/configure.srv                    |  4 +-
  gnulib/import/m4/double-slash-root.m4      |  2 +-
  gnulib/import/m4/dup2.m4                   |  2 +-
@@ -46,7 +46,7 @@ Subject: [PATCH 1/2] msysize
  readline/readline/support/config.rpath     | 10 ++---
  readline/readline/support/shlib-install    |  4 +-
  readline/readline/support/shobj-conf       | 18 ++++++++
- 42 files changed, 179 insertions(+), 104 deletions(-)
+ 42 files changed, 181 insertions(+), 104 deletions(-)
 
 diff --git a/ar-lib b/ar-lib
 index 05094d34c69..1b16134da54 100755
@@ -71,7 +71,7 @@ index 05094d34c69..1b16134da54 100755
  	  ;;
  	wine)
 diff --git a/bfd/acinclude.m4 b/bfd/acinclude.m4
-index f75deaaaf59..4e0b4463868 100644
+index 61a31ef4dd0..97c5b9439a4 100644
 --- a/bfd/acinclude.m4
 +++ b/bfd/acinclude.m4
 @@ -21,7 +21,7 @@ AC_DEFUN([BFD_BINARY_FOPEN],
@@ -84,32 +84,32 @@ index f75deaaaf59..4e0b4463868 100644
    AC_DEFINE(USE_BINARY_FOPEN, 1, [Use b modifier when opening binary files?]) ;;
  esac])dnl
 diff --git a/bfd/config.bfd b/bfd/config.bfd
-index 30087e3b8f8..92cc89def20 100644
+index 0bc27fdce97..88dc07af447 100644
 --- a/bfd/config.bfd
 +++ b/bfd/config.bfd
-@@ -679,7 +679,7 @@ case "${targ}" in
-     targ_selvecs="i386_elf32_vec iamcu_elf32_vec x86_64_elf32_vec i386_pei_vec x86_64_pe_vec x86_64_pei_vec l1om_elf64_vec k1om_elf64_vec"
+@@ -716,7 +716,7 @@ case "${targ}" in
+     targ_selvecs="i386_elf32_vec iamcu_elf32_vec x86_64_elf32_vec i386_pei_vec x86_64_pe_vec x86_64_pei_vec"
      want64=true
      ;;
 -  x86_64-*-mingw* | x86_64-*-pe | x86_64-*-pep | x86_64-*-cygwin)
 +  x86_64-*-mingw* | x86_64-*-pe | x86_64-*-pep | x86_64-*-cygwin | x86_64-*-msys)
      targ_defvec=x86_64_pe_vec
-     targ_selvecs="x86_64_pe_vec x86_64_pei_vec x86_64_pe_big_vec x86_64_elf64_vec l1om_elf64_vec k1om_elf64_vec i386_pe_vec i386_pei_vec i386_elf32_vec iamcu_elf32_vec"
+     targ_selvecs="x86_64_pe_vec x86_64_pei_vec x86_64_pe_big_vec x86_64_elf64_vec i386_pe_vec i386_pei_vec i386_elf32_vec iamcu_elf32_vec pdb_vec"
      want64=true
-@@ -729,7 +729,7 @@ case "${targ}" in
+@@ -770,7 +770,7 @@ case "${targ}" in
      targ_defvec=i386_elf32_vec
      targ_selvecs="iamcu_elf32_vec i386_coff_vec"
      ;;
 -  i[3-7]86-*-mingw32* | i[3-7]86-*-cygwin* | i[3-7]86-*-winnt | i[3-7]86-*-pe)
 +  i[3-7]86-*-mingw32* | i[3-7]86-*-cygwin* | i[3-7]86-*-msys* | i[3-7]86-*-winnt | i[3-7]86-*-pe)
      targ_defvec=i386_pe_vec
-     targ_selvecs="i386_pe_vec i386_pe_big_vec i386_pei_vec i386_elf32_vec iamcu_elf32_vec"
+     targ_selvecs="i386_pe_vec i386_pe_big_vec i386_pei_vec i386_elf32_vec iamcu_elf32_vec pdb_vec"
      targ_underscore=yes
 diff --git a/bfd/configure.ac b/bfd/configure.ac
-index 07a75ed1626..a44245dd811 100644
+index da6933bffc6..1a01fdce8ad 100644
 --- a/bfd/configure.ac
 +++ b/bfd/configure.ac
-@@ -317,6 +317,10 @@ if test "$enable_shared" = "yes"; then
+@@ -285,6 +285,10 @@ if test "$enable_shared" = "yes"; then
      SHARED_LDFLAGS="-no-undefined"
      SHARED_LIBADD="-L`pwd`/../libiberty -liberty $SHARED_LIBADD -lcygwin -lkernel32"
    ;;
@@ -143,19 +143,19 @@ index a85b723c7e6..a4ecdb2519c 100755
  	  ;;
  	wine/*)
 diff --git a/config.guess b/config.guess
-index cc7a8107011..85c30845c7c 100755
+index 7f76b6228f7..65bf0014f94 100755
 --- a/config.guess
 +++ b/config.guess
-@@ -918,6 +918,9 @@ EOF
+@@ -949,6 +949,9 @@ EOF
+ 	;;
      amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
- 	echo x86_64-pc-cygwin
- 	exit ;;
+ 	GUESS=x86_64-pc-cygwin
++	exit ;;
 +    amd64:MSYS*:*:* | x86_64:MSYS*:*:*)
 +	echo x86_64-pc-msys
-+	exit ;;
+ 	;;
      prep*:SunOS:5.*:*)
- 	echo powerpcle-unknown-solaris2"$(echo "$UNAME_RELEASE"|sed -e 's/[^.]*//')"
- 	exit ;;
+ 	SUN_REL=`echo "$UNAME_RELEASE" | sed -e 's/[^.]*//'`
 diff --git a/config.rpath b/config.rpath
 index 4dea75957c2..4f12c27e029 100755
 --- a/config.rpath
@@ -197,10 +197,10 @@ index 4dea75957c2..4f12c27e029 100755
      ;;
    darwin* | rhapsody*)
 diff --git a/config/dfp.m4 b/config/dfp.m4
-index a137ddebf8c..249eed50285 100644
+index d1d151b2da7..6cc4d27ca6d 100644
 --- a/config/dfp.m4
 +++ b/config/dfp.m4
-@@ -23,7 +23,8 @@ Valid choices are 'yes', 'bid', 'dpd', and 'no'.]) ;;
+@@ -42,7 +42,8 @@ Valid choices are 'yes', 'bid', 'dpd', and 'no'.]) ;;
      powerpc*-*-linux* | i?86*-*-linux* | x86_64*-*-linux* | s390*-*-linux* | \
      i?86*-*-elfiamcu | i?86*-*-gnu* | x86_64*-*-gnu* | \
      i?86*-*-mingw* | x86_64*-*-mingw* | \
@@ -259,7 +259,7 @@ index fba0d9d3657..df2c778524c 100644
       *)
          gcc_cv_func_mmap_anon=yes;;
 diff --git a/config/picflag.m4 b/config/picflag.m4
-index 8b106f9af88..48846c30d7c 100644
+index 3bd49af00e5..e81f0a46b6d 100644
 --- a/config/picflag.m4
 +++ b/config/picflag.m4
 @@ -25,6 +25,8 @@ case "${$2}" in
@@ -294,10 +294,10 @@ index 4542a4b23d7..209bd8d9b8e 100644
  	    esac
  	    if test x"${ac_cv_c_tkconfig}" = x ; then
 diff --git a/configure.ac b/configure.ac
-index 797a624621e..289b6bde7d6 100644
+index 36267d85785..a541dcbf657 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -408,7 +408,7 @@ AC_ARG_ENABLE(compressed_debug_sections,
+@@ -441,7 +441,7 @@ AC_ARG_ENABLE(default_compressed_debug_sections_algorithm,
  # Configure extra directories which are host specific
  
  case "${host}" in
@@ -306,16 +306,16 @@ index 797a624621e..289b6bde7d6 100644
      configdirs="$configdirs libtermcap" ;;
  esac
  
-@@ -774,7 +774,7 @@ esac
+@@ -881,7 +881,7 @@ esac
  # Disable the go frontend on systems where it is known to not work. Please keep
  # this in sync with contrib/config-list.mk.
  case "${target}" in
--*-*-darwin* | *-*-cygwin* | *-*-mingw*)
-+*-*-darwin* | *-*-cygwin* | *-*-msys* | *-*-mingw*)
+-*-*-darwin* | *-*-cygwin* | *-*-mingw* | bpf-* )
++*-*-darwin* | *-*-cygwin* | *-*-msys* | *-*-mingw* | bpf-* )
      unsupported_languages="$unsupported_languages go"
      ;;
  esac
-@@ -803,7 +803,7 @@ if test x$enable_libgo = x; then
+@@ -910,7 +910,7 @@ if test x$enable_libgo = x; then
  	# PR 46986
  	noconfigdirs="$noconfigdirs target-libgo"
  	;;
@@ -323,8 +323,8 @@ index 797a624621e..289b6bde7d6 100644
 +    *-*-cygwin* | *-*-msys* | *-*-mingw*)
  	noconfigdirs="$noconfigdirs target-libgo"
  	;;
-     esac
-@@ -1071,7 +1071,7 @@ case "${target}" in
+     bpf-*-*)
+@@ -1196,7 +1196,7 @@ case "${target}" in
    i[[3456789]]86-*-mingw*)
      target_configdirs="$target_configdirs target-winsup"
      ;;
@@ -333,7 +333,7 @@ index 797a624621e..289b6bde7d6 100644
      target_configdirs="$target_configdirs target-libtermcap target-winsup"
      noconfigdirs="$noconfigdirs target-libgloss"
      # always build newlib if winsup directory is present.
-@@ -1219,7 +1219,7 @@ case "${host}" in
+@@ -1349,7 +1349,7 @@ case "${host}" in
    i[[3456789]]86-*-msdosdjgpp*)
      host_makefile_frag="config/mh-djgpp"
      ;;
@@ -342,7 +342,7 @@ index 797a624621e..289b6bde7d6 100644
      ACX_CHECK_CYGWIN_CAT_WORKS
      host_makefile_frag="config/mh-cygwin"
      ;;
-@@ -1782,7 +1782,7 @@ ACX_ELF_TARGET_IFELSE([# ELF platforms build the lto-plugin always.
+@@ -1915,7 +1915,7 @@ ACX_ELF_TARGET_IFELSE([# ELF platforms build the lto-plugin always.
    build_lto_plugin=yes
  ],[if test x"$default_enable_lto" = x"yes" ; then
      case $target in
@@ -351,7 +351,7 @@ index 797a624621e..289b6bde7d6 100644
        # On other non-ELF platforms, LTO has yet to be validated.
        *) enable_lto=no ;;
      esac
-@@ -1793,7 +1793,7 @@ ACX_ELF_TARGET_IFELSE([# ELF platforms build the lto-plugin always.
+@@ -1926,7 +1926,7 @@ ACX_ELF_TARGET_IFELSE([# ELF platforms build the lto-plugin always.
    # warn during gcc/ subconfigure; unless you're bootstrapping with
    # -flto it won't be needed until after installation anyway.
      case $target in
@@ -360,7 +360,7 @@ index 797a624621e..289b6bde7d6 100644
        *) if test x"$enable_lto" = x"yes"; then
  	AC_MSG_ERROR([LTO support is not enabled for this target.])
          fi
-@@ -1803,7 +1803,7 @@ ACX_ELF_TARGET_IFELSE([# ELF platforms build the lto-plugin always.
+@@ -1936,7 +1936,7 @@ ACX_ELF_TARGET_IFELSE([# ELF platforms build the lto-plugin always.
    # Among non-ELF, only Windows platforms support the lto-plugin so far.
    # Build it unless LTO was explicitly disabled.
    case $target in
@@ -369,7 +369,7 @@ index 797a624621e..289b6bde7d6 100644
      *) ;;
    esac
  ])
-@@ -2676,7 +2676,7 @@ rm -f conftest*
+@@ -2859,7 +2859,7 @@ rm -f conftest*
  case "${host}" in
    *-*-hpux*) RPATH_ENVVAR=SHLIB_PATH ;;
    *-*-darwin*) RPATH_ENVVAR=DYLD_LIBRARY_PATH ;;
@@ -378,7 +378,7 @@ index 797a624621e..289b6bde7d6 100644
    *) RPATH_ENVVAR=LD_LIBRARY_PATH ;;
  esac
  
-@@ -3205,7 +3205,7 @@ case " $target_configdirs " in
+@@ -3404,7 +3404,7 @@ case " $target_configdirs " in
    case " $target_configargs " in
    *" --with-newlib "*)
     case "$target" in
@@ -388,10 +388,10 @@ index 797a624621e..289b6bde7d6 100644
        ;;
     esac
 diff --git a/gdb/configure.ac b/gdb/configure.ac
-index b8c79bcac9a..0e9b695752f 100644
+index c81df8c4967..e810b5e7cec 100644
 --- a/gdb/configure.ac
 +++ b/gdb/configure.ac
-@@ -574,7 +574,7 @@ fi
+@@ -542,7 +542,7 @@ fi
  # have a separate termcap library, or no curses library at all.
  
  case $host_os in
@@ -400,7 +400,7 @@ index b8c79bcac9a..0e9b695752f 100644
      if test -d "$srcdir/libtermcap"; then
        LIBS="../libtermcap/libtermcap.a $LIBS"
        ac_cv_search_tgetent="../libtermcap/libtermcap.a"
-@@ -1840,7 +1840,7 @@ WIN32LIBS=
+@@ -1825,7 +1825,7 @@ WIN32LIBS=
  if test x"$gdb_cv_os_cygwin" = xyes; then
      WIN32LIBS="-luser32"
      case "${target}" in
@@ -409,7 +409,7 @@ index b8c79bcac9a..0e9b695752f 100644
  	;;
      esac
  fi
-@@ -1904,7 +1904,7 @@ AC_SUBST(WIN32LIBS)
+@@ -1889,7 +1889,7 @@ AC_SUBST(WIN32LIBS)
  AC_SUBST(WIN32LDAPP)
  
  case "${host}" in
@@ -419,10 +419,10 @@ index b8c79bcac9a..0e9b695752f 100644
      ;;
  *)
 diff --git a/gdb/configure.host b/gdb/configure.host
-index e94a19b0332..d5d6330c34a 100644
+index da71675b201..deb1bd7ec48 100644
 --- a/gdb/configure.host
 +++ b/gdb/configure.host
-@@ -120,6 +120,7 @@ i[34567]86-*-openbsd*)	gdb_host=obsd ;;
+@@ -115,6 +115,7 @@ i[34567]86-*-openbsd*)	gdb_host=obsd ;;
  i[34567]86-*-solaris2* | x86_64-*-solaris2*)
  			gdb_host=sol2 ;;
  i[34567]86-*-cygwin*)	gdb_host=cygwin ;;
@@ -430,7 +430,7 @@ index e94a19b0332..d5d6330c34a 100644
  
  ia64-*-linux*)		gdb_host=linux ;;
  
-@@ -185,6 +186,7 @@ x86_64-*-mingw*)        gdb_host=mingw64
+@@ -184,6 +185,7 @@ x86_64-*-mingw*)        gdb_host=mingw64
  			gdb_host_obs=mingw-hdep.o
  			;;
  x86_64-*-cygwin*)	gdb_host=cygwin64 ;;
@@ -439,7 +439,7 @@ index e94a19b0332..d5d6330c34a 100644
  
  xtensa*-*-linux*)	gdb_host=linux ;;
 diff --git a/gdb/configure.nat b/gdb/configure.nat
-index e34cccffd98..7c5b69d824e 100644
+index aabcdeff989..f31771934c3 100644
 --- a/gdb/configure.nat
 +++ b/gdb/configure.nat
 @@ -77,6 +77,9 @@ case ${gdb_host} in
@@ -471,10 +471,10 @@ index e34cccffd98..7c5b69d824e 100644
  	    i386)
  		# Native config information for GDB on amd64
 diff --git a/gdb/configure.tgt b/gdb/configure.tgt
-index 97a5a57c378..5efbc0790b4 100644
+index e84e222ba0d..d314903859b 100644
 --- a/gdb/configure.tgt
 +++ b/gdb/configure.tgt
-@@ -316,6 +316,11 @@ i[34567]86-*-cygwin*)
+@@ -320,6 +320,11 @@ i[34567]86-*-cygwin*)
  	# Target: Intel 386 running win32
  	gdb_target_obs="i386-windows-tdep.o windows-tdep.o"
  	;;
@@ -486,7 +486,7 @@ index 97a5a57c378..5efbc0790b4 100644
  i[34567]86-*-mingw32*)
  	# Target: Intel 386 running win32
  	gdb_target_obs="i386-windows-tdep.o windows-tdep.o"
-@@ -738,7 +743,7 @@ x86_64-*-freebsd* | x86_64-*-kfreebsd*-gnu)
+@@ -711,7 +716,7 @@ x86_64-*-freebsd* | x86_64-*-kfreebsd*-gnu)
  	gdb_target_obs="amd64-fbsd-tdep.o ${i386_tobjs} \
  			i386-bsd-tdep.o i386-fbsd-tdep.o"
  	;;
@@ -496,10 +496,10 @@ index 97a5a57c378..5efbc0790b4 100644
  	gdb_target_obs="amd64-windows-tdep.o \
                          ${i386_tobjs} i386-windows-tdep.o \
 diff --git a/gdb/testsuite/gdb.base/bigcore.exp b/gdb/testsuite/gdb.base/bigcore.exp
-index bac72f07484..b6030b06e81 100644
+index f3e7467e942..806006c6be4 100644
 --- a/gdb/testsuite/gdb.base/bigcore.exp
 +++ b/gdb/testsuite/gdb.base/bigcore.exp
-@@ -33,7 +33,8 @@ if ![isnative] then {
+@@ -33,7 +33,8 @@ if {![isnative]} {
  if { [istarget "*-*-*bsd*"]
       || [istarget "*-*-solaris*"] 
       || [istarget "*-*-darwin*"] 
@@ -510,10 +510,10 @@ index bac72f07484..b6030b06e81 100644
      return
  }
 diff --git a/gdb/testsuite/gdb.base/fileio.exp b/gdb/testsuite/gdb.base/fileio.exp
-index eb88b4e0420..31f13d9d439 100644
+index d19a8c4dde6..7838f37098f 100644
 --- a/gdb/testsuite/gdb.base/fileio.exp
 +++ b/gdb/testsuite/gdb.base/fileio.exp
-@@ -253,7 +253,7 @@ gdb_test continue \
+@@ -245,7 +245,7 @@ gdb_test continue \
  
  # This test fails on Cygwin because unlink() succeeds on Win32 systems
  # in that situation.
@@ -523,10 +523,10 @@ index eb88b4e0420..31f13d9d439 100644
  }
  gdb_test continue \
 diff --git a/gdb/testsuite/gdb.base/maint.exp b/gdb/testsuite/gdb.base/maint.exp
-index 6831d1ba720..9dd338cf879 100644
+index d73ff569ad6..15c63431c41 100644
 --- a/gdb/testsuite/gdb.base/maint.exp
 +++ b/gdb/testsuite/gdb.base/maint.exp
-@@ -186,7 +186,7 @@ gdb_test "maint set per-command off" \
+@@ -188,7 +188,7 @@ gdb_test "maint set per-command off" \
  # The timeout value is raised, because printing all the symbols and
  # statistical information about Cygwin and Windows libraries takes a lot
  # of time.
@@ -536,10 +536,10 @@ index 6831d1ba720..9dd338cf879 100644
  	set timeout [expr $timeout + 500]
  }
 diff --git a/gdb/testsuite/gdb.base/shreloc.exp b/gdb/testsuite/gdb.base/shreloc.exp
-index 8cc9adb123e..b82db96e1a9 100644
+index f2ef03a38e4..35137814895 100644
 --- a/gdb/testsuite/gdb.base/shreloc.exp
 +++ b/gdb/testsuite/gdb.base/shreloc.exp
-@@ -44,7 +44,7 @@ if [get_compiler_info] {
+@@ -40,7 +40,7 @@ set lib2_sl [standard_output_file shreloc2.sl]
  set lib_opts "debug"
  set exec_opts [list debug shlib=$lib1_sl shlib=$lib2_sl]
  
@@ -548,7 +548,7 @@ index 8cc9adb123e..b82db96e1a9 100644
      lappend lib_opts "ldflags=-Wl,--image-base,0x04000000"
  }
  
-@@ -226,7 +226,7 @@ if [send_gdb_discard "maint print msymbols ${msymfile}"] {
+@@ -221,7 +221,7 @@ if [send_gdb_discard "maint print msymbols ${msymfile}"] {
      }
  }
  
@@ -558,7 +558,7 @@ index 8cc9adb123e..b82db96e1a9 100644
      # We know the names of some absolute symbols included in the
      # portable-executable (DLL) format. Check that they didn't get
 diff --git a/gdb/testsuite/gdb.base/solib-weak.exp b/gdb/testsuite/gdb.base/solib-weak.exp
-index bc4d2e57efd..6ab359137c7 100644
+index f92640fcb0e..207c5713535 100644
 --- a/gdb/testsuite/gdb.base/solib-weak.exp
 +++ b/gdb/testsuite/gdb.base/solib-weak.exp
 @@ -24,7 +24,8 @@ if {[skip_shlib_tests]} {
@@ -572,7 +572,7 @@ index bc4d2e57efd..6ab359137c7 100644
  }
  
 diff --git a/gdb/testsuite/gdb.dwarf2/dw2-dos-drive.exp b/gdb/testsuite/gdb.dwarf2/dw2-dos-drive.exp
-index 580272986c9..0d4f37ceff0 100644
+index 37da078f5b5..c9e43a63c8c 100644
 --- a/gdb/testsuite/gdb.dwarf2/dw2-dos-drive.exp
 +++ b/gdb/testsuite/gdb.dwarf2/dw2-dos-drive.exp
 @@ -32,7 +32,8 @@ gdb_test_no_output "set breakpoint pending off"
@@ -586,7 +586,7 @@ index 580272986c9..0d4f37ceff0 100644
  if { $dos } {
      gdb_test "break file.c:func" {Breakpoint [0-9]+ at .*}
 diff --git a/gdb/testsuite/gdb.server/wrapper.exp b/gdb/testsuite/gdb.server/wrapper.exp
-index 27d37bac02e..7e6b924ac67 100644
+index e85609bdeca..2aeccf56dc5 100644
 --- a/gdb/testsuite/gdb.server/wrapper.exp
 +++ b/gdb/testsuite/gdb.server/wrapper.exp
 @@ -26,7 +26,8 @@ if { [skip_gdbserver_tests] } {
@@ -600,10 +600,10 @@ index 27d37bac02e..7e6b924ac67 100644
      return -1
  }
 diff --git a/gdb/testsuite/lib/gdb.exp b/gdb/testsuite/lib/gdb.exp
-index 236917e6776..0f9c4be3152 100644
+index f94ec1b77f3..43b2a0bb23e 100644
 --- a/gdb/testsuite/lib/gdb.exp
 +++ b/gdb/testsuite/lib/gdb.exp
-@@ -2306,7 +2306,8 @@ proc skip_shlib_tests {} {
+@@ -2513,7 +2513,8 @@ proc skip_shlib_tests {} {
  	 || [istarget *-*-solaris2*]
  	 || [istarget *-*-mingw*]
  	 || [istarget *-*-cygwin*]
@@ -613,7 +613,7 @@ index 236917e6776..0f9c4be3152 100644
  	return 0
      }
  
-@@ -4257,7 +4258,8 @@ proc gdb_compile {source dest type options} {
+@@ -4791,7 +4792,8 @@ proc gdb_compile {source dest type options} {
  		lappend source "-Wl,$shlib_name"
  	    } elseif { ([istarget "*-*-mingw*"]
  			|| [istarget *-*-cygwin*]
@@ -623,17 +623,17 @@ index 236917e6776..0f9c4be3152 100644
  		lappend source "${shlib_name}.a"
              } else {
                 lappend source $shlib_name
-@@ -4265,7 +4267,8 @@ proc gdb_compile {source dest type options} {
+@@ -4799,7 +4801,8 @@ proc gdb_compile {source dest type options} {
              if { $shlib_found == 0 } {
                  set shlib_found 1
  		if { ([istarget "*-*-mingw*"]
 -		      || [istarget *-*-cygwin*]) } {
 +		      || [istarget *-*-cygwin*]
 +		      || [istarget *-*-msys*]) } {
- 		    lappend new_options "additional_flags=-Wl,--enable-auto-import"
+ 		    lappend new_options "ldflags=-Wl,--enable-auto-import"
  		}
  		if { [test_compiler_info "gcc-*"] || [test_compiler_info "clang-*"] } {
-@@ -4305,6 +4308,7 @@ proc gdb_compile {source dest type options} {
+@@ -4853,6 +4856,7 @@ proc gdb_compile {source dest type options} {
      if { $shlib_load || $shlib_found } {
  	if { ([istarget "*-*-mingw*"]
  	      || [istarget *-*-cygwin*]
@@ -641,7 +641,7 @@ index 236917e6776..0f9c4be3152 100644
  	      || [istarget *-*-pe*]) } {
  	    # Do not need anything.
  	} elseif { [istarget *-*-freebsd*] || [istarget *-*-openbsd*] } {
-@@ -4392,7 +4396,8 @@ proc gdb_compile {source dest type options} {
+@@ -4951,7 +4955,8 @@ proc gdb_compile {source dest type options} {
      if { $type == "executable" } {
  	if { ([istarget "*-*-mingw*"]
  	      || [istarget "*-*-*djgpp"]
@@ -651,7 +651,7 @@ index 236917e6776..0f9c4be3152 100644
  	    # Force output to unbuffered mode, by linking in an object file
  	    # with a global contructor that calls setvbuf.
  	    #
-@@ -4528,6 +4533,7 @@ proc gdb_compile_shlib_1 {sources dest options} {
+@@ -5086,6 +5091,7 @@ proc gdb_compile_shlib_1 {sources dest options} {
          }
  	"clang-*" {
  	    if { [istarget "*-*-cygwin*"]
@@ -659,7 +659,7 @@ index 236917e6776..0f9c4be3152 100644
  		 || [istarget "*-*-mingw*"] } {
  		lappend obj_options "additional_flags=-fPIC"
  	    } else {
-@@ -4538,6 +4544,7 @@ proc gdb_compile_shlib_1 {sources dest options} {
+@@ -5096,6 +5102,7 @@ proc gdb_compile_shlib_1 {sources dest options} {
              if { [istarget "powerpc*-*-aix*"]
                     || [istarget "rs6000*-*-aix*"]
                     || [istarget "*-*-cygwin*"]
@@ -667,7 +667,7 @@ index 236917e6776..0f9c4be3152 100644
                     || [istarget "*-*-mingw*"]
                     || [istarget "*-*-pe*"] } {
                  lappend obj_options "additional_flags=-fPIC"
-@@ -4603,6 +4610,7 @@ proc gdb_compile_shlib_1 {sources dest options} {
+@@ -5161,6 +5168,7 @@ proc gdb_compile_shlib_1 {sources dest options} {
  
  	if { ([istarget "*-*-mingw*"]
  	      || [istarget *-*-cygwin*]
@@ -675,7 +675,7 @@ index 236917e6776..0f9c4be3152 100644
  	      || [istarget *-*-pe*]) } {
  	    if { [is_remote host] } {
  		set name [file tail ${dest}]
-@@ -4630,6 +4638,7 @@ proc gdb_compile_shlib_1 {sources dest options} {
+@@ -5188,6 +5196,7 @@ proc gdb_compile_shlib_1 {sources dest options} {
      if { [is_remote host]
  	 && ([istarget "*-*-mingw*"]
  	     || [istarget *-*-cygwin*]
@@ -683,7 +683,7 @@ index 236917e6776..0f9c4be3152 100644
  	     || [istarget *-*-pe*]) } {
  	set dest_tail_name [file tail ${dest}]
  	remote_upload host $dest_tail_name.a ${dest}.a
-@@ -4972,7 +4981,7 @@ proc kill_wait_spawned_process { proc_spawn_id } {
+@@ -5619,7 +5628,7 @@ proc kill_wait_spawned_process { proc_spawn_id } {
  proc spawn_id_get_pid { spawn_id } {
      set testpid [exp_pid -i $spawn_id]
  
@@ -692,7 +692,7 @@ index 236917e6776..0f9c4be3152 100644
  	# testpid is the Cygwin PID, GDB uses the Windows PID, which
  	# might be different due to the way fork/exec works.
  	set testpid [ exec ps -e | gawk "{ if (\$1 == $testpid) print \$4; }" ]
-@@ -6360,6 +6369,7 @@ gdb_caching_proc gdb_has_argv0 {
+@@ -7073,6 +7082,7 @@ gdb_caching_proc gdb_has_argv0 {
  	  || [istarget *-*-aix*]
  	  || [istarget *-*-gnu*]
  	  || [istarget *-*-cygwin*] || [istarget *-*-mingw32*]
@@ -700,7 +700,7 @@ index 236917e6776..0f9c4be3152 100644
  	  || [istarget *-*-*djgpp*] || [istarget *-*-go32*]
  	  || [istarget *-wince-pe] || [istarget *-*-mingw32ce*]
  	  || [istarget *-*-osf*]
-@@ -6394,7 +6404,7 @@ gdb_caching_proc gdb_has_argv0 {
+@@ -7107,7 +7117,7 @@ gdb_caching_proc gdb_has_argv0 {
  
  proc get_build_id { filename } {
      if { ([istarget "*-*-mingw*"]
@@ -710,30 +710,34 @@ index 236917e6776..0f9c4be3152 100644
  	set result [catch {set data [exec $objdump_program -p $filename | grep signature | cut "-d " -f4]} output]
  	verbose "result is $result"
 diff --git a/gdb/windows-nat.c b/gdb/windows-nat.c
-index 05d95ea7d6a..b0a0189f39d 100644
+index 2fc00dd449f..28c0aa56861 100644
 --- a/gdb/windows-nat.c
 +++ b/gdb/windows-nat.c
-@@ -758,9 +758,15 @@ windows_make_so (const char *name, LPVOID load_addr)
- 	  strcpy (so->so_name, so->so_original_name);
+@@ -908,11 +908,19 @@ windows_make_so (const char *name, LPVOID load_addr)
+ 	    }
  	}
      }
 +#ifdef __MSYS__
 +  /* Record msys-2.0.dll .text start/end.  */
-+  p = strchr (so->so_name, '\0') - (sizeof ("/msys-2.0.dll") - 1);
-+  if (p >= so->so_name && strcasecmp (p, "/msys-2.0.dll") == 0)
++  size_t len = sizeof ("/msys-2.0.dll") - 1;
++  if (so->name.size () >= len
++      && strcasecmp (so->name.c_str () + so->name.size () - len,
++		     "/msys-2.0.dll") == 0)
 +#else
    /* Record cygwin1.dll .text start/end.  */
-   p = strchr (so->so_name, '\0') - (sizeof ("/cygwin1.dll") - 1);
-   if (p >= so->so_name && strcasecmp (p, "/cygwin1.dll") == 0)
+   size_t len = sizeof ("/cygwin1.dll") - 1;
+   if (so->name.size () >= len
+       && strcasecmp (so->name.c_str () + so->name.size () - len,
+ 		     "/cygwin1.dll") == 0)
 +#endif
      {
        asection *text = NULL;
  
 diff --git a/gdbserver/configure.srv b/gdbserver/configure.srv
-index 971f537bffa..55ce20bdffd 100644
+index f0101994529..857581f170b 100644
 --- a/gdbserver/configure.srv
 +++ b/gdbserver/configure.srv
-@@ -87,7 +87,7 @@ case "${gdbserver_host}" in
+@@ -93,7 +93,7 @@ case "${gdbserver_host}" in
  			srv_linux_regsets=yes
  			srv_linux_thread_db=yes
  			;;
@@ -742,7 +746,7 @@ index 971f537bffa..55ce20bdffd 100644
  			srv_tgtobj="x86-low.o nat/x86-dregs.o win32-low.o"
  			srv_tgtobj="${srv_tgtobj} win32-i386-low.o"
  			srv_tgtobj="${srv_tgtobj} nat/windows-nat.o"
-@@ -363,7 +363,7 @@ case "${gdbserver_host}" in
+@@ -383,7 +383,7 @@ case "${gdbserver_host}" in
  			srv_tgtobj="${srv_tgtobj} arch/amd64.o arch/i386.o"
  			srv_mingw=yes
  			;;
@@ -752,7 +756,7 @@ index 971f537bffa..55ce20bdffd 100644
  			srv_tgtobj="${srv_tgtobj} win32-low.o win32-i386-low.o"
  			srv_tgtobj="${srv_tgtobj} nat/windows-nat.o"
 diff --git a/gnulib/import/m4/double-slash-root.m4 b/gnulib/import/m4/double-slash-root.m4
-index c9bbcef6781..509ebec4b12 100644
+index 09ff5f0d17a..1e11243ff02 100644
 --- a/gnulib/import/m4/double-slash-root.m4
 +++ b/gnulib/import/m4/double-slash-root.m4
 @@ -16,7 +16,7 @@ AC_DEFUN([gl_DOUBLE_SLASH_ROOT],
@@ -765,7 +769,7 @@ index c9bbcef6781..509ebec4b12 100644
            *)
              # Be optimistic and assume that / and // are the same when we
 diff --git a/gnulib/import/m4/dup2.m4 b/gnulib/import/m4/dup2.m4
-index 0753a32491e..22da0bc2958 100644
+index 7e777cdee6a..62ad578c090 100644
 --- a/gnulib/import/m4/dup2.m4
 +++ b/gnulib/import/m4/dup2.m4
 @@ -69,7 +69,7 @@ AC_DEFUN([gl_FUNC_DUP2],
@@ -778,7 +782,7 @@ index 0753a32491e..22da0bc2958 100644
           aix* | freebsd*)
                   # on AIX 7.1 and FreeBSD 6.1, dup2 (1,toobig) gives EMFILE,
 diff --git a/gnulib/import/m4/fcntl.m4 b/gnulib/import/m4/fcntl.m4
-index f6264345c1b..cb8bcc47114 100644
+index 428e5709d30..84f84fbb3dc 100644
 --- a/gnulib/import/m4/fcntl.m4
 +++ b/gnulib/import/m4/fcntl.m4
 @@ -70,7 +70,7 @@ AC_DEFUN([gl_FUNC_FCNTL],
@@ -791,10 +795,10 @@ index f6264345c1b..cb8bcc47114 100644
              *) gl_cv_func_fcntl_f_dupfd_works="guessing yes" ;;
            esac])])
 diff --git a/libctf/configure.ac b/libctf/configure.ac
-index 80644b89d67..699fc17cb0f 100644
+index 65686fedc5a..97632714fe0 100644
 --- a/libctf/configure.ac
 +++ b/libctf/configure.ac
-@@ -204,6 +204,10 @@ if test "$enable_shared" = "yes"; then
+@@ -229,6 +229,10 @@ if test "$enable_shared" = "yes"; then
        SHARED_LDFLAGS="-no-undefined"
        CTF_LIBADD="$CTF_LIBADD -lcygwin"
        ;;
@@ -806,10 +810,10 @@ index 80644b89d67..699fc17cb0f 100644
  fi
  AC_SUBST(SHARED_LDFLAGS)
 diff --git a/libiberty/configure.ac b/libiberty/configure.ac
-index a85ff25501a..c2c4b4f8986 100644
+index 6c1ff9c6093..a99fe0b58f1 100644
 --- a/libiberty/configure.ac
 +++ b/libiberty/configure.ac
-@@ -553,7 +553,7 @@ AC_SUBST(CHECK)
+@@ -578,7 +578,7 @@ AC_SUBST(CHECK)
  AC_SUBST(target_header_dir)
  
  case "${host}" in
@@ -819,7 +823,7 @@ index a85ff25501a..c2c4b4f8986 100644
      AC_DEFINE(HAVE_SYS_NERR)
      ;;
 diff --git a/libtool.m4 b/libtool.m4
-index 9a13f3b117a..7f04016a864 100644
+index ad63ebbb385..444e94d668b 100644
 --- a/libtool.m4
 +++ b/libtool.m4
 @@ -1521,7 +1521,7 @@ AC_CACHE_VAL([lt_cv_sys_max_cmd_len], [dnl
@@ -879,7 +883,7 @@ index 9a13f3b117a..7f04016a864 100644
    # func_win32_libid is a shell function defined in ltmain.sh
    lt_cv_deplibs_check_method='file_magic ^x86 archive import|^x86 DLL'
    lt_cv_file_magic_cmd='func_win32_libid'
-@@ -3305,7 +3311,7 @@ AC_DEFUN([LT_LIB_M],
+@@ -3313,7 +3319,7 @@ AC_DEFUN([LT_LIB_M],
  [AC_REQUIRE([AC_CANONICAL_HOST])dnl
  LIBM=
  case $host in
@@ -888,7 +892,7 @@ index 9a13f3b117a..7f04016a864 100644
    # These system don't have libm, or don't need it
    ;;
  *-ncr-sysv4.3*)
-@@ -3380,7 +3386,7 @@ case $host_os in
+@@ -3388,7 +3394,7 @@ case $host_os in
  aix*)
    symcode='[[BCDT]]'
    ;;
@@ -897,7 +901,7 @@ index 9a13f3b117a..7f04016a864 100644
    symcode='[[ABCDGISTW]]'
    ;;
  hpux*)
-@@ -3627,7 +3633,7 @@ m4_if([$1], [CXX], [
+@@ -3635,7 +3641,7 @@ m4_if([$1], [CXX], [
      beos* | irix5* | irix6* | nonstopux* | osf3* | osf4* | osf5*)
        # PIC is the default for these OSes.
        ;;
@@ -906,7 +910,7 @@ index 9a13f3b117a..7f04016a864 100644
        # This hack is so that the source file can tell whether it is being
        # built for inclusion in a dll (and should export symbols for example).
        # Although the cygwin gcc ignores -fPIC, still need this for old-style
-@@ -3940,7 +3946,7 @@ m4_if([$1], [CXX], [
+@@ -3948,7 +3954,7 @@ m4_if([$1], [CXX], [
        # PIC is the default for these OSes.
        ;;
  
@@ -915,7 +919,7 @@ index 9a13f3b117a..7f04016a864 100644
        # This hack is so that the source file can tell whether it is being
        # built for inclusion in a dll (and should export symbols for example).
        # Although the cygwin gcc ignores -fPIC, still need this for old-style
-@@ -4023,7 +4029,7 @@ m4_if([$1], [CXX], [
+@@ -4031,7 +4037,7 @@ m4_if([$1], [CXX], [
        fi
        ;;
  
@@ -924,7 +928,7 @@ index 9a13f3b117a..7f04016a864 100644
        # This hack is so that the source file can tell whether it is being
        # built for inclusion in a dll (and should export symbols for example).
        m4_if([$1], [GCJ], [],
-@@ -4256,7 +4262,7 @@ m4_if([$1], [CXX], [
+@@ -4264,7 +4270,7 @@ m4_if([$1], [CXX], [
    pw32*)
      _LT_TAGVAR(export_symbols_cmds, $1)="$ltdll_cmds"
    ;;
@@ -933,7 +937,7 @@ index 9a13f3b117a..7f04016a864 100644
      _LT_TAGVAR(export_symbols_cmds, $1)='$NM $libobjs $convenience | $global_symbol_pipe | $SED -e '\''/^[[BCDGRS]][[ ]]/s/.*[[ ]]\([[^ ]]*\)/\1 DATA/;/^.*[[ ]]__nm__/s/^.*[[ ]]__nm__\([[^ ]]*\)[[ ]][[^ ]]*/\1 DATA/;/^I[[ ]]/d;/^[[AITW]][[ ]]/s/.* //'\'' | sort | uniq > $export_symbols'
    ;;
    *)
-@@ -4308,7 +4314,7 @@ dnl Note also adjust exclude_expsyms for C++ above.
+@@ -4316,7 +4322,7 @@ dnl Note also adjust exclude_expsyms for C++ above.
    extract_expsyms_cmds=
  
    case $host_os in
@@ -942,7 +946,7 @@ index 9a13f3b117a..7f04016a864 100644
      # FIXME: the MSVC++ port hasn't been tested in a loooong time
      # When not using gcc, we currently assume that we are using
      # Microsoft Visual C++.
-@@ -4423,7 +4429,7 @@ _LT_EOF
+@@ -4431,7 +4437,7 @@ _LT_EOF
        fi
        ;;
  
@@ -951,7 +955,7 @@ index 9a13f3b117a..7f04016a864 100644
        # _LT_TAGVAR(hardcode_libdir_flag_spec, $1) is actually meaningless,
        # as there is no search path for DLLs.
        _LT_TAGVAR(hardcode_libdir_flag_spec, $1)='-L$libdir'
-@@ -4796,7 +4802,7 @@ _LT_EOF
+@@ -4804,7 +4810,7 @@ _LT_EOF
        _LT_TAGVAR(export_dynamic_flag_spec, $1)=-rdynamic
        ;;
  
@@ -960,7 +964,7 @@ index 9a13f3b117a..7f04016a864 100644
        # When not using gcc, we currently assume that we are using
        # Microsoft Visual C++.
        # hardcode_libdir_flag_spec is actually meaningless, as there is
-@@ -5740,7 +5746,7 @@ if test "$_lt_caught_CXX_error" != yes; then
+@@ -5748,7 +5754,7 @@ if test "$_lt_caught_CXX_error" != yes; then
          esac
          ;;
  
@@ -1220,10 +1224,10 @@ index 5ef12ced2a8..5e7bc34702b 100644
    AC_CHECK_TOOL(DLLTOOL, dlltool, false)
    AC_CHECK_TOOL(OBJDUMP, objdump, false)
 diff --git a/opcodes/configure.ac b/opcodes/configure.ac
-index e564f067334..1387ce86cd7 100644
+index 8c79deb9ffc..27b8ed1a094 100644
 --- a/opcodes/configure.ac
 +++ b/opcodes/configure.ac
-@@ -193,6 +193,10 @@ if test "$enable_shared" = "yes"; then
+@@ -195,6 +195,10 @@ if test "$enable_shared" = "yes"; then
        SHARED_LDFLAGS="-no-undefined"
        SHARED_LIBADD="-L`pwd`/../bfd -lbfd -L`pwd`/../libiberty -liberty $SHARED_LIBADD"
        ;;
@@ -1231,9 +1235,9 @@ index e564f067334..1387ce86cd7 100644
 +      SHARED_LDFLAGS="-no-undefined"
 +      SHARED_LIBADD="-L`pwd`/../bfd -lbfd -L`pwd`/../libiberty -liberty -L`pwd`/../intl -lintl -lmsys-2.0"
 +      ;;
-    *-*-darwin*)
-      SHARED_LIBADD="-Wl,`pwd`/../bfd/.libs/libbfd.dylib ${SHARED_LIBADD}"
-      SHARED_DEPENDENCIES="../bfd/libbfd.la"
+     *)
+       SHARED_LIBADD="../bfd/libbfd.la ${SHARED_LIBADD}"
+       SHARED_DEPENDENCIES="../bfd/libbfd.la"
 diff --git a/readline/readline/configure.ac b/readline/readline/configure.ac
 index 912c99b6575..4e9ee84b7a4 100644
 --- a/readline/readline/configure.ac
@@ -1362,5 +1366,5 @@ index 5a3f9776e91..595e92384f2 100755
  	SHOBJ_LD='$(CC)'
  	SHOBJ_LDFLAGS='-shared -Wl,--enable-auto-import -Wl,--enable-auto-image-base -Wl,--export-all -Wl,--out-implib=$(@).a'
 -- 
-2.34.1
+2.40.0.windows.1
 

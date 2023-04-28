@@ -1,7 +1,7 @@
-From 78a3fc32338171cb791512076e3696e62d08c33a Mon Sep 17 00:00:00 2001
+From 627fac11edcc38f99f47fda7ed297c71720c92f2 Mon Sep 17 00:00:00 2001
 From: Jon Turney <jon.turney@dronecode.org.uk>
 Date: Tue, 12 Jan 2016 22:26:26 +0000
-Subject: [PATCH 2/5] 7.8-windows-nat-cygwin
+Subject: [PATCH 2/6] 7.8-windows-nat-cygwin
 
 Remaining parts of 7.8-windows-nat-cygwin.patch not yet upstream.
 
@@ -40,20 +40,20 @@ have other problems...)
  1 file changed, 16 insertions(+), 9 deletions(-)
 
 diff --git a/gdb/windows-nat.c b/gdb/windows-nat.c
-index 108e1e32edc..a0faa058be7 100644
+index a8ce05393b9..79afc742166 100644
 --- a/gdb/windows-nat.c
 +++ b/gdb/windows-nat.c
-@@ -176,8 +176,7 @@ static Wow64GetThreadSelectorEntry_ftype *Wow64GetThreadSelectorEntry;
- #   define bad_GetModuleFileNameEx bad_GetModuleFileNameExW
- #endif
+@@ -99,8 +99,7 @@ struct windows_per_inferior : public windows_process_info
+   bool handle_access_violation (const EXCEPTION_RECORD *rec) override;
  
--static int have_saved_context;	/* True if we've saved context from a
+ 
+-  int have_saved_context = 0;	/* True if we've saved context from a
 -				   cygwin signal.  */
-+static DWORD  signal_thread_id;	/* Non-zero if we saved context. */
- #ifdef __CYGWIN__
- static CONTEXT saved_context;	/* Contains the saved context from a
- 				   cygwin signal.  */
-@@ -403,7 +402,7 @@ windows_nat::thread_rec (ptid_t ptid, thread_disposition_type disposition)
++  DWORD  signal_thread_id;	/* Non-zero if we saved context. */
+ 
+   uintptr_t dr[8] {};
+ 
+@@ -524,7 +523,7 @@ windows_per_inferior::thread_rec
  		/* Nothing.  */
  		break;
  	      case INVALIDATE_CONTEXT:
@@ -62,25 +62,25 @@ index 108e1e32edc..a0faa058be7 100644
  		  th->suspend ();
  		th->reload_context = true;
  		break;
-@@ -644,7 +643,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
+@@ -731,7 +730,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
    if (th->reload_context)
      {
  #ifdef __CYGWIN__
--      if (have_saved_context)
-+      if (signal_thread_id)
+-      if (windows_process.have_saved_context)
++      if (windows_process.signal_thread_id)
  	{
  	  /* Lie about where the program actually is stopped since
  	     cygwin has informed us that we should consider the signal
-@@ -652,7 +651,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
+@@ -739,7 +738,7 @@ windows_nat_target::fetch_registers (struct regcache *regcache, int r)
  	     "saved_context.  */
- 	  memcpy (&th->context, &saved_context,
+ 	  memcpy (&th->context, &windows_process.saved_context,
  		  __COPY_CONTEXT_SIZE);
--	  have_saved_context = 0;
-+	  signal_thread_id = 0;
+-	  windows_process.have_saved_context = 0;
++	  windows_process.signal_thread_id = 0;
  	}
        else
  #endif
-@@ -997,7 +996,11 @@ windows_nat::handle_output_debug_string (struct target_waitstatus *ourstatus)
+@@ -1026,7 +1025,11 @@ windows_per_inferior::handle_output_debug_string
    else if (!startswith (s.get (), _CYGWIN_SIGNAL_STRING))
      {
  #ifdef __CYGWIN__
@@ -93,7 +93,7 @@ index 108e1e32edc..a0faa058be7 100644
  #endif
  	{
  	  char *p = strchr (s.get (), '\0');
-@@ -1036,7 +1039,12 @@ windows_nat::handle_output_debug_string (struct target_waitstatus *ourstatus)
+@@ -1064,7 +1067,12 @@ windows_per_inferior::handle_output_debug_string
  					 &saved_context,
  					 __COPY_CONTEXT_SIZE, &n)
  		   && n == __COPY_CONTEXT_SIZE)
@@ -107,23 +107,23 @@ index 108e1e32edc..a0faa058be7 100644
  	}
      }
  #endif
-@@ -1563,7 +1571,6 @@ windows_nat_target::get_windows_debug_event (int pid,
+@@ -1599,7 +1607,6 @@ windows_nat_target::get_windows_debug_event
  
-   event_code = current_event.dwDebugEventCode;
-   ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
--  have_saved_context = 0;
+   event_code = windows_process.current_event.dwDebugEventCode;
+   ourstatus->set_spurious ();
+-  windows_process.have_saved_context = 0;
  
    switch (event_code)
      {
-@@ -1765,7 +1772,7 @@ windows_nat_target::get_windows_debug_event (int pid,
-     }
+@@ -1816,7 +1823,7 @@ windows_nat_target::get_windows_debug_event
  
- out:
--  return thread_id;
-+  return (int) thread_id;
+   if (thread_id == 0)
+     return null_ptid;
+-  return ptid_t (windows_process.current_event.dwProcessId, thread_id, 0);
++  return ptid_t (windows_process.current_event.dwProcessId, (int) thread_id, 0);
  }
  
  /* Wait for interesting events to occur in the target process.  */
 -- 
-2.31.1.windows.1
+2.40.0.windows.1
 

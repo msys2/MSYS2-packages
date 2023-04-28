@@ -1,7 +1,8 @@
-From 742a5dd1aec188e45edddc9491e46e31ac2cf887 Mon Sep 17 00:00:00 2001
+From c800d4df2c6bcb876b6355b1a962c66e63c7aa75 Mon Sep 17 00:00:00 2001
 From: Jon Turney <jon.turney@dronecode.org.uk>
 Date: Tue, 12 Jan 2016 22:49:09 +0000
-Subject: [PATCH] Teach gdb how to unwind cygwin _sigbe and sigdelayed frames
+Subject: [PATCH 1/6] Teach gdb how to unwind cygwin _sigbe and sigdelayed
+ frames
 
 The majority of functions in the cygwin DLL are wrapped by routines which use an
 an alternate stack to return via a signal handler if a signal occured while
@@ -46,7 +47,7 @@ as we unwind the stack.
  4 files changed, 342 insertions(+), 1 deletion(-)
 
 diff --git a/gdb/amd64-windows-tdep.c b/gdb/amd64-windows-tdep.c
-index fe8a3a0b7ac..1d9121cf76d 100644
+index 14477e61fdd..c13b4b6ccea 100644
 --- a/gdb/amd64-windows-tdep.c
 +++ b/gdb/amd64-windows-tdep.c
 @@ -1272,13 +1272,68 @@ amd64_windows_auto_wide_charset (void)
@@ -110,7 +111,7 @@ index fe8a3a0b7ac..1d9121cf76d 100644
  static void
  amd64_windows_init_abi_common (gdbarch_info info, struct gdbarch *gdbarch)
  {
-   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+   i386_gdbarch_tdep *tdep = gdbarch_tdep<i386_gdbarch_tdep> (gdbarch);
  
 +  cygwin_sigwrapper_frame_unwind_set_sigbe_pattern (&amd64_sigbe);
 +  cygwin_sigwrapper_frame_unwind_set_sigdelayed_pattern (&amd64_sigdelayed);
@@ -120,7 +121,7 @@ index fe8a3a0b7ac..1d9121cf76d 100644
       preferred over the SEH one.  The reasons are:
       - binaries without SEH but with dwarf2 debug info are correctly handled
 diff --git a/gdb/i386-windows-tdep.c b/gdb/i386-windows-tdep.c
-index b561d60e0f8..1da56866bff 100644
+index 595c58e70f5..2268c5c253f 100644
 --- a/gdb/i386-windows-tdep.c
 +++ b/gdb/i386-windows-tdep.c
 @@ -27,6 +27,7 @@
@@ -164,7 +165,7 @@ index b561d60e0f8..1da56866bff 100644
  static CORE_ADDR
 @@ -138,6 +163,9 @@ i386_windows_init_abi_common (struct gdbarch_info info, struct gdbarch *gdbarch)
  {
-   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+   i386_gdbarch_tdep *tdep = gdbarch_tdep<i386_gdbarch_tdep> (gdbarch);
  
 +  cygwin_sigwrapper_frame_unwind_set_sigbe_pattern (&i386_sigbe);
 +  frame_unwind_append_unwinder (gdbarch, &cygwin_sigwrapper_frame_unwind);
@@ -173,18 +174,18 @@ index b561d60e0f8..1da56866bff 100644
  
    set_gdbarch_skip_main_prologue (gdbarch, i386_skip_main_prologue);
 diff --git a/gdb/windows-tdep.c b/gdb/windows-tdep.c
-index ca854390b7e..7ff1750990b 100644
+index 00c700422a1..bba8d8a18a9 100644
 --- a/gdb/windows-tdep.c
 +++ b/gdb/windows-tdep.c
-@@ -33,6 +33,7 @@
- #include "complaints.h"
+@@ -32,6 +32,7 @@
+ #include "gdb_bfd.h"
  #include "solib.h"
  #include "solib-target.h"
 +#include "frame-unwind.h"
  #include "gdbcore.h"
  #include "coff/internal.h"
  #include "libcoff.h"
-@@ -1237,3 +1238,240 @@ even if their meaning is unknown."),
+@@ -1219,3 +1220,240 @@ even if their meaning is unknown."),
       isn't another convenience variable of the same name.  */
    create_internalvar_type_lazy ("_tlb", &tlb_funcs, NULL);
  }
@@ -291,7 +292,7 @@ index ca854390b7e..7ff1750990b 100644
 +   for THIS_FRAME.  */
 +
 +static struct cygwin_sigwrapper_frame_cache *
-+cygwin_sigwrapper_frame_cache (struct frame_info *this_frame, void **this_cache)
++cygwin_sigwrapper_frame_cache (frame_info_ptr this_frame, void **this_cache)
 +{
 +  struct gdbarch *gdbarch = get_frame_arch (this_frame);
 +  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
@@ -317,7 +318,7 @@ index ca854390b7e..7ff1750990b 100644
 +  stacktop = extract_unsigned_integer(buf, len, byte_order);
 +
 +  if (frame_debug)
-+    fprintf_unfiltered (gdb_stdlog,
++    gdb_printf (gdb_stdlog,
 +			"cygwin_sigwrapper_frame_prev_register TEB.stacktop=%s\n",
 +			paddress (gdbarch, stacktop ));
 +
@@ -326,7 +327,7 @@ index ca854390b7e..7ff1750990b 100644
 +  signalstackptr = extract_unsigned_integer(buf, len, byte_order);
 +
 +  if (frame_debug)
-+    fprintf_unfiltered (gdb_stdlog,
++    gdb_printf (gdb_stdlog,
 +			"cygwin_sigwrapper_frame_prev_register sigsp=%s\n",
 +			paddress (gdbarch, signalstackptr));
 +
@@ -335,7 +336,7 @@ index ca854390b7e..7ff1750990b 100644
 +  cache->prev_pc = extract_unsigned_integer (buf, len, byte_order);
 +
 +  if (frame_debug)
-+    fprintf_unfiltered (gdb_stdlog,
++    gdb_printf (gdb_stdlog,
 +			"cygwin_sigwrapper_frame_prev_register ra=%s\n",
 +			paddress (gdbarch, cache->prev_pc));
 +
@@ -343,7 +344,7 @@ index ca854390b7e..7ff1750990b 100644
 +}
 +
 +static struct value *
-+cygwin_sigwrapper_frame_prev_register (struct frame_info *this_frame, void **this_cache,
++cygwin_sigwrapper_frame_prev_register (frame_info_ptr this_frame, void **this_cache,
 +					     int regnum)
 +{
 +  struct gdbarch *gdbarch = get_frame_arch (this_frame);
@@ -351,7 +352,7 @@ index ca854390b7e..7ff1750990b 100644
 +    cygwin_sigwrapper_frame_cache (this_frame, this_cache);
 +
 +  if (frame_debug)
-+    fprintf_unfiltered (gdb_stdlog,
++    gdb_printf (gdb_stdlog,
 +			"cygwin_sigwrapper_frame_prev_register %s for pc=%s\n",
 +			gdbarch_register_name (gdbarch, regnum),
 +			paddress (gdbarch, cache->prev_pc));
@@ -363,7 +364,7 @@ index ca854390b7e..7ff1750990b 100644
 +}
 +
 +static void
-+cygwin_sigwrapper_frame_this_id (struct frame_info *this_frame, void **this_cache,
++cygwin_sigwrapper_frame_this_id (frame_info_ptr this_frame, void **this_cache,
 +				      struct frame_id *this_id)
 +{
 +  *this_id = frame_id_build_unavailable_stack (get_frame_func (this_frame));
@@ -371,7 +372,7 @@ index ca854390b7e..7ff1750990b 100644
 +
 +static int
 +cygwin_sigwrapper_frame_sniffer (const struct frame_unwind *self,
-+				       struct frame_info *this_frame,
++				       frame_info_ptr this_frame,
 +				       void **this_cache)
 +{
 +  struct gdbarch *gdbarch = get_frame_arch (this_frame);
@@ -391,7 +392,7 @@ index ca854390b7e..7ff1750990b 100644
 +    return 0;
 +
 +  if (frame_debug)
-+    fprintf_unfiltered (gdb_stdlog,
++    gdb_printf (gdb_stdlog,
 +			"cygwin_sigwrapper_frame_sniffer name=%s, start=%s, end=%s\n",
 +			name, paddress (gdbarch, start), paddress (gdbarch, end));
 +
@@ -400,7 +401,7 @@ index ca854390b7e..7ff1750990b 100644
 +    return 0;
 +
 +  if (frame_debug)
-+    fprintf_unfiltered (gdb_stdlog,
++    gdb_printf (gdb_stdlog,
 +			"cygwin_sigwrapper_frame_sniffer sigstackptroffset=%x\n",
 +			tlsoffset);
 +
@@ -426,7 +427,7 @@ index ca854390b7e..7ff1750990b 100644
 +  &cygwin_sigwrapper_frame_sniffer
 +};
 diff --git a/gdb/windows-tdep.h b/gdb/windows-tdep.h
-index bd2c7e7589f..835bb2253ad 100644
+index be4a363f8cc..483766840fa 100644
 --- a/gdb/windows-tdep.h
 +++ b/gdb/windows-tdep.h
 @@ -56,4 +56,24 @@ extern void cygwin_init_abi (struct gdbarch_info info,
@@ -455,5 +456,5 @@ index bd2c7e7589f..835bb2253ad 100644
 +
  #endif
 -- 
-2.34.1
+2.40.0.windows.1
 
