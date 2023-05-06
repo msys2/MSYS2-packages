@@ -1,7 +1,7 @@
-From 4e5eaa702d02a7c6170f2d534b323996f1afe06c Mon Sep 17 00:00:00 2001
+From ed36ae973e27d52f688d9e7fca4aee06a1303d1e Mon Sep 17 00:00:00 2001
 From: Jon Turney <jon.turney@dronecode.org.uk>
 Date: Wed, 13 Jan 2016 18:27:48 +0000
-Subject: [PATCH 3/5] Better handling for realpath() failures in
+Subject: [PATCH 3/6] Better handling for realpath() failures in
  windows_make_so() on Cygwin
 
 Fix a memory leak which would occur in the case when the result of realpath() is
@@ -14,31 +14,24 @@ Warn rather than stopping with an error in those cases.
 
 Original patch from Tim Chick.  Memory leak fix by Corinna Vinschen.
 ---
- gdb/windows-nat.c | 10 ++++++++--
- 1 file changed, 8 insertions(+), 2 deletions(-)
+ gdb/windows-nat.c | 4 ++++
+ 1 file changed, 4 insertions(+)
 
 diff --git a/gdb/windows-nat.c b/gdb/windows-nat.c
-index a0faa058be7..8329e3d0235 100644
+index 79afc742166..2fc00dd449f 100644
 --- a/gdb/windows-nat.c
 +++ b/gdb/windows-nat.c
-@@ -817,9 +817,15 @@ windows_make_so (const char *name, LPVOID load_addr)
-   else
-     {
-       char *rname = realpath (name, NULL);
--      if (rname && strlen (rname) < SO_NAME_MAX_PATH_SIZE)
-+      if (rname)
+@@ -902,6 +902,10 @@ windows_make_so (const char *name, LPVOID load_addr)
  	{
--	  strcpy (so->so_name, rname);
-+	  if (strlen (rname) < SO_NAME_MAX_PATH_SIZE)
-+	    strcpy (so->so_name, rname);
-+	  else
+ 	  warning (_("dll path for \"%s\" too long or inaccessible"), name);
+ 	  so->name = so->original_name;
++	  if (rname)
 +	    {
-+	      warning (_("dll path \"%s\" too long"), rname);
-+	      strcpy (so->so_name, so->so_original_name);
++	      free (rname);
 +	    }
- 	  free (rname);
  	}
-       else
+     }
+   /* Record cygwin1.dll .text start/end.  */
 -- 
-2.31.1.windows.1
+2.40.0.windows.1
 
