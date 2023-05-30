@@ -1,0 +1,54 @@
+From 9ba153211e8e09c25af2947deae43546fc6db733 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Mon, 22 May 2023 13:36:27 +0200
+Subject: [PATCH 43/N] Cygwin: Adjust CWD magic to accommodate for the latest
+ Windows previews
+
+Reportedly Windows 11 build 25*** from Insider changed the current
+working directory logic a bit, and Cygwin's "magic" (or:
+"technologically sufficiently advanced") code needs to be adjusted
+accordingly.
+
+This fixes https://github.com/git-for-windows/git/issues/4429
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+(cherry picked from commit 4840a5632520c1a3c1598f73f9d1cdd37df371ba)
+---
+ winsup/cygwin/path.cc | 20 +++++++++++++++++---
+ 1 file changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index c0b85c0..0f3ea85 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -4808,13 +4808,27 @@ find_fast_cwd_pointer ()
+       if (!lock)
+ 	{
+ 	  /* Windows 8.1 Preview calls `lea rel(rip),%r12' then some unrelated
+-	     or, then `mov %r12,%rcx', then `callq RtlEnterCriticalSection'. */
++	     ops, then `mov %r12,%rcx', then `callq RtlEnterCriticalSection'. */
+ 	  lock = (const uint8_t *) memmem ((const char *) use_cwd, 80,
+ 					   "\x4c\x8d\x25", 3);
+-	  if (!lock)
+-	    return NULL;
+ 	  call_rtl_offset = 14;
+ 	}
++
++      if (!lock)
++	{
++	  /* A recent Windows 11 Preview calls `lea rel(rip),%r13' then
++	     some unrelated instructions, then `callq RtlEnterCriticalSection'.
++	     */
++	  lock = (const uint8_t *) memmem ((const char *) use_cwd, 80,
++					   "\x4c\x8d\x2d", 3);
++	  call_rtl_offset = 24;
++	}
++
++      if (!lock)
++	{
++	  return NULL;
++	}
++
+       PRTL_CRITICAL_SECTION lockaddr =
+         (PRTL_CRITICAL_SECTION) (lock + 7 + peek32 (lock + 3));
+       /* Test if lock address is FastPebLock. */
