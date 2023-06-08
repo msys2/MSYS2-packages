@@ -1,0 +1,50 @@
+pkgname=libev
+pkgver=4.33
+pkgrel=1
+pkgdesc="A full-featured and high-performance event loop"
+arch=('i686' 'x86_64')
+makedepends=('autotools' 'gcc' 'make')
+url="https://software.schmorp.de/pkg/libev.html"
+license=('spdx:BSD-2-Clause OR GPL-2.0-or-later')
+source=(http://dist.schmorp.de/${pkgname}/${pkgname}-${pkgver}.tar.gz
+        "4.22-no-undefined.patch")
+sha256sums=('507eb7b8d1015fbec5b935f34ebed15bf346bed04a11ab82b8eee848c4205aea'
+            'f7ea2f3d1d9d7a4891b63012e13ecd9ea7c1c35bdbbbd2590fcbcbb05250c46a')
+
+prepare() {
+  cd "${pkgname}-${pkgver}"
+
+  patch -Np2 -i ${srcdir}/4.22-no-undefined.patch
+
+  autoreconf -vfi
+}
+
+build() {
+  cd "${pkgname}-${pkgver}"
+
+  MSYSTEM=CYGWIN
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+  ./configure \
+    --build=${CYGWIN_CHOST} \
+    --prefix=/usr
+
+  make
+}
+
+check() {
+  cd "${pkgname}-${pkgver}"
+
+  make check
+}
+
+package() {
+  cd "${pkgname}-${pkgver}"
+
+  make DESTDIR="${pkgdir}" install
+
+  # fix conflict with libevent
+  rm "${pkgdir}"/usr/include/event.h
+
+  # license
+  install -vDm644 -t "$pkgdir/usr/share/licenses/${pkgname}" LICENSE
+}
