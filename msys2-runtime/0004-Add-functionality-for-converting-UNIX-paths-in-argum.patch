@@ -1,4 +1,4 @@
-From 8e6ef491081215ff6f12fbe36851ed6527c384da Mon Sep 17 00:00:00 2001
+From 42631a088d441739abc469c0e46bd0d781289583 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?=D0=90=D0=BB=D0=B5=D0=BA=D1=81=D0=B5=D0=B8=CC=86=20=D0=9F?=
  =?UTF-8?q?=D0=B0=D0=B2=D0=BB=D0=BE=D0=B2?= <alexey.pawlow@gmail.com>
 Date: Sun, 14 Apr 2019 21:17:46 +0300
@@ -13,11 +13,11 @@ Subject: [PATCH 04/N] Add functionality for converting UNIX paths in
  winsup/cygwin/include/sys/cygwin.h     |   6 +
  winsup/cygwin/local_includes/environ.h |   2 +-
  winsup/cygwin/local_includes/winf.h    |   4 +
- winsup/cygwin/msys2_path_conv.cc       | 639 +++++++++++++++++++++++++
+ winsup/cygwin/msys2_path_conv.cc       | 642 +++++++++++++++++++++++++
  winsup/cygwin/msys2_path_conv.h        | 147 ++++++
  winsup/cygwin/path.cc                  |  69 +++
  winsup/cygwin/spawn.cc                 |  38 +-
- 10 files changed, 928 insertions(+), 4 deletions(-)
+ 10 files changed, 931 insertions(+), 4 deletions(-)
  create mode 100644 winsup/cygwin/msys2_path_conv.cc
  create mode 100644 winsup/cygwin/msys2_path_conv.h
 
@@ -142,10 +142,10 @@ index 651f78b..38719f3 100644
      for (int i = calloced; i < argc; i++)
 diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
 new file mode 100644
-index 0000000..2d401ca
+index 0000000..367692b
 --- /dev/null
 +++ b/winsup/cygwin/msys2_path_conv.cc
-@@ -0,0 +1,639 @@
+@@ -0,0 +1,642 @@
 +/*
 +  The MSYS2 Path conversion source code is licensed under:
 +  
@@ -386,6 +386,7 @@ index 0000000..2d401ca
 +void sub_convert(const char** from, const char** to, char** dst, const char* dstend, int* in_string) {
 +    const char* copy_from = *from;
 +    path_type type = find_path_start_and_type(from, false, *to);
++    debug_printf("found type %d for path %s", type, copy_from);
 +
 +    if (type == POSIX_PATH_LIST) {
 +        find_end_of_posix_list(to, in_string);
@@ -494,8 +495,10 @@ index 0000000..2d401ca
 +
 +    if (*it == '\0' || it == end) return NONE;
 +
-+    if (!isalnum(*it) && *it != '/' && *it != '\\' && *it != ':' && *it != '-' && *it != '.') {
-+        return find_path_start_and_type(move(src, 1), true, end);
++    while (!isalnum(*it) && *it != '/' && *it != '\\' && *it != ':' && *it != '-' && *it != '.') {
++        recurse = true;
++        it = ++*src;
++        if (it == end || *it == '\0') return NONE;
 +    }
 +
 +    path_type result = NONE;
@@ -939,7 +942,7 @@ index 0000000..67d85ec
 +#endif /* end of include guard: PATH_CONV_H_DB4IQBH3 */
 +
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index 97099af..2ca749c 100644
+index e788c7d..79d784f 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
 @@ -66,6 +66,7 @@
