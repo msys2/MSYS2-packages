@@ -4,46 +4,53 @@
 _realname=binutils
 _mingw_suff=mingw-w64-cross
 pkgname=("${_mingw_suff}-${_realname}")
-pkgver=2.37
-pkgrel=3
+pkgver=2.40
+pkgrel=1
 pkgdesc="A set of programs to assemble and manipulate binary and object files"
 arch=('i686' 'x86_64')
 url="https://www.gnu.org/software/binutils/"
 license=('GPL')
 groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
-depends=("libiconv" "zlib")
+depends=("libiconv" "zlib" "libzstd")
 checkdepends=('dejagnu' 'bc')
-makedepends=("libiconv" "zlib" 'autotools' 'gcc')
+makedepends=("libiconv-devel" "zlib-devel" 'autotools' 'gcc' 'libzstd-devel')
 options=('staticlibs' '!distcc' '!ccache' '!buildflags')
 source=(https://ftp.gnu.org/gnu/binutils/binutils-${pkgver}.tar.xz{,.sig}
         0002-check-for-unusual-file-harder.patch
         0010-bfd-Increase-_bfd_coff_max_nscns-to-65279.patch
-        0110-binutils-mingw-gnu-print.patch
-        0120-windres-handle-spaces.patch)
-sha256sums=('820d9724f020a3e69cb337893a0b63c2db161dadcb0e06fc11dc29eb1e84a32c'
+        3001-try-fix-compare_section-abort.patch
+        decorated-symbols-in-import-libs.patch)
+sha256sums=('0f8a4c272d7f17f369ded10a4aca28b8e304828e95526da482b0ccc4dfc9d8e1'
             'SKIP'
             '2c99345fc575c3a060d6677537f636c6c4154fac0fde508070f3b6296c1060d4'
             '4e8ac055df61b1b5d6ae29dc87e1154737c2e87c7b244b44866702cabf1a5d18'
-            '15fd46de15db03aacff360d15be1ddf2d81092db78aae1eb1e60f6756958745d'
-            '86ae90d997e986a54aaebb5251f3a71800b0c5c3f5b57b9094a42995e9f5c478')
+            'ddfa01ed6ce1c0608bbcd462ced8383b5f9f686c2b49fb510a41637fff2ca019'
+            '6313b7b32840db54bc20cfee7d2537e3e414b657e42e7bae1db1f61d3b63d599')
 validpgpkeys=('EAF1C276A747E9ED86210CBAC3126D3B4AE55E93'
               '3A24BC1E8FB409FA9F14371813FCEF89DD9E3C4F')
 
 _targets="i686-w64-mingw32 x86_64-w64-mingw32" # armv7-w64-mingw32
 
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying ${_patch}"
+    patch -p1 -i "${srcdir}/${_patch}"
+  done
+}
+
 prepare() {
   cd ${srcdir}/binutils-${pkgver}
 
-  patch -p1 -i "${srcdir}"/0002-check-for-unusual-file-harder.patch
-  patch -p1 -i "${srcdir}"/0010-bfd-Increase-_bfd_coff_max_nscns-to-65279.patch
+  apply_patch_with_msg \
+    0002-check-for-unusual-file-harder.patch \
+    0010-bfd-Increase-_bfd_coff_max_nscns-to-65279.patch
 
-  patch -p1 -i "${srcdir}"/0110-binutils-mingw-gnu-print.patch
-  patch -p1 -i "${srcdir}"/0120-windres-handle-spaces.patch
+  # https://sourceware.org/bugzilla/show_bug.cgi?id=30079#c2
+  apply_patch_with_msg "3001-try-fix-compare_section-abort.patch"
 
-  #do not install libiberty
-  #sed -i 's/install_to_$(INSTALL_DEST) //' libiberty/Makefile.in
-  # hack! - libiberty configure tests for header files using "$CPP $CPPFLAGS"
-  sed -i "/ac_cpp=/s/\$CPPFLAGS/\$CPPFLAGS -O2/" libiberty/configure
+  # https://sourceware.org/bugzilla/show_bug.cgi?id=30421
+  apply_patch_with_msg "decorated-symbols-in-import-libs.patch"
 }
 
 build() {
@@ -89,12 +96,5 @@ package() {
   for _target in ${_targets}; do
     cd ${srcdir}/binutils-build-${_target}
     make DESTDIR=${pkgdir} install
-
-    # Remove unwanted files
-    #rm ${destdir}/usr/share/info/{configure,standards}.info
-
-    # Add some useful headers
-    #install -m644 ${srcdir}/binutils-${pkgver}/include/libiberty.h ${pkgdir}/opt/include
-    #install -m644 ${srcdir}/binutils-${pkgver}/include/demangle.h ${pkgdir}/opt/include
   done
 }
