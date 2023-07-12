@@ -1,0 +1,69 @@
+# Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
+
+pkgbase=libxcrypt
+pkgname=('libxcrypt' 'libxcrypt-devel')
+pkgver=4.4.35
+pkgrel=1
+pkgdesc='Modern library for one-way hashing of passwords'
+arch=('i686' 'x86_64')
+url='https://github.com/besser82/libxcrypt/'
+license=('spdx:LGPL-2.1-or-later')
+source=("${url}/releases/download/v${pkgver}/${pkgbase}-${pkgver}.tar.xz"{,.asc}
+        "4.4.2-cygwin-no-undefined.patch")
+makedepends=('gcc' 'autotools' 'perl')
+validpgpkeys=('678CE3FEE430311596DB8C16F52E98007594C21D') # Björn 'besser82' Esser
+sha256sums=('a8c935505b55f1df0d17f8bfd59468c7c6709a1d31831b0f8e3e045ab8fd455d'
+            'SKIP'
+            '85ad8bd0478710f4035ae2d655370cbeef4eb5999a624a21f6786a52a9cdea5b')
+
+prepare() {
+  cd "${pkgbase}-${pkgver}"
+
+  patch -Np2 -i "${srcdir}/4.4.2-cygwin-no-undefined.patch"
+
+  autoreconf -vfi
+}
+
+build() {
+  mkdir build-libxcrypt
+
+  cd "${srcdir}/build-libxcrypt/"
+
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+  "${srcdir}/${pkgbase}-${pkgver}"/configure \
+    --build=${CYGWIN_CHOST} \
+    --host=${CYGWIN_CHOST} \
+    --target=${CYGWIN_CHOST} \
+    --prefix=/usr \
+    --enable-static \
+    --disable-failure-tokens \
+    --disable-xcrypt-compat-files \
+    --disable-obsolete-api \
+    --enable-hashes=all \
+    --disable-symvers
+
+  make DESTDIR=${srcdir}/dest install
+}
+
+check() {
+  cd build-libxcrypt/
+
+  make check
+}
+
+package_libxcrypt() {
+  mkdir -p ${pkgdir}/usr/bin
+
+  cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
+}
+
+package_libxcrypt-devel() {
+  depends=("libxcrypt=${pkgver}")
+  conflicts=('libcrypt-devel')
+
+  mkdir -p ${pkgdir}/usr
+
+  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+  cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+}
