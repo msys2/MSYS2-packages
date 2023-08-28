@@ -1,0 +1,63 @@
+# Contributor: Christoph Reiter <reiter.christoph@gmail.com>
+
+pkgbase=cppdap
+pkgname=("cppdap")
+_pkgver=1.58.0-a
+pkgver=${_pkgver/-/}
+pkgrel=1
+pkgdesc="C++ library for the Debug Adapter Protocol"
+arch=(i686 x86_64)
+url='https://github.com/google/cppdap'
+license=('spdx:Apache-2.0')
+depends=(
+  "jsoncpp"
+  "gcc-libs"
+)
+makedepends=(
+  "gcc"
+  "cmake"
+  "ninja"
+  "jsoncpp-devel"
+)
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/google/cppdap/archive/dap-${_pkgver}.tar.gz"
+        "https://github.com/google/cppdap/commit/6a3cc9a8.patch"
+        "0001-fix-dll-location.patch")
+sha256sums=('5d35ca5db78570b6bef698e3365f79bd82a4f78e8393546387f78d7bdb2a2a08'
+            '7c1bed285d8bb2400ae46def282a4736b9afcb74bb3e96663fac97b73dea3cb4'
+            '36e42efb7abf648211af7b75d02993ac7a227f004de0ad1803dc40e67468517a')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-dap-${_pkgver}"
+
+  patch -p1 < "${srcdir}/6a3cc9a8.patch"
+  patch -p1 < "${srcdir}/0001-fix-dll-location.patch"
+}
+
+build() {
+  mkdir -p "${srcdir}/build-${CARCH}" && cd "${srcdir}/build-${CARCH}"
+
+  declare -a extra_config
+  if check_option "debug" "n"; then
+    extra_config+=("-DCMAKE_BUILD_TYPE=Release")
+  else
+    extra_config+=("-DCMAKE_BUILD_TYPE=Debug")
+  fi
+
+  cmake \
+    -GNinja \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    "${extra_config[@]}" \
+    -DCPPDAP_USE_EXTERNAL_JSONCPP_PACKAGE=ON \
+    -DBUILD_SHARED_LIBS=ON \
+    ../${pkgname}-dap-${_pkgver}
+
+  cmake --build .
+}
+
+package() {
+  cd "${srcdir}/build-${CARCH}"
+
+  DESTDIR="${pkgdir}" cmake --install .
+
+  install -Dm644 "${srcdir}/${pkgname}-dap-${_pkgver}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
