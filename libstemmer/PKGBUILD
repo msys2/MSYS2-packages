@@ -1,0 +1,59 @@
+==> libstemmer is part of package snowball
+# Maintainer: Jan Alexander Steffens (heftig) <heftig@archlinux.org>
+
+pkgbase=snowball
+pkgname=(snowball libstemmer)
+pkgver=2.2.0
+pkgrel=2
+pkgdesc="String processing language for creating stemming algorithms"
+url="https://snowballstem.org/"
+arch=(x86_64)
+license=(BSD)
+makedepends=(git)
+_commit=48a67a2831005f49c48ec29a5837640e23e54e6b  # tags/v2.2.0^0
+source=("git+https://github.com/snowballstem/snowball#commit=$_commit"
+        dynamiclib.diff)
+sha256sums=('SKIP'
+            'c031da5a11bafa079df6c33b38b8795b65cf2c91cc6b452dcf2b10612288a3e6')
+
+pkgver() {
+  cd snowball
+  git describe --tags | sed 's/^v//;s/[^-]*-g/r&/;s/-/+/g'
+}
+
+prepare() {
+  cd snowball
+  git apply -3 ../dynamiclib.diff
+}
+
+build() {
+  cd snowball
+  make
+}
+
+# No check - needs external test data
+
+package_snowball() {
+  depends=(libstemmer)
+
+  cd snowball
+
+  install -Dt "$pkgdir/usr/bin" snowball stemwords
+
+  install -Dt "$pkgdir/usr/share/licenses/$pkgname" -m644 COPYING
+}
+
+package_libstemmer() {
+  pkgdesc="Stemming library supporting several languages"
+  depends=(glibc)
+  provides=(libstemmer.so)
+
+  cd snowball
+
+  install -Dt "$pkgdir/usr/include" -m644 include/libstemmer.h
+  install -Dm644 libstemmer.so.0 "$pkgdir/usr/lib/libstemmer.so.0.0.0"
+  ln -s libstemmer.so.0.0.0 "$pkgdir/usr/lib/libstemmer.so.0"
+  ln -s libstemmer.so.0 "$pkgdir/usr/lib/libstemmer.so"
+
+  install -Dt "$pkgdir/usr/share/licenses/$pkgname" -m644 COPYING
+}
