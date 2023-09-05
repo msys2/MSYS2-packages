@@ -2,8 +2,8 @@
 
 pkgbase=brotli
 pkgname=('brotli' 'brotli-devel' 'brotli-testdata')
-pkgver=1.0.9
-pkgrel=8
+pkgver=1.1.0
+pkgrel=1
 pkgdesc='Brotli compression library'
 arch=('i686' 'x86_64')
 license=('MIT')
@@ -13,54 +13,58 @@ makedepends=(
   'cmake'
   'gcc'
 )
-source=("${pkgbase}-${pkgver}.tar.gz::https://github.com/google/$pkgbase/archive/v${pkgver}.tar.gz"
-        brotli-rename-static-libs.patch
-        0001-link-exe-shared.patch
-        09b0992b6acb7faa6fd3b23f9bc036ea117230fc.patch)
-sha256sums=('f9e8d81d0405ba66d181529af42a3354f838c939095ff99930da6aa9cdf6fe46'
-            '25c2e154e805f6bd2999343a3d38efefa213577e09f5ea932bfa7eb42cf97f35'
-            '3033aee5791cdec47732450000707f6df3c8a18b31897e7ce1744c15258c693d'
-            '0b1c8045b4fa745e620b5c1a75377f9cda839fbb07c90bf3358b583866f063ee')
+source=("${pkgbase}-${pkgver}.tar.gz::https://github.com/google/$pkgbase/archive/v${pkgver}.tar.gz")
+sha256sums=('e720a6ca29428b803f4ad165371771f5398faba397edf6778837a18599ea13ff')
 
 prepare() {
   cd brotli-${pkgver}
-  patch -p1 -i ${srcdir}/brotli-rename-static-libs.patch
-  patch -p1 -i ${srcdir}/09b0992b6acb7faa6fd3b23f9bc036ea117230fc.patch
 
-  # https://github.com/google/brotli/issues/751
-  patch -p1 -i ${srcdir}/0001-link-exe-shared.patch
-
-  cd ..
-  mkdir -p build
 }
 
 build() {
-  cd "${srcdir}"/brotli-${pkgver}
+  cd brotli-${pkgver}
 
-  cd "${srcdir}"/build
-  cmake \
-    -DCMAKE_INSTALL_PREFIX="/usr" \
-    -DCMAKE_INSTALL_LIBDIR="/usr/lib" \
-    ../brotli-${pkgver}
+  cmake -B "build-static" \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_SHARED_LIBS=OFF
+  cmake --build "build-static"
 
-  make
+  cmake -B "build-shared" \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_SHARED_LIBS=ON
+  cmake --build "build-shared"
 }
 
 check() {
-  cd brotli-${pkgver}
+  cd brotli-${pkgver}/build-shared
+
   make test
 }
 
 package_brotli() {
-  cd build
+  cd brotli-${pkgver}
+
+  cd build-static
   make DESTDIR=${pkgdir} install
   rm -rf ${pkgdir}/usr/{include,lib}
+  cd -
+  cd build-shared
+  make DESTDIR=${pkgdir} install
+  rm -rf ${pkgdir}/usr/{include,lib}
+
   install -D -m644 "${srcdir}"/brotli-${pkgver}/LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
 
 package_brotli-devel() {
   depends=('brotli')
-  cd build
+
+  cd brotli-${pkgver}
+
+  cd build-static
+  make DESTDIR=${pkgdir} install
+  rm -rf ${pkgdir}/usr/bin
+  cd -
+  cd build-shared
   make DESTDIR=${pkgdir} install
   rm -rf ${pkgdir}/usr/bin
 }
