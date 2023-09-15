@@ -4,7 +4,7 @@
 pkgbase=msys2-runtime
 pkgname=('msys2-runtime' 'msys2-runtime-devel')
 pkgver=3.4.9
-pkgrel=1
+pkgrel=2
 pkgdesc="Cygwin POSIX emulation engine"
 arch=('x86_64')
 url="https://www.cygwin.com/"
@@ -62,7 +62,8 @@ source=('msys2-runtime'::git://sourceware.org/git/newlib-cygwin.git#tag=cygwin-$
         0035-When-converting-to-a-Unix-path-avoid-double-trailing.patch
         0036-msys2_path_conv-pass-PC_NOFULL-to-path_conv.patch
         0037-Revert-Cygwin-Enable-dynamicbase-on-the-Cygwin-DLL-b.patch
-        0038-dumper-avoid-linker-problem-when-libbfd-depends-on-l.patch)
+        0038-dumper-avoid-linker-problem-when-libbfd-depends-on-l.patch
+        1000-pragma-disable-gcc-error.patch)
 sha256sums=('SKIP'
             '021fd67841a12ef09dd72d08e3ed4a1ccc58d38dc475bdf79ecff3a90c7d6197'
             '6b6187c8e9343cf2875fe8d622762892bfb2d8087f1e510882928ec63584e4bc'
@@ -101,7 +102,8 @@ sha256sums=('SKIP'
             'f9cf227e20e491a823d1bd8fac12f0be9d371e21239368e8b30f203a48b18995'
             '6defe4f95bda4ba9ec52c6aab4bb6f61e51aad5e2b5aef25dc277e108bdef553'
             '9226d25556c04de2506ee6d9d8ebc1e369d456fe5ca8d335705c2dd090b3cb64'
-            '54b45f5a0b86057bdd7225d9d1d69674dfd93e923ce3b053d7129f43700b1aeb')
+            '54b45f5a0b86057bdd7225d9d1d69674dfd93e923ce3b053d7129f43700b1aeb'
+            '2d9a18586e14a78d2ac52e6534f95779136452aad7dfe44b81413de942070cb4')
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -177,6 +179,13 @@ prepare() {
   0036-msys2_path_conv-pass-PC_NOFULL-to-path_conv.patch \
   0037-Revert-Cygwin-Enable-dynamicbase-on-the-Cygwin-DLL-b.patch \
   0038-dumper-avoid-linker-problem-when-libbfd-depends-on-l.patch
+
+  # We can't use -Wno-error=use-after-free because our cross compiler
+  # is still gcc v10 and that doesn't know about that warning and will
+  # error out if we pass it as CXXFLAGS.
+  # TODO: remove once cross-gcc is updated
+  apply_git_am_with_msg \
+    1000-pragma-disable-gcc-error.patch
 }
 
 build() {
@@ -193,8 +202,8 @@ build() {
     OPTIM="-O2"
   fi
 
-  CFLAGS="$OPTIM -pipe -ggdb -Wno-error=deprecated -Wno-error=stringop-truncation -Wno-error=missing-attributes -Wno-error=maybe-uninitialized" #-Wno-error=class-memaccess
-  CXXFLAGS="$OPTIM -pipe -ggdb -Wno-error=deprecated -Wno-error=stringop-truncation -Wno-error=missing-attributes -Wno-error=maybe-uninitialized" #-Wno-error=class-memaccess
+  CFLAGS="$OPTIM -pipe -ggdb"
+  CXXFLAGS="$OPTIM -pipe -ggdb -Wno-error=stringop-truncation -Wno-error=array-bounds -Wno-error=overloaded-virtual -Wno-narrowing"
 
   # otherwise it asks git which appends "-dirty" because of our uncommited patches
   CFLAGS+=" -DCYGPORT_RELEASE_INFO=${pkgver}"
