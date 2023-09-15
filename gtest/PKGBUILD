@@ -1,0 +1,60 @@
+# Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
+
+pkgname=gtest
+pkgver=1.13.0
+pkgrel=1
+pkgdesc='Google Test - C++ testing utility'
+url='https://github.com/google/googletest'
+arch=('i686' 'x86_64')
+license=('BSD')
+depends=('gcc-libs' 'sh')
+makedepends=('python' 'cmake' 'gcc-libs' 'sh' 'gcc')
+_srcname=googletest-${pkgver}
+source=(${_srcname}.tar.gz::https://github.com/google/googletest/archive/v${pkgver}.tar.gz
+        gtest-version.patch)
+sha256sums=('ad7fdba11ea011c1d925b3289cf4af2c66a352e18d4c7264392fead75e919363'
+            '5d0c1c90c14b8b904f70607cdbb445c3f973808ae5b06caa86226e530e0d8d4d')
+
+prepare() {
+  cd ${_srcname}
+  sed "s|__GOOGLETEST_VERSION__|${pkgver}|g" -i ../gtest-version.patch
+  patch -Np1 -i ../gtest-version.patch
+}
+
+build() {
+ cmake -H${_srcname} -Bbuild \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_SHARED_LIBS=ON \
+    -Dgtest_build_tests=ON
+  cmake --build build
+}
+
+check() {
+  cmake --build build --target test
+}
+
+package() {
+  DESTDIR="${pkgdir}" cmake --build build --target install
+
+  # Shouldn't be present
+  find "${pkgdir}" -name '*.pump' -printf 'Removing %P\n' -delete
+
+  cd ${_srcname}
+  install -Dm 644 LICENSE -t "${pkgdir}/usr/share/licenses/${pkgname}"
+  install -Dm 644 README.md CONTRIBUTORS -t "${pkgdir}/usr/share/doc/${pkgname}"
+
+  cd googletest
+  install -Dm 644 cmake/* -t "${pkgdir}/usr/src/googletest/cmake"
+  install -Dm 644 src/* -t "${pkgdir}/usr/src/googletest/src"
+  install -Dm 644 CMakeLists.txt -t "${pkgdir}/usr/src/googletest"
+
+  cd ../googlemock
+  install -Dm 644 cmake/* -t "${pkgdir}/usr/src/gmock/cmake"
+  install -Dm 644 src/* -t "${pkgdir}/usr/src/gmock/src"
+  install -Dm 644 CMakeLists.txt -t "${pkgdir}/usr/src/gmock"
+
+  sed -i 's|src/||' "${pkgdir}/usr/src/gmock/src/gmock-all.cc"
+
+  python -m compileall -d /usr/share/gmock "${pkgdir}/usr/share/gmock"
+  python -O -m compileall -d /usr/share/gmock "${pkgdir}/usr/share/gmock"
+}
