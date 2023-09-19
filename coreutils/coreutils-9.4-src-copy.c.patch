@@ -1,0 +1,158 @@
+--- origsrc/src/copy.c	2023-08-29 05:39:27.000000000 -0600
++++ src/src/copy.c	2023-09-09 22:06:16.745397400 -0600
+@@ -83,6 +83,10 @@
+ #ifdef HAVE_LINUX_FS_H
+ # include <linux/fs.h>
+ #endif
++ 
++#ifdef __CYGWIN__
++# include "cygwin.h"
++#endif
+ 
+ #if !defined FICLONE && defined __linux__
+ # define FICLONE _IOW (0x94, 9, int)
+@@ -1738,7 +1742,11 @@ close_src_desc:
+ static bool
+ same_file_ok (char const *src_name, struct stat const *src_sb,
+               int dst_dirfd, char const *dst_relname, struct stat const *dst_sb,
+-              const struct cp_options *x, bool *return_now)
++              const struct cp_options *x, bool *return_now
++#if __CYGWIN__
++	     , bool *case_change
++#endif
++	     )
+ {
+   const struct stat *src_sb_link;
+   const struct stat *dst_sb_link;
+@@ -1883,6 +1891,18 @@ same_file_ok (char const *src_name, stru
+       if (S_ISLNK (dst_sb_link->st_mode))
+         return true;
+ 
++#if __CYGWIN__
++      /* If the files have the same name, but differ in case, then let
++	 rename() change the case.  */
++      if (same_link && x->move_mode && same_name (src_name, dst_relname)
++	  && memcmp (last_component (src_name), last_component (dst_relname),
++		     base_len (src_name)))
++	{
++	  *case_change = true;
++	  return true;
++	}
++#endif
++
+       /* It's not ok if they're distinct hard links to the same file as
+          this causes a race condition and we may lose data in this case.  */
+       if (same_link
+@@ -2316,13 +2336,23 @@ copy_internal (char const *src_name, cha
+           if (!use_lstat && nonexistent_dst < 0)
+             new_dst = true;
+           else if (follow_fstatat (dst_dirfd, drelname, &dst_sb, fstatat_flags)
+-                   == 0)
++                   == 0
++#if __CYGWIN__
++	  /* stat("a") succeeds if "a.exe" - only identical accepted.  */
++		  && cygwin_spelling (drelname) == 0
++#endif
++		   )
+             {
+               have_dst_lstat = use_lstat;
+               rename_errno = EEXIST;
+             }
+           else
+             {
++#if __CYGWIN__
++	  /* only DST_RELNAME.exe exists - want non-existant DST_RELNAME.  */
++	      if (cygwin_spelling (drelname) != 0)
++		  errno = ENOENT;
++#endif
+               if (errno == ELOOP && x->unlink_dest_after_failed_open)
+                 /* leave new_dst=false so we unlink later.  */;
+               else if (errno != ENOENT)
+@@ -2340,10 +2370,17 @@ copy_internal (char const *src_name, cha
+           bool return_now = false;
+           bool return_val = true;
+           bool skipped = false;
++#if __CYGWIN__
++          bool case_change = false;
++#endif
+ 
+           if ((x->interactive != I_ALWAYS_NO && x->interactive != I_ALWAYS_SKIP)
+               && ! same_file_ok (src_name, &src_sb, dst_dirfd, drelname,
+-                                 &dst_sb, x, &return_now))
++                                 &dst_sb, x, &return_now
++#if __CYGWIN__
++				 , &case_change
++#endif
++				 ))
+             {
+               error (0, 0, _("%s and %s are the same file"),
+                      quoteaf_n (0, src_name), quoteaf_n (1, dst_name));
+@@ -2406,6 +2443,9 @@ copy_internal (char const *src_name, cha
+              cp and mv treat -i and -f differently.  */
+           if (x->move_mode)
+             {
++#if __CYGWIN__
++             if (!case_change)
++#endif
+               if (abandon_move (x, dst_name, dst_dirfd, drelname, &dst_sb))
+                 {
+                   /* Pretend the rename succeeded, so the caller (mv)
+@@ -2572,7 +2612,11 @@ skip:
+                    && ! x->move_mode
+                    && (x->unlink_dest_before_opening
+                        || (x->data_copy_required
+-                           && ((x->preserve_links && 1 < dst_sb.st_nlink)
++                           && ((x->preserve_links && 1 < dst_sb.st_nlink
++#if __CYGWIN__
++			         && ! case_change
++#endif
++			        )
+                                || (x->dereference == DEREF_NEVER
+                                    && ! S_ISREG (src_sb.st_mode))))
+                       ))
+@@ -3407,6 +3451,24 @@ copy (char const *src_name, char const *
+ {
+   valid_options (options);
+ 
++#if __CYGWIN__
++  /* .exe magic - if src exists with an implicit .exe suffix and is
++     not a symlink, but dst does not exist and was also specified
++     without a suffix, then append .exe to dst.  */
++  int cygwin = cygwin_spelling (src_name);
++  char *p;
++  if (cygwin == 2
++      && ((p = strchr (dst_name, '\0') - 4) <= dst_name
++          || strcasecmp (p, ".exe") != 0))
++    {
++      cygwin = 3;
++      CYGWIN_APPEND_EXE (p, dst_name);
++      if ((p = strchr (dst_relname, '\0') - 4) <= dst_relname
++          || strcasecmp (p, ".exe") != 0)
++        CYGWIN_APPEND_EXE (p, dst_relname);
++    }
++#endif
++
+   /* Record the file names: they're used in case of error, when copying
+      a directory into itself.  I don't like to make these tools do *any*
+      extra work in the common case when that work is solely to handle
+@@ -3418,11 +3480,19 @@ copy (char const *src_name, char const *
+   top_level_dst_name = dst_name;
+ 
+   bool first_dir_created_per_command_line_arg = false;
+-  return copy_internal (src_name, dst_name, dst_dirfd, dst_relname,
++  bool done = copy_internal (src_name, dst_name, dst_dirfd, dst_relname,
+                         nonexistent_dst, nullptr, nullptr,
+                         options, true,
+                         &first_dir_created_per_command_line_arg,
+                         copy_into_self, rename_succeeded);
++#if __CYGWIN__
++  if (cygwin == 3)
++    {
++      freea ((char *) dst_name);
++      freea ((char *) dst_relname);
++    }
++#endif
++  return done;
+ }
+ 
+ /* Set *X to the default options for a value of type struct cp_options.  */
