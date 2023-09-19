@@ -1,0 +1,114 @@
+--- origsrc/src/ls.c	2023-08-29 05:39:27.000000000 -0600
++++ src/src/ls.c	2023-09-10 13:32:12.438677000 -0600
+@@ -122,6 +122,10 @@
+ # include <sys/capability.h>
+ #endif
+ 
++#ifdef __CYGWIN__
++# include "cygwin.h"
++#endif
++
+ #define PROGRAM_NAME (ls_mode == LS_LS ? "ls" \
+                       : (ls_mode == LS_MULTI_COL \
+                          ? "dir" : "vdir"))
+@@ -791,6 +795,11 @@ static char const *long_time_format[2] =
+     N_("%b %e %H:%M")
+   };
+ 
++#if __CYGWIN__
++/* Whether .exe should be appended to command-line args as needed.  */
++static bool append_exe;
++#endif /* __CYGWIN__ */
++
+ /* The set of signals that are caught.  */
+ 
+ static sigset_t caught_signals;
+@@ -826,6 +835,9 @@ enum
+ enum
+ {
+   AUTHOR_OPTION = CHAR_MAX + 1,
++#ifdef __CYGWIN__
++  APPEND_EXE_OPTION,
++#endif
+   BLOCK_SIZE_OPTION,
+   COLOR_OPTION,
+   DEREFERENCE_COMMAND_LINE_SYMLINK_TO_DIR_OPTION,
+@@ -891,6 +903,9 @@ static struct option const long_options[
+   {"block-size", required_argument, nullptr, BLOCK_SIZE_OPTION},
+   {"context", no_argument, 0, 'Z'},
+   {"author", no_argument, nullptr, AUTHOR_OPTION},
++#ifdef __CYGWIN__
++  {"append-exe", no_argument, nullptr, APPEND_EXE_OPTION},
++#endif
+   {GETOPT_HELP_OPTION_DECL},
+   {GETOPT_VERSION_OPTION_DECL},
+   {nullptr, 0, nullptr, 0}
+@@ -2233,6 +2248,12 @@ decode_switches (int argc, char **argv)
+           quoting_style_opt = literal_quoting_style;
+           break;
+ 
++#ifdef __CYGWIN__
++	 case APPEND_EXE_OPTION:
++	   append_exe = true;
++	   break;
++#endif
++
+         case_GETOPT_HELP_CHAR;
+ 
+         case_GETOPT_VERSION_CHAR (PROGRAM_NAME, AUTHORS);
+@@ -3373,6 +3394,12 @@ gobble_file (char const *name, enum file
+   uintmax_t blocks = 0;
+   struct fileinfo *f;
+ 
++#ifdef __CYGWIN__
++  char *name_alt = nullptr;
++  if (command_line_arg && append_exe && 0 < cygwin_spelling (name))
++    CYGWIN_APPEND_EXE (name_alt, name);
++#endif /* __CYGWIN__ */
++
+   /* An inode value prior to gobble_file necessarily came from readdir,
+      which is not used for command line arguments.  */
+   affirm (! command_line_arg || inode == NOT_AN_INODE_NUMBER);
+@@ -3507,11 +3534,19 @@ gobble_file (char const *name, enum file
+           f->scontext = UNKNOWN_SECURITY_CONTEXT;
+ 
+           if (command_line_arg)
+-            return 0;
++	     {
++#ifdef __CYGWIN__
++	       freea (name_alt);
++#endif
++	       return 0;
++	     }
+ 
+           f->name = xstrdup (name);
+           cwd_n_used++;
+ 
++#ifdef __CYGWIN__
++	   freea (name_alt);
++#endif
+           return 0;
+         }
+ 
+@@ -3688,6 +3723,9 @@ gobble_file (char const *name, enum file
+   f->name = xstrdup (name);
+   cwd_n_used++;
+ 
++#ifdef __CYGWIN__
++  freea (name_alt);
++#endif
+   return blocks;
+ }
+ 
+@@ -5612,6 +5650,11 @@ Sort entries alphabetically if none of -
+       --zero                 end each output line with NUL, not newline\n\
+   -1                         list one file per line\n\
+ "), stdout);
++#if __CYGWIN__
++      fputs (_("\
++      --append-exe           append .exe if cygwin magic was needed\n\
++"), stdout);
++#endif /* __CYGWIN__ */
+       fputs (HELP_OPTION_DESCRIPTION, stdout);
+       fputs (VERSION_OPTION_DESCRIPTION, stdout);
+       emit_size_note ();

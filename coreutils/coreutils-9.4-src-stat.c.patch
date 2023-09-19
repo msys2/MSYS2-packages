@@ -1,0 +1,120 @@
+--- origsrc/src/stat.c	2023-08-29 05:39:27.000000000 -0600
++++ src/src/stat.c	2023-09-10 13:40:50.600410000 -0600
+@@ -71,6 +71,13 @@
+ #include "xvasprintf.h"
+ #include "statx.h"
+ 
++#ifdef __CYGWIN__
++# include "cygwin.h"
++/* Whether .exe should be appended to command-line args as needed.  */
++static bool append_exe;
++# define APPEND_EXE_OPTION 10000
++#endif
++
+ #if HAVE_STATX && defined STATX_INO
+ # define USE_STATX 1
+ #else
+@@ -223,6 +230,9 @@ static struct option const long_options[
+   {"printf", required_argument, nullptr, PRINTF_OPTION},
+   {"terse", no_argument, nullptr, 't'},
+   {"cached", required_argument, nullptr, 0},
++#ifdef __CYGWIN__
++  {"append-exe", no_argument, nullptr, APPEND_EXE_OPTION},
++#endif
+   {GETOPT_HELP_OPTION_DECL},
+   {GETOPT_VERSION_OPTION_DECL},
+   {nullptr, 0, nullptr, 0}
+@@ -1267,14 +1277,26 @@ do_statfs (char const *filename, char co
+       return false;
+     }
+ 
++#ifdef __CYGWIN__
++  char *name_alt = nullptr;
++  if (append_exe && 0 < cygwin_spelling (filename))
++    CYGWIN_APPEND_EXE (name_alt, filename);
++#endif /* __CYGWIN__ */
++
+   if (STATFS (filename, &statfsbuf) != 0)
+     {
+       error (0, errno, _("cannot read file system information for %s"),
+              quoteaf (filename));
++#if __CYGWIN__
++      freea (name_alt);
++#endif /* __CYGWIN__ */
+       return false;
+     }
+ 
+   bool fail = print_it (format, -1, filename, print_statfs, &statfsbuf);
++#if __CYGWIN__
++  freea (name_alt);
++#endif /* __CYGWIN__ */
+   return ! fail;
+ }
+ 
+@@ -1459,6 +1481,7 @@ do_stat (char const *filename, char const 
+   int fd = STREQ (filename, "-") ? 0 : -1;
+   struct stat statbuf;
+   struct print_args pa;
++  char *name_alt = nullptr;
+   pa.st = &statbuf;
+   pa.btime = (struct timespec) {-1, -1};
+ 
+@@ -1473,18 +1496,28 @@ do_stat (char const *filename, char cons
+   /* We can't use the shorter
+      (follow_links?stat:lstat) (filename, &statbug)
+      since stat might be a function-like macro.  */
+-  else if ((follow_links
+-            ? stat (filename, &statbuf)
+-            : lstat (filename, &statbuf)) != 0)
++  else
+     {
+-      error (0, errno, _("cannot stat %s"), quoteaf (filename));
+-      return false;
++      if ((follow_links
++	   ? stat (filename, &statbuf)
++	   : lstat (filename, &statbuf)) != 0)
++	 {
++	   error (0, errno, _("cannot stat %s"), quoteaf (filename));
++	   return false;
++	 }
++#ifdef __CYGWIN__
++      if (append_exe && 0 < cygwin_spelling (filename))
++        CYGWIN_APPEND_EXE (name_alt, filename);
++#endif /* __CYGWIN__ */
+     }
+ 
+   if (S_ISBLK (statbuf.st_mode) || S_ISCHR (statbuf.st_mode))
+     format = format2;
+ 
+   bool fail = print_it (format, fd, filename, print_stat, &pa);
++#if __CYGWIN__
++  freea (name_alt);
++#endif /* __CYGWIN__ */
+   return ! fail;
+ }
+ 
+@@ -1775,6 +1808,11 @@ Display file or file system status.\n\
+                           if you want a newline, include \\n in FORMAT\n\
+   -t, --terse           print the information in terse form\n\
+ "), stdout);
++#if __CYGWIN__
++      fputs (_("\
++      --append-exe      append .exe if cygwin magic was needed\n\
++"), stdout);
++#endif /* __CYGWIN__ */
+       fputs (HELP_OPTION_DESCRIPTION, stdout);
+       fputs (VERSION_OPTION_DESCRIPTION, stdout);
+ 
+@@ -1941,6 +1979,12 @@ main (int argc, char *argv[])
+             }
+           break;
+ 
++#if __CYGWIN__
++        case APPEND_EXE_OPTION:
++          append_exe = true;
++          break;
++#endif /* __CYGWIN__ */
++
+         case_GETOPT_HELP_CHAR;
+ 
+         case_GETOPT_VERSION_CHAR (PROGRAM_NAME, AUTHORS);

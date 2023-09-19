@@ -1,0 +1,28 @@
+--- origsrc/src/mv.c	2022-04-13 13:09:25.000000000 -0600
++++ src/src/mv.c	2022-05-08 02:06:40.887810300 -0600
+@@ -91,7 +91,7 @@ rm_option_init (struct rm_options *x)
+   x->require_restore_cwd = true;
+ 
+   {
+-    static struct dev_ino dev_ino_buf;
++    static struct root_dev_ino dev_ino_buf;
+     x->root_dev_ino = get_root_dev_ino (&dev_ino_buf);
+     if (x->root_dev_ino == NULL)
+       die (EXIT_FAILURE, errno, _("failed to get attributes of %s"),
+@@ -407,6 +407,16 @@ main (int argc, char **argv)
+   else
+     {
+       char const *lastfile = file[n_files - 1];
++#if __CYGWIN__
++      struct stat s1, s2;
++      if (2 == n_files
++	  && lstat (file[0], &s1) == 0 && lstat (file[1], &s2) == 0
++	  && s1.st_ino == s2.st_ino)
++	{
++	  /* Allow 'mv foo Foo' to change case of the directory foo.  */
++	}
++      else
++#endif /* __CYGWIN__ */
+       if (n_files == 2)
+         x.rename_errno = (renameatu (AT_FDCWD, file[0], AT_FDCWD, lastfile,
+                                      RENAME_NOREPLACE)
