@@ -1,0 +1,129 @@
+# Contributor: Tim Stahlhut <stahta01@gmail.com>
+# These packages are data only and do not contain machine code.
+
+_enable_packages3D=yes
+_enable_templates=yes
+
+#_generator="Unix Makefiles"
+_generator="Ninja"
+
+_basename=kicad
+_majorpkgver=7
+_basepkgver=${_majorpkgver}.0
+_basepkgname=${_basename}${_basepkgver}
+_sharefoldername=${_basename}${_basepkgver}
+pkgbase=${_majorpkgver}.x-library
+pkgname=(
+  "${_basepkgname}-footprints"
+  "${_basepkgname}-symbols"
+  $( [[ ${_enable_templates} == "yes" ]] && echo "${_basepkgname}-templates")
+  $( [[ ${_enable_packages3D} == "yes" ]] && echo "${_basepkgname}-packages3D")
+)
+pkgdesc="Default description for libraries needed by mingw-w64 kicad application"
+url="https://www.kicad.org/libraries/"
+license=("Creative Commons CC-BY-SA 4.0 License")
+arch=(any)
+groups=("eda")
+options=('!strip') # These packages are data only and do not contain machine code.
+depends=()
+makedepends=('cmake' 
+  $([[ "$_generator" == "Ninja" ]] && echo "ninja")
+  $([[ "$_generator" != "Ninja" ]] && echo "make")
+)
+pkgver=${_basepkgver}.9
+pkgrel=1
+source=("https://gitlab.com/kicad/libraries/kicad-footprints/-/archive/${pkgver}/kicad-footprints-${pkgver}.tar.bz2"
+        "https://gitlab.com/kicad/libraries/kicad-symbols/-/archive/${pkgver}/kicad-symbols-${pkgver}.tar.bz2")
+sha256sums=('1307f37613c1971794940ee78ad49146ae10eb3525a0c9f427adb8900ddbee0e'
+            'c1be547ab435cccf9c98d21c9a816ab3051ae8e306bcbcb4ac46a896c88210ab')
+if [[ ${_enable_templates} == "yes" ]]; then
+  source+=("https://gitlab.com/kicad/libraries/kicad-templates/-/archive/${pkgver}/kicad-templates-${pkgver}.tar.bz2")
+  sha256sums+=('3f87dfe352cf12e73cf7769202101935fba547da5f04e1029bdd786ad0f9f0a4')
+fi
+if [[ ${_enable_packages3D} == "yes" ]]; then
+  source+=("https://gitlab.com/kicad/libraries/kicad-packages3D/-/archive/${pkgver}/kicad-packages3D-${pkgver}.tar.bz2")
+  sha256sums+=('cf9dd300e4020f25e17835c7f930af1974d5953694d103b65bb0a41eb80bf19a')
+fi
+
+_build_cmake()
+{
+  msg2 "Build kicad-$1"
+  [[ -d "${srcdir}"/build-$1 ]] && rm -rf "${srcdir}"/build-$1
+  mkdir -p "${srcdir}/build-$1" && cd "${srcdir}/build-$1"
+
+  cmake.exe \
+    -G"$_generator" \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    ../${_basename}-$1-${pkgver}
+
+  cmake.exe --build .
+}
+
+build() {
+  _build_cmake "footprints"
+  _build_cmake "symbols"
+  if [[ ${_enable_templates} == "yes" ]]; then
+    _build_cmake "templates"
+  fi
+  if [[ ${_enable_packages3D} == "yes" ]]; then
+    # echo "sha256sum"
+    # sha256sum "${srcdir}"/kicad-packages3D-${pkgver}.tar.bz2 || true
+    _build_cmake "packages3D"
+  fi
+}
+
+package_footprints() {
+  pkgdesc="KiCad footprints library"
+  conflicts=(${_basepkgname}-footprints-git)
+  replaces=(${_basepkgname}-footprints-git)
+  depends=()
+
+  cd "${srcdir}/build-footprints"
+
+  DESTDIR="${pkgdir}" cmake.exe --install .
+  cd "${pkgdir}/usr/share" && mv kicad ${_sharefoldername}
+}
+
+package_symbols() {
+  pkgdesc="KiCad symbols library"
+  conflicts=(${_basepkgname}-symbols-git)
+  replaces=(${_basepkgname}-symbols-git)
+  depends=()
+
+  cd "${srcdir}/build-symbols"
+
+  DESTDIR="${pkgdir}" cmake.exe --install .
+  cd "${pkgdir}/usr/share" && mv kicad ${_sharefoldername}
+}
+
+package_templates() {
+  pkgdesc="KiCad templates library"
+  conflicts=(${_basepkgname}-templates-git)
+  replaces=(${_basepkgname}-templates-git)
+
+  cd "${srcdir}/build-templates"
+
+  DESTDIR="${pkgdir}" cmake.exe --install .
+  cd "${pkgdir}/usr/share" && mv kicad ${_sharefoldername}
+}
+
+package_packages3D() {
+  pkgdesc="KiCad 3D models library"
+  conflicts=(${_basepkgname}-packages3D-git)
+  replaces=(${_basepkgname}-packages3D-git)
+
+  cd "${srcdir}/build-packages3D"
+
+  DESTDIR="${pkgdir}" cmake.exe --install .
+  cd "${pkgdir}/usr/share" && mv kicad ${_sharefoldername}
+}
+
+# vim: set ft=bash :
+
+# generate wrappers
+for _name in "${pkgname[@]}"; do
+  _short="package_${_name#${_basepkgname}-}"
+  _func="$(declare -f "${_short}")"
+  eval "${_func/#${_short}/package_${_name}}"
+done
+# template end;
