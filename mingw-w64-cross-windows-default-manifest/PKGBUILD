@@ -5,17 +5,16 @@ _mingw_suff=mingw-w64-cross
 pkgname=("${_mingw_suff}-${_realname}")
 groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
 pkgver=6.4
-pkgrel=2
+pkgrel=3
 pkgdesc='Default Windows application manifest'
 url='https://cygwin.com/'
 arch=('i686' 'x86_64')
 license=('BSD')
 makedepends=('git' 'mingw-w64-cross-gcc' 'mingw-w64-cross-binutils' 'autotools')
 _GIT_TAG="release-6_4"
-source=("git://sourceware.org/git/cygwin-apps/${_realname}.git#tag=${_GIT_TAG}"
-        001-msysize.patch)
-sha256sums=('SKIP'
-            '0baef1e5f9b980cdf730386a652b6b02ba6b675cc120ad67c7c15e6a88050e0f')
+options=('!strip' '!buildflags')
+source=("git://sourceware.org/git/cygwin-apps/${_realname}.git#tag=${_GIT_TAG}")
+sha256sums=('SKIP')
 msys2_references=(
   'cygwin: windows-default-manifest'
 )
@@ -25,17 +24,19 @@ _targets="i686-w64-mingw32 x86_64-w64-mingw32"
 prepare() {
   cd ${srcdir}/${_realname}
 
-  patch -p1 -i ${srcdir}/001-msysize.patch
   autoreconf -fiv
 }
 
 build() {
+  export MSYSTEM=CYGWIN
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+
   for _target in ${_targets}; do
     [[ -d ${srcdir}/build-${_target} ]] && rm -rf build-${_target}
     cp -rf ${srcdir}/${_realname} ${srcdir}/build-${_target}
     cd ${srcdir}/build-${_target}
     ./configure \
-      --build=${CHOST} \
+      --build=${CYGWIN_CHOST} \
       --host=${_target} \
       --prefix=/opt/${_target}
     make
