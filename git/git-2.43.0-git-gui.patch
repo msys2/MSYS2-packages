@@ -1,0 +1,53 @@
+--- git-2.43.0/git-gui/git-gui.sh.orig	2023-11-20 02:28:15.000000000 +0100
++++ git-2.43.0/git-gui/git-gui.sh	2023-11-21 19:47:37.244720600 +0100
+@@ -75,6 +75,11 @@
+ 	return $_iscygwin
+ }
+ 
++proc is_CygwinGit {} {
++	# Cygwin git running with Windows Tcl/Tk
++	return 1
++}
++
+ ######################################################################
+ ##
+ ## PATH lookup
+@@ -177,7 +182,11 @@
+ if { [info exists ::env(GIT_GUI_LIB_DIR) ] } {
+ 	set oguilib $::env(GIT_GUI_LIB_DIR)
+ } else {
+-	set oguilib {@@GITGUI_LIBDIR@@}
++	if {[is_Windows] && [is_CygwinGit]} {
++		set oguilib [exec cygpath --windows --absolute {@@GITGUI_LIBDIR@@}]
++	} else {
++		set oguilib {@@GITGUI_LIBDIR@@}
++	}
+ }
+ set oguirel {@@GITGUI_RELATIVE@@}
+ if {$oguirel eq {1}} {
+@@ -1285,7 +1294,11 @@
+ 
+ # v1.7.0 introduced --show-toplevel to return the canonical work-tree
+ if {[package vcompare $_git_version 1.7.0] >= 0} {
+-	set _gitworktree [git rev-parse --show-toplevel]
++	if {[is_Windows] && [is_CygwinGit]} {
++		set _gitworktree [exec cygpath --windows [git rev-parse --show-toplevel]]
++	} else {
++		set _gitworktree [git rev-parse --show-toplevel]
++	}
+ } else {
+ 	# try to set work tree from environment, core.worktree or use
+ 	# cdup to obtain a relative path to the top of the worktree. If
+@@ -2254,7 +2267,11 @@
+ 	if {[is_Cygwin]} {
+ 		set explorer "/bin/cygstart.exe --explore"
+ 	} elseif {[is_Windows]} {
+-		set explorer "explorer.exe"
++		if {[is_CygwinGit]} {
++			set explorer  [_which "explorer"]
++		} else {
++			set explorer "explorer.exe"
++		}
+ 	} elseif {[is_MacOSX]} {
+ 		set explorer "open"
+ 	} else {
