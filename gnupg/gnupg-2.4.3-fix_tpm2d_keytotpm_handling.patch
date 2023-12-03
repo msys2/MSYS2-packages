@@ -1,0 +1,89 @@
+From 9909f622f69e2b5775099931406dce2d35011281 Mon Sep 17 00:00:00 2001
+From: NIIBE Yutaka <gniibe@fsij.org>
+Date: Thu, 28 Sep 2023 11:59:14 +0900
+Subject: [PATCH] agent: fix tpm2d keytotpm handling
+
+* agent/divert-tpm2.c (agent_write_tpm2_shadow_key): Call
+agent_delete_key before agent_write_private_key.  Recover
+from an error.
+
+--
+
+Cherry-picked from master commit of:
+	eda3997b439e415f1bebaa3be20c8bdb43d3a1d0
+
+Fixes-commit: a1015bf2fc07dabb1200eab5fa41f13e7bf98202
+Signed-off-by: James Bottomley <James.Bottomley@HansenPartnership.com>
+---
+ agent/divert-tpm2.c | 33 ++++++++++++++++++++++++++++-----
+ 1 file changed, 28 insertions(+), 5 deletions(-)
+
+diff --git a/agent/divert-tpm2.c b/agent/divert-tpm2.c
+index b2f884f93..e7c6a8aae 100644
+--- a/agent/divert-tpm2.c
++++ b/agent/divert-tpm2.c
+@@ -26,9 +26,10 @@ divert_tpm2_pksign (ctrl_t ctrl,
+ 
+ static gpg_error_t
+ agent_write_tpm2_shadow_key (ctrl_t ctrl, const unsigned char *grip,
+-			     unsigned char *shadow_info)
++			     unsigned char *shadow_info,
++			     gcry_sexp_t s_key)
+ {
+-  gpg_error_t err;
++  gpg_error_t err, err1;
+   unsigned char *shdkey;
+   unsigned char *pkbuf;
+   size_t len;
+@@ -44,7 +45,14 @@ agent_write_tpm2_shadow_key (ctrl_t ctrl, const unsigned char *grip,
+   xfree (pkbuf);
+   if (err)
+     {
+-      log_error ("shadowing the key failed: %s\n", gpg_strerror (err));
++      log_error ("shadowing the tpm key failed: %s\n", gpg_strerror (err));
++      return err;
++    }
++
++  err = agent_delete_key (ctrl, NULL, grip, 1, 0);
++  if (err)
++    {
++      log_error ("failed to delete unshadowed key: %s\n", gpg_strerror (err));
+       return err;
+     }
+ 
+@@ -53,7 +61,22 @@ agent_write_tpm2_shadow_key (ctrl_t ctrl, const unsigned char *grip,
+                                  NULL, NULL, NULL, 0);
+   xfree (shdkey);
+   if (err)
+-    log_error ("error writing key: %s\n", gpg_strerror (err));
++    {
++      log_error ("error writing tpm key: %s\n", gpg_strerror (err));
++
++      len = gcry_sexp_sprint(s_key, GCRYSEXP_FMT_CANON, NULL, 0);
++      pkbuf = xtrymalloc(len);
++      if (!pkbuf)
++	return GPG_ERR_ENOMEM;
++
++      gcry_sexp_sprint(s_key, GCRYSEXP_FMT_CANON, pkbuf, len);
++      err1 = agent_write_private_key (grip, pkbuf, len, 1 /*force*/,
++				      NULL, NULL, NULL, 0);
++      xfree(pkbuf);
++      if (err1)
++	  log_error ("error trying to restore private key: %s\n",
++		     gpg_strerror (err1));
++    }
+ 
+   return err;
+ }
+@@ -68,7 +91,7 @@ divert_tpm2_writekey (ctrl_t ctrl, const unsigned char *grip,
+ 
+   ret = agent_tpm2d_writekey(ctrl, &shadow_info, s_skey);
+   if (!ret) {
+-    ret = agent_write_tpm2_shadow_key (ctrl, grip, shadow_info);
++    ret = agent_write_tpm2_shadow_key (ctrl, grip, shadow_info, s_skey);
+     xfree (shadow_info);
+   }
+   return ret;
+-- 
+2.30.2
+
