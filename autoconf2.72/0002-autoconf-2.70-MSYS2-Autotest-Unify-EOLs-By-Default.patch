@@ -1,0 +1,89 @@
+From f4c17d4c349fab3a74c261c342494af7f077bf1b Mon Sep 17 00:00:00 2001
+From: Jannick <thirdedition@gmx.net>
+Date: Wed, 9 Dec 2020 00:43:24 +0100
+Subject: [PATCH 2/3] autoconf-2.70-MSYS2-Autotest-Unify-EOLs-By-Default
+
+This commit tackles the end-of-line (EOL) issue on Windows when running
+an AUTOTEST testsuite which might compare files and/or program outputs.
+
+This commit sets the default behaviour of any AUTOTEST testsuite generated
+with AUTOCONF 2.70: When running an AUTOTEST test suite and comparing files
+or program outputs, EOL differences (like LF vs CRLF) are ignored **BY
+DEFAULT**, iff the program DIFF allows the flag '--strip-trailing-cr'.
+
+In order to switch off this feature and run the testsuite mocking
+differences between different EOL patterns, run the testsuite with the
+environment variable 'MSYS2_AUTOTEST_NO_UNIFY_EOL' set to '1', e.g.:
+
+       tests/testsuite -C tests MSYS2_AUTOTEST_NO_UNIFY_EOL=1
+
+* lib/autotest/general.m4:
+  - add the diff flag '--strip-trailing-cr' when possible and not
+    prohibited every time the testsuite is run.
+* tests/autotest.at:
+  - add a test checking the interplay of 'MSYS2_AUTOTEST_NO_UNIFY_EOL'
+    and the difference between files with CRLF and LF.
+---
+ lib/autotest/general.m4 | 23 +++++++++++++++++++++++
+ tests/autotest.at       | 14 ++++++++++++++
+ 2 files changed, 37 insertions(+)
+
+diff --git a/lib/autotest/general.m4 b/lib/autotest/general.m4
+index 0c0e3c5..12fb14a 100644
+--- a/lib/autotest/general.m4
++++ b/lib/autotest/general.m4
+@@ -1018,6 +1018,29 @@ else
+   at_diff=diff
+ fi
+ 
++### ------------------------------------------------- ###
++###  MSYS2 patch for Windows specificity (EOL issue)  ###
++### ------------------------------------------------- ###
++# By default try to treat any end of line identfier 'LF' and 'CRLF' the same
++# in testsuites when comparing files or output of programs.
++# This feature can be switched off if the testsuite script is run with the
++# environment variable 'MSYS2_AUTOTEST_NO_UNIFY_EOL' set to a non-empty string
++# other than '0', e.g. simply by setting 'MSYS2_AUTOTEST_NO_UNIFY_EOL=1'.
++# Sample calls:
++# - tests/testsuite -C tests                                ... Differences in EOLs are ignored
++#                                                                 for file comparisons.
++# - tests/testsuite -C tests MSYS2_AUTOTEST_NO_UNIFY_EOL=1  ... EOLs do matter for file comparisons.
++case "x$MSYS2_AUTOTEST_NO_UNIFY_EOL" in
++  x|x0)
++    # Use the diff flag '--strip-trailing-cr' when possible.
++    if at_ret=`$at_diff --strip-trailing-cr "$at_devnull" "$at_devnull" 2>&1` && test -z "$at_ret"
++    then
++      at_diff="$at_diff --strip-trailing-cr"
++    fi
++    at_ret='';;
++esac
++
++
+ # Get the last needed group.
+ for at_group in : $at_groups; do :; done
+ 
+diff --git a/tests/autotest.at b/tests/autotest.at
+index b5a9c40..3637fc5 100644
+--- a/tests/autotest.at
++++ b/tests/autotest.at
+@@ -2142,3 +2142,17 @@ else
+ fi
+ 
+ AT_CLEANUP
++
++## -------------------------------------------- ##
++## MSYS patched feature: unify EOLs on Windows  ##
++## -------------------------------------------- ##
++
++AT_SETUP([MSYS2: Unfiy EOLs])
++AT_KEYWORDS([msys2 windows unify.eol])
++printf "a\n" > a.LF
++printf "a\r\n" > a.CRLF
++AS_ECHO(["MSYS2_AUTOTEST_NO_UNIFY_EOL='$MSYS2_AUTOTEST_NO_UNIFY_EOL'"])
++AS_CASE(["x$MSYS2_AUTOTEST_NO_UNIFY_EOL"],
++  [x|x0],[at_ret_diff=0],[at_ret_diff=1])
++AT_CHECK([$at_diff a.LF a.CRLF],[$at_ret_diff],[stdout],[stderr])
++AT_CLEANUP
+-- 
+2.29.2.windows.2
+

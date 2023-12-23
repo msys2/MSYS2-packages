@@ -1,0 +1,64 @@
+# Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
+
+_realname=autoconf
+pkgname=${_realname}2.72
+pkgver=2.72
+pkgrel=1
+pkgdesc="A GNU tool for automatically configuring source code"
+arch=('any')
+license=('spdx:GPL-2.0-or-later' 'spdx:GPL-3.0-or-later' 'spdx:Autoconf-exception-3.0')
+url="https://www.gnu.org/software/autoconf"
+depends=('awk' 'm4' 'diffutils' 'bash' 'perl' 'sed')
+makedepends=('make')
+source=(https://ftp.gnu.org/pub/gnu/${_realname}/${_realname}-${pkgver}.tar.xz
+        0001-autoconf-2.70-MSYS2-specifics-AC_CYGWIN.patch
+        0002-autoconf-2.70-MSYS2-Autotest-Unify-EOLs-By-Default.patch
+        0003-autoconf-2.70-MSYS2-specifics-config.guess.patch
+        0005-package.patch)
+sha256sums=('ba885c1319578d6c94d46e9b0dceb4014caafe2490e437a0dbca3f270a223f5a'
+            '3a5337e2269407405ee4c7feb12dbe2ae711610c3144c07cd085272676005db6'
+            'c4e4952cc63a2ddaf7bf539f6e59353c4fadbf04cd48c3cfa789f8b175d0bd27'
+            'e3819dac51673591148e56872ad09d6c46527e7e48bc69fe9d49475fac2af179'
+            '5743a28cf0af0c10ec049c6d8df6801c675c9656ff623fbda5c2a29b3b15e8f4')
+msys2_references=(
+  'archlinux: autoconf'
+)
+
+prepare() {
+  cd ${srcdir}/${_realname}-${pkgver}
+
+  # MSYS2
+  patch -p1 -i ${srcdir}/0001-autoconf-2.70-MSYS2-specifics-AC_CYGWIN.patch
+  patch -p1 -i ${srcdir}/0002-autoconf-2.70-MSYS2-Autotest-Unify-EOLs-By-Default.patch
+  patch -p1 -i ${srcdir}/0003-autoconf-2.70-MSYS2-specifics-config.guess.patch
+  patch -p1 -i ${srcdir}/0005-package.patch
+}
+
+build() {
+  mkdir -p build-${MSYSTEM} && cd build-${MSYSTEM}
+
+  ../${_realname}-${pkgver}/configure \
+    --prefix=/usr \
+    --program-suffix=-2.72
+
+  make
+}
+
+check() {
+  cd build-${MSYSTEM}
+  # CAUTION: The tests run very very long, even on a server.
+  make check TESTSUITEFLAGS='-j16'
+}
+
+package() {
+  make -C build-${MSYSTEM} DESTDIR=${pkgdir} install
+
+  # license exception
+  install -Dm644 ${_realname}-${pkgver}/COPYING.EXCEPTION \
+    $pkgdir/usr/share/licenses/autoconf${pkgver}/COPYING.EXCEPTION
+
+  # Note: Remove these files once a newer autoconf is added, and add
+  # a versioned conflict to the old version of this package to make
+  # upgrades work.
+  # rm -rf ${pkgdir}/usr/share/info
+}
