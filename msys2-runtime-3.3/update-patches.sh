@@ -19,7 +19,7 @@ die "Could not remove previous patches"
 
 base_tag=refs/tags/cygwin-"$(sed -ne 'y/./_/' -e 's/^pkgver=//p' <PKGBUILD)"-release
 msys2_branch=refs/heads/msys2-${base_tag#refs/tags/cygwin-}
-url=https://github.com/msys2/Cygwin
+url=https://github.com/msys2/msys2-runtime
 
 test -d msys2-runtime ||
 git clone --bare $url msys2-runtime ||
