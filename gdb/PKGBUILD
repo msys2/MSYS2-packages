@@ -1,8 +1,10 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=gdb
-pkgver=14.1
-pkgrel=1
+pkgname=("gdb"
+         "gdb-multiarch")
+pkgver=14.2
+pkgrel=2
 _gcc_ver=13.2.0
 pkgdesc="GNU Debugger (MSYS2 version)"
 arch=('i686' 'x86_64')
@@ -32,7 +34,7 @@ source=("https://ftp.gnu.org/gnu/gdb/gdb-${pkgver}.tar.xz"{,.sig}
         0005-msysize.patch
         0006-autoreconf.patch)
 validpgpkeys=('F40ADB902B24264AA42E50BF92EDB04BFF325CF3')
-sha256sums=('d66df51276143451fcbff464cc8723d68f1e9df45a6a2d5635a54e71643edb80'
+sha256sums=('2d4dd8061d8ded12b6c63f55e45344881e8226105f4d2a9b234040efa5ce7772'
             'SKIP'
             '2bbe7eddb1828c394d0ff99777058df79b1a596172603bb0e30d983fc1ea8785'
             'c717af701b421e28dced2f424c1ba91bad37a25d8cd63561d02d3f48f003973a'
@@ -54,16 +56,19 @@ prepare() {
   patch -p1 -i ${srcdir}/0004-7.8-symtab-cygwin.patch
 }
 
-build() {
-  [[ -d "${srcdir}/build-${CHOST}" ]] && rm -rf "${srcdir}/build-${CHOST}"
-  mkdir -p "${srcdir}/build-${CHOST}" && pushd "${srcdir}/build-${CHOST}"
+do_build() {
+  builddir=${srcdir}/build-${CHOST}$1
+  [[ -d "$builddir" ]] && rm -rf "$builddir"
+  mkdir -p "$builddir" && pushd "$builddir"
 
   ../${pkgname}-${pkgver}/configure \
     --build=${CHOST} \
     --host=${CHOST} \
     --prefix=/usr \
+    $2 \
     --enable-64-bit-bfd \
     --disable-werror \
+    --disable-sim \
     --disable-staticlib \
     --with-system-gdbinit=/etc/gdbinit \
     --with-python=/usr/bin/python3 \
@@ -79,12 +84,17 @@ build() {
   make
 }
 
+build() {
+  do_build
+  do_build -multiarch --enable-targets=all
+}
+
 check() {
   cd ${srcdir}/build-${CHOST}
   make check || true
 }
 
-package() {
+package_gdb() {
   cd ${srcdir}/build-${CHOST}
   make DESTDIR=${pkgdir} install
 
@@ -104,4 +114,19 @@ package() {
   install -Dm644 "${srcdir}/${pkgname}-${pkgver}/COPYING.LIB" "${pkgdir}/usr/share/licenses/${pkgname}/COPYING.LIB"
   install -Dm644 "${srcdir}/${pkgname}-${pkgver}/COPYING" "${pkgdir}/usr/share/licenses/${pkgname}/COPYING3"
   install -Dm644 "${srcdir}/${pkgname}-${pkgver}/COPYING.LIB" "${pkgdir}/usr/share/licenses/${pkgname}/COPYING3.LIB"
+}
+
+package_gdb-multiarch() {
+  pkgdesc="GNU Debugger (supports all targets)"
+  depends=("gdb=${pkgver}")
+
+  builddir=${srcdir}/build-${CHOST}-multiarch
+  cd ${builddir}
+  make DESTDIR=${builddir}/inst install-gdb install-gdbserver
+
+  destdir=${pkgdir}/usr/bin
+  bindir=${builddir}/inst/usr/bin
+  mkdir -p $destdir
+  cp -p ${bindir}/gdb.exe ${destdir}/gdb-multiarch.exe
+  cp -p ${bindir}/gdbserver.exe ${destdir}/gdbserver-multiarch.exe
 }
