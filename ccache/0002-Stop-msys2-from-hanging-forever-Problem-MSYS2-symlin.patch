@@ -1,0 +1,120 @@
+From 3b61a866621036b669a0a9e891702e1b0fd17bb0 Mon Sep 17 00:00:00 2001
+From: Kreijstal <rainb@tfwno.gf>
+Date: Sun, 17 Mar 2024 23:17:09 +0100
+Subject: [PATCH] Stop msys2 from hanging forever, Problem: MSYS2 symlinks
+ error if location does not exist, otherwise they work as symlinks just
+ 'fine'.
+
+---
+ src/ccache/util/LockFile.cpp | 34 +++++++++++++++++++++++++++++++---
+ unittest/test_Util.cpp       |  5 ++---
+ 2 files changed, 33 insertions(+), 6 deletions(-)
+
+diff --git a/src/ccache/util/LockFile.cpp b/src/ccache/util/LockFile.cpp
+index 43b62cd1..d2f2a48b 100644
+--- a/src/util/LockFile.cpp
++++ b/src/util/LockFile.cpp
+@@ -43,7 +43,9 @@ const uint32_t k_max_sleep_time_ms = 50;
+ #ifndef _WIN32
+ const util::Duration k_staleness_limit(2);
+ #endif
+-
++#ifdef __CYGWIN__
++#  include <fcntl.h>
++#endif
+ namespace fs = util::filesystem;
+ 
+ using pstr = util::PathString;
+@@ -236,16 +238,31 @@ LockFile::do_acquire(const bool blocking)
+     const auto now = TimePoint::now();
+     const auto my_content =
+       FMT("{}-{}.{}", content_prefix, now.sec(), now.nsec_decimal_part());
+-
++#  ifdef __CYGWIN__
++    // Cygwin-specific file-based lock
++    int fd = open(m_lock_file.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0666);
++    if (fd != -1) {
++      // Lock file successfully created, write the content and close the file
++      write(fd, my_content.c_str(), my_content.size());
++      close(fd); // Lock acquired
++      return true;
++    }
++#  else
+     if (fs::create_symlink(my_content, m_lock_file)) {
+       // We got the lock.
+       return true;
+     }
++#  endif
+ 
+     int saved_errno = errno;
+     if (saved_errno == ENOENT) {
+       // Directory doesn't exist?
++#  ifdef __CYGWIN__
++      if (!fs::exists(m_lock_file.parent_path())
++          && fs::create_directories(m_lock_file.parent_path())) {
++#  else
+       if (fs::create_directories(m_lock_file.parent_path())) {
++#  endif
+         // OK. Retry.
+         continue;
+       }
+@@ -262,7 +279,17 @@ LockFile::do_acquire(const bool blocking)
+       // Directory doesn't exist or isn't writable?
+       return false;
+     }
+-
++#  ifdef __CYGWIN__
++    // Cygwin-specific code to read the content of the lock file
++    std::ifstream lock_file(m_lock_file);
++    if (!lock_file.is_open()) {
++      // Handle error: the lock file couldn't be opened
++      return false;
++    }
++    std::string content;
++    lock_file >> content;
++    lock_file.close();
++#  else
+     auto content_path = fs::read_symlink(m_lock_file);
+     if (!content_path) {
+       if (content_path.error() == std::errc::no_such_file_or_directory) {
+@@ -278,6 +305,7 @@ LockFile::do_acquire(const bool blocking)
+     }
+     auto content = content_path->string();
+ 
++#  endif
+     if (content == my_content) {
+       // Lost NFS reply?
+       LOG("Symlinking {} failed but we got the lock anyway", m_lock_file);
+diff --git a/unittest/test_Util.cpp b/unittest/test_Util.cpp
+index e670464b..6120a82a 100644
+--- a/unittest/test_Util.cpp
++++ b/unittest/test_Util.cpp
+@@ -102,7 +102,7 @@ TEST_CASE("Util::make_relative_path")
+ 
+   const std::string cwd = util::actual_cwd();
+   const std::string actual_cwd = FMT("{}/d", cwd);
+-#ifdef _WIN32
++#if defined(_WIN32) || defined(__CYGWIN__)
+   const std::string apparent_cwd = actual_cwd;
+ #else
+   const std::string apparent_cwd = FMT("{}/s", cwd);
+@@ -114,7 +114,6 @@ TEST_CASE("Util::make_relative_path")
+ #endif
+   REQUIRE(fs::current_path("d"));
+   util::setenv("PWD", apparent_cwd);
+-
+   SUBCASE("No base directory")
+   {
+     CHECK(make_relative_path("", "/a", "/a", "/a/x") == "/a/x");
+@@ -198,7 +197,7 @@ TEST_CASE("Util::normalize_abstract_absolute_path")
+ 
+ TEST_CASE("Util::normalize_concrete_absolute_path")
+ {
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__CYGWIN__)
+   TestContext test_context;
+ 
+   util::write_file("file", "");
+-- 
+2.44.0
+
