@@ -1,0 +1,57 @@
+From 9b6d2a32d5024742b8b2a0c3cf50002805e70985 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=EB=A7=88=EB=88=84=EC=97=98?= <nalla@hamal.uberspace.de>
+Date: Wed, 17 Jun 2015 09:30:41 +0200
+Subject: [PATCH 16/N] path-conversion: Introduce ability to switch off
+ conversion.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When calling windows native apps from MSYS2, the runtime tries to
+convert commandline arguments by a specific set of rules. This idea was
+inherited from the MSys/MinGW project (which is now seemingly stale, yet
+must be credited with championing this useful feature, see MinGW wiki
+https://web.archive.org/web/20201112005258/http://www.mingw.org/wiki/Posix_path_conversion).
+
+If the user does not want that behavior on a big scale, e.g. inside a
+Bash script, with the changes introduced in this commit, the user can
+now set the the environment variable `MSYS_NO_PATHCONV` when calling
+native windows commands.
+
+This is a feature that has been introduced in Git for Windows via
+https://github.com/git-for-windows/msys2-runtime/pull/11 and it predates
+support for the `MSYS2_ENV_CONV_EXCL` and `MSYS2_ARG_CONV_EXCL`
+environment variables in the MSYS2 runtime; Many users find the
+simplicity of `MSYS_NO_PATHCONV` appealing.
+
+So let's teach MSYS2 proper this simple trick that still allows using
+the sophisticated `MSYS2_*_CONV_EXCL` facilities but also offers a
+convenient catch-all "just don't convert anything" knob.
+
+Signed-off-by: 마누엘 <nalla@hamal.uberspace.de>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/msys2_path_conv.cc | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
+index d584800..4c0cc82 100644
+--- a/winsup/cygwin/msys2_path_conv.cc
++++ b/winsup/cygwin/msys2_path_conv.cc
+@@ -341,6 +341,16 @@ path_type find_path_start_and_type(const char** src, int recurse, const char* en
+ 
+     if (*it == '\0' || it == end) return NONE;
+ 
++    /*
++     * Skip path mangling when environment indicates it.
++     */
++    const char *no_pathconv = getenv ("MSYS_NO_PATHCONV");
++
++    if (no_pathconv) {
++        *src = end;
++        return NONE;
++    }
++
+     /* Let's not convert ~/.file to ~C:\msys64\.file */
+     if (*it == '~') {
+ skip_p2w:

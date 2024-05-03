@@ -1,0 +1,52 @@
+From 216a27d7c8d7fefcbdc5409ba405621d0a8e1d9d Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Thu, 22 Jul 2021 11:59:16 -0700
+Subject: [PATCH 28/N] Cygwin: make option for native inner link handling.
+
+This code has been causing issues with SUBST and mapped network drives,
+so add an option (defaulted to on) which can be used to disable it where
+needed.  MSYS=nonativeinnerlinks
+---
+ winsup/cygwin/environ.cc | 1 +
+ winsup/cygwin/globals.cc | 1 +
+ winsup/cygwin/path.cc    | 3 ++-
+ 3 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
+index 299c692..37da358 100644
+--- a/winsup/cygwin/environ.cc
++++ b/winsup/cygwin/environ.cc
+@@ -123,6 +123,7 @@ static struct parse_thing
+   {"error_start", {func: error_start_init}, isfunc, NULL, {{0}, {0}}},
+   {"export", {&export_settings}, setbool, NULL, {{false}, {true}}},
+   {"glob", {func: glob_init}, isfunc, NULL, {{0}, {s: "normal"}}},
++  {"nativeinnerlinks", {&nativeinnerlinks}, setbool, NULL, {{false}, {true}}},
+   {"pipe_byte", {&pipe_byte}, setbool, NULL, {{false}, {true}}},
+   {"proc_retry", {func: set_proc_retry}, isfunc, NULL, {{0}, {5}}},
+   {"reset_com", {&reset_com}, setbool, NULL, {{false}, {true}}},
+diff --git a/winsup/cygwin/globals.cc b/winsup/cygwin/globals.cc
+index b3b77de..ab2c205 100644
+--- a/winsup/cygwin/globals.cc
++++ b/winsup/cygwin/globals.cc
+@@ -74,6 +74,7 @@ bool wincmdln = true;
+ winsym_t allow_winsymlinks = WSYM_deepcopy;
+ bool disable_pcon;
+ bool winjitdebug = false;
++bool nativeinnerlinks = true;
+ 
+ /* Taken from BSD libc:
+    This variable is zero until a process has created a pthread.  It is used
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 36f2a73..8806e59 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -3724,7 +3724,8 @@ restart:
+ 	 differ, return the final path as symlink content and set symlen
+ 	 to a negative value.  This forces path_conv::check to restart
+ 	 symlink evaluation with the new path. */
+-      if ((pc_flags & (PC_SYM_FOLLOW | PC_SYM_NOFOLLOW_REP)) == PC_SYM_FOLLOW)
++      if (nativeinnerlinks
++	  && (pc_flags & (PC_SYM_FOLLOW | PC_SYM_NOFOLLOW_REP)) == PC_SYM_FOLLOW)
+ 	{
+ 	  PWCHAR fpbuf = tp.w_get ();
+ 	  DWORD ret;

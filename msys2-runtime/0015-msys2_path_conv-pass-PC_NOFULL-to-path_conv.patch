@@ -1,0 +1,38 @@
+From 1a60554fae00441a3a555ffe9e386551a768b6ee Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Sun, 20 Nov 2022 13:57:36 +0100
+Subject: [PATCH 15/N] msys2_path_conv: pass PC_NOFULL to path_conv
+
+In theory this doesn't make a difference because posix_to_win32_path()
+is only called with rooted/absolute paths, but as pointed out in
+https://github.com/msys2/msys2-runtime/pull/103 PC_NOFULL will preserve
+the trailing slash of unix paths (for some reason).
+
+See "cygpath -m /bin/" (preserved) vs "cygpath -am /bin/" (dropped)
+
+One use case where we need to trailing slashes to be preserved is the GCC build
+system:
+https://github.com/gcc-mirror/gcc/blob/6d82e0fea5f988e829912a/gcc/Makefile.in#L2314
+
+The Makefile appends a slash to the prefixes and the C code doing relocation will
+treat the path as a directory if there is a trailing slash. See
+https://github.com/msys2/MINGW-packages/issues/14173 for details.
+
+With this change all our MSYS2 path_conv tests pass again.
+---
+ winsup/cygwin/msys2_path_conv.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
+index c527287..d584800 100644
+--- a/winsup/cygwin/msys2_path_conv.cc
++++ b/winsup/cygwin/msys2_path_conv.cc
+@@ -682,7 +682,7 @@ void posix_to_win32_path(const char* from, const char* to, char** dst, const cha
+         strncpy(one_path, from, to-from);
+         one_path[to-from] = '\0';
+ 
+-        path_conv conv (one_path, 0);
++        path_conv conv (one_path, PC_NOFULL);
+         if (conv.error)
+         {
+           set_errno(conv.error);

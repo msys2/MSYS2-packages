@@ -1,0 +1,506 @@
+From 86874b54d217cad9c3d82bcf00de5fb91c4df5d9 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Fri, 20 Mar 2015 09:56:28 +0000
+Subject: [PATCH 26/N] Emulate GenerateConsoleCtrlEvent() upon Ctrl+C
+
+This patch is heavily inspired by the Git for Windows' strategy in
+handling Ctrl+C.
+
+When a process is terminated via TerminateProcess(), it has no chance to
+do anything in the way of cleaning up. This is particularly noticeable
+when a lengthy Git for Windows process tries to update Git's index file
+and leaves behind an index.lock file. Git's idea is to remove the stale
+index.lock file in that case, using the signal and atexit handlers
+available in Linux. But those signal handlers never run.
+
+Note: this is not an issue for MSYS2 processes because MSYS2 emulates
+Unix' signal system accurately, both for the process sending the kill
+signal and the process receiving it. Win32 processes do not have such a
+signal handler, though, instead MSYS2 shuts them down via
+`TerminateProcess()`.
+
+For a while, Git for Windows tried to use a gentler method, described in
+the Dr Dobb's article "A Safer Alternative to TerminateProcess()" by
+Andrew Tucker (July 1, 1999),
+http://www.drdobbs.com/a-safer-alternative-to-terminateprocess/184416547
+
+Essentially, we injected a new thread into the running process that does
+nothing else than running the ExitProcess() function.
+
+However, this was still not in line with the way CMD handles Ctrl+C: it
+gives processes a chance to do something upon Ctrl+C by calling
+SetConsoleCtrlHandler(), and ExitProcess() simply never calls that
+handler.
+
+So for a while we tried to handle SIGINT/SIGTERM by attaching to the
+console of the command to interrupt, and generating the very same event
+as CMD does via GenerateConsoleCtrlEvent().
+
+This method *still* was not correct, though, as it would interrupt
+*every* process attached to that Console, not just the process (and its
+children) that we wanted to signal. A symptom was that hitting Ctrl+C
+while `git log` was shown in the pager would interrupt *the pager*.
+
+The method we settled on is to emulate what GenerateConsoleCtrlEvent()
+does, but on a process by process basis: inject a remote thread and call
+the (private) function kernel32!CtrlRoutine.
+
+To obtain said function's address, we use the dbghelp API to generate a
+stack trace from a handler configured via SetConsoleCtrlHandler() and
+triggered via GenerateConsoleCtrlEvent(). To avoid killing each and all
+processes attached to the same Console as the MSYS2 runtime, we modify
+the cygwin-console-helper to optionally print the address of
+kernel32!CtrlRoutine to stdout, and then spawn it with a new Console.
+
+Note that this also opens the door to handling 32-bit process from a
+64-bit MSYS2 runtime and vice versa, by letting the MSYS2 runtime look
+for the cygwin-console-helper.exe of the "other architecture" in a
+specific place (we choose /usr/libexec/, as it seems to be the
+convention for helper .exe files that are not intended for public
+consumption).
+
+The 32-bit helper implicitly links to libgcc_s_dw2.dll and
+libwinpthread-1.dll, so to avoid cluttering /usr/libexec/, we look for
+the helped of the "other" architecture in the corresponding mingw32/ or
+mingw64/ subdirectory.
+
+Among other bugs, this strategy to handle Ctrl+C fixes the MSYS2 side of
+the bug where interrupting `git clone https://...` would send the
+spawned-off `git remote-https` process into the background instead of
+interrupting it, i.e. the clone would continue and its progress would be
+reported mercilessly to the console window without the user being able
+to do anything about it (short of firing up the task manager and killing
+the appropriate task manually).
+
+Note that this special-handling is only necessary when *MSYS2* handles
+the Ctrl+C event, e.g. when interrupting a process started from within
+MinTTY or any other non-cmd-based terminal emulator. If the process was
+started from within `cmd.exe`'s terminal window, child processes are
+already killed appropriately upon Ctrl+C, by `cmd.exe` itself.
+
+Also, we can't trust the processes to end it's subprocesses upon receiving
+Ctrl+C. For example, `pip.exe` from `python-pip` doesn't kill the python
+it lauches (it tries to but fails), and I noticed that in cmd it kills python
+also correctly, which mean we should kill all the process using
+`exit_process_tree`.
+
+Co-authored-by: Naveen M K <naveen@syrusdark.website>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/exceptions.cc                 |  24 +-
+ winsup/cygwin/include/cygwin/exit_process.h | 364 ++++++++++++++++++++
+ 2 files changed, 384 insertions(+), 4 deletions(-)
+ create mode 100644 winsup/cygwin/include/cygwin/exit_process.h
+
+diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
+index b369799..36feb45 100644
+--- a/winsup/cygwin/exceptions.cc
++++ b/winsup/cygwin/exceptions.cc
+@@ -29,6 +29,7 @@ details. */
+ #include "exception.h"
+ #include "posix_timer.h"
+ #include "gcc_seh.h"
++#include "cygwin/exit_process.h"
+ 
+ /* Define macros for CPU-agnostic register access.  The _CX_foo
+    macros are for access into CONTEXT, the _MC_foo ones for access into
+@@ -1598,10 +1599,25 @@ exit_sig:
+ dosig:
+   if (have_execed)
+     {
+-      sigproc_printf ("terminating captive process");
+-      if (::cygheap->ctty)
+-	::cygheap->ctty->cleanup_before_exit ();
+-      TerminateProcess (ch_spawn, sigExeced = si.si_signo);
++      switch (si.si_signo)
++        {
++        case SIGUSR1:
++        case SIGUSR2:
++        case SIGCONT:
++        case SIGSTOP:
++        case SIGTSTP:
++        case SIGTTIN:
++        case SIGTTOU:
++          system_printf ("Suppressing signal %d to win32 process (pid %u)",
++              (int)si.si_signo, (unsigned int)GetProcessId(ch_spawn));
++          goto done;
++        default:
++          sigproc_printf ("terminating captive process");
++          if (::cygheap->ctty)
++	    ::cygheap->ctty->cleanup_before_exit ();
++          rc = exit_process_tree (ch_spawn, 128 + (sigExeced = si.si_signo));
++          goto done;
++        }
+     }
+   /* Dispatch to the appropriate function. */
+   sigproc_printf ("signal %d, signal handler %p", si.si_signo, handler);
+diff --git a/winsup/cygwin/include/cygwin/exit_process.h b/winsup/cygwin/include/cygwin/exit_process.h
+new file mode 100644
+index 0000000..0486a0c
+--- /dev/null
++++ b/winsup/cygwin/include/cygwin/exit_process.h
+@@ -0,0 +1,364 @@
++#ifndef EXIT_PROCESS_H
++#define EXIT_PROCESS_H
++
++/*
++ * This file contains functions to terminate a Win32 process, as gently as
++ * possible.
++ *
++ * If appropriate, we will attempt to emulate a console Ctrl event for the
++ * process. Otherwise we will fall back to terminating the process.
++ *
++ * As we do not want to export this function in the MSYS2 runtime, these
++ * functions are marked as file-local.
++ *
++ * The idea is to inject a thread into the given process that runs either
++ * kernel32!CtrlRoutine() (i.e. the work horse of GenerateConsoleCtrlEvent())
++ * for SIGINT (Ctrl+C) and SIGQUIT (Ctrl+Break), or ExitProcess() for SIGTERM.
++ * This is handled through the console helpers.
++ *
++ * For SIGKILL, we run TerminateProcess() without injecting anything, and this
++ * is also the fall-back when the previous methods are unavailable.
++ *
++ * Note: as kernel32.dll is loaded before any process, the other process and
++ * this process will have ExitProcess() at the same address. The same holds
++ * true for kernel32!CtrlRoutine(), of course, but it is an internal API
++ * function, so we cannot look it up directly. Instead, we launch
++ * getprocaddr.exe to find out and inject the remote thread.
++ *
++ * This function expects the process handle to have the access rights for
++ * CreateRemoteThread(): PROCESS_CREATE_THREAD, PROCESS_QUERY_INFORMATION,
++ * PROCESS_VM_OPERATION, PROCESS_VM_WRITE, and PROCESS_VM_READ.
++ *
++ * The idea for the injected remote thread comes from the Dr Dobb's article "A
++ * Safer Alternative to TerminateProcess()" by Andrew Tucker (July 1, 1999),
++ * http://www.drdobbs.com/a-safer-alternative-to-terminateprocess/184416547.
++ *
++ * The idea to use kernel32!CtrlRoutine for the other signals comes from
++ * SendSignal (https://github.com/AutoSQA/SendSignal/ and
++ * http://stanislavs.org/stopping-command-line-applications-programatically-with-ctrl-c-events-from-net/).
++ */
++
++#include <math.h>
++#include <wchar.h>
++
++#ifndef __INSIDE_CYGWIN__
++/* To help debugging via kill.exe */
++#define small_printf(...) fprintf (stderr, __VA_ARGS__)
++#endif
++
++static BOOL get_wow (HANDLE process, BOOL &is_wow, USHORT &process_arch);
++static int exit_process_tree (HANDLE main_process, int exit_code);
++
++static BOOL
++kill_via_console_helper (HANDLE process, wchar_t *function_name, int exit_code,
++                         DWORD pid)
++{
++  BOOL is_wow;
++  USHORT process_arch;
++  if (!get_wow (process, is_wow, process_arch))
++    {
++      return FALSE;
++    }
++
++  const char *name;
++  switch (process_arch)
++  {
++    case IMAGE_FILE_MACHINE_I386:
++      name = "/usr/libexec/getprocaddr32.exe";
++      break;
++    case IMAGE_FILE_MACHINE_AMD64:
++      name = "/usr/libexec/getprocaddr64.exe";
++      break;
++    /* TODO: provide exes for these */
++    case IMAGE_FILE_MACHINE_ARMNT:
++      name = "/usr/libexec/getprocaddrarm32.exe";
++      break;
++    case IMAGE_FILE_MACHINE_ARM64:
++      name = "/usr/libexec/getprocaddrarm64.exe";
++      break;
++    default:
++      return FALSE; /* what?!? */
++  }
++  wchar_t wbuf[PATH_MAX];
++
++  if (cygwin_conv_path (CCP_POSIX_TO_WIN_W, name, wbuf, PATH_MAX)
++      || GetFileAttributesW (wbuf) == INVALID_FILE_ATTRIBUTES)
++    return FALSE;
++
++  STARTUPINFOW si = {};
++  PROCESS_INFORMATION pi;
++  size_t len = wcslen (wbuf) + 1 /* space */ + wcslen (function_name)
++               + 1 /* space */ + 3 /* exit code */ + 1 /* space */
++               + 10 /* process ID, i.e. DWORD */ + 1 /* NUL */;
++  WCHAR cmd[len + 1];
++  WCHAR title[] = L"cygwin-console-helper";
++  DWORD process_exit;
++
++  swprintf (cmd, len + 1, L"%S %S %d %u", wbuf, function_name, exit_code,
++            pid);
++
++  si.cb = sizeof (si);
++  si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
++  si.wShowWindow = SW_HIDE;
++  si.lpTitle = title;
++  si.hStdInput = si.hStdError = si.hStdOutput = INVALID_HANDLE_VALUE;
++
++  /* Create a new hidden process. */
++  if (!CreateProcessW (NULL, cmd, NULL, NULL, TRUE,
++                       CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP, NULL, NULL,
++                       &si, &pi))
++    {
++      return FALSE;
++    }
++  else
++    {
++      /* Wait for the process to complete for 10 seconds */
++      WaitForSingleObject (pi.hProcess, 10000);
++    }
++
++  if (!GetExitCodeProcess (pi.hProcess, &process_exit))
++    process_exit = -1;
++
++  CloseHandle (pi.hThread);
++  CloseHandle (pi.hProcess);
++
++  return process_exit == 0 ? TRUE : FALSE;
++}
++
++static int current_is_wow = -1;
++static int is_32_bit_os = -1;
++
++typedef BOOL (WINAPI * IsWow64Process2_t) (HANDLE, USHORT *, USHORT *);
++static bool wow64process2initialized = false;
++static IsWow64Process2_t pIsWow64Process2 /* = NULL */;
++
++typedef BOOL (WINAPI * GetProcessInformation_t) (HANDLE,
++                                                 PROCESS_INFORMATION_CLASS,
++                                                 LPVOID, DWORD);
++static bool getprocessinfoinitialized = false;
++static GetProcessInformation_t pGetProcessInformation /* = NULL */;
++
++static BOOL
++get_wow (HANDLE process, BOOL &is_wow, USHORT &process_arch)
++{
++  USHORT native_arch = IMAGE_FILE_MACHINE_UNKNOWN;
++  if (!wow64process2initialized)
++    {
++      pIsWow64Process2 = (IsWow64Process2_t)
++              GetProcAddress (GetModuleHandle ("KERNEL32"),
++                              "IsWow64Process2");
++      MemoryBarrier ();
++      wow64process2initialized = true;
++    }
++  if (!pIsWow64Process2)
++    {
++      if (is_32_bit_os == -1)
++        {
++          SYSTEM_INFO info;
++
++          GetNativeSystemInfo (&info);
++          if (info.wProcessorArchitecture == 0)
++            is_32_bit_os = 1;
++          else if (info.wProcessorArchitecture == 9)
++            is_32_bit_os = 0;
++          else
++            is_32_bit_os = -2;
++        }
++
++      if (current_is_wow == -1
++          && !IsWow64Process (GetCurrentProcess (), &current_is_wow))
++        current_is_wow = -2;
++
++      if (is_32_bit_os == -2 || current_is_wow == -2)
++        return FALSE;
++
++      if (!IsWow64Process (process, &is_wow))
++        return FALSE;
++
++      process_arch = is_32_bit_os || is_wow ? IMAGE_FILE_MACHINE_I386 :
++                                      IMAGE_FILE_MACHINE_AMD64;
++      return TRUE;
++    }
++
++  if (!pIsWow64Process2 (process, &process_arch, &native_arch))
++    return FALSE;
++
++  /* The value will be IMAGE_FILE_MACHINE_UNKNOWN if the target process
++   * is not a WOW64 process
++   */
++  if (process_arch == IMAGE_FILE_MACHINE_UNKNOWN)
++    {
++      struct /* _PROCESS_MACHINE_INFORMATION */
++        {
++          /* 0x0000 */ USHORT ProcessMachine;
++          /* 0x0002 */ USHORT Res0;
++          /* 0x0004 */ DWORD MachineAttributes;
++        } /* size: 0x0008 */ process_machine_info;
++
++      is_wow = FALSE;
++      /* However, x86_64 on ARM64 claims not to be WOW64, so we have to
++       * dig harder... */
++      if (!getprocessinfoinitialized)
++        {
++          pGetProcessInformation = (GetProcessInformation_t)
++                  GetProcAddress (GetModuleHandle ("KERNEL32"),
++                                  "GetProcessInformation");
++          MemoryBarrier ();
++          getprocessinfoinitialized = true;
++        }
++      /*#define ProcessMachineTypeInfo 9*/
++      if (pGetProcessInformation &&
++          pGetProcessInformation (process, (PROCESS_INFORMATION_CLASS)9,
++            &process_machine_info, sizeof (process_machine_info)))
++        process_arch = process_machine_info.ProcessMachine;
++      else
++        process_arch = native_arch;
++    }
++  else
++    {
++      is_wow = TRUE;
++    }
++  return TRUE;
++}
++
++/**
++ * Terminates the process corresponding to the process ID
++ *
++ * This way of terminating the processes is not gentle: the process gets
++ * no chance of cleaning up after itself (closing file handles, removing
++ * .lock files, terminating spawned processes (if any), etc).
++ */
++static int
++exit_process (HANDLE process, int exit_code)
++{
++  LPTHREAD_START_ROUTINE address = NULL;
++  DWORD pid = GetProcessId (process), code;
++  int signo = exit_code & 0x7f;
++  switch (signo)
++    {
++    case SIGINT:
++    case SIGQUIT:
++      /* We are not going to kill them but simply say that Ctrl+C
++      is pressed. If the processes want they can exit or else
++      just wait.*/
++      if (kill_via_console_helper (
++              process, L"CtrlRoutine",
++              signo == SIGINT ? CTRL_C_EVENT : CTRL_BREAK_EVENT, pid))
++        return 0;
++      /* fall-through */
++    case SIGTERM:
++      if (kill_via_console_helper (process, L"ExitProcess", exit_code, pid))
++        return 0;
++      break;
++    default:
++      break;
++    }
++
++  return int (TerminateProcess (process, exit_code));
++}
++
++#include <tlhelp32.h>
++#include <unistd.h>
++
++/**
++ * Terminates the process corresponding to the process ID and all of its
++ * directly and indirectly spawned subprocesses using the
++ * TerminateProcess() function.
++ */
++static int
++exit_process_tree (HANDLE main_process, int exit_code)
++{
++  HANDLE snapshot = CreateToolhelp32Snapshot (TH32CS_SNAPPROCESS, 0);
++  PROCESSENTRY32 entry;
++  DWORD pids[16384];
++  int max_len = sizeof (pids) / sizeof (*pids), i, len, ret = 0;
++  DWORD pid = GetProcessId (main_process);
++  int signo = exit_code & 0x7f;
++
++  pids[0] = pid;
++  len = 1;
++
++  /*
++   * Even if Process32First()/Process32Next() seem to traverse the
++   * processes in topological order (i.e. parent processes before
++   * child processes), there is nothing in the Win32 API documentation
++   * suggesting that this is guaranteed.
++   *
++   * Therefore, run through them at least twice and stop when no more
++   * process IDs were added to the list.
++   */
++  for (;;)
++    {
++      memset (&entry, 0, sizeof (entry));
++      entry.dwSize = sizeof (entry);
++
++      if (!Process32First (snapshot, &entry))
++        break;
++
++      int orig_len = len;
++      do
++        {
++          /**
++           * Look for the parent process ID in the list of pids to kill, and if
++           * found, add it to the list.
++           */
++          for (i = len - 1; i >= 0; i--)
++            {
++              if (pids[i] == entry.th32ProcessID)
++                break;
++              if (pids[i] != entry.th32ParentProcessID)
++                continue;
++
++              /* We found a process to kill; is it an MSYS2 process? */
++              pid_t cyg_pid = cygwin_winpid_to_pid (entry.th32ProcessID);
++              if (cyg_pid > -1)
++                {
++                  if (cyg_pid == getpgid (cyg_pid))
++                    kill (cyg_pid, signo);
++                  break;
++                }
++              pids[len++] = entry.th32ProcessID;
++              break;
++            }
++        }
++      while (len < max_len && Process32Next (snapshot, &entry));
++
++      if (orig_len == len || len >= max_len)
++        break;
++    }
++
++  CloseHandle (snapshot);
++
++  for (i = len - 1; i >= 0; i--)
++    {
++      HANDLE process;
++
++      if (!i)
++        process = main_process;
++      else
++        {
++          process = OpenProcess (
++              PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION
++                  | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
++              FALSE, pids[i]);
++          if (!process)
++            process = OpenProcess (
++                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
++                FALSE, pids[i]);
++        }
++      DWORD code;
++
++      if (process
++          && (!GetExitCodeProcess (process, &code) || code == STILL_ACTIVE))
++        {
++          if (!exit_process (process, exit_code))
++            ret = -1;
++        }
++      if (process && process != main_process)
++        CloseHandle (process);
++    }
++
++  return ret;
++}
++
++#endif

@@ -1,0 +1,51 @@
+From 16e0f643d84a48cf3192c62201ef3ce3e899f292 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Fri, 20 Mar 2015 10:01:50 +0000
+Subject: [PATCH 27/N] kill: kill Win32 processes more gently
+
+This change is the equivalent to the change to the Ctrl+C handling we
+just made.
+
+Co-authored-by: Naveen M K <naveen@syrusdark.website>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/utils/kill.cc | 19 +++++++++++++++----
+ 1 file changed, 15 insertions(+), 4 deletions(-)
+
+diff --git a/winsup/utils/kill.cc b/winsup/utils/kill.cc
+index fb45e4c..28473d1 100644
+--- a/winsup/utils/kill.cc
++++ b/winsup/utils/kill.cc
+@@ -17,6 +17,7 @@ details. */
+ #include <cygwin/version.h>
+ #include <getopt.h>
+ #include <limits.h>
++#include <cygwin/exit_process.h>
+ 
+ static char *prog_name;
+ 
+@@ -300,10 +301,20 @@ forcekill (pid_t pid, DWORD winpid, int sig, int wait)
+       return;
+     }
+   if (!wait || WaitForSingleObject (h, 200) != WAIT_OBJECT_0)
+-    if (sig && !TerminateProcess (h, sig << 8)
+-	&& WaitForSingleObject (h, 200) != WAIT_OBJECT_0)
+-      fprintf (stderr, "%s: couldn't kill pid %u, %u\n",
+-	       prog_name, (unsigned int) dwpid, (unsigned int) GetLastError ());
++    {
++      HANDLE cur = GetCurrentProcess (), h2;
++      /* duplicate handle with access rights required for exit_process_tree() */
++      if (DuplicateHandle (cur, h, cur, &h2, PROCESS_CREATE_THREAD |
++			      PROCESS_QUERY_INFORMATION |
++			      PROCESS_VM_OPERATION |
++			      PROCESS_VM_WRITE | PROCESS_VM_READ |
++			      PROCESS_TERMINATE, FALSE, 0))
++      {
++        CloseHandle(h);
++        h = h2;
++      }
++      exit_process_tree (h, 128 + sig);
++    }
+   CloseHandle (h);
+ }
+ 
