@@ -1,4 +1,4 @@
-From 5f85b84acafc0ad5d31ba8501239e47ebdbe265f Mon Sep 17 00:00:00 2001
+From d1cb51f64425bb111e1f1cf002008642e1abf53f Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?=D0=90=D0=BB=D0=B5=D0=BA=D1=81=D0=B5=D0=B8=CC=86=20=D0=9F?=
  =?UTF-8?q?=D0=B0=D0=B2=D0=BB=D0=BE=D0=B2?= <alexey.pawlow@gmail.com>
 Date: Sun, 14 Apr 2019 21:09:17 +0300
@@ -8,7 +8,7 @@ Subject: [PATCH 03/N] Rename dll from cygwin to msys
  winsup/Makefile.am                            |  2 +-
  winsup/cygserver/Makefile.am                  |  2 +-
  winsup/cygserver/transport_pipes.h            |  4 ++
- winsup/cygwin/Makefile.am                     | 35 +++++++--------
+ winsup/cygwin/Makefile.am                     | 27 ++++++------
  winsup/cygwin/crt0.c                          |  8 ++++
  winsup/cygwin/cygthread.cc                    |  2 +-
  winsup/cygwin/cygwin.din                      |  6 +--
@@ -36,19 +36,16 @@ Subject: [PATCH 03/N] Rename dll from cygwin to msys
  winsup/cygwin/syscalls.cc                     |  4 +-
  winsup/cygwin/syslog.cc                       |  4 ++
  winsup/cygwin/winver.rc                       |  2 +-
- winsup/testsuite/config/default.exp           |  8 ++--
- winsup/testsuite/cygrun.c                     |  6 +--
+ winsup/testsuite/cygrun.c                     |  2 +-
  winsup/testsuite/winsup.api/cygload.cc        | 12 +++---
- winsup/testsuite/winsup.api/cygload.exp       |  2 +-
  winsup/testsuite/winsup.api/cygload.h         |  2 +-
- winsup/testsuite/winsup.api/winsup.exp        |  2 +-
  winsup/utils/ldd.cc                           |  2 +-
  winsup/utils/loadlib.h                        |  6 +--
  winsup/utils/mingw/cygcheck.cc                | 43 +++++++++----------
  winsup/utils/mingw/strace.cc                  | 11 +++--
  winsup/utils/path.cc                          | 12 +++---
  winsup/utils/ssp.c                            |  8 ++--
- 43 files changed, 209 insertions(+), 107 deletions(-)
+ 40 files changed, 197 insertions(+), 95 deletions(-)
 
 diff --git a/winsup/Makefile.am b/winsup/Makefile.am
 index 9efdd4c..0946152 100644
@@ -93,10 +90,10 @@ index e101623..66272bc 100644
  
  /* Named pipes based transport, for security on NT */
 diff --git a/winsup/cygwin/Makefile.am b/winsup/cygwin/Makefile.am
-index 167be81..a57d228 100644
+index 376c79f..e65e675 100644
 --- a/winsup/cygwin/Makefile.am
 +++ b/winsup/cygwin/Makefile.am
-@@ -37,13 +37,13 @@ newlib_build=$(target_builddir)/newlib
+@@ -37,12 +37,12 @@ newlib_build=$(target_builddir)/newlib
  toollibdir=$(tooldir)/lib
  toolincludedir=$(tooldir)/include
  
@@ -107,23 +104,21 @@ index 167be81..a57d228 100644
 -NEW_DLL_NAME=new-cygwin1.dll
 -DEF_FILE=cygwin.def
 -LIB_NAME=libcygwin.a
--TEST_LIB_NAME=libcygwin0.a
 +DLL_NAME=msys-2.0.dll
 +NEW_DLL_NAME=new-msys-2.0.dll
 +DEF_FILE=msys.def
 +LIB_NAME=libmsys-2.0.a
-+TEST_LIB_NAME=libmsys0.a
  
  #
  # sources
-@@ -570,32 +570,32 @@ LIBSERVER = $(cygserver_blddir)/libcygserver.a
+@@ -584,16 +584,16 @@ LIBSERVER = $(cygserver_blddir)/libcygserver.a
  $(LIBSERVER):
  	$(MAKE) -C $(cygserver_blddir) libcygserver.a
  
--# We build as cygwin0.dll and rename at install time to overcome native
-+# We build as msys-2.0.dll and rename at install time to overcome native
+-# We build as new-cygwin1.dll and rename at install time to overcome native
++# We build as new-msys-2.0.dll and rename at install time to overcome native
  # rebuilding issues (we don't want the build tools to see a partially built
--# cygwin.dll and attempt to use it instead of the old one).
+-# cygwin1.dll and attempt to use it instead of the old one).
 +# msys-2.0.dll and attempt to use it instead of the old one).
  
  # linker script
@@ -133,12 +128,13 @@ index 167be81..a57d228 100644
  
 -# cygwin dll
 +# msys-2.0 dll
+ # Set PE and export table header timestamps to zero for reproducible builds.
  $(NEW_DLL_NAME): $(LDSCRIPT) libdll.a $(VERSION_OFILES) $(LIBSERVER)\
  		  $(newlib_build)/libm.a $(newlib_build)/libc.a
- 	$(AM_V_CXXLD)$(CXX) $(CXXFLAGS) \
- 	-mno-use-libstdc-wrappers \
+@@ -602,18 +602,18 @@ $(NEW_DLL_NAME): $(LDSCRIPT) libdll.a $(VERSION_OFILES) $(LIBSERVER)\
  	-Wl,--gc-sections -nostdlib -Wl,-T$(LDSCRIPT) \
  	-Wl,--dynamicbase -static \
+ 	$${SOURCE_DATE_EPOCH:+-Wl,--no-insert-timestamp} \
 -	-Wl,--heap=0 -Wl,--out-implib,cygdll.a -shared -o $@ \
 +	-Wl,--heap=0 -Wl,--out-implib,msysdll.a -shared -o $@ \
  	-e @DLL_ENTRY@ $(DEF_FILE) \
@@ -149,24 +145,20 @@ index 167be81..a57d228 100644
  	$(newlib_build)/libc.a \
 -	-lgcc -lkernel32 -lntdll -Wl,-Map,cygwin.map
 +	-lgcc -lkernel32 -lntdll -Wl,-Map,msys.map
+ 	@$(MKDIR_P) ${target_builddir}/winsup/testsuite/testinst/bin/
+ 	$(AM_V_at)$(INSTALL_PROGRAM) $(NEW_DLL_NAME) ${target_builddir}/winsup/testsuite/testinst/bin/$(DLL_NAME)
  
 -# cygwin import library
 +# msys-2.0 import library
  toolopts=--cpu=@target_cpu@ --ar=@AR@ --as=@AS@ --nm=@NM@ --objcopy=@OBJCOPY@
  
  $(DEF_FILE): scripts/gendef cygwin.din
-@@ -608,17 +608,18 @@ sigfe.s: $(DEF_FILE) tlsoffsets
+@@ -626,13 +626,14 @@ sigfe.s: $(DEF_FILE) tlsoffsets
  
  LIBCOS=$(addsuffix .o,$(basename $(LIB_FILES)))
  $(LIB_NAME): $(DEF_FILE) $(LIBCOS) | $(NEW_DLL_NAME)
 -	$(AM_V_GEN)$(srcdir)/scripts/mkimport $(toolopts) $(NEW_FUNCTIONS) $@ cygdll.a $(wordlist 2,99,$^)
 +	$(AM_V_GEN)$(srcdir)/scripts/mkimport $(toolopts) $(NEW_FUNCTIONS) $@ msysdll.a $(wordlist 2,99,$^)
- 
--# cygwin import library used by testsuite
-+# msys-2.0 import library used by testsuite
- $(TEST_LIB_NAME): $(LIB_NAME)
--	$(AM_V_GEN)perl -p -e 'BEGIN{binmode(STDIN); binmode(STDOUT);}; s/cygwin1/cygwin0/g' < $? > $@
-+	$(AM_V_GEN)perl -p -e 'BEGIN{binmode(STDIN); binmode(STDOUT);}; s/msys-2.0/msys0/g' < $? > $@
  
  # sublibs
  # import libraries for some subset of symbols indicated by given objects
@@ -177,24 +169,15 @@ index 167be81..a57d228 100644
  	--exclude='(?i:dll)' \
  	--exclude='reloc' \
  	--exclude='^main$$' \
-@@ -665,7 +666,7 @@ all-local: $(LIB_NAME) $(TEST_LIB_NAME) $(SUBLIBS)
+@@ -679,7 +680,7 @@ all-local: $(LIB_NAME) $(SUBLIBS)
  clean-local:
  	-rm -f $(BUILT_SOURCES)
  	-rm -f $(DEF_FILE) sigfe.s
 -	-rm -f cygwin.sc cygdll.a cygwin.map
 +	-rm -f cygwin.sc msysdll.a msys.map
  	-rm -f $(NEW_DLL_NAME)
- 	-rm -f $(LIB_NAME) $(TEST_LIB_NAME) $(SUBLIBS)
+ 	-rm -f $(LIB_NAME) $(SUBLIBS)
  	-rm -f version.cc
-@@ -709,7 +710,7 @@ install-ldif:
- uninstall-hook: uninstall-headers uninstall-ldif uninstall-libs
- 
- uninstall-libs:
--	rm -f $(DESTDIR)$(bindir)/cygwin1.dll
-+	rm -f $(DESTDIR)$(bindir)/msys-2.0.dll
- 	rm -f $(DESTDIR)$(toollibdir)/libg.a
- 
- uninstall-headers:
 diff --git a/winsup/cygwin/crt0.c b/winsup/cygwin/crt0.c
 index 1096e58..3160df4 100644
 --- a/winsup/cygwin/crt0.c
@@ -234,7 +217,7 @@ index 54918e7..518d11f 100644
    else
      thread_printf ("overflowed cygwin thread pool");
 diff --git a/winsup/cygwin/cygwin.din b/winsup/cygwin/cygwin.din
-index c70380f..71f3a68 100644
+index 9e354ac..76e88df 100644
 --- a/winsup/cygwin/cygwin.din
 +++ b/winsup/cygwin/cygwin.din
 @@ -1,4 +1,4 @@
@@ -243,7 +226,7 @@ index c70380f..71f3a68 100644
  
  EXPORTS
  # Exported variables
-@@ -401,8 +401,8 @@ cygwin_attach_handle_to_fd SIGFE
+@@ -404,8 +404,8 @@ cygwin_attach_handle_to_fd SIGFE
  cygwin_conv_path SIGFE
  cygwin_conv_path_list SIGFE
  cygwin_create_path SIGFE
@@ -270,7 +253,7 @@ index 69526f5..4dc5dae 100644
  #error unimplemented for this target
  #endif
 diff --git a/winsup/cygwin/dcrt0.cc b/winsup/cygwin/dcrt0.cc
-index 130d652..b40697a 100644
+index ea6a18b..f8479bb 100644
 --- a/winsup/cygwin/dcrt0.cc
 +++ b/winsup/cygwin/dcrt0.cc
 @@ -376,12 +376,12 @@ check_sanity_and_sync (per_process *p)
@@ -303,7 +286,7 @@ index 130d652..b40697a 100644
      {
        char buf1[PATH_MAX];
        GetModuleFileName (NULL, buf1, PATH_MAX);
-@@ -1073,7 +1073,11 @@ dll_crt0 (per_process *uptr)
+@@ -1076,7 +1076,11 @@ dll_crt0 (per_process *uptr)
     See winsup/testsuite/cygload for an example of how to use cygwin1.dll
     from MSVC and non-cygwin MinGW applications.  */
  extern "C" void
@@ -315,7 +298,7 @@ index 130d652..b40697a 100644
  {
    static int _fmode;
  
-@@ -1276,7 +1280,7 @@ multiple_cygwin_problem (const char *what, uintptr_t magic_version, uintptr_t ve
+@@ -1277,7 +1281,7 @@ multiple_cygwin_problem (const char *what, uintptr_t magic_version, uintptr_t ve
        return;
      }
  
@@ -324,7 +307,7 @@ index 130d652..b40697a 100644
      return;
  
    if (CYGWIN_VERSION_MAGIC_VERSION (magic_version) == version)
-@@ -1296,7 +1300,7 @@ are unable to find another cygwin DLL.",
+@@ -1297,7 +1301,7 @@ are unable to find another cygwin DLL.",
  void
  cygbench (const char *s)
  {
@@ -352,7 +335,7 @@ index fb70524..7367d29 100644
    /* ... using original basename with new suffix. */
    basenames.appendv (basename, baselen, ext, extlen, NULL);
 diff --git a/winsup/cygwin/dll_init.cc b/winsup/cygwin/dll_init.cc
-index b486eaa..03e5191 100644
+index 1a04751..7c5f8cc 100644
 --- a/winsup/cygwin/dll_init.cc
 +++ b/winsup/cygwin/dll_init.cc
 @@ -874,7 +874,11 @@ dll_dllcrt0_1 (VOID *x)
@@ -368,10 +351,10 @@ index b486eaa..03e5191 100644
    HANDLE retaddr;
    if (_my_tls.isinitialized ())
 diff --git a/winsup/cygwin/dtable.cc b/winsup/cygwin/dtable.cc
-index 8ebd7b2..2185a84 100644
+index 9508f3e..3c40e0f 100644
 --- a/winsup/cygwin/dtable.cc
 +++ b/winsup/cygwin/dtable.cc
-@@ -992,9 +992,15 @@ handle_to_fn (HANDLE h, char *posix_fn)
+@@ -998,9 +998,15 @@ handle_to_fn (HANDLE h, char *posix_fn)
        if (wcsncasecmp (w32, DEV_NAMED_PIPE, DEV_NAMED_PIPE_LEN) == 0)
  	{
  	  w32 += DEV_NAMED_PIPE_LEN;
@@ -388,10 +371,10 @@ index 8ebd7b2..2185a84 100644
  	  w32len = cygheap->installation_key.Length / sizeof (WCHAR);
  	  if (w32len
 diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
-index c3433ab..b154a3b 100644
+index a2a6f9d..b369799 100644
 --- a/winsup/cygwin/exceptions.cc
 +++ b/winsup/cygwin/exceptions.cc
-@@ -495,14 +495,14 @@ try_to_debug ()
+@@ -526,14 +526,14 @@ int exec_prepared_command (PWCHAR command)
    PWCHAR rawenv = GetEnvironmentStringsW () ;
    for (PWCHAR p = rawenv; *p != L'\0'; p = wcschr (p, L'\0') + 1)
      {
@@ -409,10 +392,10 @@ index c3433ab..b154a3b 100644
  	  break;
  	}
 diff --git a/winsup/cygwin/fhandler/pipe.cc b/winsup/cygwin/fhandler/pipe.cc
-index e231316..283319c 100644
+index 4c4ad03..2c809c2 100644
 --- a/winsup/cygwin/fhandler/pipe.cc
 +++ b/winsup/cygwin/fhandler/pipe.cc
-@@ -671,7 +671,11 @@ fhandler_pipe::close ()
+@@ -683,7 +683,11 @@ fhandler_pipe::close ()
    return ret;
  }
  
@@ -425,7 +408,7 @@ index e231316..283319c 100644
  /* Create a pipe, and return handles to the read and write ends,
     just like CreatePipe, but ensure that the write end permits
 diff --git a/winsup/cygwin/fhandler/pty.cc b/winsup/cygwin/fhandler/pty.cc
-index aff899b..dbeffc9 100644
+index 9d7ef3c..90de7af 100644
 --- a/winsup/cygwin/fhandler/pty.cc
 +++ b/winsup/cygwin/fhandler/pty.cc
 @@ -927,7 +927,11 @@ fhandler_pty_slave::open (int flags, mode_t)
@@ -440,7 +423,7 @@ index aff899b..dbeffc9 100644
  		       &cygheap->installation_key, get_minor ());
        termios_printf ("dup handles via master control pipe %s", buf);
        if (!CallNamedPipe (buf, &req, sizeof req, &repl, sizeof repl,
-@@ -1202,7 +1206,11 @@ fhandler_pty_slave::reset_switch_to_nat_pipe (void)
+@@ -1206,7 +1210,11 @@ fhandler_pty_slave::reset_switch_to_nat_pipe (void)
  		    {
  		      char pipe[MAX_PATH];
  		      __small_sprintf (pipe,
@@ -452,7 +435,7 @@ index aff899b..dbeffc9 100644
  			       &cygheap->installation_key, get_minor ());
  		      pipe_request req = { GetCurrentProcessId () };
  		      pipe_reply repl;
-@@ -2081,7 +2089,11 @@ fhandler_pty_master::close ()
+@@ -2090,7 +2098,11 @@ fhandler_pty_master::close ()
  	  pipe_reply repl;
  	  DWORD len;
  
@@ -464,7 +447,7 @@ index aff899b..dbeffc9 100644
  			   &cygheap->installation_key, get_minor ());
  	  acquire_output_mutex (mutex_timeout);
  	  if (master_ctl)
-@@ -2988,7 +3000,11 @@ fhandler_pty_master::setup ()
+@@ -2996,7 +3008,11 @@ fhandler_pty_master::setup ()
  
    /* Create master control pipe which allows the master to duplicate
       the pty pipe handles to processes which deserve it. */
@@ -476,7 +459,7 @@ index aff899b..dbeffc9 100644
  		   &cygheap->installation_key, unit);
    master_ctl = CreateNamedPipe (buf, PIPE_ACCESS_DUPLEX
  				     | FILE_FLAG_FIRST_PIPE_INSTANCE,
-@@ -3904,7 +3920,11 @@ fhandler_pty_slave::transfer_input (tty::xfer_dir dir, HANDLE from, tty *ttyp,
+@@ -3861,7 +3877,11 @@ fhandler_pty_slave::transfer_input (tty::xfer_dir dir, HANDLE from, tty *ttyp,
      {
        char pipe[MAX_PATH];
        __small_sprintf (pipe,
@@ -489,7 +472,7 @@ index aff899b..dbeffc9 100644
        pipe_request req = { GetCurrentProcessId () };
        pipe_reply repl;
 diff --git a/winsup/cygwin/fork.cc b/winsup/cygwin/fork.cc
-index e553c01..0dac93f 100644
+index 0742ab3..3e08419 100644
 --- a/winsup/cygwin/fork.cc
 +++ b/winsup/cygwin/fork.cc
 @@ -158,7 +158,7 @@ frok::child (volatile char * volatile here)
@@ -560,10 +543,10 @@ index 1e4cf98..b77598b 100644
        }									      \
      }									      \
 diff --git a/winsup/cygwin/include/cygwin/version.h b/winsup/cygwin/include/cygwin/version.h
-index 79c7fc1..f3c93e1 100644
+index b39a7e5..efe3890 100644
 --- a/winsup/cygwin/include/cygwin/version.h
 +++ b/winsup/cygwin/include/cygwin/version.h
-@@ -496,7 +496,11 @@ details. */
+@@ -502,7 +502,11 @@ details. */
     names include the CYGWIN_VERSION_SHARED_DATA version as well as this
     identifier. */
  
@@ -575,7 +558,7 @@ index 79c7fc1..f3c93e1 100644
  
  /* The Cygwin mount table interface in the Win32 registry also has a version
     number associated with it in case that is changed in a non-backwards
-@@ -512,7 +516,11 @@ details. */
+@@ -518,7 +522,11 @@ details. */
  
  /* Identifiers used in the Win32 registry. */
  
@@ -680,7 +663,7 @@ index fc1576b..b297511 100644
  #ifndef __INSIDE_CYGWIN__
  class transport_layer_base;
 diff --git a/winsup/cygwin/pinfo.cc b/winsup/cygwin/pinfo.cc
-index 8dc46ee..753d415 100644
+index bfd338e..12e88c8 100644
 --- a/winsup/cygwin/pinfo.cc
 +++ b/winsup/cygwin/pinfo.cc
 @@ -194,7 +194,7 @@ pinfo::maybe_set_exit_code_from_windows ()
@@ -706,7 +689,7 @@ index 5a0eab9..895cacd 100644
    va_list args;
  
 diff --git a/winsup/cygwin/scripts/mkvers.sh b/winsup/cygwin/scripts/mkvers.sh
-index 96af936..98826f8 100755
+index 38f439c..a3d45c5 100755
 --- a/winsup/cygwin/scripts/mkvers.sh
 +++ b/winsup/cygwin/scripts/mkvers.sh
 @@ -123,7 +123,7 @@ dir=$(echo $dir | sed -e 's%/include/cygwin.*$%%' -e 's%include/cygwin.*$%.%')
@@ -767,10 +750,10 @@ index 43b5803..db1d5c8 100644
    ts.SourceIdentifier.LowPart = kerberos_auth ? 0x0105 : 0x0106;
  
 diff --git a/winsup/cygwin/syscalls.cc b/winsup/cygwin/syscalls.cc
-index bc32323..91b86bf 100644
+index 9d88b60..ed564c8 100644
 --- a/winsup/cygwin/syscalls.cc
 +++ b/winsup/cygwin/syscalls.cc
-@@ -297,7 +297,7 @@ try_to_bin (path_conv &pc, HANDLE &fh, ACCESS_MASK access, ULONG flags)
+@@ -339,7 +339,7 @@ try_to_bin (path_conv &pc, HANDLE &fh, ACCESS_MASK access, ULONG flags)
      }
    else
      {
@@ -779,7 +762,7 @@ index bc32323..91b86bf 100644
  	 transposed into the Unicode low surrogate area (U+dc00) on file
  	 systems supporting Unicode (except Samba), followed by the inode
  	 number in hex, followed by a path hash in hex.  The combination
-@@ -305,7 +305,7 @@ try_to_bin (path_conv &pc, HANDLE &fh, ACCESS_MASK access, ULONG flags)
+@@ -347,7 +347,7 @@ try_to_bin (path_conv &pc, HANDLE &fh, ACCESS_MASK access, ULONG flags)
        RtlAppendUnicodeToString (&recycler,
  				(pc.fs_flags () & FILE_UNICODE_ON_DISK
  				 && !pc.fs_is_samba ())
@@ -817,52 +800,21 @@ index 980d512..58878d4 100644
        VALUE "ProductVersion", STRINGIFY(CYGWIN_VERSION)
        VALUE "APIVersion", CYGWIN_API_VERSION
        VALUE "SharedMemoryVersion", STRINGIFY(CYGWIN_VERSION_SHARED_DATA)
-diff --git a/winsup/testsuite/config/default.exp b/winsup/testsuite/config/default.exp
-index 7ef16ee..fd592c3 100644
---- a/winsup/testsuite/config/default.exp
-+++ b/winsup/testsuite/config/default.exp
-@@ -1,11 +1,11 @@
- proc winsup_version {} {
-     global env
-     global runtime_root
--    clone_output "\n[exec grep -a ^%%% $runtime_root/cygwin0.dll]\n"
--    if { [info exists env(CYGWIN)] } {
--        clone_output "CYGWIN=$env(CYGWIN)\n"
-+    clone_output "\n[exec grep -a ^%%% $runtime_root/msys0.dll]\n"
-+    if { [info exists env(MSYS)] } {
-+        clone_output "MSYS=$env(MSYS)\n"
-     } else {
--        clone_output "CYGWIN=\n"
-+        clone_output "MSYS=\n"
-     }
- }
- 
 diff --git a/winsup/testsuite/cygrun.c b/winsup/testsuite/cygrun.c
-index 65d859d..616b043 100644
+index 50c5187..af01b64 100644
 --- a/winsup/testsuite/cygrun.c
 +++ b/winsup/testsuite/cygrun.c
-@@ -32,8 +32,8 @@ main (int argc, char **argv)
-   if (argc >= 3)
-     SetEnvironmentVariable ("TDIRECTORY", argv[2]);
- 
--  SetEnvironmentVariable ("CYGWIN_TESTING", "1");
--  if ((p = getenv ("CYGWIN")) == NULL || (strstr (p, "ntsec") == NULL))
-+  SetEnvironmentVariable ("MSYS_TESTING", "1");
-+  if ((p = getenv ("MSYS")) == NULL || (strstr (p, "ntsec") == NULL))
-     {
-       char buf[4096];
-       if (!p)
 @@ -47,7 +47,7 @@ main (int argc, char **argv)
- 	  strcat (buf, " ");
- 	}
-       strcat(buf, "ntsec");
--      SetEnvironmentVariable ("CYGWIN", buf);
-+      SetEnvironmentVariable ("MSYS", buf);
+       exit (1);
      }
  
+-  SetEnvironmentVariable ("CYGWIN_TESTING", "1");
++  SetEnvironmentVariable ("MSYS_TESTING", "1");
+ 
    memset (&sa, 0, sizeof (sa));
+   memset (&pi, 0, sizeof (pi));
 diff --git a/winsup/testsuite/winsup.api/cygload.cc b/winsup/testsuite/winsup.api/cygload.cc
-index f5ca8db..510a627 100644
+index afd3ee9..59eac89 100644
 --- a/winsup/testsuite/winsup.api/cygload.cc
 +++ b/winsup/testsuite/winsup.api/cygload.cc
 @@ -25,7 +25,7 @@
@@ -911,21 +863,8 @@ index f5ca8db..510a627 100644
  
    out = &output;
  
-diff --git a/winsup/testsuite/winsup.api/cygload.exp b/winsup/testsuite/winsup.api/cygload.exp
-index 8ba8249..500683e 100644
---- a/winsup/testsuite/winsup.api/cygload.exp
-+++ b/winsup/testsuite/winsup.api/cygload.exp
-@@ -32,7 +32,7 @@ if { $rv != {0 {}} } {
-         set redirect_output /dev/null
-     }
-     set windows_runtime_root [exec cygpath -m $runtime_root]
--    ws_spawn "./mingw-cygload.exe -cygwin $windows_runtime_root/cygwin0.dll > $redirect_output"
-+    ws_spawn "./mingw-cygload.exe -cygwin $windows_runtime_root/msys0.dll > $redirect_output"
-     if { $rv != {0 {}} } {
-         verbose -log "cygload: $rv"
-         fail "cygload (execute)"
 diff --git a/winsup/testsuite/winsup.api/cygload.h b/winsup/testsuite/winsup.api/cygload.h
-index 8007fd5..ab4003b 100644
+index 3015404..0f2aacd 100644
 --- a/winsup/testsuite/winsup.api/cygload.h
 +++ b/winsup/testsuite/winsup.api/cygload.h
 @@ -76,7 +76,7 @@ namespace cygwin
@@ -937,19 +876,6 @@ index 8007fd5..ab4003b 100644
      ~connector ();
  
      // A wrapper around GetProcAddress() for fetching symbols from the
-diff --git a/winsup/testsuite/winsup.api/winsup.exp b/winsup/testsuite/winsup.api/winsup.exp
-index 584aa57..bc05713 100644
---- a/winsup/testsuite/winsup.api/winsup.exp
-+++ b/winsup/testsuite/winsup.api/winsup.exp
-@@ -61,7 +61,7 @@ foreach src [lsort [glob -nocomplain $srcdir/$subdir/*.c $srcdir/$subdir/*/*.{cc
-     if [ file exists "$srcdir/$subdir/$basename.exp" ] then {
- 	source "$srcdir/$subdir/$basename.exp"
-     } else {
--	ws_spawn "$CC -nodefaultlibs -mwin32 $CFLAGS $src $add_includes $add_libs $runtime_root/binmode.o -lgcc $runtime_root/libcygwin0.a -lkernel32 -luser32 -o $base.exe"
-+	ws_spawn "$CC -nodefaultlibs -mwin32 $CFLAGS $src $add_includes $add_libs $runtime_root/binmode.o -lgcc $runtime_root/libmsys0.a -lkernel32 -luser32 -o $base.exe"
- 	if { $rv } {
- 	    fail "$testcase (compile)"
- 	} else {
 diff --git a/winsup/utils/ldd.cc b/winsup/utils/ldd.cc
 index 0d073c2..a31c4c6 100644
 --- a/winsup/utils/ldd.cc
@@ -988,10 +914,10 @@ index c83b764..42ffbfd 100644
    wcscpy (dllpath, sysdir);
    wcscpy (dllpath + sysdir_len, dll);
 diff --git a/winsup/utils/mingw/cygcheck.cc b/winsup/utils/mingw/cygcheck.cc
-index 69f7592..aa87d53 100644
+index 1dde2ec..11957eb 100644
 --- a/winsup/utils/mingw/cygcheck.cc
 +++ b/winsup/utils/mingw/cygcheck.cc
-@@ -66,8 +66,7 @@ static const char *known_env_vars[] = {
+@@ -95,8 +95,7 @@ static const char *known_env_vars[] = {
    "c_include_path",
    "compiler_path",
    "cxx_include_path",
@@ -1001,7 +927,7 @@ index 69f7592..aa87d53 100644
    "dejagnu",
    "expect",
    "gcc_default_options",
-@@ -517,12 +516,12 @@ struct ImpDirectory
+@@ -554,12 +553,12 @@ struct ImpDirectory
  
  static bool track_down (const char *file, const char *suffix, int lvl);
  
@@ -1016,7 +942,7 @@ index 69f7592..aa87d53 100644
    DWORD size = GetFileSize (h, NULL);
    DWORD n;
  
-@@ -549,7 +548,7 @@ cygwin_info (HANDLE h)
+@@ -586,7 +585,7 @@ cygwin_info (HANDLE h)
    while (buf < bufend)
      if ((buf = (char *) memchr (buf, '%', bufend - buf)) == NULL)
        break;
@@ -1025,7 +951,7 @@ index 69f7592..aa87d53 100644
        buf++;
      else
        {
-@@ -743,7 +742,7 @@ dll_info (const char *path, HANDLE fh, int lvl, int recurse)
+@@ -780,7 +779,7 @@ dll_info (const char *path, HANDLE fh, int lvl, int recurse)
  	    }
  	}
      }
@@ -1034,7 +960,7 @@ index 69f7592..aa87d53 100644
      cygwin_info (fh);
  }
  
-@@ -990,7 +989,7 @@ scan_registry (RegInfo * prev, HKEY hKey, char *name, int cygwin, bool wow64)
+@@ -1027,7 +1026,7 @@ scan_registry (RegInfo * prev, HKEY hKey, char *name, int cygwin, bool wow64)
  
    char *cp;
    for (cp = name; *cp; cp++)
@@ -1043,7 +969,7 @@ index 69f7592..aa87d53 100644
        cygwin = 1;
  
    DWORD num_subkeys, max_subkey_len, num_values;
-@@ -1254,7 +1253,7 @@ dump_sysinfo_services ()
+@@ -1291,7 +1290,7 @@ dump_sysinfo_services ()
  
    /* inform the user if nothing found */
    if (no_services)
@@ -1052,7 +978,7 @@ index 69f7592..aa87d53 100644
  }
  
  enum handle_reg_t
-@@ -1269,10 +1268,10 @@ handle_reg_installation (handle_reg_t what)
+@@ -1306,10 +1305,10 @@ handle_reg_installation (handle_reg_t what)
    HKEY key;
  
    if (what == PRINT_KEY)
@@ -1065,7 +991,7 @@ index 69f7592..aa87d53 100644
  		      what == DELETE_KEY ? KEY_READ | KEY_WRITE : KEY_READ,
  		      &key)
  	== ERROR_SUCCESS)
-@@ -1294,7 +1293,7 @@ handle_reg_installation (handle_reg_t what)
+@@ -1331,7 +1330,7 @@ handle_reg_installation (handle_reg_t what)
  	      if (what == PRINT_KEY)
  		printf ("  %s Key: %s Path: %s", i ? "User:  " : "System:",
  			name, path);
@@ -1074,7 +1000,7 @@ index 69f7592..aa87d53 100644
  	      if (what == PRINT_KEY)
  		printf ("%s\n", access (path, F_OK) ? " (ORPHANED)" : "");
  	      else if (access (path, F_OK))
-@@ -1368,7 +1367,7 @@ dump_sysinfo ()
+@@ -1405,7 +1404,7 @@ dump_sysinfo ()
        _wputenv (comspec);
      }
  
@@ -1083,7 +1009,7 @@ index 69f7592..aa87d53 100644
    time (&now);
    printf ("Current System Time: %s\n", ctime (&now));
  
-@@ -1638,7 +1637,7 @@ dump_sysinfo ()
+@@ -1733,7 +1732,7 @@ dump_sysinfo ()
  
  
    if (givehelp)
@@ -1092,7 +1018,7 @@ index 69f7592..aa87d53 100644
    for (i = 0; environ[i]; i++)
      {
        char *eq = strchr (environ[i], '=');
-@@ -1688,7 +1687,7 @@ dump_sysinfo ()
+@@ -1783,7 +1782,7 @@ dump_sysinfo ()
    if (registry)
      {
        if (givehelp)
@@ -1101,7 +1027,7 @@ index 69f7592..aa87d53 100644
        scan_registry (0, HKEY_CURRENT_USER,
  		     (char *) "HKEY_CURRENT_USER", 0, false);
        scan_registry (0, HKEY_LOCAL_MACHINE,
-@@ -1866,7 +1865,7 @@ dump_sysinfo ()
+@@ -1961,7 +1960,7 @@ dump_sysinfo ()
    printf ("\n");
  
    if (givehelp)
@@ -1110,7 +1036,7 @@ index 69f7592..aa87d53 100644
    int cygwin_dll_count = 0;
    char cygdll_path[32768];
    for (pathlike *pth = paths; pth->dir; pth++)
-@@ -1883,10 +1882,10 @@ dump_sysinfo ()
+@@ -1978,10 +1977,10 @@ dump_sysinfo ()
  	  wcstombs (f, ffinfo.cFileName, sizeof f);
  	  if (strcasecmp (f + strlen (f) - 4, ".dll") == 0)
  	    {
@@ -1123,7 +1049,7 @@ index 69f7592..aa87d53 100644
  		    {
  		      if (!cygwin_dll_count)
  			strcpy (cygdll_path, pth->dir);
-@@ -1910,9 +1909,9 @@ dump_sysinfo ()
+@@ -2005,9 +2004,9 @@ dump_sysinfo ()
        FindClose (ff);
      }
    if (cygwin_dll_count > 1)
@@ -1135,7 +1061,7 @@ index 69f7592..aa87d53 100644
  
    dump_dodgy_apps (verbose);
  
-@@ -2159,8 +2158,8 @@ static char opts[] = "cdsrvkflphV";
+@@ -2993,8 +2992,8 @@ static char opts[] = "cdnsrvkfliephV";
  static void
  print_version ()
  {
@@ -1146,7 +1072,7 @@ index 69f7592..aa87d53 100644
  	  "Copyright (C) 1998 - %s Cygwin Authors\n"
  	  "This is free software; see the source for copying conditions.  "
  	  "There is NO\n"
-@@ -2192,7 +2191,7 @@ load_cygwin (int& argc, char **&argv)
+@@ -3021,7 +3020,7 @@ load_cygwin (int& argc, char **&argv)
  {
    HMODULE h;
  
@@ -1154,7 +1080,7 @@ index 69f7592..aa87d53 100644
 +  if (!(h = LoadLibrary ("msys-2.0.dll")))
      return;
    GetModuleFileNameW (h, cygwin_dll_path, 32768);
-   if ((cygwin_internal = (uintptr_t (*) (int, ...))
+   if ((cygwin_internal = (uintptr_t (*) (cygwin_getinfo_types, ...))
 diff --git a/winsup/utils/mingw/strace.cc b/winsup/utils/mingw/strace.cc
 index c220643..a875bf2 100644
 --- a/winsup/utils/mingw/strace.cc

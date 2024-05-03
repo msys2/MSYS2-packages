@@ -1,4 +1,4 @@
-From eeea69a03a2d8a6fcb045bc1773d4a58a091cdc9 Mon Sep 17 00:00:00 2001
+From c3aa2124ec228bdc12e7297b76a73398a24949ba Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?=D0=90=D0=BB=D0=B5=D0=BA=D1=81=D0=B5=D0=B8=CC=86=20=D0=9F?=
  =?UTF-8?q?=D0=B0=D0=B2=D0=BB=D0=BE=D0=B2?= <alexey.pawlow@gmail.com>
 Date: Sun, 14 Apr 2019 21:17:46 +0300
@@ -13,19 +13,19 @@ Subject: [PATCH 04/N] Add functionality for converting UNIX paths in
  winsup/cygwin/include/sys/cygwin.h     |   6 +
  winsup/cygwin/local_includes/environ.h |   2 +-
  winsup/cygwin/local_includes/winf.h    |   4 +
- winsup/cygwin/msys2_path_conv.cc       | 643 +++++++++++++++++++++++++
+ winsup/cygwin/msys2_path_conv.cc       | 699 +++++++++++++++++++++++++
  winsup/cygwin/msys2_path_conv.h        | 147 ++++++
  winsup/cygwin/path.cc                  |  69 +++
  winsup/cygwin/spawn.cc                 |  38 +-
- 10 files changed, 932 insertions(+), 4 deletions(-)
+ 10 files changed, 988 insertions(+), 4 deletions(-)
  create mode 100644 winsup/cygwin/msys2_path_conv.cc
  create mode 100644 winsup/cygwin/msys2_path_conv.h
 
 diff --git a/winsup/cygwin/Makefile.am b/winsup/cygwin/Makefile.am
-index a57d228..70e3363 100644
+index e65e675..b1b0df7 100644
 --- a/winsup/cygwin/Makefile.am
 +++ b/winsup/cygwin/Makefile.am
-@@ -303,6 +303,7 @@ DLL_FILES= \
+@@ -312,6 +312,7 @@ DLL_FILES= \
  	miscfuncs.cc \
  	mktemp.cc \
  	msg.cc \
@@ -34,10 +34,10 @@ index a57d228..70e3363 100644
  	net.cc \
  	netdb.cc \
 diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
-index 008854a..25be7a7 100644
+index d4cedcb..639e693 100644
 --- a/winsup/cygwin/environ.cc
 +++ b/winsup/cygwin/environ.cc
-@@ -1044,7 +1044,7 @@ env_compare (const void *key, const void *memb)
+@@ -1046,7 +1046,7 @@ env_compare (const void *key, const void *memb)
     to the child. */
  char **
  build_env (const char * const *envp, PWCHAR &envblock, int &envc,
@@ -46,7 +46,7 @@ index 008854a..25be7a7 100644
  {
    PWCHAR cwinenv = NULL;
    size_t winnum = 0;
-@@ -1137,6 +1137,19 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+@@ -1139,6 +1139,19 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
    for (srcp = envp, dstp = newenv, pass_dstp = pass_env; *srcp; srcp++)
      {
        bool calc_tl = !no_envblock;
@@ -66,7 +66,7 @@ index 008854a..25be7a7 100644
        /* Look for entries that require special attention */
        for (unsigned i = 0; i < SPENVS_SIZE; i++)
  	if (!saw_spenv[i] && (*dstp = spenvs[i].retrieve (no_envblock, *srcp)))
-@@ -1257,6 +1270,15 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
+@@ -1259,6 +1272,15 @@ build_env (const char * const *envp, PWCHAR &envblock, int &envc,
  		  saw_PATH = true;
  		}
  	    }
@@ -83,7 +83,7 @@ index 008854a..25be7a7 100644
  	    p = *srcp;		/* Don't worry about it */
  
 diff --git a/winsup/cygwin/external.cc b/winsup/cygwin/external.cc
-index 582bab8..bb1c8a1 100644
+index 97e4528..33863d8 100644
 --- a/winsup/cygwin/external.cc
 +++ b/winsup/cygwin/external.cc
 @@ -141,7 +141,7 @@ create_winenv (const char * const *env)
@@ -142,10 +142,10 @@ index b586934..bc53cd1 100644
      for (int i = calloced; i < argc; i++)
 diff --git a/winsup/cygwin/msys2_path_conv.cc b/winsup/cygwin/msys2_path_conv.cc
 new file mode 100644
-index 0000000..2ac1517
+index 0000000..c527287
 --- /dev/null
 +++ b/winsup/cygwin/msys2_path_conv.cc
-@@ -0,0 +1,643 @@
+@@ -0,0 +1,699 @@
 +/*
 +  The MSYS2 Path conversion source code is licensed under:
 +  
@@ -489,6 +489,54 @@ index 0000000..2ac1517
 +
 +    if (*it == '\0' || it == end) return NONE;
 +
++    /* Let's not convert ~/.file to ~C:\msys64\.file */
++    if (*it == '~') {
++skip_p2w:
++        *src = end;
++        return NONE;
++    }
++
++    /*
++     * Prevent Git's :file.txt and :/message syntax from beeing modified.
++     */
++    if (*it == ':')
++        goto skip_p2w;
++
++    while (it != end && *it) {
++        switch (*it) {
++        case '`':
++        case '\'':
++        case '*':
++        case '?':
++        case '[':
++        case ']':
++            goto skip_p2w;
++        case '/':
++            if (it + 1 < end && it[1] == '~')
++                goto skip_p2w;
++            break;
++        case ':':
++            // Avoid mangling IPv6 addresses
++            if (it + 1 < end && it[1] == ':')
++                goto skip_p2w;
++
++            // Leave Git's <rev>:./name syntax alone
++            if (it + 1 < end && it[1] == '.') {
++                if (it + 2 < end && it[2] == '/')
++                    goto skip_p2w;
++                if (it + 3 < end && it[2] == '.' && it[3] == '/')
++                    goto skip_p2w;
++            }
++            break;
++        case '@':
++            // Paths do not contain '@@'
++            if (it + 1 < end && it[1] == '@')
++                goto skip_p2w;
++        }
++        ++it;
++    }
++    it = *src;
++
 +    while (!isalnum(*it) && *it != '/' && *it != '\\' && *it != ':' && *it != '-' && *it != '.') {
 +        recurse = true;
 +        it = ++*src;
@@ -561,6 +609,8 @@ index 0000000..2ac1517
 +
 +    int starts_with_minus = 0;
 +    int starts_with_minus_alpha = 0;
++    int only_dots = *it == '.';
++    int has_slashes = 0;
 +    if (*it == '-') {
 +      starts_with_minus = 1;
 +      it += 1;
@@ -604,11 +654,17 @@ index 0000000..2ac1517
 +                if (ch == '/' && *(it2 + 1) == '/') {
 +                    return URL;
 +                } else {
++                    if (!only_dots && !has_slashes)
++                        goto skip_p2w;
 +                    return POSIX_PATH_LIST;
 +                }
 +            } else if (memchr(it2, '=', end - it2) == NULL) {
 +                return SIMPLE_WINDOWS_PATH;
 +            }
++        } else if (ch != '.') {
++            only_dots = 0;
++            if (ch == '/' || ch == '\\')
++                has_slashes = 1;
 +        }
 +    }
 +
@@ -943,7 +999,7 @@ index 0000000..67d85ec
 +#endif /* end of include guard: PATH_CONV_H_DB4IQBH3 */
 +
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index 5ad9e20..c211395 100644
+index c0d62e5..e36f3d5 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
 @@ -66,6 +66,7 @@
@@ -954,7 +1010,7 @@ index 5ad9e20..c211395 100644
  #undef basename
  
  suffix_info stat_suffixes[] =
-@@ -3838,6 +3839,74 @@ fchdir (int fd)
+@@ -3872,6 +3873,74 @@ fchdir (int fd)
    return res;
  }
  
@@ -1030,10 +1086,10 @@ index 5ad9e20..c211395 100644
  
  /* Cover functions to the path conversion routines.
 diff --git a/winsup/cygwin/spawn.cc b/winsup/cygwin/spawn.cc
-index 5ac9080..f7af9f7 100644
+index d01f678..845121f 100644
 --- a/winsup/cygwin/spawn.cc
 +++ b/winsup/cygwin/spawn.cc
-@@ -281,6 +281,27 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+@@ -292,6 +292,27 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
    bool rc;
    int res = -1;
  
@@ -1061,7 +1117,7 @@ index 5ac9080..f7af9f7 100644
    /* Check if we have been called from exec{lv}p or spawn{lv}p and mask
       mode to keep only the spawn mode. */
    bool p_type_exec = !!(mode & _P_PATH_TYPE_EXEC);
-@@ -372,6 +393,20 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+@@ -383,6 +404,20 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
  	  moreinfo->argc = newargv.argc;
  	  moreinfo->argv = newargv;
  	}
@@ -1082,7 +1138,7 @@ index 5ac9080..f7af9f7 100644
        if ((wincmdln || !real_path.iscygexec ())
  	   && !cmd.fromargv (newargv, real_path.get_win32 (),
  			     real_path.iscygexec ()))
-@@ -502,7 +537,8 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+@@ -513,7 +548,8 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
        moreinfo->envp = build_env (envp, envblock, moreinfo->envc,
  				  real_path.iscygexec (),
  				  switch_user ? ::cygheap->user.primary_token ()
