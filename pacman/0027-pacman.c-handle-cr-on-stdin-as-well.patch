@@ -1,0 +1,41 @@
+From 4fecac861dc310e0f219d24fb2243fc9f363aec8 Mon Sep 17 00:00:00 2001
+From: Christopher Degawa <ccom@randomderp.com>
+Date: Wed, 18 Aug 2021 10:00:26 -0500
+Subject: [PATCH 27/N] pacman.c: handle cr on stdin as well
+
+Improves compatibility with Windows targets, specifically when using
+powershell for string transforming package names and piping into
+pacman as it's virtually impossible to send newline only terminated
+strings through pipes
+
+Allows for stuff such as
+
+```powershell
+$a="vim nano"
+$b="cmake ninja"
+$a.Split(' '), $b.Split(' ').ForEach({Write-Output mingw-w64-ucrt-x86_64-$_}) |
+  pacman -S --needed -
+```
+
+Signed-off-by: Christopher Degawa <ccom@randomderp.com>
+---
+ src/pacman/pacman.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/pacman/pacman.c b/src/pacman/pacman.c
+index 36c3b5e..33feca9 100644
+--- a/src/pacman/pacman.c
++++ b/src/pacman/pacman.c
+@@ -1156,6 +1156,12 @@ int main(int argc, char *argv[])
+ 				if(line[nread - 1] == '\n') {
+ 					/* remove trailing newline */
+ 					line[nread - 1] = '\0';
++#ifdef __MSYS__
++					if (line[nread - 2] == '\r') {
++						/* remove trailing carriage returns */
++						line[nread - 2] = '\0';
++					}
++#endif
+ 				}
+ 				if(line[0] == '\0') {
+ 					/* skip empty lines */

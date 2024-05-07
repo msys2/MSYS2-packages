@@ -1,0 +1,52 @@
+From d694a347ac4647bc27d2bae25b112c2f24792314 Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Fri, 21 May 2021 22:55:24 +0200
+Subject: [PATCH 19/N] pacman/libalpm: ignore file conflicts for foo.exe ->
+ foo renames
+
+In case a file "foo.exe" gets renamed to "foo" the msys2 .exe
+interpolation makes pacman think an untracker file is replaced.
+In case foo and foo.exe are the same file and foo.exe existed
+in the old package version we can be sure it's handled by the
+old package and ignore the conflict.
+---
+ lib/libalpm/conflict.c | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/lib/libalpm/conflict.c b/lib/libalpm/conflict.c
+index b471bf2..f7fa9d8 100644
+--- a/lib/libalpm/conflict.c
++++ b/lib/libalpm/conflict.c
+@@ -521,6 +521,32 @@ alpm_list_t *_alpm_db_find_fileconflicts(alpm_handle_t *handle,
+ 
+ 			_alpm_log(handle, ALPM_LOG_DEBUG, "checking possible conflict: %s\n", path);
+ 
++#ifdef __MSYS__
++			/* In case a file "foo.exe" gets renamed to "foo" the msys2 .exe
++			 * interpolation makes pacman think an untracker file is replaced.
++			 * In case foo and foo.exe are the same file and foo.exe existed
++			 * in the old package version we can be sure it's handled by the
++			 * old package and ignore the conflict */
++			if(dbpkg) {
++				char path_exe[PATH_MAX];
++				struct stat lsbuf2;
++
++				strncpy(path_exe, path, sizeof(path_exe) - 4);
++				strcat(path_exe, ".exe");
++				if(llstat(path, &lsbuf) == 0 && llstat(path_exe, &lsbuf2) == 0) {
++					int old_contains_exe = (alpm_filelist_contains(alpm_pkg_get_files(dbpkg), path_exe + rootlen) != NULL);
++					int same_file = (lsbuf.st_dev == lsbuf2.st_dev && lsbuf.st_ino == lsbuf2.st_ino);
++
++					if(same_file && old_contains_exe) {
++						_alpm_log(handle, ALPM_LOG_DEBUG,
++								"MSYS2 special case: Found %s which is the same file and included in the old package\n",
++								path_exe);
++						continue;
++					}
++				}
++			}
++#endif
++
+ 			pfile_isdir = path[pathlen - 1] == '/';
+ 			if(pfile_isdir) {
+ 				if(S_ISDIR(lsbuf.st_mode)) {

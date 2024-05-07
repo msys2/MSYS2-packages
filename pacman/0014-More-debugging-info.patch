@@ -1,0 +1,55 @@
+From 235ea43e9a0d3d4a373a37970a62be8dfd32282b Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Fri, 21 May 2021 22:47:49 +0200
+Subject: [PATCH 14/N] More debugging info
+
+---
+ lib/libalpm/util.c | 21 +++++++++++++++++++--
+ 1 file changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/lib/libalpm/util.c b/lib/libalpm/util.c
+index 299d287..533ed49 100644
+--- a/lib/libalpm/util.c
++++ b/lib/libalpm/util.c
+@@ -304,6 +304,23 @@ int _alpm_unpack_single(alpm_handle_t *handle, const char *archive,
+ 	return ret;
+ }
+ 
++char *get_command_line(const char* cmd, char *const argv[])
++{
++    size_t len = strlen(cmd) + 1;
++    size_t nargs = 0;
++    while (argv[nargs] != NULL) {
++        len += strlen(argv[nargs++]) + 1;
++    }
++    char *result = malloc(len) + 1;
++    strcpy(result, cmd);
++    strcat(result, " ");
++    for (size_t arg = 0; arg < nargs; ++arg) {
++        strcat(result, argv[arg]);
++        strcat(result, " ");
++    }
++    return result;
++}
++
+ /** Unpack a list of files in an archive.
+  * @param handle the context handle
+  * @param path the archive to unpack
+@@ -663,7 +680,7 @@ int _alpm_run_chroot(alpm_handle_t *handle, const char *cmd, char *const argv[],
+ 		_alpm_reset_signals();
+ 		execv(cmd, argv);
+ 		/* execv only returns if there was an error */
+-		fprintf(stderr, _("call to execv failed (%s)\n"), strerror(errno));
++		fprintf(stderr, _("call to execv (%s) failed (%s)\n"), get_command_line(cmd, argv), strerror(errno));
+ 		exit(1);
+ 	} else {
+ 		/* this code runs for the parent only (wait on the child) */
+@@ -752,7 +769,7 @@ int _alpm_run_chroot(alpm_handle_t *handle, const char *cmd, char *const argv[],
+ 		if(WIFEXITED(status)) {
+ 			_alpm_log(handle, ALPM_LOG_DEBUG, "call to waitpid succeeded\n");
+ 			if(WEXITSTATUS(status) != 0) {
+-				_alpm_log(handle, ALPM_LOG_ERROR, _("command failed to execute correctly\n"));
++				_alpm_log(handle, ALPM_LOG_ERROR, _("command (%s) failed to execute correctly\n"), get_command_line(cmd, argv));
+ 				retval = 1;
+ 			}
+ 		} else if(WIFSIGNALED(status) != 0) {
