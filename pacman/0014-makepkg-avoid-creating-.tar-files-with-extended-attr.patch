@@ -1,0 +1,37 @@
+From 33df2e9e8136441da456af839cda3460ec5f02b7 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Thu, 29 Jun 2017 11:54:48 +0200
+Subject: [PATCH 14/N] makepkg: avoid creating .tar files with extended
+ attributes
+
+Extended attributes are not necessary for pacman to work. Extended
+attributes may not even be supported by the file system to which we
+extract the files.
+
+And worst of all: pacman cannot handle extended attributes, but simply
+stops extracting files when it encounters an extended attribute.
+
+This is particularly nasty when creating packages on a system configured
+to cache, say, file integrity information about .exe files in extended
+attributes, as the created packages will fail to install any .exe files.
+
+The fix is very easy: simply pass the -no-xattrs option to bsdtar.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ scripts/makepkg.sh.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/makepkg.sh.in b/scripts/makepkg.sh.in
+index 6eefa98..cf3cdcd 100644
+--- a/scripts/makepkg.sh.in
++++ b/scripts/makepkg.sh.in
+@@ -607,7 +607,7 @@ create_package() {
+ 	msg2 "$(gettext "Compressing package...")"
+ 	# TODO: Maybe this can be set globally for robustness
+ 	shopt -s -o pipefail
+-	list_package_files | LANG=C bsdtar --no-fflags @BSDTAR_NO_READ_SPARSE@ -cnf - --null --files-from - |
++	list_package_files | LANG=C bsdtar --no-fflags @BSDTAR_NO_READ_SPARSE@ --no-xattrs -cnf - --null --files-from - |
+ 		compress_as "$PKGEXT" > "${pkg_file}" || ret=$?
+ 
+ 	shopt -u -o pipefail

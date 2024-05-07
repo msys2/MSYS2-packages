@@ -1,0 +1,48 @@
+From b3fe38b7eae14122f9929f26a92c97cde5415b8a Mon Sep 17 00:00:00 2001
+From: Demi Obenour <demi@invisiblethingslab.com>
+Date: Sun, 17 Mar 2024 16:05:55 +0000
+Subject: [PATCH 28/N] Fetch signature and database from the same URL
+
+Previously, the for loops on lines 1035 and 1037 would advance to the
+next element in the server list, even if downloading the URL succeeded.
+If there are no more servers in the list, `s` would be NULL, causing
+a NULL pointer dereference on line 1046.  If there were servers left
+in the list, the signature would be downloaded from a wrong URL.
+
+1. Fetching of database signatures is enabled.
+2. There is only one enabled remote repository URL, or fetching from
+   all but the last one fails and fetching from the last one succeeds.
+3. An XferCommand is used.
+
+Qubes OS Arch templates satisfy all of these conditions and trigger the bug.
+---
+ lib/libalpm/dload.c | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/lib/libalpm/dload.c b/lib/libalpm/dload.c
+index 106390a..f2fa1a5 100644
+--- a/lib/libalpm/dload.c
++++ b/lib/libalpm/dload.c
+@@ -1032,13 +1032,20 @@ int _alpm_download(alpm_handle_t *handle,
+ 					}
+ 				}
+ 			} else {
+-				for(s = payload->cache_servers; s && ret == -1; s = s->next) {
++				for(s = payload->cache_servers; s; s = s->next) {
+ 					ret = payload_download_fetchcb(payload, s->data, localpath);
++					if (ret != -1) {
++						goto download_signature;
++					}
+ 				}
+-				for(s = payload->servers; s && ret == -1; s = s->next) {
++				for(s = payload->servers; s; s = s->next) {
+ 					ret = payload_download_fetchcb(payload, s->data, localpath);
++					if (ret != -1) {
++						goto download_signature;
++					}
+ 				}
+ 
++download_signature:
+ 				if (ret != -1 && payload->download_signature) {
+ 					/* Download signature if requested */
+ 					char *sig_fileurl;

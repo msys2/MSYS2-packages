@@ -1,0 +1,52 @@
+From c31dc64bc2bd37db66b5f44ba1659ebfafe076fa Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Fri, 21 May 2021 22:54:23 +0200
+Subject: [PATCH 13/N] Change the epoch separator
+
+---
+ lib/libalpm/version.c                  | 6 +++++-
+ scripts/libmakepkg/util/pkgbuild.sh.in | 6 +++++-
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/lib/libalpm/version.c b/lib/libalpm/version.c
+index 3f0de8d..a58d9de 100644
+--- a/lib/libalpm/version.c
++++ b/lib/libalpm/version.c
+@@ -50,7 +50,11 @@ static void parseEVR(char *evr, const char **ep, const char **vp,
+ 	/* se points to version terminator */
+ 	se = strrchr(s, '-');
+ 
++#ifdef __MSYS__
++	if(*s == '~') {
++#else
+ 	if(*s == ':') {
++#endif
+ 		epoch = evr;
+ 		*s++ = '\0';
+ 		version = s;
+@@ -236,7 +240,7 @@ int SYMEXPORT alpm_pkg_vercmp(const char *a, const char *b)
+ 		return 0;
+ 	}
+ 
+-	/* Parse both versions into [epoch:]version[-release] triplets. We probably
++	/* Parse both versions into [epoch:|~]version[-release] triplets. We probably
+ 	 * don't need epoch and release to support all the same magic, but it is
+ 	 * easier to just run it all through the same code. */
+ 	full1 = strdup(a);
+diff --git a/scripts/libmakepkg/util/pkgbuild.sh.in b/scripts/libmakepkg/util/pkgbuild.sh.in
+index 9d9e59b..1fd903b 100644
+--- a/scripts/libmakepkg/util/pkgbuild.sh.in
++++ b/scripts/libmakepkg/util/pkgbuild.sh.in
+@@ -166,7 +166,11 @@ get_pkgbuild_all_split_attributes() {
+ ##
+ get_full_version() {
+ 	if (( epoch > 0 )); then
+-		printf "%s\n" "$epoch:$pkgver-$pkgrel"
++		if [[ -n $MSYSTEM ]]; then
++			printf "%s\n" "${epoch}~${pkgver}-${pkgrel}"
++		else
++			printf "%s\n" "$epoch:$pkgver-$pkgrel"
++		fi
+ 	else
+ 		printf "%s\n" "$pkgver-$pkgrel"
+ 	fi
