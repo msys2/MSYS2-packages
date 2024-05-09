@@ -1,0 +1,163 @@
+From 8ad28ab4add33ed8fde069e2b601b174db6fd76d Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Tue, 28 Feb 2023 20:39:11 +0100
+Subject: [PATCH 07/N] Set fixed paths for various tools
+
+So that we call the right tools even if mingw variants are in PATH
+---
+ scripts/libmakepkg/meson.build            |  1 +
+ scripts/libmakepkg/utils_fixed_path.sh.in | 34 +++++++++++++++++++++++
+ scripts/pacman-db-upgrade.sh.in           | 10 +++++--
+ scripts/pacman-key.sh.in                  | 13 ++++++---
+ scripts/repo-add.sh.in                    |  9 ++++--
+ 5 files changed, 58 insertions(+), 9 deletions(-)
+ create mode 100644 scripts/libmakepkg/utils_fixed_path.sh.in
+
+diff --git a/scripts/libmakepkg/meson.build b/scripts/libmakepkg/meson.build
+index 6e83a4a..e6b945d 100644
+--- a/scripts/libmakepkg/meson.build
++++ b/scripts/libmakepkg/meson.build
+@@ -9,6 +9,7 @@ libmakepkg_modules = [
+   { 'name' : 'reproducible',  'has_subdir' : true },
+   { 'name' : 'source',        'has_subdir' : true },
+   { 'name' : 'srcinfo',                           },
++  { 'name' : 'utils_fixed_path',                  },
+   { 'name' : 'tidy',          'has_subdir' : true },
+   { 'name' : 'util',          'has_subdir' : true },
+ ]
+diff --git a/scripts/libmakepkg/utils_fixed_path.sh.in b/scripts/libmakepkg/utils_fixed_path.sh.in
+new file mode 100644
+index 0000000..e3a06bc
+--- /dev/null
++++ b/scripts/libmakepkg/utils_fixed_path.sh.in
+@@ -0,0 +1,34 @@
++if [[ -n "$MSYSTEM" ]]; then
++  readonly -a UTILS_NAME=('bsdtar'
++                          'bzip2'
++                          'bzr'
++                          'cat'
++                          'ccache'
++                          'distcc'
++                          'git'
++                          'gpg'
++                          'gzip'
++                          'hg'
++                          'lzip'
++                          'lzop'
++                          'openssl'
++                          'svn'
++                          'tput'
++                          'uncompress'
++                          'xargs'
++                          'xz'
++                          'zstd'
++                         )
++
++  for wrapper in ${UTILS_NAME[@]}; do
++    eval "
++    ${wrapper}"'() {
++      local UTILS_PATH="/usr/bin/"
++      if ! type -p ${UTILS_PATH}${FUNCNAME[0]} >/dev/null; then
++        error "$(gettext "Cannot find the %s binary required for makepkg.")" "${UTILS_PATH}${FUNCNAME[0]}"
++        exit 1
++      fi
++      ${UTILS_PATH}${FUNCNAME[0]} "$@"
++    }'
++  done
++fi
+diff --git a/scripts/pacman-db-upgrade.sh.in b/scripts/pacman-db-upgrade.sh.in
+index 166da96..899abd8 100644
+--- a/scripts/pacman-db-upgrade.sh.in
++++ b/scripts/pacman-db-upgrade.sh.in
+@@ -80,9 +80,13 @@ resolve_dir() {
+ # PROGRAM START
+ 
+ # determine whether we have gettext; make it a no-op if we do not
+-if ! type gettext &>/dev/null; then
++if ! type -p gettext >/dev/null; then
+ 	gettext() {
+-		echo "$@"
++		printf "%s\n" "$@"
++	}
++else
++	gettext() {
++		/usr/bin/gettext "$@"
+ 	}
+ fi
+ 
+@@ -139,7 +143,7 @@ lockfile="${dbroot}/db.lck"
+ 
+ # make sure pacman isn't running
+ if [[ -f $lockfile ]]; then
+-	die "$(gettext "Pacman lock file was found. Cannot run while pacman is running.")"
++	die "$(/bin/gettext "Pacman lock file was found. Cannot run while pacman is running.")"
+ fi
+ # do not let pacman run while we do this
+ touch "$lockfile"
+diff --git a/scripts/pacman-key.sh.in b/scripts/pacman-key.sh.in
+index cbf3be3..5ff54a4 100644
+--- a/scripts/pacman-key.sh.in
++++ b/scripts/pacman-key.sh.in
+@@ -30,6 +30,7 @@ MAKEPKG_LIBRARY=${MAKEPKG_LIBRARY:-'@libmakepkgdir@'}
+ # Import libmakepkg
+ source "$MAKEPKG_LIBRARY"/util/message.sh
+ source "$MAKEPKG_LIBRARY"/util/parseopts.sh
++source "$MAKEPKG_LIBRARY"/utils_fixed_path.sh
+ 
+ # Options
+ ADD=0
+@@ -433,7 +434,7 @@ import_trustdb() {
+ 	local ret=0
+ 	for importdir in "$@"; do
+ 		if [[ -f "${importdir}/trustdb.gpg" ]]; then
+-			gpg --homedir "${importdir}" --export-ownertrust | \
++			/usr/bin/gpg --homedir "${importdir}" --export-ownertrust | \
+ 				"${GPG_PACMAN[@]}" --import-ownertrust -
+ 			if (( PIPESTATUS )); then
+ 				error "$(gettext "%s could not be imported.")" "${importdir}/trustdb.gpg"
+@@ -616,10 +617,14 @@ updatedb() {
+ 	fi
+ }
+ 
+-# PROGRAM START
+-if ! type gettext &>/dev/null; then
++# determine whether we have gettext; make it a no-op if we do not
++if ! type -p gettext >/dev/null; then
+ 	gettext() {
+-		echo "$@"
++		printf "%s\n" "$@"
++	}
++else
++	gettext() {
++		/usr/bin/gettext "$@"
+ 	}
+ fi
+ 
+diff --git a/scripts/repo-add.sh.in b/scripts/repo-add.sh.in
+index 9d60375..c4af51b 100644
+--- a/scripts/repo-add.sh.in
++++ b/scripts/repo-add.sh.in
+@@ -49,6 +49,7 @@ DB_MODIFIED=0
+ source "$MAKEPKG_LIBRARY"/util/compress.sh
+ source "$MAKEPKG_LIBRARY"/util/message.sh
+ source "$MAKEPKG_LIBRARY"/util/parseopts.sh
++source "$MAKEPKG_LIBRARY"/utils_fixed_path.sh
+ 
+ # ensure we have a sane umask set
+ umask 0022
+@@ -566,9 +567,13 @@ clean_up() {
+ # PROGRAM START
+ 
+ # determine whether we have gettext; make it a no-op if we do not
+-if ! type gettext &>/dev/null; then
++if ! type -p gettext &>/dev/null; then
+ 	gettext() {
+-		echo "$@"
++		printf "%s\n" "$@"
++	}
++else
++	gettext() {
++		/usr/bin/gettext "$@"
+ 	}
+ fi
+ 

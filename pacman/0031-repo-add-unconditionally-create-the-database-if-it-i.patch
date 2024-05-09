@@ -1,0 +1,49 @@
+From 761a878373f16db3c1825d1e8eea4c5167c36057 Mon Sep 17 00:00:00 2001
+From: Ivan Shapovalov <intelfx@intelfx.name>
+Date: Wed, 21 Feb 2024 09:35:57 +0100
+Subject: [PATCH 31/N] repo-add: unconditionally create the database if it is
+ missing
+
+In f91fa546 (repo-add: do not recreate the database if nothing was changed),
+repo-add was made to skip database write-out if there were no changes to
+the database. However, this breaks the usage of repo-add to create a new
+empty database: `repo-add /path/to/mydb/mydb.db.tar.xz`.
+
+Bring back support for this use-case by always writing the database if
+it is missing.
+
+Fixes: f91fa546f65af9ca7cdbe2b419c181df609969b7
+---
+ scripts/repo-add.sh.in | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/scripts/repo-add.sh.in b/scripts/repo-add.sh.in
+index 5d37307..0efc17c 100644
+--- a/scripts/repo-add.sh.in
++++ b/scripts/repo-add.sh.in
+@@ -44,6 +44,7 @@ USE_COLOR='y'
+ PREVENT_DOWNGRADE=0
+ INCLUDE_SIGS=0
+ DB_MODIFIED=0
++DB_MISSING=0
+ 
+ # Import libmakepkg
+ source "$MAKEPKG_LIBRARY"/util/compress.sh
+@@ -440,6 +441,8 @@ prepare_repo_db() {
+ 						exit 1
+ 					fi
+ 					rm -f "$dbfile"
++					# mark the db for unconditional update
++					DB_MISSING=1
+ 					;;
+ 			esac
+ 		fi
+@@ -710,7 +713,7 @@ if (( fail )); then
+ 	exit 1
+ fi
+ 
+-if (( DB_MODIFIED )); then
++if (( DB_MODIFIED || DB_MISSING )); then
+ 	msg "$(gettext "Creating updated database file '%s'")" "$REPO_DB_FILE"
+ 	create_db
+ 	rotate_db
