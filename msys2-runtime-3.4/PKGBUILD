@@ -4,7 +4,7 @@
 pkgbase=msys2-runtime-3.4
 pkgname=('msys2-runtime-3.4' 'msys2-runtime-3.4-devel')
 pkgver=3.4.10
-pkgrel=1
+pkgrel=2
 pkgdesc="Cygwin POSIX emulation engine"
 arch=('x86_64')
 url="https://www.cygwin.com/"
@@ -237,7 +237,7 @@ build() {
   fi
 
   CFLAGS="$OPTIM -pipe -ggdb"
-  CXXFLAGS="$OPTIM -pipe -ggdb -Wno-error=stringop-truncation -Wno-error=array-bounds -Wno-error=overloaded-virtual -Wno-narrowing -Wno-use-after-free"
+  CXXFLAGS="$OPTIM -pipe -ggdb -Wno-error=stringop-truncation -Wno-error=array-bounds -Wno-error=overloaded-virtual -Wno-narrowing -Wno-use-after-free -Wno-error=maybe-uninitialized"
 
   # otherwise it asks git which appends "-dirty" because of our uncommited patches
   CFLAGS+=" -DCYGPORT_RELEASE_INFO=${pkgver}"
@@ -253,6 +253,12 @@ build() {
   LC_ALL=C make -j1 DESTDIR="${srcdir}"/dest install
 
   rm -rf "${srcdir}"/dest/etc
+
+  # split debug info from msys-2.0.dll
+  cd "${srcdir}"/dest
+  objcopy --add-gnu-debuglink=/dev/null --only-keep-debug usr/bin/msys-2.0.dll usr/bin/msys-2.0.dbg
+  objcopy -g --add-gnu-debuglink=usr/bin/msys-2.0.dbg usr/bin/msys-2.0.dll usr/bin/msys-2.0.dll.new
+  mv -f usr/bin/msys-2.0.dll.new usr/bin/msys-2.0.dll
 }
 
 package_msys2-runtime-3.4() {
@@ -264,6 +270,7 @@ package_msys2-runtime-3.4() {
   mkdir -p "${pkgdir}"/usr
   cp -rf "${srcdir}"/dest/usr/bin "${pkgdir}"/usr/
   cp -rf "${srcdir}"/dest/usr/libexec "${pkgdir}"/usr/
+  rm -f "${pkgdir}"/usr/bin/msys-2.0.dbg
   rm -f "${pkgdir}"/usr/bin/cyglsa-config
   rm -f "${pkgdir}"/usr/bin/cyglsa.dll
   rm -f "${pkgdir}"/usr/bin/cyglsa64.dll
@@ -277,8 +284,11 @@ package_msys2-runtime-3.4-devel() {
   provides=("msys2-runtime-devel=${pkgver}")
   conflicts=('libcatgets-devel' 'msys2-runtime-devel')
   replaces=('libcatgets-devel')
+  # strip breaks the split debug info.  msys2/msys2-pacman#52
+  options=('!strip')
 
   mkdir -p "${pkgdir}"/usr/bin
+  cp -f "${srcdir}"/dest/usr/bin/msys-2.0.dbg "${pkgdir}"/usr/bin/
   cp -rLf "${srcdir}"/dest/usr/${CHOST}/include "${pkgdir}"/usr/
   rm -f "${pkgdir}"/usr/include/iconv.h
   rm -f "${pkgdir}"/usr/include/unctrl.h
