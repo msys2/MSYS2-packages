@@ -7,11 +7,11 @@
 
 pkgbase=gcc
 pkgname=('gcc' 'gcc-libs')
-pkgver=13.2.0
-pkgrel=2
+pkgver=13.3.0
+pkgrel=1
 pkgdesc="The GNU Compiler Collection"
 arch=('i686' 'x86_64')
-license=('spdx:GPL-2.0-or-later' 'spdx:GPL-3.0-or-later' 'spdx:LGPL-2.1-or-later' 'spdx:LGPL-3.0-or-later' 'spdx:GCC-exception-3.1' 'spdx:GFDL-1.3-or-later')
+license=('spdx:GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-3.0-or-later AND GCC-exception-3.1 AND GFDL-1.3-or-later')
 url="https://gcc.gnu.org/"
 msys2_references=(
   "cpe: cpe:/a:gnu:gcc"
@@ -37,7 +37,7 @@ source=(https://ftp.gnu.org/gnu/gcc/gcc-${pkgver}/gcc-${pkgver}.tar.xz
         0950-11.2.0-configure-msys2.patch
         0951-11.2.0-msys2-spec.patch
         0953-11.2.0-testsuite-msys2.patch)
-sha256sums=('e275e76442a6067341a27f04c5c6b83d8613144004c0413528863dc6b5c743da'
+sha256sums=('0845e9621c9543a13f484e94584a49ffc0129970e9914624235fc1d061a0c083'
             'bc788aa466a83184d285cc2f6c1ffc40c6ed416dd08c6999015262a53f1ab1b5'
             '704acfaeb11d24d3fe5aab34bc883c184ca93aff03d752016c9a50fdd82c5655'
             'c5676fd62d5f7f69be26062b95d42ef47f28151af83b83efa3998ecd8e939e19'
@@ -52,7 +52,7 @@ sha256sums=('e275e76442a6067341a27f04c5c6b83d8613144004c0413528863dc6b5c743da'
             'c5aeab9609f90a8430c43bb50172b63c3155eb10082369f81fac58a395d2e2ee'
             '3707b0aab99b203cbd9e513be46c7d4600de06e6c8344160b7fb1779061d08da'
             '8a29a40ee426ee786da97656c35d2e9c17838b12c1b750cecf857760da273381'
-            '959ef644853398fe6f2c291a43e5e5bfac4dc973ce6ae7ff23734135cb9a5b60'
+            'eeb167fe5f12d122038cbc5d7f79f093ab40ace1f0973dd109aad2e1168cb8a8'
             'adb8baaa35dcfbea9ab60694262d0958e090495146d50df1a0844a977832aef9')
 
 # Helper macros to help make tasks easier #
@@ -116,7 +116,7 @@ prepare() {
 }
 
 build() {
-  mkdir -p ${srcdir}/build-${CARCH} && cd ${srcdir}/build-${CARCH}
+  mkdir -p ${srcdir}/build-${MSYSTEM} && cd ${srcdir}/build-${MSYSTEM}
 
   case ${CARCH} in
     i686)
@@ -147,7 +147,9 @@ build() {
     --prefix=/usr \
     --libexecdir=/usr/lib \
     --enable-bootstrap \
-    --enable-shared --enable-shared-libgcc --enable-static \
+    --enable-static \
+    --enable-shared \
+    --enable-shared-libgcc \
     --enable-version-specific-runtime-libs \
     --with-arch=${_arch} \
     --with-tune=generic \
@@ -184,7 +186,7 @@ build() {
 }
 
 #check() {
-#  cd ${srcdir}/build-${CARCH}
+#  cd ${srcdir}/build-${MSYSTEM}
 
 #  # do not abort on error as some are "expected"
 #  make -k check || true
@@ -195,7 +197,7 @@ package_gcc-libs()
 {
   pkgdesc="Runtime libraries shipped by GCC"
 
-  cd ${srcdir}/build-${CARCH}
+  cd ${srcdir}/build-${MSYSTEM}
   make -j1 -C $CHOST/libgcc DESTDIR=${pkgdir} install-shared
   for lib in libgomp libstdc++-v3/src; do
     make -j1 -C $CHOST/$lib DESTDIR=${pkgdir} install-toolexeclibLTLIBRARIES
@@ -231,7 +233,7 @@ package_gcc()
   provides=('msys2-devel')
   conflicts=('gcc-fortran<=11.3.0-4')
 
-  cd ${srcdir}/build-${CARCH}
+  cd ${srcdir}/build-${MSYSTEM}
 
   if check_option "strip" "n"; then
     export STRIP=true
