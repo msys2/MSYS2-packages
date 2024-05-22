@@ -61,21 +61,6 @@ install_packages() {
     pacman --noprogressbar --upgrade --noconfirm *.pkg.tar.*
 }
 
-# List DLL dependencies
-list_dll_deps(){
-    local target="${1}"
-    echo "$(tput setaf 2)MSYS2 DLL dependencies:$(tput sgr0)"
-    find "$target" -regex ".*\.\(exe\|dll\)" -printf '%p:\n' -exec ldd '{}' \; | GREP_COLOR="1;35" grep --color=always "msys-.*\|" \
-    || echo "        None"
-}
-
-list_dll_bases(){
-    local target="${1}"
-    echo "$(tput setaf 2)MSYS2 DLL bases:$(tput sgr0)"
-    find "$target" -regex ".*\.\(exe\|dll\)" -print | rebase -iT - | GREP_COLOR="1;35" grep --color=always "msys-.*\|" \
-    || echo "        None"
-}
-
 # Status functions
 failure() { local status="${1}"; local items=("${@:2}"); _status failure "${status}." "${items[@]}"; exit 1; }
 success() { local status="${1}"; local items=("${@:2}"); _status success "${status}." "${items[@]}"; exit 0; }
@@ -111,11 +96,6 @@ for package in "${packages[@]}"; do
     cp $PWD/$package/*.pkg.tar.* $PWD/artifacts
     echo "::endgroup::"
 
-    echo "::group::[dll check] ${package}"
-    execute 'Checking dll depencencies' list_dll_deps ./pkg
-    execute 'Checking dll bases' list_dll_bases ./pkg
-    echo "::endgroup::"
-
     cd "$package"
     for pkg in *.pkg.tar.*; do
         pkgname="$(echo "$pkg" | rev | cut -d- -f4- | rev)"
@@ -131,6 +111,21 @@ for package in "${packages[@]}"; do
         echo "::group::[file-diff] ${pkgname}"
         message "File listing diff for ${pkgname}"
         diff -Nur <(pacman -Fl ${MSYSTEM,,}/"$pkgname" | sed -e 's|^[^ ]* |/|' | sort) <(pacman -Ql "$pkgname" | sed -e 's|^[^/]*||' | sort) || true
+        echo "::endgroup::"
+
+        echo "::group::[dll check] ${pkgname}"
+        declare -a binaries=($(pacman -Qlq $pkgname | grep -E ${MINGW_PREFIX}/.+\.\(dll\|exe\|pyd\)$))
+        if [ "${#binaries[@]}" -ne 0 ]; then
+            message "Runtime dependencies for ${pkgname}"
+            for binary in ${binaries[@]}; do
+                echo "${binary}:"
+                ldd ${binary} | GREP_COLOR="1;35" grep --color=always "msys-.*\|" \
+                    || echo "        None"
+            done
+            message "DLL bases for ${pkgname}"
+            rebase -i "${binaries[@]}" | GREP_COLOR="1;35" grep --color=always "msys-.*\|" \
+                || echo "        None"
+        fi
         echo "::endgroup::"
 
         echo "::group::[uninstall] ${pkgname}"
