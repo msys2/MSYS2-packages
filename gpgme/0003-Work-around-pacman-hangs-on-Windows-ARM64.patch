@@ -1,0 +1,62 @@
+From 7501c30e631fad336bb3ae9339d9d5738fea9102 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Sat, 4 May 2024 19:51:52 +0000
+Subject: [PATCH] Work around `pacman` hangs on Windows/ARM64
+
+When calling `pacman` in GitHub Actions runners that run Windows/ARM64,
+we frequently experience curious hangs while Pacman is verifying signatures.
+
+These hangs are somewhat flaky, it seems as if certain scenarios (slow
+machines, for example) make the hangs more likely.
+
+A common symptom is that the hanging process has a command-line that is
+identical to its parent process' command-line (indicating that it has
+been `fork()`ed), and anecdotally, the hang occurs when `_exit()` calls
+`proc_terminate()` which is then blocked by a call to
+`TerminateThread()` with an invalid thread handle (for more details, see
+https://github.com/msys2/msys2-autobuild/issues/62#issuecomment-1951796327).
+
+In my tests, I found that the hanging process is spawned from
+`_gpgme_io_spawn()` which lets the child process _immediately_ spawn
+another child. That seems like a fantastic way to find timing-related
+bugs in the MSYS2/Cygwin runtime.
+
+As a work-around, it does seem to help if we avoid that double-fork.
+
+This partially reverts 61aa1947 (... Use a double-fork approach...,
+2002-08-28).
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ src/posix-io.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/posix-io.c b/src/posix-io.c
+index a422d8f..8e4d9c5 100644
+--- a/src/posix-io.c
++++ b/src/posix-io.c
+@@ -552,7 +552,7 @@ _gpgme_io_spawn (const char *path, char *const argv[], unsigned int flags,
+   if (!pid)
+     {
+       /* Intermediate child to prevent zombie processes.  */
+-      if ((pid = fork ()) == 0)
++      // if ((pid = fork ()) == 0)
+ 	{
+ 	  /* Child.  */
+           int max_fds = -1;
+@@ -676,10 +676,12 @@ _gpgme_io_spawn (const char *path, char *const argv[], unsigned int flags,
+ 	_exit (0);
+     }
+ 
++#if 0
+   TRACE_LOG  ("waiting for child process pid=%i", pid);
+   _gpgme_io_waitpid (pid, 1, &status, &signo);
+   if (status)
+     return TRACE_SYSRES (-1);
++#endif
+ 
+   for (i = 0; fd_list[i].fd != -1; i++)
+     {
+-- 
+2.39.1.windows.1
+
