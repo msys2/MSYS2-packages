@@ -64,21 +64,6 @@ index f4c2a2f..0ae74ca 100644
  }
  
  /* **************************************************************** */
-diff --git a/input.c b/input.c
-index 3944585c..d4fa2ced 100644
---- a/input.c
-+++ b/input.c
-@@ -41,7 +41,9 @@
- #include "externs.h"
- #include "trap.h"
- 
--#ifdef __CYGWIN__
-+#ifdef __MSYS__
-+int igncr = 1;
-+#elif defined(__CYGWIN__)
- int igncr;
- #endif
- 
 diff --git a/lib/readline/display.c b/lib/readline/display.c
 index c1135ec..b388af6 100644
 --- a/lib/readline/display.c
@@ -97,17 +82,33 @@ index c1135ec..b388af6 100644
    if  (vlp)
 diff --git a/parse.y b/parse.y
 index 8fd24a1c..232a33dc 100644
-@@ -1678,7 +1684,16 @@ rewind_input_string ()
+--- a/parse.y
++++ b/parse.y
+@@ -1459,7 +1459,13 @@ yy_input_name ()
+ static int
+ yy_getc ()
+ {
+-  return (*(bash_input.getter)) ();
++#ifdef __MSYS__
++  int c;
++  while ((c = (*(bash_input.getter)) ()) == '\r');
++  return c;
++#else
++   return (*(bash_input.getter)) ();
++#endif
+ }
+ 
+ /* Call this to unget C.  That is, to make C the next character
+@@ -1684,7 +1690,15 @@ rewind_input_string ()
       into account, e.g., $(...\n) */
    xchars = shell_input_line_len - shell_input_line_index;
    if (bash_input.location.string[-1] == '\n')
 -    xchars++;
 +    {
 +      xchars++;
-+#ifdef __CYGWIN__
++#ifdef __MSYS__
 +      {
-+	extern int igncr;
-+	if (igncr && bash_input.location.string[-2] == '\r')
++	if (bash_input.location.string[-2] == '\r')
 +	  xchars++;
 +      }
 +#endif
