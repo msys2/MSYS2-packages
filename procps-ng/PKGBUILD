@@ -1,6 +1,6 @@
 pkgname=procps-ng
-pkgver=3.3.17
-pkgrel=2
+pkgver=4.0.4
+pkgrel=1
 pkgdesc='Utilities for monitoring your system and its processes'
 arch=('i686' 'x86_64')
 url='https://gitlab.com/procps-ng/procps'
@@ -16,29 +16,33 @@ conflicts=('procps')
 provides=('procps')
 replaces=('procps')
 source=("https://downloads.sourceforge.net/project/${pkgname}/Production/${pkgname}-${pkgver}.tar.xz"{,.asc}
-         "procps-ng-3.3.12-msys2.patch"
-         "procps-ng-3.3.17-ctty.patch"
-         "procps-ng-3.3.17-wchar.patch")
-sha256sums=('4518b3e7aafd34ec07d0063d250fd474999b20b200218c3ae56f5d2113f141b4'
+         "procps-ng-4.0.4-manpage.patch"
+         "procps-ng-4.0.4-wchan.patch"
+         "procps-ng-4.0.4-LDADD.patch")
+sha256sums=('22870d6feb2478adb617ce4f09a787addaf2d260c5a8aa7b17d889a962c5e42e'
             'SKIP'
-            'e2d692b45dd2ba9840ec5cd6a25a9106bd0ac3ca36d1b4a120288be6575c6977'
-            'e1a633c68b5cfa240582043cae7ee5a88c7231465c51d0d92775244142bd1f7c'
-            '50d814cde311f6f72889221611aca8d8147ed4522573802229cf4716ae71933c')
-validpgpkeys=('5D2FB320B825D93904D205193938F96BDF50FEA5'  # Craig Small <csmall@debian.org>
-              '5D3DF0F538B327C0AA7A77A2022166C0FF3C84E3') # Craig Small <csmall@debian.org>
+            'bbe3eacad042da824c78d634022c405f8900bc98b56744220f537216daa82bc7'
+            '6b89d78b1d48d3f7d704d12da05c6bc6d95d009f0b6833fa7a527f9ec909cc18'
+            '254768bf9fd844fd937df71f5201eda2f03dd7358ac365741de50c92afcccb41')
+validpgpkeys=('5D2FB320B825D93904D205193938F96BDF50FEA5') # Craig Small <csmall@debian.org>
 
 prepare() {
-  cd ${srcdir}/procps-${pkgver}
-  patch -p1 -i ${srcdir}/procps-ng-3.3.12-msys2.patch
-  patch -p1 -i ${srcdir}/procps-ng-3.3.17-ctty.patch
-  patch -p1 -i ${srcdir}/procps-ng-3.3.17-wchar.patch
+  cd ${srcdir}/procps-ng-${pkgver}
+
+  # from Cygwin
+  patch -p2 -i ${srcdir}/procps-ng-4.0.4-manpage.patch
+  patch -p2 -i ${srcdir}/procps-ng-4.0.4-wchan.patch
+  patch -p2 -i ${srcdir}/procps-ng-4.0.4-LDADD.patch
+
   autoreconf -fi
 }
 
 build() {
-  cd ${srcdir}/procps-${pkgver}
+  cd ${srcdir}/procps-ng-${pkgver}
+
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
   ./configure \
-    --build=${CHOST} \
+    --build=${CYGWIN_CHOST} \
     --prefix=/usr \
     --bindir=/usr/bin \
     --sbindir=/usr/bin \
@@ -46,24 +50,20 @@ build() {
     --libdir=/usr/lib \
     --without-libiconv-prefix \
     --without-libintl-prefix \
-    CFLAGS="${CFLAGS} -I/usr/include/ncursesw" \
     --enable-watch8bit \
+    --disable-numa \
     --disable-kill
     # kill is provided by util-linux
 
-  # Workaround.
-  # See https://github.com/msys2/MSYS2-packages/pull/1908#issuecomment-605453647
-  make -j1 proc/libprocps.la
-
-  make -j1
+  make
 }
 
 check() {
-  cd ${srcdir}/procps-${pkgver}
+  cd ${srcdir}/procps-ng-${pkgver}
   make check
 }
 
 package() {
-  cd ${srcdir}/procps-${pkgver}
+  cd ${srcdir}/procps-ng-${pkgver}
   make DESTDIR=${pkgdir} install
 }
