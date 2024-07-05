@@ -3,8 +3,8 @@
 
 pkgbase=python
 pkgname=('python' 'python-devel')
-pkgver=3.11.9
-pkgrel=1
+pkgver=3.12.4
+pkgrel=2
 _pybasever=${pkgver%.*}
 pkgdesc="Next generation of the python high-level scripting language"
 arch=('i686' 'x86_64')
@@ -31,39 +31,29 @@ makedepends=(
   'gcc'
 )
 source=(https://www.python.org/ftp/python/${pkgver%rc*}/Python-${pkgver}.tar.xz
-        001-3.1-enable-new-dtags.patch
         003-3.4-select-cygwin.patch
         005-3.7-ctypes-cygwin.patch
-        007-3.8-dbm-cygwin.patch
-        008-3.8-distutils-cygwin.patch
         009-3.8-export-PySignal_SetWakeupFd.patch
         012-3.8-pep3149-cygwin.patch
-        014-3.8-xxsubinterpreters-cygwin.patch
-        015-rpath.patch
-        025-MINGW-compiler-customize-mingw-cygwin-compilers.patch
         027-install-import-library.patch
         900-msysize.patch
         920-allow-win-drives-in-os-path-isabs.patch
         940-rebase-python-dll.patch
         950-rebase-dlls.patch
-        970-ossaudiodev.patch)
-sha256sums=('9b1e896523fc510691126c864406d9360a3d1e986acbda59cda57b5abda45b87'
-            'be96ddaca58a39ddaf1e3e5bb7900b34c0e6d00e9b64c4e0f8a3565a74a44e84'
+        970-ossaudiodev.patch
+        980-fix-module-lib-dep.patch)
+sha256sums=('f6d419a6d8743ab26700801b4908d26d97e8b986e14f95de31b32de2b0e79554'
             '82cfafc5b31ad4c9bb4c9786044c39c75762dbc2656abdfdc433c23fee69c02f'
             'f0bb75ca69c63894fc43e0f8218c9dbcc746935bf5ea095a724e6fb2f5dcc566'
-            'dc044b0651a67f7c76e4119d65085e42277c0513b8e9653f0972d955c3dde2c5'
-            '8c460bf9522e50e06aa2c21a921eb42543d7a4cac6c598b13be43940a96966bf'
             '70f854f00de71372e49f2ebbff7491e09e9e036e8e3f3646fe2984e30fb4a9da'
-            'e3d3f4f8b653ddd7eec305d7af43928c070d409bcf7f1b59269d59545c8f1862'
-            'e48c719be36cb266ac3ceae834739fb1faae6740524cd672fd367f9304894a39'
-            '437332e1a7195dd0adcd505ecdeab5c3a7a793efdd7fea7bec55f97957bb8934'
-            '3e6c115c9b8e044193c0524b94275dfb13c1adfba3d250131b065f632b6d5512'
+            'a407491301d1aa186a6b1815fc18f4f4da22b489c49b31b58125debbf9d9d3a1'
             '9d0efb7e7e913e96b9f7953802311bbc2d046a7bfdcc3ffaf11fc509731b4d18'
-            '5dfed4be015e93ab6f4e99a69fc5b3eece9c801ea504c8d0517c3cb6bb7dbe89'
+            '7ca289727bf714cccfe075c959f4907cf527b3e1d251020c9f0e8b21a2f1f365'
             '85d9d042e0fa3493ec54b364e6b4fb6d2b12ba09641e01047bc84a09605ef76b'
             'b439ff4f0a1f13858f8fb596414b74ed2c14fc3103d90287bb8e461ee89288b9'
-            '612bc5bcbe24c2f623713172d318c65a69ae601d72bcc5a170fe7c4eee458d18'
-            'ee109d91a1c7ea84d278d9a8b0e1feb397e691b8868d79f77ea7bb6b1b3b1968')
+            'bcdb4e7922e30f7dfbd3993ffe6db2dfd0df29326bebd12203dce376ea3451d9'
+            'ee109d91a1c7ea84d278d9a8b0e1feb397e691b8868d79f77ea7bb6b1b3b1968'
+            'e2861218f05741bfe99b05bb41cf88e14f57747aedec251626691b05482a50bd')
 
 apply_patch_with_msg() {
   for _patch in "$@"
@@ -77,27 +67,21 @@ prepare() {
   cd "${srcdir}/Python-${pkgver}"
 
   apply_patch_with_msg \
-    001-3.1-enable-new-dtags.patch \
     003-3.4-select-cygwin.patch \
     005-3.7-ctypes-cygwin.patch \
-    007-3.8-dbm-cygwin.patch \
-    008-3.8-distutils-cygwin.patch \
     009-3.8-export-PySignal_SetWakeupFd.patch \
     012-3.8-pep3149-cygwin.patch \
-    014-3.8-xxsubinterpreters-cygwin.patch \
-    015-rpath.patch \
-    025-MINGW-compiler-customize-mingw-cygwin-compilers.patch \
     027-install-import-library.patch \
     900-msysize.patch \
     920-allow-win-drives-in-os-path-isabs.patch \
     940-rebase-python-dll.patch \
     950-rebase-dlls.patch \
-    970-ossaudiodev.patch
+    970-ossaudiodev.patch \
+    980-fix-module-lib-dep.patch
 
   # Ensure that we are using the system copy of various libraries (expat, zlib and libffi),
   # rather than copies shipped in the tarball
   rm -r Modules/expat
-  rm -r Modules/_ctypes/{darwin,libffi}*
   rm -r Modules/_decimal/libmpdec
   autoreconf -fiv
 }
@@ -122,8 +106,7 @@ build() {
     --enable-loadable-sqlite-extensions \
     --without-ensurepip
 
-  make > >(tee make-python.log)
-  sed -ne '/^\s*Failed to build these modules/,$ {p; /^\s*$/q42}' make-python.log
+  make
 }
 
 check() {
