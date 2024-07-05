@@ -3,7 +3,7 @@
 pkgname=python-typogrify
 _pyname=typogrify
 pkgver=2.0.7
-pkgrel=1
+pkgrel=2
 pkgdesc='filters to make caring about typography on the web a bit easier'
 arch=('any')
 url='https://github.com/mintchaos/typogrify'
