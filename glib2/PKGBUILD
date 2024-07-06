@@ -1,9 +1,9 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgbase=glib2
-pkgname=(glib2 glib2-devel glib2-docs)
-pkgver=2.78.6
-pkgrel=2
+pkgname=(glib2 glib2-devel)
+pkgver=2.80.3
+pkgrel=1
 pkgdesc="Common C routines used by GTK+ and other libs"
 license=('spdx:LGPL-2.1-or-later')
 url="https://gitlab.gnome.org/GNOME/glib"
@@ -11,25 +11,28 @@ msys2_references=(
   "cpe: cpe:/a:gnome:glib"
 )
 arch=('i686' 'x86_64')
-makedepends=('docbook-xsl'
-             'gcc'
-             'gtk-doc'
+makedepends=('gcc'
              'libffi-devel'
              'libiconv-devel'
-             'libxslt-devel'
+             'gettext-devel'
              'pcre2-devel'
              'pkgconf'
-             'python3'
+             'python'
+             'python-packaging'
              'meson'
              'ninja'
-             'zlib-devel')
+             'zlib-devel'
+             'python-docutils')
 source=(https://download.gnome.org/sources/glib/${pkgver%.*}/glib-$pkgver.tar.xz
-        001-gmodule-lib-prefix.patch)
+        001-gmodule-lib-prefix.patch
+        002-fix-build.patch)
 noextract=("glib-$pkgver.tar.xz")
-sha256sums=('244854654dd82c7ebcb2f8e246156d2a05eb9cd1ad07ed7a779659b4602c9fae'
-            '31bce1aff2dab2262ea372d101081162a77e9310fe0d68400da8c85d698ce65e')
+sha256sums=('3947a0eaddd0f3613d0230bb246d0c69e46142c19022f5c4b1b2e3cba236d417'
+            '31bce1aff2dab2262ea372d101081162a77e9310fe0d68400da8c85d698ce65e'
+            '6ce91ebaa164a2ae964e1e5d0d700a70eb4a18c0cee06c48daa22c73561af1dd')
 msys2_references=(
   'cygwin: glib2.0'
+  'cpe: cpe:2.3:a:gnome:glib'
 )
 
 prepare() {
@@ -38,6 +41,7 @@ prepare() {
   cd glib-${pkgver}
 
   patch -p1 -i ${srcdir}/001-gmodule-lib-prefix.patch
+  patch -p1 -i ${srcdir}/002-fix-build.patch
 }
 
 build() {
@@ -48,8 +52,8 @@ build() {
     --auto-features=enabled \
     --buildtype=plain \
     --prefix=/usr \
-    -Dgtk_doc=true \
     -Dlibelf=disabled \
+    -Dintrospection=disabled \
     "../glib-${pkgver}"
 
   meson compile
@@ -69,19 +73,23 @@ check() {
 }
 
 package_glib2() {
-  depends=('libxslt' 'libpcre2_8' 'libffi' 'libiconv' 'zlib')
+  depends=('libpcre2_8' 'libffi' 'libiconv' 'zlib' 'libintl')
+  conflicts=('glib2-devel<2.80.3')
   options=('!docs' '!emptydirs')
   license=('LGPL')
 
-  mkdir -p ${pkgdir}/usr/{bin,lib,share}
+  mkdir -p ${pkgdir}/usr/{bin,lib,libexec,share}
+  mkdir -p ${pkgdir}/usr/share/man/man1
   cp -f ${srcdir}/dest/usr/bin/*.dll ${pkgdir}/usr/bin/
-  for file in gapplication gdbus gio-querymodules glib-compile-schemas gobject-query gsettings; do
+  cp -f ${srcdir}/dest/usr/libexec/* ${pkgdir}/usr/libexec/
+  for file in gapplication gdbus gio-querymodules glib-compile-schemas gsettings gresource gio; do
     cp -f ${srcdir}/dest/usr/bin/${file}.exe ${pkgdir}/usr/bin/
+    cp -f ${srcdir}/dest/usr/share/man/man1/${file}.1 ${pkgdir}/usr/share/man/man1/
   done
 
   cp -rf ${srcdir}/dest/usr/share/gdb ${pkgdir}/usr/share/
 
-  mkdir -p ${pkgdir}/usr/share/{man,glib-2.0}
+  mkdir -p ${pkgdir}/usr/share/glib-2.0
   cp -rf ${srcdir}/dest/usr/share/glib-2.0/gdb ${pkgdir}/usr/share/glib-2.0/
   cp -rf ${srcdir}/dest/usr/share/glib-2.0/schemas ${pkgdir}/usr/share/glib-2.0/
   cp -rf ${srcdir}/dest/usr/share/locale ${pkgdir}/usr/share/
@@ -99,14 +107,19 @@ package_glib2-devel() {
   pkgdesc="glib2 headers and libraries"
   groups=('development')
   depends=("glib2=${pkgver}" 'gettext-devel' 'libffi-devel' 'libiconv-devel' 'pcre2-devel' 'zlib-devel')
-  optdepends=('python3: for gdbus-codegen and gtester-report')
+  conflicts=('glib2<2.80.3')
+  optdepends=(
+    'python: for gdbus-codegen and gtester-report'
+    'python-packaging: for gdbus-codegen'
+  )
   options=('emptydirs')
 
   mkdir -p ${pkgdir}/usr/{bin,lib,share}
+
+  cp -f ${srcdir}/dest/usr/bin/gobject-query ${pkgdir}/usr/bin/
   cp -f ${srcdir}/dest/usr/bin/gdbus-codegen ${pkgdir}/usr/bin/
   cp -f ${srcdir}/dest/usr/bin/glib-* ${pkgdir}/usr/bin/
   rm -f ${pkgdir}/usr/bin/glib-compile-schemas*
-  cp -f ${srcdir}/dest/usr/bin/gresource* ${pkgdir}/usr/bin/
   cp -f ${srcdir}/dest/usr/bin/gtester* ${pkgdir}/usr/bin/
 
   cp -rf ${srcdir}/dest/usr/lib/pkgconfig ${pkgdir}/usr/lib/
@@ -116,23 +129,15 @@ package_glib2-devel() {
   cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
   cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
   cp -rf ${srcdir}/dest/usr/share/glib-2.0 ${pkgdir}/usr/share/
+  cp -rf ${srcdir}/dest/usr/share/gettext ${pkgdir}/usr/share/
   rm -rf ${pkgdir}/usr/share/glib-2.0/gdb
   rm -rf ${pkgdir}/usr/share/glib-2.0/schemas
 
+  mkdir -p ${pkgdir}/usr/share/man/man1
+  for file in gdbus-codegen.1 glib-compile-resources.1 glib-genmarshal.1 glib-gettextize.1 \
+              glib-mkenums.1 gtester-report.1 gtester.1; do
+    cp -f ${srcdir}/dest/usr/share/man/man1/${file} ${pkgdir}/usr/share/man/man1/
+  done
+
   python3 -m compileall -o 0 -o 1 -s "${pkgdir}" "${pkgdir}/usr/share/glib-2.0/codegen"
-}
-
-package_glib2-docs() {
-  pkgdesc="Documentation for glib2"
-  conflicts=('gobject2-docs')
-  replaces=('gobject2-docs')
-  license=('custom')
-  options=('docs' '!emptydirs')
-
-  mkdir -p ${pkgdir}/usr/share
-  cp -rf ${srcdir}/dest/usr/share/gtk-doc ${pkgdir}/usr/share
-
-  cd glib-$pkgver/docs
-  install -m755 -d "${pkgdir}/usr/share/licenses/glib2-docs"
-  install -m644 reference/COPYING "${pkgdir}/usr/share/licenses/glib2-docs/"
 }
