@@ -2,7 +2,7 @@
 
 pkgname=subversion
 pkgver=1.14.2
-pkgrel=5
+pkgrel=6
 pkgdesc="A Modern Concurrent Version Control System"
 arch=('i686' 'x86_64')
 url="https://subversion.apache.org/"
@@ -11,15 +11,18 @@ msys2_references=(
   "cpe: cpe:/a:apache:subversion"
   "cpe: cpe:/a:subversion:subversion"
 )
-license=('APACHE')
+license=('spdx:Apache-2.0')
 groups=('VCS')
-depends=('libsqlite' 'file' 'liblz4' 'libserf' 'libsasl')
-makedepends=('python' 'python-py3c' 'perl' 'swig' 'ruby' 'liblz4-devel' 'libsqlite-devel' 'libserf-devel' 'libsasl-devel' 'gmp-devel' 'autotools' 'gcc')
+depends=('apr' 'apr-util' 'file' 'gcc-libs' 'libbz2' 'libexpat' 'libiconv' 'libintl'
+         'liblz4' 'liblzma' 'libopenssl' 'libsasl' 'libserf' 'libsqlite' 'libutil-linux'
+         'libxcrypt' 'libzstd' 'zlib')
+makedepends=('gcc' 'autotools' 'perl' 'python' 'python-py3c' 'python-setuptools' 'ruby' 'swig'
+             'gmp-devel' 'liblz4-devel' 'libsasl-devel' 'libserf-devel' 'libsqlite-devel')
 optdepends=('bash-completion: for svn bash completion'
             'python: for some hook scripts'
             'ruby: for some hook scripts')
 provides=('svn')
-options=('!makeflags' '!libtool' '!emptydirs')
+options=('!libtool' '!emptydirs')
 noextract=("subversion-${pkgver}.tar.bz2")
 source=(https://archive.apache.org/dist/subversion/subversion-${pkgver}.tar.bz2{,.asc}
         svnclean
@@ -42,6 +45,7 @@ source=(https://archive.apache.org/dist/subversion/subversion-${pkgver}.tar.bz2{
         17-fix-test-link.patch
         18-fix-serf-config.patch
         19-remove-contrib-from-configure.patch
+        20-fix-build-with-python-3.12.patch
         subversion-1.9.1-msys2.patch
         remove-checking-symlink.patch
         90-use-copy-instead-symlink.patch)
@@ -67,41 +71,51 @@ sha256sums=('c9130e8d0b75728a66f0e7038fc77052e671830d785b5616aad53b4810d3cc28'
             '78053226695b702fbc8a5fed3587a5f641313a266d9b0a91d457ca70584edf2c'
             'f61c9b3333d90790a4c6763d81ee05ee5a2029e562c900e92f7526393460181c'
             'a1072514d1be6e2026ae1e2fa24d3bfd97dfbda13b4bd4d89aae0e871b2aae32'
+            'e2063e5d6636576e3c4b578435587cf650aa643446f9280b827b2bbd9f11b3e7'
             '8cb68970c06e698a3d0ef37ff2b25e7ca605b0712b306f9df5dbc37f96cef38c'
             'd821304ee957ef4adbb0a8dec9cea3fe62ad7163aef132317d28f70ea25162ca'
             'fc545e375d8af4ef6d8afad453453480664b6a2ff74915f94b8a7da7de14155b')
 # https://subversion.apache.org/download.cgi#recommended-release
 validpgpkeys=('EC25FCC105618D04ADB43429C4416167349A3BCB')
 
+apply_patch_with_msg() {
+  for _fname in "$@"
+  do
+    msg2 "Applying ${_fname}"
+    patch -Nbp1 -i "${srcdir}"/${_fname}
+  done
+}
+
 prepare() {
-  cd ${startdir}/
-  [[ -d ${srcdir}/${pkgname}-${pkgver} ]] && rm -rf -d ${srcdir}/${pkgname}-${pkgver}
-  tar -xjvf ${SRCDEST}/${pkgname}-${pkgver}.tar.bz2 -C ${srcdir} || true
+  echo "Extracting ${pkgname}-${pkgver}.tar.bz2..."
+  tar -xjf ${pkgname}-${pkgver}.tar.bz2 -C ${srcdir} || true
 
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${srcdir}"/${pkgname}-${pkgver}
 
-  patch -p1 -i ${srcdir}/01-make-build-directories.patch
-  patch -p1 -i ${srcdir}/02-fix-linking.patch
-  patch -p1 -i ${srcdir}/03-fix-linking-perl.patch
-  patch -p1 -i ${srcdir}/04-fix-switch-tests.patch
-  patch -p1 -i ${srcdir}/05-retry-loop.patch
-  patch -p1 -i ${srcdir}/06-svnadmin-binary-mode.patch
-  patch -p1 -i ${srcdir}/07-fix-path-tests.patch
-  patch -p1 -i ${srcdir}/08-ruby-test-fix.patch
-  patch -p1 -i ${srcdir}/09-wincrypt.patch
-  patch -p1 -i ${srcdir}/10-perl-vendors.patch
-  patch -p1 -i ${srcdir}/11-XFAIL-case-sensitive-move-tests.patch
-  patch -p1 -i ${srcdir}/12-fix-svnlook-test.patch
-  patch -p1 -i ${srcdir}/13-dso_open.patch
-  patch -p1 -i ${srcdir}/14-fix_svnauthz_tests.patch
-  patch -p1 -i ${srcdir}/15-XFAIL_case_sensitive_tree_conflict.patch
-  patch -p1 -i ${srcdir}/16-fix-swig3.patch
-  patch -p1 -i ${srcdir}/17-fix-test-link.patch
-  patch -p1 -i ${srcdir}/18-fix-serf-config.patch
-  patch -p1 -i ${srcdir}/19-remove-contrib-from-configure.patch
-  patch -p1 -i ${srcdir}/subversion-1.9.1-msys2.patch
-  patch -p1 -i ${srcdir}/remove-checking-symlink.patch
-  patch -p1 -i ${srcdir}/90-use-copy-instead-symlink.patch
+  apply_patch_with_msg \
+    01-make-build-directories.patch \
+    02-fix-linking.patch \
+    03-fix-linking-perl.patch \
+    04-fix-switch-tests.patch \
+    05-retry-loop.patch \
+    06-svnadmin-binary-mode.patch \
+    07-fix-path-tests.patch \
+    08-ruby-test-fix.patch \
+    09-wincrypt.patch \
+    10-perl-vendors.patch \
+    11-XFAIL-case-sensitive-move-tests.patch \
+    12-fix-svnlook-test.patch \
+    13-dso_open.patch \
+    14-fix_svnauthz_tests.patch \
+    15-XFAIL_case_sensitive_tree_conflict.patch \
+    16-fix-swig3.patch \
+    17-fix-test-link.patch \
+    18-fix-serf-config.patch \
+    19-remove-contrib-from-configure.patch \
+    20-fix-build-with-python-3.12.patch \
+    subversion-1.9.1-msys2.patch \
+    remove-checking-symlink.patch \
+    90-use-copy-instead-symlink.patch
 
   PYTHON=/usr/bin/python ./autogen.sh
 }
