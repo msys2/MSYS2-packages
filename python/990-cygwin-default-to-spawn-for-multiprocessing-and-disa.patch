@@ -1,0 +1,61 @@
+From 735f8f1849b4c11ac05bcb6de3233f263cbb7490 Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Mon, 8 Jul 2024 20:19:25 +0200
+Subject: [PATCH] cygwin: default to "spawn" for multiprocessing and disable
+ "forkserver"
+
+passing fds doesn't seem to be supported by cygwin, so the "forkserver"
+variant of multiprocessing fails.
+
+This was noticed because the default "fork" method is now deprecated and
+in internal tools, like compileall, it defaults to "forkserver" since 3.12.
+
+This switching code assumes that if "fork" works, also "forkserver" works,
+so we'd have to patch it too.
+
+Instead default to "spawn" like on macOS and disable "forkserver". This way
+we are not using deprecated things by defaults, and external code should
+hopefully not try to switch to "forkserver" then.
+---
+ Lib/multiprocessing/context.py   | 4 ++--
+ Lib/multiprocessing/reduction.py | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/Lib/multiprocessing/context.py b/Lib/multiprocessing/context.py
+index de8a264829..63e467f166 100644
+--- a/Lib/multiprocessing/context.py
++++ b/Lib/multiprocessing/context.py
+@@ -262,7 +262,7 @@ def get_all_start_methods(self):
+         if sys.platform == 'win32':
+             return ['spawn']
+         else:
+-            methods = ['spawn', 'fork'] if sys.platform == 'darwin' else ['fork', 'spawn']
++            methods = ['spawn', 'fork'] if (sys.platform == 'darwin' or sys.platform == 'cygwin') else ['fork', 'spawn']
+             if reduction.HAVE_SEND_HANDLE:
+                 methods.append('forkserver')
+             return methods
+@@ -320,7 +320,7 @@ def _check_available(self):
+         'spawn': SpawnContext(),
+         'forkserver': ForkServerContext(),
+     }
+-    if sys.platform == 'darwin':
++    if sys.platform == 'darwin' or sys.platform == 'cygwin':
+         # bpo-33725: running arbitrary code after fork() is no longer reliable
+         # on macOS since macOS 10.14 (Mojave). Use spawn by default instead.
+         _default_context = DefaultContext(_concrete_contexts['spawn'])
+diff --git a/Lib/multiprocessing/reduction.py b/Lib/multiprocessing/reduction.py
+index 5593f0682f..a1b0429f89 100644
+--- a/Lib/multiprocessing/reduction.py
++++ b/Lib/multiprocessing/reduction.py
+@@ -24,7 +24,7 @@
+ HAVE_SEND_HANDLE = (sys.platform == 'win32' or
+                     (hasattr(socket, 'CMSG_LEN') and
+                      hasattr(socket, 'SCM_RIGHTS') and
+-                     hasattr(socket.socket, 'sendmsg')))
++                     hasattr(socket.socket, 'sendmsg'))) and sys.platform != 'cygwin'
+ 
+ #
+ # Pickler subclass
+-- 
+2.45.2
+
