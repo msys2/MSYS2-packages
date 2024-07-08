@@ -21,8 +21,10 @@ base_tag=refs/tags/cygwin-"$(sed -ne 's/^pkgver=//p' <PKGBUILD)"
 msys2_branch=refs/heads/msys2-${base_tag#refs/tags/cygwin-}
 url=https://github.com/msys2/msys2-runtime
 
-test -d msys2-runtime ||
-git clone --bare $url msys2-runtime ||
+test -d msys2-runtime || {
+	git clone --bare $url msys2-runtime &&
+	git --git-dir=msys2-runtime config remote.origin.url git://sourceware.org/git/newlib-cygwin.git # required by PKGBUILD
+} ||
 die "Could not clone msys2-runtime"
 
 git -C msys2-runtime fetch --no-tags $url $base_tag:$base_tag $msys2_branch:$msys2_branch
