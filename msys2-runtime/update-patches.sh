@@ -75,6 +75,7 @@ then
 	exit 0
 fi
 
+GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS+$GIT_CONFIG_PARAMETERS }'core.autocrlf=false'" \
 updpkgsums ||
 die "Could not update the patch set checksums in PKGBUILD"
 
