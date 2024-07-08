@@ -1,0 +1,34 @@
+From 62a586abfb7921f46ca53d3c6dd26f43ad6ab02e Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Mon, 8 Jul 2024 14:22:48 +0200
+Subject: [PATCH 63/N] Cygwin: suppress a warning generated with w32api >=
+ 12.0.0
+
+w32api 12.0.0 adds the returns_twice attribute to RtlCaptureContext().
+There's some data-flow interaction with using it inside a while loop
+which causes a maybe-uninitialized warning.
+
+../../../../winsup/cygwin/exceptions.cc: In member function 'int _cygtls::call_signal_handler()':
+../../../../winsup/cygwin/exceptions.cc:1720:33: error: '<anonymous>' may be used uninitialized in this function [-Werror=maybe-uninitialized]
+
+Backported-from: 7e3c833592 (Cygwin: suppress a warning generated with w32api >= 12.0.0, 2024-06-07)
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/exceptions.cc | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
+index b843063..1faeda2 100644
+--- a/winsup/cygwin/exceptions.cc
++++ b/winsup/cygwin/exceptions.cc
+@@ -1646,7 +1646,10 @@ _cygtls::call_signal_handler ()
+ 		 context, unwind to the caller and in case we're called
+ 		 from sigdelayed, fix the instruction pointer accordingly. */
+ 	      context.uc_mcontext.ctxflags = CONTEXT_FULL;
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+ 	      RtlCaptureContext ((PCONTEXT) &context.uc_mcontext);
++#pragma GCC diagnostic pop
+ 	      __unwind_single_frame ((PCONTEXT) &context.uc_mcontext);
+ 	      if (stackptr > stack)
+ 		{
