@@ -1,0 +1,48 @@
+From a5688ea5d3facd07a15a65dc989ccb4dd027dc5b Mon Sep 17 00:00:00 2001
+From: Jon Turney <jon.turney@dronecode.org.uk>
+Date: Wed, 13 Jan 2016 18:27:48 +0000
+Subject: [PATCH 3/6] Fix potential memory leak after using realpath() on
+ Cygwin
+
+Currently, free-ing the result of realpath() is skipped over when it
+rturns a string with a length greater than or equal to SO_NAME_MAX_PATH_SIZE.
+
+Distinguish between realpath() failing (returning NULL), and that case
+to fix a potential memory leak.
+
+Patch originally by Corinna Vinschen.
+---
+ gdb/windows-nat.c | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/gdb/windows-nat.c b/gdb/windows-nat.c
+index c2d792b7cde..4bd88399f48 100644
+--- a/gdb/windows-nat.c
++++ b/gdb/windows-nat.c
+@@ -894,14 +894,20 @@ windows_make_so (const char *name, LPVOID load_addr)
+   else
+     {
+       char *rname = realpath (name, NULL);
+-      if (rname && strlen (rname) < SO_NAME_MAX_PATH_SIZE)
++      if (rname)
+ 	{
+-	  so->name = rname;
++	  if (strlen (rname) < SO_NAME_MAX_PATH_SIZE)
++	    so->name = rname;
++	  else
++	    {
++	      warning (_("dll path \"%s\" too long"), rname);
++	      so->name = so->original_name;
++	    }
+ 	  free (rname);
+ 	}
+       else
+ 	{
+-	  warning (_("dll path for \"%s\" too long or inaccessible"), name);
++	  warning (_("dll path for \"%s\" can not be evaluated"), name);
+ 	  so->name = so->original_name;
+ 	}
+     }
+-- 
+2.39.0
+
