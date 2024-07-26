@@ -1,0 +1,90 @@
+# Maintainer: Yang Kun <ikspress@outlook.com>
+
+pkgver=1.17
+pkgname=automake${pkgver}
+pkgrel=1
+pkgdesc="A GNU tool for automatically creating Makefiles"
+arch=('any')
+license=('spdx:GPL-2.0-or-later')
+url="https://www.gnu.org/software/automake"
+msys2_references=(
+  "cpe: cpe:/a:gnu:automake"
+)
+depends=('bash' 'perl')
+makedepends=('autoconf' 'make' 'texinfo')
+checkdepends=('bison' 'cscope' 'dejagnu' 'emacs' 'expect' 'flex' 'gcc' 'gettext'
+              'help2man' 'libtool' 'lzip' 'sharutils' 'texinfo-tex' 'zip')
+source=(https://ftp.gnu.org/gnu/automake/automake-${pkgver}.tar.xz{,.sig}
+        automake-1.17-documentation.patch
+        automake-1.17-msys2.patch)
+sha256sums=('8920c1fc411e13b90bf704ef9db6f29d540e76d232cb3b2c9f4dc4cc599bd990'
+            'SKIP'
+            '64874ff1f61a832b784a0cbd75f48d7e6b1fe5f7e9f5acb75134ad7c57c5d824'
+            'a6b3a7099fb23ddc3d1402b16df32cf8f21bb63ca6b9314ff7caff5869b6ed50')
+validpgpkeys=('E1622F96D2BB4E58018EEF9860F906016E407573'   # Stefano Lattarini
+              'F2A38D7EEB2B66405761070D0ADEE10094604D37'   # Mathieu Lirzin
+              '155D3FC500C834486D1EEA677FD9FCCB000BEEEE')  # Jim Meyering
+replace=('automake')
+
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _fname in "$@"; do
+    msg2 "Applying ${_fname}"
+    patch -Nbp1 -i "${srcdir}"/${_fname}
+  done
+}
+
+del_file_exists() {
+  for _fname in "$@"; do
+    if [ -f $_fname ] || [ -d $_fname ]; then
+      rm -rf $_fname
+    fi
+  done
+}
+# =========================================== #
+
+prepare() {
+  cd ${srcdir}/automake-${pkgver}
+
+  apply_patch_with_msg \
+    automake-1.17-documentation.patch \
+    automake-1.17-msys2.patch
+}
+
+build() {
+  cd ${srcdir}/automake-${pkgver}
+  ./configure --prefix=/usr
+  make
+  # build versioned info files
+  cd doc
+  makeinfo automake.texi automake-history.texi
+}
+
+check() {
+  cd ${srcdir}/automake-${pkgver}
+
+  make -k check || warning "Tests failed"
+}
+
+package() {
+  cd ${srcdir}/automake-${pkgver}
+  make DESTDIR=${pkgdir} install
+
+  mv ${pkgdir}/usr/share/aclocal/README ${pkgdir}/usr/share/aclocal/README.am17
+
+  # remove the unversioned info files
+  rm -f ${pkgdir}/usr/share/info/automake{,-history}.info*
+
+  # remove the unversioned executables
+  rm -f ${pkgdir}/usr/bin/automake ${pkgdir}/usr/bin/aclocal
+
+  # remove the unversioned man pages
+  rm -f ${pkgdir}/usr/share/man/man1/automake.1 \
+    ${pkgdir}/usr/share/man/man1/aclocal.1
+
+  # remove amhello
+  rm -rf ${pkgdir}/usr/share/doc
+
+  # install the versioned info files
+  install -Dm644 ${srcdir}/automake-${pkgver}/doc/*${pkgver}.info* -t ${pkgdir}/usr/share/info/
+}
