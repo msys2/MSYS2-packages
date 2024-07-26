@@ -1,0 +1,225 @@
+From 452104cd2814a46adec69de7a4aedce066345d7e Mon Sep 17 00:00:00 2001
+From: Rafael Kitover <rkitover@gmail.com>
+Date: Thu, 25 Jul 2024 21:55:40 +0000
+Subject: [PATCH] Pass terminal data on socket on Cygwin platforms
+
+On Cygwin and MSYS2 use a controlling pty for the server client handler
+instead of passing a file descriptor over the socket which is not
+possible on Cygwin platforms.
+
+Attach an event to STDIN on the client, passing data from it to the
+server and attach an event to the pty out_fd on the server client
+handler and pass data from it to the client.
+
+Signed-off-by: Rafael Kitover <rkitover@gmail.com>
+---
+ client.c        | 14 ++++++++++++++
+ compat.h        |  5 +++++
+ server-client.c | 12 ++++++++++--
+ tmux-protocol.h |  5 +++++
+ tmux.h          |  5 +++++
+ tty.c           | 39 +++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 78 insertions(+), 2 deletions(-)
+
+diff -ruN tmux-3.4.orig/client.c tmux-3.4/client.c
+--- tmux-3.4.orig/client.c	1900-01-00 00:00:00 +0000
++++ tmux-3.4/client.c	1900-01-00 00:00:00 +0000
+@@ -244,6 +244,9 @@
+ 	char			*line = NULL, **caps = NULL, *cause;
+ 	u_int			 ncaps = 0;
+ 	struct args_value	*values;
++#ifdef TTY_OVER_SOCKET
++	struct tty*		 tty = xmalloc(sizeof *tty);
++#endif
+ 
+ 	/* Set up the initial command. */
+ 	if (shell_command != NULL) {
+@@ -397,6 +400,10 @@
+ 	} else if (msg == MSG_SHELL)
+ 		proc_send(client_peer, msg, -1, NULL, 0);
+ 
++#ifdef TTY_OVER_SOCKET
++	tty_attach_stdin_to_socket(tty, client_peer);
++#endif
++
+ 	/* Start main loop. */
+ 	proc_loop(client_proc, NULL);
+ 
+@@ -473,12 +480,14 @@
+ 		    caps[i], strlen(caps[i]) + 1);
+ 	}
+ 
++#ifndef TTY_OVER_SOCKET
+ 	if ((fd = dup(STDIN_FILENO)) == -1)
+ 		fatal("dup failed");
+ 	proc_send(client_peer, MSG_IDENTIFY_STDIN, fd, NULL, 0);
+ 	if ((fd = dup(STDOUT_FILENO)) == -1)
+ 		fatal("dup failed");
+ 	proc_send(client_peer, MSG_IDENTIFY_STDOUT, fd, NULL, 0);
++#endif
+ 
+ 	pid = getpid();
+ 	proc_send(client_peer, MSG_IDENTIFY_CLIENTPID, -1, &pid, sizeof pid);
+@@ -814,5 +823,10 @@
+ 		system(data);
+ 		proc_send(client_peer, MSG_UNLOCK, -1, NULL, 0);
+ 		break;
++#ifdef TTY_OVER_SOCKET
++	case MSG_TTY_READ:
++		write(STDOUT_FILENO, data, datalen);
++		break;
++#endif
+ 	}
+ }
+diff -ruN tmux-3.4.orig/compat.h tmux-3.4/compat.h
+--- tmux-3.4.orig/compat.h	1900-01-00 00:00:00 +0000
++++ tmux-3.4/compat.h	1900-01-00 00:00:00 +0000
+@@ -69,6 +69,11 @@
+ #define __weak __attribute__ ((__weak__))
+ #endif
+ 
++#if defined(_WIN32) || defined(__CYGWIN__) || defined(__MSYS__)
++#define WIN32_PLATFORM
++#define TTY_OVER_SOCKET
++#endif
++
+ #ifndef ECHOPRT
+ #define ECHOPRT 0
+ #endif
+diff -ruN tmux-3.4.orig/server-client.c tmux-3.4/server-client.c
+--- tmux-3.4.orig/server-client.c	1900-01-00 00:00:00 +0000
++++ tmux-3.4/server-client.c	1900-01-00 00:00:00 +0000
+@@ -22,6 +22,7 @@
+ 
+ #include <errno.h>
+ #include <fcntl.h>
++
+ #include <stdlib.h>
+ #include <string.h>
+ #include <time.h>
+@@ -2824,6 +2825,11 @@
+ 	case MSG_READ_DONE:
+ 		file_read_done(&c->files, imsg);
+ 		break;
++#ifdef TTY_OVER_SOCKET
++	case MSG_TTY_WRITE:
++		write(c->fd, imsg->data, datalen);
++		break;
++#endif
+ 	}
+ }
+ 
+@@ -2995,6 +3001,7 @@
+ 			c->cwd = xstrdup("/");
+ 		log_debug("client %p IDENTIFY_CWD %s", c, data);
+ 		break;
++#ifndef TTY_OVER_SOCKET
+ 	case MSG_IDENTIFY_STDIN:
+ 		if (datalen != 0)
+ 			fatalx("bad MSG_IDENTIFY_STDIN size");
+@@ -3007,6 +3014,7 @@
+ 		c->out_fd = imsg_get_fd(imsg);
+ 		log_debug("client %p IDENTIFY_STDOUT %d", c, c->out_fd);
+ 		break;
++#endif
+ 	case MSG_IDENTIFY_ENVIRON:
+ 		if (datalen == 0 || data[datalen - 1] != '\0')
+ 			fatalx("bad MSG_IDENTIFY_ENVIRON string");
+@@ -3035,8 +3043,9 @@
+ 	c->name = name;
+ 	log_debug("client %p name is %s", c, c->name);
+ 
+-#ifdef __CYGWIN__
+-	c->fd = open(c->ttyname, O_RDWR|O_NOCTTY);
++#ifdef TTY_OVER_SOCKET
++	c->fd = open("/dev/ptmx", O_RDWR|O_NOCTTY);
++	c->out_fd = dup(c->fd);
+ #endif
+ 
+ 	if (c->flags & CLIENT_CONTROL)
+diff -ruN tmux-3.4.orig/tmux-protocol.h tmux-3.4/tmux-protocol.h
+--- tmux-3.4.orig/tmux-protocol.h	1900-01-00 00:00:00 +0000
++++ tmux-3.4/tmux-protocol.h	1900-01-00 00:00:00 +0000
+@@ -68,6 +68,11 @@
+ 	MSG_WRITE_READY,
+ 	MSG_WRITE_CLOSE,
+ 	MSG_READ_CANCEL
++#ifdef TTY_OVER_SOCKET
++	,
++	MSG_TTY_READ,
++	MSG_TTY_WRITE
++#endif
+ };
+ 
+ /*
+diff -ruN tmux-3.4.orig/tmux.h tmux-3.4/tmux.h
+--- tmux-3.4.orig/tmux.h	1900-01-00 00:00:00 +0000
++++ tmux-3.4/tmux.h	1900-01-00 00:00:00 +0000
+@@ -2407,6 +2407,11 @@
+ void	tty_cmd_syncstart(struct tty *, const struct tty_ctx *);
+ void	tty_default_colours(struct grid_cell *, struct window_pane *);
+ 
++#ifdef TTY_OVER_SOCKET
++int		tty_attach_stdin_to_socket(struct tty *, struct tmuxpeer *);
++int		tty_attach_out_to_socket(struct tty *, struct client *);
++#endif
++
+ /* tty-term.c */
+ extern struct tty_terms tty_terms;
+ u_int		 tty_term_ncodes(void);
+diff -ruN tmux-3.4.orig/tty.c tmux-3.4/tty.c
+--- tmux-3.4.orig/tty.c	1900-01-00 00:00:00 +0000
++++ tmux-3.4/tty.c	1900-01-00 00:00:00 +0000
+@@ -242,6 +242,11 @@
+ 	struct client	*c = tty->client;
+ 	size_t		 size = EVBUFFER_LENGTH(tty->out);
+ 	int		 nwrite;
++#ifdef TTY_OVER_SOCKET
++	enum msgtype	 msg = MSG_TTY_READ;
++
++	proc_send(c->peer, msg, -1, EVBUFFER_DATA(tty->out), size);
++#endif
+ 
+ 	nwrite = evbuffer_write(tty->out, c->fd);
+ 	if (nwrite == -1)
+@@ -296,6 +301,40 @@
+ 	return (0);
+ }
+ 
++#ifdef TTY_OVER_SOCKET
++static struct tmuxpeer *client_peer;
++
++static void
++tty_stdin_socket_callback(int fd, __unused short events, void *data)
++{
++	struct tty	*tty = data;
++	int		 nread;
++	enum msgtype	 msg = MSG_TTY_WRITE;
++
++	nread = evbuffer_read(tty->in, fd, -1);
++	if (nread == 0 || nread == -1) {
++		event_del(&tty->event_in);
++		return;
++	}
++
++	proc_send(client_peer, msg, -1, EVBUFFER_DATA(tty->in), nread);
++}
++
++int
++tty_attach_stdin_to_socket(struct tty *tty, struct tmuxpeer *peer)
++{
++	client_peer = peer;
++
++	event_set(&tty->event_in, STDIN_FILENO, EV_PERSIST|EV_READ,
++	    tty_stdin_socket_callback, tty);
++	tty->in = evbuffer_new();
++	if (tty->in == NULL)
++		fatal("out of memory");
++
++	return (0);
++}
++#endif
++
+ static void
+ tty_start_timer_callback(__unused int fd, __unused short events, void *data)
+ {
