@@ -3,18 +3,15 @@
 
 _realname=crt
 _mingw_suff=mingw-w64-cross
-pkgname=("${_mingw_suff}-${_realname}")
-provides=("${_mingw_suff}-${_realname}-git")
-conflicts=("${_mingw_suff}-${_realname}-git")
-replaces=("${_mingw_suff}-${_realname}-git")
+pkgbase="${_mingw_suff}-${_realname}"
+pkgname=("${_mingw_suff}-${_realname}" "${_mingw_suff}-ucrt64-${_realname}" "${_mingw_suff}-mingw32-${_realname}" "${_mingw_suff}-mingw64-${_realname}")
 pkgver=12.0.0.r0.g819a6ec2e
-pkgrel=1
+pkgrel=2
 pkgdesc='MinGW-w64 CRT for cross-compiler'
 arch=('i686' 'x86_64')
 url='https://mingw-w64.sourceforge.io/'
 license=('custom')
 groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
-depends=("${_mingw_suff}-headers")
 makedepends=("git" "${_mingw_suff}-gcc" "${_mingw_suff}-binutils" 'autotools')
 options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
 _commit='819a6ec2ea87c19814b287e21d65e0dc7f05abba'
@@ -26,21 +23,15 @@ msys2_references=(
   'cpe: cpe:/a:mingw-w64:mingw-w64'
 )
 
-_targets="x86_64-w64-mingw32ucrt x86_64-w64-mingw32 i686-w64-mingw32"
-
 pkgver() {
   cd "${srcdir}/mingw-w64"
 
   git describe --long ${_commit} | sed 's/\([^-]*-g\)/r\1/;s/-/./g;s/^v//g'
 }
 
-prepare() {
-  cd "${srcdir}/mingw-w64"
-}
-
-build() {
-  for _target in ${_targets}; do
-    msg "Building ${_target} CRT"
+_build() {
+  _target=$1
+  msg "Building ${_target} CRT"
   case "${_target}" in
     i686*)
       _crt_configure_args="--disable-lib64 --enable-lib32"
@@ -51,30 +42,63 @@ build() {
   esac
     mkdir -p ${srcdir}/crt-${_target} && cd ${srcdir}/crt-${_target}
 
-    if [[ "${_target}" == "x86_64-w64-mingw32ucrt" ]]; then
-      _default_msvcrt=ucrt
-    else
-      _default_msvcrt=msvcrt
-    fi
+  if [[ "${_target}" == "x86_64-w64-mingw32ucrt" ]]; then
+    _default_msvcrt=ucrt
+  else
+    _default_msvcrt=msvcrt
+  fi
 
-    unset CC
-    ${srcdir}/mingw-w64/mingw-w64-crt/configure \
-    --build=${CHOST} \
-    --prefix=/opt/${_target} \
-    --host=${_target} \
-    --enable-wildcard \
-    --with-default-msvcrt=${_default_msvcrt} \
-    --disable-dependency-tracking \
-    ${_crt_configure_args}
+  unset CC
+  ${srcdir}/mingw-w64/mingw-w64-crt/configure \
+  --build=${CHOST} \
+  --prefix=/opt/${_target} \
+  --host=${_target} \
+  --enable-wildcard \
+  --with-default-msvcrt=${_default_msvcrt} \
+  --disable-dependency-tracking \
+  ${_crt_configure_args}
 
-    make
-  done
+  make
 }
 
-package() {
-  for _target in ${_targets}; do
-    msg "Installing ${_target} crt"
-    cd ${srcdir}/crt-${_target}
-    make DESTDIR=${pkgdir} install
-  done
+build() {
+  _build "x86_64-w64-mingw32ucrt"
+  _build "i686-w64-mingw32"
+  _build "x86_64-w64-mingw32"
+}
+
+_package() {
+  _target=$1
+  msg "Installing ${_target} crt"
+  cd ${srcdir}/crt-${_target}
+  make DESTDIR=${pkgdir} install
+}
+
+package_mingw-w64-cross-crt() {
+  pkgdesc+=" (meta package, for backward compatibility)"
+  depends=("${_mingw_suff}-headers")
+  provides=("${_mingw_suff}-${_realname}-git")
+  conflicts=("${_mingw_suff}-${_realname}-git")
+  replaces=("${_mingw_suff}-${_realname}-git")
+}
+
+package_mingw-w64-cross-ucrt64-crt() {
+  depends=("${_mingw_suff}-ucrt64-headers")
+  conflicts=("${_mingw_suff}-${_realname}<=12.0.0.r0.g819a6ec2e-1")
+
+  _package "x86_64-w64-mingw32ucrt"
+}
+
+package_mingw-w64-cross-mingw32-crt() {
+  depends=("${_mingw_suff}-mingw32-headers")
+  conflicts=("${_mingw_suff}-${_realname}<=12.0.0.r0.g819a6ec2e-1")
+
+  _package "i686-w64-mingw32"
+}
+
+package_mingw-w64-cross-mingw64-crt() {
+  depends=("${_mingw_suff}-mingw64-headers")
+  conflicts=("${_mingw_suff}-${_realname}<=12.0.0.r0.g819a6ec2e-1")
+
+  _package "x86_64-w64-mingw32"
 }
