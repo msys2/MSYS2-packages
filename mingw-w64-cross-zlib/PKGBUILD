@@ -2,10 +2,11 @@
 
 _realname=zlib
 _mingw_suff=mingw-w64-cross
-pkgname=("${_mingw_suff}-${_realname}")
+pkgbase="${_mingw_suff}-zlib"
+pkgname=("${_mingw_suff}-zlib" "${_mingw_suff}-ucrt64-zlib" "${_mingw_suff}-mingw32-zlib" "${_mingw_suff}-mingw64-zlib")
 pkgdesc="Compression library implementing the deflate compression method found in gzip and PKZIP"
 pkgver=1.3.1
-pkgrel=1
+pkgrel=2
 arch=('i686' 'x86_64')
 url="https://mingw-w64.sourceforge.io/"
 license=('custom')
@@ -28,8 +29,6 @@ msys2_references=(
 )
 validpgpkeys=('5ED46A6721D365587791E2AA783FCD8E58BCAFBA')
 
-_targets="x86_64-w64-mingw32ucrt i686-w64-mingw32 x86_64-w64-mingw32"
-
 prepare() {
   cd ${srcdir}/${_realname}-${pkgver}
   grep -A 24 '^  Copyright' zlib.h > LICENSE
@@ -39,21 +38,51 @@ prepare() {
   patch -p1 -i ${srcdir}/04-fix-largefile-support.patch
 }
 
-build() {
-  for _target in ${_targets}; do
-    msg "Configuring ${_realname} for ${_target}"
-    cp -rf ${srcdir}/${_realname}-${pkgver} ${srcdir}/${_realname}-${_target}
-    cd ${srcdir}/${_realname}-${_target}
-    unset CC CXX
-    CHOST=${_target} ./configure --prefix=/opt/${_target} --shared
-    make
-  done
+_build() {
+  _target=$1
+  msg "Configuring ${_realname} for ${_target}"
+  cp -rf ${srcdir}/${_realname}-${pkgver} ${srcdir}/${_realname}-${_target}
+  cd ${srcdir}/${_realname}-${_target}
+  unset CC CXX
+  CHOST=${_target} ./configure --prefix=/opt/${_target} --shared
+  make
 }
 
-package() {
-  for _target in ${_targets}; do
-    msg "Installing ${_realname} for ${_target}"
-    cd ${srcdir}/${_realname}-${_target}
-    make DESTDIR=${pkgdir} install
-  done
+_package() {
+  _target=$1
+  msg "Installing ${_realname} for ${_target}"
+  cd ${srcdir}/${_realname}-${_target}
+  make DESTDIR=${pkgdir} install
+}
+
+build() {
+  _build x86_64-w64-mingw32ucrt
+  _build i686-w64-mingw32
+  _build x86_64-w64-mingw32
+}
+
+package_mingw-w64-cross-zlib() {
+  depends=(
+    "${_mingw_suff}-ucrt64-zlib"
+    "${_mingw_suff}-mingw32-zlib"
+    "${_mingw_suff}-mingw64-zlib"
+  )
+}
+
+package_mingw-w64-cross-ucrt64-zlib() {
+  conflicts=("${_mingw_suff}-zlib<=1.3.1-1")
+
+  _package x86_64-w64-mingw32ucrt
+}
+
+package_mingw-w64-cross-mingw32-zlib() {
+  conflicts=("${_mingw_suff}-zlib<=1.3.1-1")
+
+  _package i686-w64-mingw32
+}
+
+package_mingw-w64-cross-mingw64-zlib() {
+  conflicts=("${_mingw_suff}-zlib<=1.3.1-1")
+
+  _package x86_64-w64-mingw32
 }
