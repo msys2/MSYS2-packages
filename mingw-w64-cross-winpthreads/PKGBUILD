@@ -2,19 +2,17 @@
 
 _realname=winpthreads
 _mingw_suff=mingw-w64-cross
-pkgname="${_mingw_suff}-${_realname}"
-provides=("${_mingw_suff}-${_realname}-git")
-conflicts=("${_mingw_suff}-${_realname}-git")
-replaces=("${_mingw_suff}-${_realname}-git")
+pkgbase="${_mingw_suff}-${_realname}"
+pkgname=("${_mingw_suff}-${_realname}" "${_mingw_suff}-ucrt64-${_realname}" "${_mingw_suff}-mingw32-${_realname}" "${_mingw_suff}-mingw64-${_realname}")
 pkgver=12.0.0.r0.g819a6ec2e
-pkgrel=1
+pkgrel=2
 pkgdesc="MinGW-w64 winpthreads library for cross-compiler"
 arch=('i686' 'x86_64')
-url="https://mingw-w64.sourceforge.io/"
+url="https://www.mingw-w64.org/"
+msys2_repository_url="https://sourceforge.net/p/mingw-w64/mingw-w64/ci/master/tree/mingw-w64-libraries/winpthreads"
 license=('custom')
 groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
 makedepends=("git" "${_mingw_suff}-gcc" "${_mingw_suff}-binutils" "${_mingw_suff}-crt" "${_mingw_suff}-headers" 'autotools')
-depends=("${_mingw_suff}-crt")
 optdepends=()
 backup=()
 options=('!strip' '!buildflags' 'staticlibs' '!emptydirs' '!buildflags')
@@ -27,8 +25,6 @@ msys2_references=(
   'archlinux: mingw-w64-winpthreads'
   'cpe: cpe:/a:mingw-w64:mingw-w64'
 )
-
-_targets="x86_64-w64-mingw32ucrt i686-w64-mingw32 x86_64-w64-mingw32"
 
 pkgver() {
   cd "$srcdir/mingw-w64"
@@ -43,23 +39,60 @@ prepare() {
   autoreconf -vfi
 }
 
-build() {
-  for _target in ${_targets}; do
-    mkdir -p ${srcdir}/winpthreads-build-${_target} && cd ${srcdir}/winpthreads-build-${_target}
-    unset CC
-    ${srcdir}/mingw-w64/mingw-w64-libraries/winpthreads/configure \
-      --prefix=/opt/${_target} \
-      --build=${CHOST} \
-      --host=${_target} \
-      --enable-static \
-      --enable-shared
-    make
-  done
+_build() {
+  _target=$1
+  mkdir -p ${srcdir}/winpthreads-build-${_target} && cd ${srcdir}/winpthreads-build-${_target}
+  unset CC
+  ${srcdir}/mingw-w64/mingw-w64-libraries/winpthreads/configure \
+    --prefix=/opt/${_target} \
+    --build=${CHOST} \
+    --host=${_target} \
+    --enable-static \
+    --enable-shared
+  make
 }
 
-package() {
-  for _target in ${_targets}; do
-    cd ${srcdir}/winpthreads-build-${_target}
-    make DESTDIR=${pkgdir} install
-  done
+_package() {
+  _target=$1
+  cd ${srcdir}/winpthreads-build-${_target}
+  make DESTDIR=${pkgdir} install
+}
+
+build() {
+  _build "x86_64-w64-mingw32ucrt"
+  _build "i686-w64-mingw32"
+  _build "x86_64-w64-mingw32"
+}
+
+package_mingw-w64-cross-winpthreads() {
+  pkgdesc+=" (meta package, for backward compatibility)"
+  depends=(
+    "${_mingw_suff}-ucrt64-${_realname}"
+    "${_mingw_suff}-mingw32-${_realname}"
+    "${_mingw_suff}-mingw64-${_realname}"
+  )
+  provides=("${_mingw_suff}-${_realname}-git")
+  conflicts=("${_mingw_suff}-${_realname}-git")
+  replaces=("${_mingw_suff}-${_realname}-git")
+}
+
+package_mingw-w64-cross-ucrt64-winpthreads() {
+  depends=("${_mingw_suff}-ucrt64-crt")
+  conflicts=("${_mingw_suff}-${_realname}<=12.0.0.r0.g819a6ec2e-1")
+
+  _package "x86_64-w64-mingw32ucrt"
+}
+
+package_mingw-w64-cross-mingw32-winpthreads() {
+  depends=("${_mingw_suff}-mingw32-crt")
+  conflicts=("${_mingw_suff}-${_realname}<=12.0.0.r0.g819a6ec2e-1")
+
+  _package "i686-w64-mingw32"
+}
+
+package_mingw-w64-cross-mingw64-winpthreads() {
+  depends=("${_mingw_suff}-mingw64-crt")
+  conflicts=("${_mingw_suff}-${_realname}<=12.0.0.r0.g819a6ec2e-1")
+
+  _package "x86_64-w64-mingw32"
 }
