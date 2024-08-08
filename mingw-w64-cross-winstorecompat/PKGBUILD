@@ -2,20 +2,18 @@
 
 _realname=winstorecompat
 _mingw_suff=mingw-w64-cross
-pkgname="${_mingw_suff}-${_realname}"
-provides=("${_mingw_suff}-${_realname}-git")
-conflicts=("${_mingw_suff}-${_realname}-git")
-replaces=("${_mingw_suff}-${_realname}-git")
+pkgbase="${_mingw_suff}-${_realname}"
+_targetpkgs=("${_mingw_suff}-ucrt64-${_realname}" "${_mingw_suff}-mingw32-${_realname}" "${_mingw_suff}-mingw64-${_realname}")
+pkgname=("${_mingw_suff}-${_realname}" "${_targetpkgs[@]}")
 pkgver=12.0.0.r0.g819a6ec2e
-pkgrel=1
+pkgrel=2
 pkgdesc="MinGW-w64 winRT compat library"
 arch=('i686' 'x86_64')
-url="https://mingw-w64.sourceforge.io/"
+url='https://www.mingw-w64.org'
+msys2_repository_url='https://sourceforge.net/p/mingw-w64/mingw-w64/ci/master/tree/mingw-w64-libraries/winstorecompat'
 license=('custom')
 groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
 makedepends=("git" "${_mingw_suff}-gcc" "${_mingw_suff}-binutils" "${_mingw_suff}-crt" "${_mingw_suff}-headers" 'autotools')
-depends=("${_mingw_suff}-crt")
-optdepends=()
 backup=()
 options=('!strip' '!buildflags' 'staticlibs' '!emptydirs' '!buildflags')
 _commit='819a6ec2ea87c19814b287e21d65e0dc7f05abba'
@@ -27,29 +25,64 @@ msys2_references=(
   'cpe: cpe:/a:mingw-w64:mingw-w64'
 )
 
-_targets="x86_64-w64-mingw32ucrt i686-w64-mingw32 x86_64-w64-mingw32"
-
 pkgver() {
   cd "${srcdir}/mingw-w64"
 
   git describe --long ${_commit} | sed 's/\([^-]*-g\)/r\1/;s/-/./g;s/^v//g'
 }
 
+_build() {
+  _target=$1
+  mkdir -p ${srcdir}/build-${_target} && cd ${srcdir}/build-${_target}
+  unset CC
+  ${srcdir}/mingw-w64/mingw-w64-libraries/winstorecompat/configure \
+    --prefix=/opt/${_target} \
+    --build=${CHOST} \
+    --host=${_target}
+  make
+}
+
+_package() {
+  _target=$1
+  cd ${srcdir}/build-${_target}
+  make DESTDIR=${pkgdir} install
+}
+
 build() {
-  for _target in ${_targets}; do
-    mkdir -p ${srcdir}/build-${_target} && cd ${srcdir}/build-${_target}
-    unset CC
-    ${srcdir}/mingw-w64/mingw-w64-libraries/winstorecompat/configure \
-      --prefix=/opt/${_target} \
-      --build=${CHOST} \
-      --host=${_target}
-    make
+  for _pkg in "${_targetpkgs[@]}"; do
+    case "$_pkg" in
+      "${_mingw_suff}-ucrt64-${_realname}") _build "x86_64-w64-mingw32ucrt" ;;
+      "${_mingw_suff}-mingw32-${_realname}") _build "i686-w64-mingw32" ;;
+      "${_mingw_suff}-mingw64-${_realname}") _build "x86_64-w64-mingw32" ;;
+    esac
   done
 }
 
-package() {
-  for _target in ${_targets}; do
-    cd ${srcdir}/build-${_target}
-    make DESTDIR=${pkgdir} install
-  done
+package_mingw-w64-cross-winstorecompat() {
+  pkgdesc+=" (meta package, for backward compatibility)"
+  depends=("${_targetpkgs[@]}")
+  provides=("${_mingw_suff}-${_realname}-git")
+  conflicts=("${_mingw_suff}-${_realname}-git")
+  replaces=("${_mingw_suff}-${_realname}-git")
+}
+
+package_mingw-w64-cross-ucrt64-winstorecompat() {
+  depends=("${_mingw_suff}-ucrt64-crt")
+  conflicts=("${_mingw_suff}-${_realname}<=12.0.0.r0.g819a6ec2e-1")
+
+  _package "x86_64-w64-mingw32ucrt"
+}
+
+package_mingw-w64-cross-mingw32-winstorecompat() {
+  depends=("${_mingw_suff}-mingw32-crt")
+  conflicts=("${_mingw_suff}-${_realname}<=12.0.0.r0.g819a6ec2e-1")
+
+  _package "i686-w64-mingw32"
+}
+
+package_mingw-w64-cross-mingw64-winstorecompat() {
+  depends=("${_mingw_suff}-mingw64-crt")
+  conflicts=("${_mingw_suff}-${_realname}<=12.0.0.r0.g819a6ec2e-1")
+
+  _package "x86_64-w64-mingw32"
 }
