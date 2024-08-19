@@ -2,9 +2,11 @@
 
 _realname=gcc
 _mingw_suff=mingw-w64-cross
-pkgname=("${_mingw_suff}-${_realname}")
+pkgbase="${_mingw_suff}-${_realname}"
+_targetpkgs=("${_mingw_suff}-ucrt64-${_realname}" "${_mingw_suff}-mingw32-${_realname}" "${_mingw_suff}-mingw64-${_realname}")
+pkgname=("${_mingw_suff}-${_realname}" "${_targetpkgs[@]}")
 pkgver=14.2.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Cross GCC for the MinGW-w64"
 arch=('i686' 'x86_64')
 url="https://gcc.gnu.org"
@@ -14,13 +16,10 @@ msys2_references=(
   'cpe: cpe:/a:gnu:gcc'
 )
 groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
-depends=("zlib" "mpc" "isl" "libzstd"
-         "${_mingw_suff}-binutils"
-         "${_mingw_suff}-crt"
-         "${_mingw_suff}-headers"
-         "${_mingw_suff}-winpthreads"
-         "${_mingw_suff}-windows-default-manifest")
-makedepends=("gcc" 'lndir' "gmp-devel" "mpc-devel" "zlib-devel" "isl-devel" 'autotools' 'gperf' 'libzstd-devel')
+depends=("zlib" "mpc" "isl" "libzstd" "${_mingw_suff}-binutils")
+makedepends=("gcc" 'lndir' "gmp-devel" "mpc-devel" "zlib-devel" "isl-devel" 'autotools' 'gperf' 'libzstd-devel'
+             "${_mingw_suff}-crt" "${_mingw_suff}-headers" "${_mingw_suff}-winpthreads"
+             "${_mingw_suff}-windows-default-manifest")
 #checkdepends=('dejagnu')
 options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
 source=(https://ftp.gnu.org/gnu/gcc/gcc-${pkgver}/gcc-${pkgver}.tar.gz
@@ -98,84 +97,131 @@ prepare() {
     0200-add-m-no-align-vector-insn-option-for-i386.patch
 }
 
-build() {
+_build() {
+  _target=$1
   export lt_cv_deplibs_check_method='pass_all'
-  for _target in ${_targets}; do
-    mkdir -p ${srcdir}/gcc-build-${_target} && cd ${srcdir}/gcc-build-${_target}
 
-    local _langs="c,lto,c++"
-    case "${_target}" in
-      i686*)
-        local _conf="--disable-sjlj-exceptions --with-dwarf2"
-        local _arch=pentium4
-        _langs="${_langs} fortran"
-      ;;
+  mkdir -p ${srcdir}/gcc-build-${_target} && cd ${srcdir}/gcc-build-${_target}
 
-      x86_64*)
-        local _arch=nocona
-        local _conf=""
-        _langs="${_langs} fortran"
-      ;;
+  local _langs="c,lto,c++"
+  case "${_target}" in
+    i686*)
+      local _conf="--disable-sjlj-exceptions --with-dwarf2"
+      local _arch=pentium4
+      _langs="${_langs} fortran"
+    ;;
+
+    x86_64*)
+      local _arch=nocona
+      local _conf=""
+      _langs="${_langs} fortran"
+    ;;
+  esac
+
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+
+  ../${_realname}-${pkgver}/configure \
+    --prefix=/opt \
+    --build=${CYGWIN_CHOST} \
+    --host=${CYGWIN_CHOST} \
+    --target=${_target} \
+    --libexecdir=/opt/lib \
+    --disable-bootstrap \
+    --with-arch=${_arch} \
+    --with-tune=generic \
+    --enable-languages=${_langs} \
+    --enable-shared \
+    --enable-static \
+    --enable-threads=${_threads} \
+    --enable-graphite \
+    --enable-fully-dynamic-string \
+    --enable-libstdcxx-filesystem-ts \
+    --enable-libstdcxx-time \
+    --disable-libstdcxx-pch \
+    --disable-libstdcxx-debug \
+    --enable-cloog-backend=isl \
+    --enable-version-specific-runtime-libs \
+    --disable-isl-version-check \
+    --enable-lto \
+    --enable-libgomp \
+    --disable-libssp \
+    --disable-multilib \
+    --enable-checking=release \
+    --disable-rpath \
+    --disable-win32-registry \
+    --disable-werror \
+    --disable-symvers \
+    --with-libiconv \
+    --with-system-zlib \
+    --with-{gmp,mpfr,mpc,isl}=/usr \
+    --with-gnu-as \
+    --with-gnu-ld \
+    ${_conf} \
+    CFLAGS="-O2 -pipe" \
+    CXXFLAGS="-O2 -pipe"
+
+  make all
+}
+
+_package() {
+  _target=$1
+  cd ${srcdir}/gcc-build-${_target}
+  make -j1 DESTDIR=${pkgdir} install
+  mv ${pkgdir}/opt/lib/gcc/${_target}/lib/libgcc_s.a ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/
+  mv ${pkgdir}/opt/lib/gcc/${_target}/libgcc*.dll ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/
+  for _f in ${pkgdir}/opt/bin/*.exe; do
+    strip -s ${_f}
+  done
+  for _f in ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/*.exe; do
+    strip -s ${_f}
+  done
+  rm -rf ${pkgdir}/opt/share
+}
+
+build() {
+  for _pkg in "${_targetpkgs[@]}"; do
+    case "$_pkg" in
+      "${_mingw_suff}-ucrt64-${_realname}") _build "x86_64-w64-mingw32ucrt" ;;
+      "${_mingw_suff}-mingw32-${_realname}") _build "i686-w64-mingw32" ;;
+      "${_mingw_suff}-mingw64-${_realname}") _build "x86_64-w64-mingw32" ;;
     esac
-
-    local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
-
-    ../${_realname}-${pkgver}/configure \
-      --prefix=/opt \
-      --build=${CYGWIN_CHOST} \
-      --host=${CYGWIN_CHOST} \
-      --target=${_target} \
-      --libexecdir=/opt/lib \
-      --disable-bootstrap \
-      --with-arch=${_arch} \
-      --with-tune=generic \
-      --enable-languages=${_langs} \
-      --enable-shared \
-      --enable-static \
-      --enable-threads=${_threads} \
-      --enable-graphite \
-      --enable-fully-dynamic-string \
-      --enable-libstdcxx-filesystem-ts \
-      --enable-libstdcxx-time \
-      --disable-libstdcxx-pch \
-      --disable-libstdcxx-debug \
-      --enable-cloog-backend=isl \
-      --enable-version-specific-runtime-libs \
-      --disable-isl-version-check \
-      --enable-lto \
-      --enable-libgomp \
-      --disable-libssp \
-      --disable-multilib \
-      --enable-checking=release \
-      --disable-rpath \
-      --disable-win32-registry \
-      --disable-werror \
-      --disable-symvers \
-      --with-libiconv \
-      --with-system-zlib \
-      --with-{gmp,mpfr,mpc,isl}=/usr \
-      --with-gnu-as \
-      --with-gnu-ld \
-      ${_conf} \
-      CFLAGS="-O2 -pipe" \
-      CXXFLAGS="-O2 -pipe"
-
-    make all
   done
 }
 
-package() {
-  for _target in ${_targets}; do
-    cd ${srcdir}/gcc-build-${_target}
-    make -j1 DESTDIR=${pkgdir} install
-    mv ${pkgdir}/opt/lib/gcc/${_target}/lib/libgcc_s.a ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/
-    mv ${pkgdir}/opt/lib/gcc/${_target}/libgcc*.dll ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/
-    for _f in ${pkgdir}/opt/bin/*.exe; do
-      strip -s ${_f}
-    done
-    for _f in ${pkgdir}/opt/lib/gcc/${_target}/${pkgver}/*.exe; do
-      strip -s ${_f}
-    done
-    rm -rf ${pkgdir}/opt/share
-  done
+package_mingw-w64-cross-gcc() {
+  pkgdesc+=" (meta package, for backward compatibility)"
+  depends=("${_targetpkgs[@]}")
+}
+
+package_mingw-w64-cross-ucrt64-gcc() {
+  conflicts=("${_mingw_suff}-${_realname}<=14.2.0-1")
+  depends+=(
+    "${_mingw_suff}-ucrt64-crt"
+    "${_mingw_suff}-ucrt64-headers"
+    "${_mingw_suff}-ucrt64-winpthreads"
+    "${_mingw_suff}-ucrt64-windows-default-manifest"
+  )
+  _package "x86_64-w64-mingw32ucrt"
+}
+
+package_mingw-w64-cross-mingw32-gcc() {
+  conflicts=("${_mingw_suff}-${_realname}<=14.2.0-1")
+  depends+=(
+    "${_mingw_suff}-mingw32-crt"
+    "${_mingw_suff}-mingw32-headers"
+    "${_mingw_suff}-mingw32-winpthreads"
+    "${_mingw_suff}-mingw32-windows-default-manifest"
+  )
+  _package "i686-w64-mingw32"
+}
+
+package_mingw-w64-cross-mingw64-gcc() {
+  conflicts=("${_mingw_suff}-${_realname}<=14.2.0-1")
+  depends+=(
+    "${_mingw_suff}-mingw64-crt"
+    "${_mingw_suff}-mingw64-headers"
+    "${_mingw_suff}-mingw64-winpthreads"
+    "${_mingw_suff}-mingw64-windows-default-manifest"
+  )
+  _package "x86_64-w64-mingw32"
 }
