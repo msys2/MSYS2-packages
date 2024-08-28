@@ -10,7 +10,7 @@
 # The copy in your home directory (~/.bash_profile) is yours, please
 # feel free to customise it to create a shell
 # environment to your liking.  If you feel a change
-# would be benifitial to all, please feel free to send
+# would be beneficial to all, please feel free to send
 # a patch to the msys2 mailing list.
 
 # User dependent .bash_profile file
