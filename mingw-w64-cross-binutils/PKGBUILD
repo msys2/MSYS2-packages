@@ -3,9 +3,10 @@
 
 _realname=binutils
 _mingw_suff=mingw-w64-cross
-pkgname=("${_mingw_suff}-${_realname}")
+_targetpkgs=("${_mingw_suff}-ucrt64-${_realname}" "${_mingw_suff}-mingw32-${_realname}" "${_mingw_suff}-mingw64-${_realname}")
+pkgname=("${_mingw_suff}-${_realname}" "${_mingw_suff}-common-${_realname}" "${_targetpkgs[@]}")
 pkgver=2.43
-pkgrel=1
+pkgrel=2
 pkgdesc="A set of programs to assemble and manipulate binary and object files"
 arch=('i686' 'x86_64')
 url="https://www.gnu.org/software/binutils/"
@@ -14,9 +15,9 @@ msys2_references=(
 )
 license=('GPL')
 groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
-depends=("libiconv" "zlib" "libzstd")
+depends=("libiconv" "zlib" "libzstd" "libintl")
 checkdepends=('dejagnu' 'bc')
-makedepends=("libiconv-devel" "zlib-devel" 'autotools' 'gcc' 'libzstd-devel')
+makedepends=("libiconv-devel" "zlib-devel" 'autotools' 'gcc' 'libzstd-devel' 'gettext-devel')
 options=('staticlibs' '!distcc' '!ccache' '!buildflags')
 source=(https://ftp.gnu.org/gnu/binutils/binutils-${pkgver}.tar.xz{,.sig}
         0002-check-for-unusual-file-harder.patch
@@ -30,8 +31,6 @@ validpgpkeys=('EAF1C276A747E9ED86210CBAC3126D3B4AE55E93'
 msys2_references=(
   'archlinux: binutils'
 )
-
-_targets="x86_64-w64-mingw32ucrt i686-w64-mingw32 x86_64-w64-mingw32"
 
 apply_patch_with_msg() {
   for _patch in "$@"
@@ -49,45 +48,103 @@ prepare() {
     0010-bfd-Increase-_bfd_coff_max_nscns-to-65279.patch
 }
 
+_build() {
+  _target=$1
+  mkdir -p ${srcdir}/binutils-build-${_target} && cd ${srcdir}/binutils-build-${_target}
+
+  local _conf='--enable-lto'
+
+  if [ "${_target}" != "i686-w64-mingw32" ]; then
+    _conf+=' --enable-64-bit-bfd'
+  fi
+
+  MSYSTEM=CYGWIN
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+  ${srcdir}/binutils-${pkgver}/configure \
+    --build=${CYGWIN_CHOST} \
+    --host=${CYGWIN_CHOST} \
+    --target=${_target} \
+    --disable-dependency-tracking \
+    --prefix=/opt \
+    --disable-werror \
+    --with-libiconv-prefix=/usr \
+    --with-system-zlib \
+    $_conf
+
+  make
+}
+
+_check() {
+  _target=$1
+  cd ${srcdir}/binutils-build-${_target}
+
+  # unset LDFLAGS as testsuite makes assumptions about which ones are active
+  # do not abort on errors - manually check log files
+  make LDFLAGS="" -k check || true
+}
+
+_package() {
+  _target=$1
+  cd ${srcdir}/binutils-build-${_target}
+  make DESTDIR=${pkgdir} install
+  rm -rf "${pkgdir}/opt/share/info"
+  rm -rf "${pkgdir}/opt/share/locale"
+  rm -rf "${pkgdir}/opt/lib"
+}
+
 build() {
-  for _target in ${_targets}; do
-    mkdir -p ${srcdir}/binutils-build-${_target} && cd ${srcdir}/binutils-build-${_target}
-
-    local _conf='--enable-lto'
-
-    if [ "${_target}" != "i686-w64-mingw32" ]; then
-     _conf+=' --enable-64-bit-bfd'
-    fi
-
-    MSYSTEM=CYGWIN
-    local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
-    ${srcdir}/binutils-${pkgver}/configure \
-      --build=${CYGWIN_CHOST} \
-      --host=${CYGWIN_CHOST} \
-      --target=${_target} \
-      --prefix=/opt \
-      --disable-werror \
-      --with-libiconv-prefix=/usr \
-      --with-system-zlib \
-      $_conf
-
-    make
+  for _pkg in "${_targetpkgs[@]}"; do
+    case "$_pkg" in
+      "${_mingw_suff}-ucrt64-${_realname}") _build "x86_64-w64-mingw32ucrt" ;;
+      "${_mingw_suff}-mingw32-${_realname}") _build "i686-w64-mingw32" ;;
+      "${_mingw_suff}-mingw64-${_realname}") _build "x86_64-w64-mingw32" ;;
+    esac
   done
 }
 
 check() {
-  for _target in ${_targets}; do
-    cd ${srcdir}/binutils-build-${_target}
-
-    # unset LDFLAGS as testsuite makes assumptions about which ones are active
-    # do not abort on errors - manually check log files
-    make LDFLAGS="" -k check || true
+  for _pkg in "${_targetpkgs[@]}"; do
+    case "$_pkg" in
+      "${_mingw_suff}-ucrt64-${_realname}") _check "x86_64-w64-mingw32ucrt" ;;
+      "${_mingw_suff}-mingw32-${_realname}") _check "i686-w64-mingw32" ;;
+      "${_mingw_suff}-mingw64-${_realname}") _check "x86_64-w64-mingw32" ;;
+    esac
   done
 }
 
-package() {
-  for _target in ${_targets}; do
-    cd ${srcdir}/binutils-build-${_target}
-    make DESTDIR=${pkgdir} install
-  done
+package_mingw-w64-cross-binutils() {
+  pkgdesc+=" (meta package, for backward compatibility)"
+  depends=("${_targetpkgs[@]}")
+}
+
+package_mingw-w64-cross-common-binutils() {
+  pkgdesc+=" (common files for all targets)"
+  conflicts=("${_mingw_suff}-${_realname}<=2.43-1")
+
+  _target="x86_64-w64-mingw32"
+  cd ${srcdir}/binutils-build-${_target}
+  make DESTDIR="${srcdir}/temp" install
+
+  mkdir -p "${pkgdir}/opt/share"
+  mv "${srcdir}/temp/opt/share/locale" "${pkgdir}/opt/share/locale"
+  mv "${srcdir}/temp/opt/share/info" "${pkgdir}/opt/share/info"
+  mv "${srcdir}/temp/opt/lib" "${pkgdir}/opt/lib"
+}
+
+package_mingw-w64-cross-ucrt64-binutils() {
+  conflicts=("${_mingw_suff}-${_realname}<=2.43-1")
+  depends+=("${_mingw_suff}-common-${_realname}")
+  _package "x86_64-w64-mingw32ucrt"
+}
+
+package_mingw-w64-cross-mingw32-binutils() {
+  conflicts=("${_mingw_suff}-${_realname}<=2.43-1")
+  depends+=("${_mingw_suff}-common-${_realname}")
+  _package "i686-w64-mingw32"
+}
+
+package_mingw-w64-cross-mingw64-binutils() {
+  conflicts=("${_mingw_suff}-${_realname}<=2.43-1")
+  depends+=("${_mingw_suff}-common-${_realname}")
+  _package "x86_64-w64-mingw32"
 }
