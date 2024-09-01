@@ -1,0 +1,124 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+# Contributor: Martell Malone <martellmalone@gmail.com>
+
+_realname=binutils
+_mingw_suff=mingw-w64-cross
+_targetpkgs=("${_mingw_suff}-mingwarm64-${_realname}")
+pkgname=("${_targetpkgs[@]}")
+pkgver=2.43dev
+pkgrel=1
+pkgdesc="A set of programs to assemble and manipulate binary and object files"
+arch=('i686' 'x86_64')
+url="https://www.gnu.org/software/binutils/"
+msys2_repository_url="https://github.com/Windows-on-ARM-Experiments/binutils-woarm64"
+msys2_references=(
+  "cpe: cpe:/a:gnu:binutils"
+)
+license=('GPL')
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+depends=("libiconv" "zlib" "libzstd" "libintl")
+checkdepends=('dejagnu' 'bc')
+makedepends=("libiconv-devel" "zlib-devel" 'autotools' 'gcc' 'libzstd-devel' 'gettext-devel' 'git' 'gmp-devel' 'mpfr-devel')
+options=('staticlibs' '!distcc' '!ccache' '!buildflags')
+_commit="3beafab9de360fef4454745fbd4f5537c33e46b3"
+source=("${_realname}"::"git+https://github.com/Windows-on-ARM-Experiments/binutils-woarm64.git#commit=${_commit}"
+        0002-check-for-unusual-file-harder.patch
+        0010-bfd-Increase-_bfd_coff_max_nscns-to-65279.patch)
+sha256sums=('379236dc2ba5feeeeaea81e5d6d75b5627536ea522fba6639ad6606ed63c8f3e'
+            '2c99345fc575c3a060d6677537f636c6c4154fac0fde508070f3b6296c1060d4'
+            '4e8ac055df61b1b5d6ae29dc87e1154737c2e87c7b244b44866702cabf1a5d18')
+validpgpkeys=('EAF1C276A747E9ED86210CBAC3126D3B4AE55E93'
+              '3A24BC1E8FB409FA9F14371813FCEF89DD9E3C4F')
+msys2_references=(
+  'archlinux: binutils'
+)
+
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying ${_patch}"
+    patch -p1 -i "${srcdir}/${_patch}"
+  done
+}
+
+prepare() {
+  cd ${srcdir}/binutils
+
+  apply_patch_with_msg \
+    0002-check-for-unusual-file-harder.patch \
+    0010-bfd-Increase-_bfd_coff_max_nscns-to-65279.patch
+}
+
+_build() {
+  _target=$1
+  mkdir -p ${srcdir}/binutils-build-${_target} && cd ${srcdir}/binutils-build-${_target}
+
+  local _conf='--enable-lto'
+
+  if [ "${_target}" != "i686-w64-mingw32" ]; then
+    _conf+=' --enable-64-bit-bfd'
+  fi
+
+  MSYSTEM=CYGWIN
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+  ${srcdir}/binutils/configure \
+    --build=${CYGWIN_CHOST} \
+    --host=${CYGWIN_CHOST} \
+    --target=${_target} \
+    --disable-dependency-tracking \
+    --prefix=/opt \
+    --disable-werror \
+    --with-libiconv-prefix=/usr \
+    --with-system-zlib \
+    $_conf
+
+  make
+}
+
+_check() {
+  _target=$1
+  cd ${srcdir}/binutils-build-${_target}
+
+  # unset LDFLAGS as testsuite makes assumptions about which ones are active
+  # do not abort on errors - manually check log files
+  make LDFLAGS="" -k check || true
+}
+
+_package() {
+  _target=$1
+  cd ${srcdir}/binutils-build-${_target}
+  make DESTDIR=${pkgdir} install
+  rm -rf "${pkgdir}/opt/share/info"
+  rm -rf "${pkgdir}/opt/share/locale"
+  rm -rf "${pkgdir}/opt/share/gdb"
+  rm -rf "${pkgdir}/opt/lib"
+  rm -rf "${pkgdir}/opt/include"
+}
+
+build() {
+  for _pkg in "${_targetpkgs[@]}"; do
+    case "$_pkg" in
+      "${_mingw_suff}-ucrt64-${_realname}") _build "x86_64-w64-mingw32ucrt" ;;
+      "${_mingw_suff}-mingw32-${_realname}") _build "i686-w64-mingw32" ;;
+      "${_mingw_suff}-mingw64-${_realname}") _build "x86_64-w64-mingw32" ;;
+      "${_mingw_suff}-mingwarm64-${_realname}") _build "aarch64-w64-mingw32" ;;
+    esac
+  done
+}
+
+check() {
+  for _pkg in "${_targetpkgs[@]}"; do
+    case "$_pkg" in
+      "${_mingw_suff}-ucrt64-${_realname}") _check "x86_64-w64-mingw32ucrt" ;;
+      "${_mingw_suff}-mingw32-${_realname}") _check "i686-w64-mingw32" ;;
+      "${_mingw_suff}-mingw64-${_realname}") _check "x86_64-w64-mingw32" ;;
+      "${_mingw_suff}-mingwarm64-${_realname}") _check "aarch64-w64-mingw32" ;;
+    esac
+  done
+}
+
+package_mingw-w64-cross-mingwarm64-binutils() {
+  conflicts=("${_mingw_suff}-${_realname}<=2.43-1")
+  depends+=("${_mingw_suff}-common-${_realname}")
+  _package "aarch64-w64-mingw32"
+}
