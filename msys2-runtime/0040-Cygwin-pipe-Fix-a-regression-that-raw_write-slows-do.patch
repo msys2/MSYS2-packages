@@ -1,0 +1,46 @@
+From 2bfb7739dadf6a27f9b4c006adfd69944f3df2f1 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Sun, 1 Sep 2024 04:31:03 +0900
+Subject: [PATCH 40/N] Cygwin: pipe: Fix a regression that raw_write() slows
+ down
+
+After the commit 7f3c22532577, writing to pipe extremely slows down.
+This is because cygwait(select_sem, 10, cw_cancel) is called even
+when write operation is already completed. With this patch, the
+cygwait() is called only if the write operation is not completed.
+
+Backported-from: 37ab3e0d55 (Cygwin: pipe: Fix a regression that raw_write() slows down, 2024-09-01)
+Addresses: https://cygwin.com/pipermail/cygwin/2024-August/256398.html
+Fixes: 7f3c22532577 ("Cygwin: pipe: handle signals explicitely in raw_write")
+Reported-by: Jim Reisert AD1C <jjreisert@alum.mit.edu>
+Reviewed-by: Corinna Vinschen <corinna@vinschen.de>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/fhandler/pipe.cc | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler/pipe.cc b/winsup/cygwin/fhandler/pipe.cc
+index 5d2fe12..040176e 100644
+--- a/winsup/cygwin/fhandler/pipe.cc
++++ b/winsup/cygwin/fhandler/pipe.cc
+@@ -503,8 +503,9 @@ fhandler_pipe_fifo::raw_write (const void *ptr, size_t len)
+ 		      raise (SIGPIPE);
+ 		      goto out;
+ 		    }
+-		  else
+-		    cygwait (select_sem, 10, cw_cancel);
++		  /* Break out on completion */
++		  if (waitret == WAIT_OBJECT_0)
++		    break;
+ 		  /* If we got a timeout in the blocking case, and we already
+ 		     did a short write, we got a signal in the previous loop. */
+ 		  if (waitret == WAIT_TIMEOUT && short_write_once)
+@@ -512,6 +513,7 @@ fhandler_pipe_fifo::raw_write (const void *ptr, size_t len)
+ 		      waitret = WAIT_SIGNALED;
+ 		      break;
+ 		    }
++		  cygwait (select_sem, 10, cw_cancel);
+ 		}
+ 	      /* Loop in case of blocking write or SA_RESTART */
+ 	      while (waitret == WAIT_TIMEOUT || waitret == WAIT_SIGNALED);
