@@ -1,0 +1,77 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=zlib
+_mingw_suff=mingw-w64-cross
+pkgbase="${_mingw_suff}-zlib"
+_targetpkgs=("${_mingw_suff}-mingwarm64-${_realname}")
+pkgname=("${_mingw_suff}-${_realname}" "${_targetpkgs[@]}")
+pkgdesc="Compression library implementing the deflate compression method found in gzip and PKZIP"
+pkgver=1.3.1
+pkgrel=4
+arch=('aarch64' 'i686' 'x86_64')
+url="https://www.zlib.net/"
+msys2_repository_url="https://github.com/madler/zlib"
+license=('spdx:Zlib')
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+depends=()
+makedepends=("${_mingw_suff}-gcc" 'autotools')
+options=('!strip' '!buildflags')
+source=("https://github.com/madler/zlib/releases/download/v${pkgver}/zlib-${pkgver}.tar.xz"{,.asc}
+        01-zlib-1.2.11-1-buildsys.mingw.patch
+        03-dont-put-sodir-into-L.mingw.patch
+        04-fix-largefile-support.patch)
+sha256sums=('38ef96b8dfe510d42707d9c781877914792541133e1870841463bfa73f883e32'
+            'SKIP'
+            '8175e70c980ffc48a2e90c6f0431ddb80ef6ff690f9e8906dd6a756238552fa5'
+            '7287d12db57dcf0f66964c861100bf06ebe1ddcb243e7ee0773fcab1b2935596'
+            '4d8ebda55b95d19cd7c467c486d4c42d2bad6db9ff5dca361f6d8c24120e5f30')
+msys2_references=(
+  'archlinux: zlib'
+  'cpe: cpe:/a:zlib:zlib'
+)
+validpgpkeys=('5ED46A6721D365587791E2AA783FCD8E58BCAFBA')
+
+prepare() {
+  cd ${srcdir}/${_realname}-${pkgver}
+  grep -A 24 '^  Copyright' zlib.h > LICENSE
+
+  patch -p1 -i ${srcdir}/01-zlib-1.2.11-1-buildsys.mingw.patch
+  patch -p1 -i ${srcdir}/03-dont-put-sodir-into-L.mingw.patch
+  patch -p1 -i ${srcdir}/04-fix-largefile-support.patch
+}
+
+_build() {
+  _target=$1
+  msg "Configuring ${_realname} for ${_target}"
+  cp -rf ${srcdir}/${_realname}-${pkgver} ${srcdir}/${_realname}-${_target}
+  cd ${srcdir}/${_realname}-${_target}
+  unset CC CXX
+  CHOST=${_target} ./configure --prefix=/opt/${_target} --shared
+  make
+}
+
+_package() {
+  _target=$1
+  msg "Installing ${_realname} for ${_target}"
+  cd ${srcdir}/${_realname}-${_target}
+  make DESTDIR=${pkgdir} install
+}
+
+build() {
+  for _pkg in "${_targetpkgs[@]}"; do
+    case "$_pkg" in
+      "${_mingw_suff}-mingwarm64-${_realname}") _build "aarch64-w64-mingw32" ;;
+    esac
+  done
+}
+
+package_mingw-w64-cross-zlib() {
+  pkgdesc+=" (meta package, for backward compatibility)"
+  depends=("${_targetpkgs[@]}")
+}
+
+package_mingw-w64-cross-mingwarm64-zlib() {
+  conflicts=("${_mingw_suff}-zlib<=1.3.1-1")
+
+  _package aarch64-w64-mingw32
+}
