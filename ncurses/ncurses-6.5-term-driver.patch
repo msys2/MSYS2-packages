@@ -1,0 +1,418 @@
+From: Rafael Kitover <rkitover@gmail.com>
+Date: Mon, 26 Aug 2024 16:02:52 +0000
+Subject: [PATCH] Add support for Win32 term-driver for Cygwin
+
+Separate the `_NC_WINDOWS` platform macro into `_NC_WINDOWS_NATIVE`, for
+MinGW and other native Win32 support, and `_NC_WINDOWS`, to make some
+Win32 features available under the Cygwin runtime, in this case the
+term-driver.
+
+Make some minor adjustments to allow `./configure --enable-term-driver`
+to also work on Cygwin platforms such as Cygwin and MSYS2.
+
+Also, and unrelated, on native Win32, prefer `pwsh.exe`, followed by
+`powershell.exe`, followed by `cmd.exe` as the shell, in that order.
+
+This is the rebased version of the patch sent to the ncurses mailing
+list.
+
+Signed-off-by: Rafael Kitover <rkitover@gmail.com>
+
+diff -ruN ncurses-6.5.orig/configure ncurses-6.5/configure
+--- ncurses-6.5.orig/configure	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/configure	1900-01-00 00:00:00 +0000
+@@ -28397,7 +28397,7 @@
+ if test "$with_term_driver" != no ; then
+ 	LIB_SUBSETS="${LIB_SUBSETS}+port_drivers"
+ 	case "$cf_cv_system_name" in
+-	(*mingw32*|*mingw64*)
++        (*mingw32*|*mingw64*|*msys*|*cygwin*)
+ 		if test "x$with_exp_win32" = xyes ; then
+ 			LIB_SUBSETS="${LIB_SUBSETS}+port_tinfo+port_win32"
+ 		else
+diff -ruN ncurses-6.5.orig/configure.in ncurses-6.5/configure.in
+--- ncurses-6.5.orig/configure.in	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/configure.in	1900-01-00 00:00:00 +0000
+@@ -2100,7 +2100,7 @@
+ if test "$with_term_driver" != no ; then
+ 	LIB_SUBSETS="${LIB_SUBSETS}+port_drivers"
+ 	case "$cf_cv_system_name" in
+-	(*mingw32*|*mingw64*)
++	(*mingw32*|*mingw64*|*msys*|*cygwin*)
+ 		if test "x$with_exp_win32" = xyes ; then
+ 			LIB_SUBSETS="${LIB_SUBSETS}+port_tinfo+port_win32"
+ 		else
+diff -ruN ncurses-6.5.orig/include/nc_mingw.h ncurses-6.5/include/nc_mingw.h
+--- ncurses-6.5.orig/include/nc_mingw.h	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/include/nc_mingw.h	1900-01-00 00:00:00 +0000
+@@ -36,7 +36,7 @@
+ #ifndef NC_MINGW_H
+ #define NC_MINGW_H 1
+ 
+-#ifdef _WIN32
++#if defined(_WIN32) || defined(__MSYS__) || defined(__CYGWIN__)
+ 
+ #ifdef WINVER
+ #  if WINVER < 0x0501
+@@ -83,6 +83,6 @@
+ }
+ #endif
+ 
+-#endif /* _WIN32 */
++#endif /* _WIN32|__MSYS__|__CYGWIN__ */
+ 
+ #endif /* NC_MINGW_H */
+diff -ruN ncurses-6.5.orig/include/nc_win32.h ncurses-6.5/include/nc_win32.h
+--- ncurses-6.5.orig/include/nc_win32.h	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/include/nc_win32.h	1900-01-00 00:00:00 +0000
+@@ -38,8 +38,8 @@
+ 
+ #if defined(_WIN32) || defined(_WIN64)
+ 
+-#ifndef _NC_WINDOWS
+-#define _NC_WINDOWS
++#ifndef _NC_WINDOWS_NATIVE
++#define _NC_WINDOWS_NATIVE
+ #endif
+ 
+ #ifdef TERMIOS
+diff -ruN ncurses-6.5.orig/ncurses/base/lib_getch.c ncurses-6.5/ncurses/base/lib_getch.c
+--- ncurses-6.5.orig/ncurses/base/lib_getch.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/ncurses/base/lib_getch.c	1900-01-00 00:00:00 +0000
+@@ -135,7 +135,7 @@
+ }
+ 
+ #ifdef USE_TERM_DRIVER
+-# if defined(_NC_WINDOWS) && !defined(EXP_WIN32_DRIVER)
++# if defined(_NC_WINDOWS_NATIVE) && !defined(EXP_WIN32_DRIVER)
+ static HANDLE
+ _nc_get_handle(int fd)
+ {
+@@ -163,7 +163,7 @@
+ 				   _nc_console_handle(sp->_ifd),
+ 				   delay EVENTLIST_2nd(evl));
+     } else
+-# elif defined(_NC_WINDOWS)
++# elif defined(_NC_WINDOWS_NATIVE)
+     /* if we emulate terminfo on console, we have to use the console routine */
+     if (IsTermInfoOnConsole(sp)) {
+ 	HANDLE fd = _nc_get_handle(sp->_ifd);
+@@ -315,7 +315,7 @@
+ 				 &buf);
+ 	    _nc_set_read_thread(FALSE);
+ 	} else
+-# elif defined(_NC_WINDOWS)
++# elif defined(_NC_WINDOWS_NATIVE)
+ 	if (NC_ISATTY(sp->_ifd) && IsTermInfoOnConsole(sp) && IsCbreak(sp))
+ 	    n = _nc_mingw_console_read(sp,
+ 				       _nc_get_handle(sp->_ifd),
+diff -ruN ncurses-6.5.orig/ncurses/curses.priv.h ncurses-6.5/ncurses/curses.priv.h
+--- ncurses-6.5.orig/ncurses/curses.priv.h	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/ncurses/curses.priv.h	1900-01-00 00:00:00 +0000
+@@ -88,13 +88,24 @@
+ #endif
+ 
+ /* Some Windows related defines */
++
+ #undef _NC_WINDOWS
+-#if (defined(_WIN32) || defined(_WIN64))
++#if (defined(_WIN32) || defined(_WIN64__) || defined(__MSYS__) || defined(__CYGWIN__))
+ #define _NC_WINDOWS
+ #else
+ #undef EXP_WIN32_DRIVER
+ #endif
+ 
++#undef _NC_CYGWIN
++#if (defined(__MSYS__) || defined(__CYGWIN__))
++#define _NC_CYGWIN
++#endif
++
++#undef _NC_WINDOWS_NATIVE
++#if (defined(_WIN32) || defined(_WIN64))
++#define _NC_WINDOWS_NATIVE
++#endif
++
+ #undef _NC_MINGW
+ #if (defined(__MINGW32__) || defined(__MINGW64__))
+ #define _NC_MINGW
+@@ -197,7 +208,7 @@
+  * the path separator in configure doesn't work properly. So, if building
+  * for MinGW, we enforce the correct Windows PATH separator
+  */
+-#if defined(_NC_WINDOWS)
++#if defined(_NC_WINDOWS_NATIVE)
+ #  ifdef NCURSES_PATHSEP
+ #    undef NCURSES_PATHSEP
+ #  endif
+@@ -223,6 +234,15 @@
+ #endif
+ 
+ /*
++ * The stricmp() function is in MSVCRT, and cannot be called or linked from
++ * Cygwin runtime-dependent binaries currently. Use the POSIX strcaseccmp()
++ * function instead which is pretty much the same.
++ */
++#if defined(_NC_CYGWIN)
++#define stricmp(s1, s2) strcasecmp(s1, s2)
++#endif
++
++/*
+  * Not all platforms have memmove; some have an equivalent bcopy.  (Some may
+  * have neither).
+  */
+@@ -2232,7 +2252,7 @@
+  */
+ #if USE_WIDEC_SUPPORT
+ 
+-#if defined(_NC_WINDOWS) && !defined(_NC_MSC) && !defined(EXP_WIN32_DRIVER)
++#if defined(_NC_WINDOWS_NATIVE) && !defined(_NC_MSC) && !defined(EXP_WIN32_DRIVER)
+ /*
+  * MinGW has wide-character functions, but they do not work correctly.
+  */
+@@ -2246,9 +2266,9 @@
+ extern int __MINGW_NOTHROW _nc_mblen(const char *, size_t);
+ #define mblen(s,n) _nc_mblen(s, n)
+ 
+-#endif /* _NC_WINDOWS && !_NC_MSC */
++#endif /* _NC_WINDOWS_NATIVE && !_NC_MSC */
+ 
+-#if defined(_NC_WINDOWS) || defined(_NC_MINGW)
++#if defined(_NC_WINDOWS_NATIVE) || defined(_NC_MINGW)
+ /* see wcwidth.c */
+ extern NCURSES_EXPORT(int) mk_wcwidth(wchar_t);
+ #define wcwidth(ucs) _nc_wcwidth(ucs)
+diff -ruN ncurses-6.5.orig/ncurses/tinfo/lib_napms.c ncurses-6.5/ncurses/tinfo/lib_napms.c
+--- ncurses-6.5.orig/ncurses/tinfo/lib_napms.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/ncurses/tinfo/lib_napms.c	1900-01-00 00:00:00 +0000
+@@ -78,7 +78,7 @@
+ 	    request = remaining;
+ 	}
+     }
+-#elif defined(_NC_WINDOWS)
++#elif defined(_NC_WINDOWS_NATIVE)
+     Sleep((DWORD) ms);
+ #else
+     _nc_timed_wait(0, 0, ms, (int *) 0 EVENTLIST_2nd(0));
+diff -ruN ncurses-6.5.orig/ncurses/tinfo/lib_print.c ncurses-6.5/ncurses/tinfo/lib_print.c
+--- ncurses-6.5.orig/ncurses/tinfo/lib_print.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/ncurses/tinfo/lib_print.c	1900-01-00 00:00:00 +0000
+@@ -97,7 +97,7 @@
+      * kernel will ship the contiguous clist items from the last write
+      * immediately.
+      */
+-#ifndef _NC_WINDOWS
++#ifndef _NC_WINDOWS_NATIVE
+     (void) sleep(0);
+ #endif
+     free(mybuf);
+diff -ruN ncurses-6.5.orig/ncurses/tinfo/lib_setup.c ncurses-6.5/ncurses/tinfo/lib_setup.c
+--- ncurses-6.5.orig/ncurses/tinfo/lib_setup.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/ncurses/tinfo/lib_setup.c	1900-01-00 00:00:00 +0000
+@@ -759,7 +759,7 @@
+     static int result = 0;
+ 
+     if (!initialized) {
+-#if defined(_NC_WINDOWS) && USE_WIDEC_SUPPORT
++#if defined(_NC_WINDOWS_NATIVE) && USE_WIDEC_SUPPORT
+ 	result = 1;
+ #elif HAVE_LANGINFO_CODESET
+ 	char *env = nl_langinfo(CODESET);
+diff -ruN ncurses-6.5.orig/ncurses/tinfo/lib_win32con.c ncurses-6.5/ncurses/tinfo/lib_win32con.c
+--- ncurses-6.5.orig/ncurses/tinfo/lib_win32con.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/ncurses/tinfo/lib_win32con.c	1900-01-00 00:00:00 +0000
+@@ -40,7 +40,7 @@
+ 
+ MODULE_ID("$Id: lib_win32con.c,v 1.14 2023/08/05 20:44:38 tom Exp $")
+ 
+-#ifdef _NC_WINDOWS
++#if defined(_NC_WINDOWS)
+ 
+ #ifdef _NC_MINGW
+ #include <wchar.h>
+diff -ruN ncurses-6.5.orig/ncurses/tinfo/lib_win32util.c ncurses-6.5/ncurses/tinfo/lib_win32util.c
+--- ncurses-6.5.orig/ncurses/tinfo/lib_win32util.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/ncurses/tinfo/lib_win32util.c	1900-01-00 00:00:00 +0000
+@@ -36,7 +36,7 @@
+ 
+ MODULE_ID("$Id: lib_win32util.c,v 1.4 2023/06/17 17:19:06 tom Exp $")
+ 
+-#ifdef _NC_WINDOWS
++#ifdef _NC_WINDOWS_NATIVE
+ #include <io.h>
+ 
+ #ifdef _NC_CHECK_MINTTY
+@@ -131,4 +131,4 @@
+ }
+ #endif // HAVE_GETTIMEOFDAY == 2
+ 
+-#endif // _NC_WINDOWS
++#endif // _NC_WINDOWS_NATIVE
+diff -ruN ncurses-6.5.orig/ncurses/tinfo/tinfo_driver.c ncurses-6.5/ncurses/tinfo/tinfo_driver.c
+--- ncurses-6.5.orig/ncurses/tinfo/tinfo_driver.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/ncurses/tinfo/tinfo_driver.c	1900-01-00 00:00:00 +0000
+@@ -1504,7 +1504,7 @@
+ 
+ static DRIVER_ENTRY DriverTable[] =
+ {
+-#ifdef _NC_WINDOWS
++#ifdef USE_WIN32CON_DRIVER
+     {"win32console", &_nc_WIN_DRIVER},
+ #endif
+     {"tinfo", &_nc_TINFO_DRIVER}	/* must be last */
+diff -ruN ncurses-6.5.orig/ncurses/tinfo/write_entry.c ncurses-6.5/ncurses/tinfo/write_entry.c
+--- ncurses-6.5.orig/ncurses/tinfo/write_entry.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/ncurses/tinfo/write_entry.c	1900-01-00 00:00:00 +0000
+@@ -200,7 +200,7 @@
+ 
+ 	if ((rc = stat(path, &statbuf)) == -1) {
+ 	    rc = mkdir(path
+-#ifndef _NC_WINDOWS
++#ifndef _NC_WINDOWS_NATIVE
+ 		       ,0777
+ #endif
+ 		);
+diff -ruN ncurses-6.5.orig/ncurses/trace/lib_trace.c ncurses-6.5/ncurses/trace/lib_trace.c
+--- ncurses-6.5.orig/ncurses/trace/lib_trace.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/ncurses/trace/lib_trace.c	1900-01-00 00:00:00 +0000
+@@ -261,7 +261,7 @@
+ 	if ((pthread_self))
+ # endif
+ 	    fprintf(fp, "%#" PRIxPTR ":",
+-#ifdef _NC_WINDOWS
++#ifdef _NC_WINDOWS_NATIVE
+ 		    CASTxPTR(pthread_self().p)
+ #else
+ 		    CASTxPTR(pthread_self())
+diff -ruN ncurses-6.5.orig/ncurses/widechar/widechars.c ncurses-6.5/ncurses/widechar/widechars.c
+--- ncurses-6.5.orig/ncurses/widechar/widechars.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/ncurses/widechar/widechars.c	1900-01-00 00:00:00 +0000
+@@ -33,7 +33,7 @@
+ 
+ MODULE_ID("$Id: widechars.c,v 1.9 2020/08/29 16:22:03 juergen Exp $")
+ 
+-#if (defined(_NC_WINDOWS)) && !defined(_NC_MSC)
++#if defined(_NC_MINGW)
+ /*
+  * MinGW has wide-character functions, but they do not work correctly.
+  */
+@@ -148,6 +148,6 @@
+     return result;
+ }
+ 
+-#endif /* _NC_WINDOWS */
++#endif /* _NC_MINGW */
+ 
+ #endif /* USE_WIDEC_SUPPORT */
+diff -ruN ncurses-6.5.orig/test/dots_termcap.c ncurses-6.5/test/dots_termcap.c
+--- ncurses-6.5.orig/test/dots_termcap.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/test/dots_termcap.c	1900-01-00 00:00:00 +0000
+@@ -37,7 +37,7 @@
+ #define USE_TINFO
+ #include <test.priv.h>
+ 
+-#if !defined(_NC_WINDOWS)
++#if !defined(_NC_WINDOWS_NATIVE)
+ #include <sys/time.h>
+ #endif
+ 
+@@ -162,7 +162,7 @@
+ my_napms(int ms)
+ {
+     if (ms > 0) {
+-#if defined(_NC_WINDOWS)
++#if defined(_NC_WINDOWS_NATIVE)
+ 	Sleep((unsigned int) ms);
+ #else
+ 	struct timeval data;
+diff -ruN ncurses-6.5.orig/test/dots_xcurses.c ncurses-6.5/test/dots_xcurses.c
+--- ncurses-6.5.orig/test/dots_xcurses.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/test/dots_xcurses.c	1900-01-00 00:00:00 +0000
+@@ -36,7 +36,7 @@
+  */
+ #include <test.priv.h>
+ 
+-#if !defined(_NC_WINDOWS)
++#if !defined(_NC_WINDOWS_NATIVE)
+ #include <sys/time.h>
+ #endif
+ 
+diff -ruN ncurses-6.5.orig/test/ncurses.c ncurses-6.5/test/ncurses.c
+--- ncurses-6.5.orig/test/ncurses.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/test/ncurses.c	1900-01-00 00:00:00 +0000
+@@ -490,8 +490,10 @@
+ 	addstr("Shelling out...");
+     def_prog_mode();
+     endwin();
+-#ifdef _NC_WINDOWS
+-    system("cmd.exe");
++#ifdef _NC_WINDOWS_NATIVE
++    if (system("pwsh.exe") == -1)
++	if (system("powershell.exe") == -1)
++	    system("cmd.exe");
+ #else
+     IGNORE_RC(system("sh"));
+ #endif
+diff -ruN ncurses-6.5.orig/test/rain.c ncurses-6.5/test/rain.c
+--- ncurses-6.5.orig/test/rain.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/test/rain.c	1900-01-00 00:00:00 +0000
+@@ -229,7 +229,7 @@
+      * Find myself in the list of threads so we can count the number of loops.
+      */
+     for (mystats = 0; mystats < MAX_THREADS; ++mystats) {
+-#if defined(_NC_WINDOWS) && !defined(__WINPTHREADS_VERSION)
++#if defined(_NC_WINDOWS_NATIVE) && !defined(__WINPTHREADS_VERSION)
+ 	if (drop_threads[mystats].myself.p == pthread_self().p)
+ #else
+ 	if (drop_threads[mystats].myself == pthread_self())
+diff -ruN ncurses-6.5.orig/test/test.priv.h ncurses-6.5/test/test.priv.h
+--- ncurses-6.5.orig/test/test.priv.h	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/test/test.priv.h	1900-01-00 00:00:00 +0000
+@@ -1047,12 +1047,12 @@
+ #define EXIT_FAILURE 1
+ #endif
+ 
+-#undef _NC_WINDOWS
++#undef _NC_WINDOWS_NATIVE
+ #if (defined(_WIN32) || defined(_WIN64))
+-#define _NC_WINDOWS 1
++#define _NC_WINDOWS_NATIVE 1
+ #endif
+ 
+-#if defined(_NC_WINDOWS) || defined(USE_WIN32CON_DRIVER)
++#if defined(_NC_WINDOWS_NATIVE) || defined(USE_WIN32CON_DRIVER)
+ 
+ #if defined(PDCURSES)
+ #ifdef WINVER
+@@ -1184,7 +1184,7 @@
+ #define InitAndCatch(init,handler) do { init; CATCHALL(handler); } while (0)
+ #endif
+ 
+-#if defined(_NC_WINDOWS) || defined(USE_WIN32CON_DRIVER)
++#if defined(_NC_WINDOWS_NATIVE) || defined(USE_WIN32CON_DRIVER)
+ #define SetupAlarm(opt)	(void)opt
+ #else
+ #define SetupAlarm(opt)	if (opt) alarm((unsigned)opt)
+diff -ruN ncurses-6.5.orig/test/test_mouse.c ncurses-6.5/test/test_mouse.c
+--- ncurses-6.5.orig/test/test_mouse.c	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/test/test_mouse.c	1900-01-00 00:00:00 +0000
+@@ -31,7 +31,7 @@
+ 
+ #include <test.priv.h>
+ 
+-#if defined(NCURSES_MOUSE_VERSION) && !defined(_NC_WINDOWS)
++#if defined(NCURSES_MOUSE_VERSION) && !defined(_NC_WINDOWS_NATIVE)
+ 
+ static int logoffset = 0;
+ 
+diff -ruN ncurses-6.5.orig/test/widechars.h ncurses-6.5/test/widechars.h
+--- ncurses-6.5.orig/test/widechars.h	1900-01-00 00:00:00 +0000
++++ ncurses-6.5/test/widechars.h	1900-01-00 00:00:00 +0000
+@@ -34,7 +34,7 @@
+ 
+ #if USE_WIDEC_SUPPORT
+ 
+-#if defined(_NC_WINDOWS) && !defined(_MSC_VER) && !defined(EXP_WIN32_DRIVER)
++#if defined(_NC_MINGW)
+ /*
+  * MinGW has wide-character functions, but they do not work correctly.
+  */
