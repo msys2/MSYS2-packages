@@ -1,0 +1,68 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=winpthreads
+_mingw_suff=mingw-w64-cross
+pkgbase="${_mingw_suff}-${_realname}"
+_targetpkgs=("${_mingw_suff}-mingwarm64-${_realname}")
+pkgname=("${_targetpkgs[@]}")
+pkgver=12.0.0dev
+pkgrel=1
+pkgdesc="MinGW-w64 winpthreads library for cross-compiler"
+arch=('i686' 'x86_64')
+url="https://www.mingw-w64.org/"
+msys2_repository_url="https://sourceforge.net/p/mingw-w64/mingw-w64/ci/master/tree/mingw-w64-libraries/winpthreads"
+license=('custom')
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+makedepends=("git" "${_mingw_suff}-mingwarm64-gcc" "${_mingw_suff}-mingwarm64-binutils" "${_mingw_suff}-mingwarm64-crt" "${_mingw_suff}-mingwarm64-headers" 'autotools')
+optdepends=()
+backup=()
+options=('!strip' '!buildflags' 'staticlibs' '!emptydirs' '!buildflags')
+_commit='a1bf19077c012284d0398177799ea0476c1a1e79'
+source=("mingw-w64"::"git+https://github.com/Windows-on-ARM-Experiments/mingw-woarm64.git#commit=$_commit"
+        0001-Define-__-de-register_frame_info-in-fake-libgcc_s.patch)
+sha256sums=('SKIP'
+            '2e779bcc60a1422b23e0cfdb5c0f6851f2382592bb4675d08a6bdef78d5e5c10')
+msys2_references=(
+  'archlinux: mingw-w64-winpthreads'
+  'cpe: cpe:/a:mingw-w64:mingw-w64'
+)
+
+prepare() {
+  cd "$srcdir/mingw-w64"
+  git apply "${srcdir}"/0001-Define-__-de-register_frame_info-in-fake-libgcc_s.patch
+  cd "${srcdir}"/mingw-w64/mingw-w64-libraries/winpthreads
+  autoreconf -vfi
+}
+
+_build() {
+  _target=$1
+  mkdir -p ${srcdir}/winpthreads-build-${_target} && cd ${srcdir}/winpthreads-build-${_target}
+  unset CC
+  ${srcdir}/mingw-w64/mingw-w64-libraries/winpthreads/configure \
+    --prefix=/opt/${_target} \
+    --build=${CHOST} \
+    --host=${_target} \
+    --enable-static \
+    --enable-shared
+  make
+}
+
+_package() {
+  _target=$1
+  cd ${srcdir}/winpthreads-build-${_target}
+  make DESTDIR=${pkgdir} install
+}
+
+build() {
+  for _pkg in "${_targetpkgs[@]}"; do
+    case "$_pkg" in
+      "${_mingw_suff}-mingwarm64-${_realname}") _build "aarch64-w64-mingw32" ;;
+    esac
+  done
+}
+
+package_mingw-w64-cross-mingwarm64-winpthreads() {
+  depends=("${_mingw_suff}-mingwarm64-crt")
+  conflicts=("${_mingw_suff}-${_realname}<=12.0.0.r0.g819a6ec2e-1")
+  _package "aarch64-w64-mingw32"
+}

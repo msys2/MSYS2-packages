@@ -1,0 +1,79 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+# Contributor: Martell Malone <martellmalone@gmail.com>
+
+_realname=crt
+_mingw_suff=mingw-w64-cross
+pkgbase="${_mingw_suff}-${_realname}"
+_targetpkgs=("${_mingw_suff}-mingwarm64-${_realname}")
+pkgname=("${_targetpkgs[@]}")
+pkgver=12.0.0dev
+pkgrel=1
+pkgdesc='MinGW-w64 CRT for cross-compiler'
+arch=('i686' 'x86_64')
+url='https://www.mingw-w64.org'
+msys2_repository_url='https://sourceforge.net/p/mingw-w64/mingw-w64/ci/master/tree/mingw-w64-crt'
+license=('custom')
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+makedepends=("git" "${_mingw_suff}-mingwarm64-gcc" "${_mingw_suff}-mingwarm64-binutils" "${_mingw_suff}-mingwarm64-headers" 'autotools')
+options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
+_commit='a1bf19077c012284d0398177799ea0476c1a1e79'
+source=("mingw-w64"::"git+https://github.com/Windows-on-ARM-Experiments/mingw-woarm64.git#commit=$_commit")
+
+sha256sums=('dca6aaa5ababa53aaee63f5f0ebbf4570896b91e2ff41bff055dc91af75f2e34')
+msys2_references=(
+  'archlinux: mingw-w64-crt'
+  'cpe: cpe:/a:mingw-w64:mingw-w64'
+)
+
+_build() {
+  _target=$1
+  msg "Building ${_target} CRT"
+  case "${_target}" in
+    aarch64*)
+      _crt_configure_args="--disable-lib32 --disable-lib64 --disable-libarm32 --enable-libarm64"
+    ;;
+  esac
+
+  mkdir -p ${srcdir}/crt-${_target} && cd ${srcdir}/crt-${_target}
+
+  if [[ "${_target}" == "x86_64-w64-mingw32ucrt" ]]; then
+    _default_msvcrt=ucrt
+  elif [[ "${_target}" == "aarch64-w64-mingw32" ]]; then
+    _default_msvcrt=ucrt
+  else
+    _default_msvcrt=msvcrt
+  fi
+
+  unset CC
+  ${srcdir}/mingw-w64/mingw-w64-crt/configure \
+  --build=${CHOST} \
+  --prefix=/opt/${_target} \
+  --host=${_target} \
+  --enable-wildcard \
+  --with-default-msvcrt=${_default_msvcrt} \
+  --disable-dependency-tracking \
+  ${_crt_configure_args}
+
+  make
+}
+
+build() {
+  for _pkg in "${_targetpkgs[@]}"; do
+    case "$_pkg" in
+      "${_mingw_suff}-mingwarm64-${_realname}") _build "aarch64-w64-mingw32" ;;
+    esac
+  done
+}
+
+_package() {
+  _target=$1
+  msg "Installing ${_target} crt"
+  cd ${srcdir}/crt-${_target}
+  make DESTDIR=${pkgdir} install
+}
+
+package_mingw-w64-cross-mingwarm64-crt() {
+  depends=("${_mingw_suff}-mingwarm64-headers")
+  conflicts=("${_mingw_suff}-${_realname}<=12.0.0.r0.g819a6ec2e-1")
+  _package "aarch64-w64-mingw32"
+}

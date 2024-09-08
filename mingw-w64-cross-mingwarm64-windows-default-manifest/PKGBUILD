@@ -1,0 +1,62 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=windows-default-manifest
+_mingw_suff=mingw-w64-cross
+pkgbase="${_mingw_suff}-${_realname}"
+_targetpkgs=("${_mingw_suff}-mingwarm64-${_realname}")
+pkgname=("${_targetpkgs[@]}")
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+pkgver=6.4
+pkgrel=5
+pkgdesc='Default Windows application manifest'
+url='https://sourceware.org/git/cygwin-apps/windows-default-manifest.git'
+arch=('aarch64' 'i686' 'x86_64')
+license=('BSD')
+makedepends=('git' "${_mingw_suff}-mingwarm64-gcc" "${_mingw_suff}-mingwarm64-binutils" 'autotools')
+_GIT_TAG="release-6_4"
+options=('!strip' '!buildflags')
+source=("git://sourceware.org/git/cygwin-apps/${_realname}.git#tag=${_GIT_TAG}")
+sha256sums=('69743b1ad7e6046d95a04b9aa565e3216a570dae5ff48e615f96a08781b56aa0')
+msys2_references=(
+  'cygwin: windows-default-manifest'
+)
+
+prepare() {
+  cd ${srcdir}/${_realname}
+
+  autoreconf -fiv
+}
+
+_build() {
+  _target=$1
+  export MSYSTEM=CYGWIN
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+
+  [[ -d ${srcdir}/build-${_target} ]] && rm -rf build-${_target}
+  cp -rf ${srcdir}/${_realname} ${srcdir}/build-${_target}
+  cd ${srcdir}/build-${_target}
+  ./configure \
+    --build=${CYGWIN_CHOST} \
+    --host=${_target} \
+    --prefix=/opt/${_target}
+  make
+}
+
+_package() {
+  _target=$1
+  cd ${srcdir}/build-${_target}
+  make DESTDIR=${pkgdir} install
+}
+
+build() {
+  for _pkg in "${_targetpkgs[@]}"; do
+    case "$_pkg" in
+      "${_mingw_suff}-mingwarm64-${_realname}") _build "aarch64-w64-mingw32" ;;
+    esac
+  done
+}
+
+package_mingw-w64-cross-mingwarm64-windows-default-manifest() {
+  conflicts=("${_mingw_suff}-${_realname}<=6.4-4")
+  _package "aarch64-w64-mingw32"
+}

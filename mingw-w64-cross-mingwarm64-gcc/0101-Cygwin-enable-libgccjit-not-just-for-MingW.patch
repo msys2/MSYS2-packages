@@ -1,0 +1,170 @@
+From 120e9b293a8e9495a90d7b316e027a6286e7a5fc Mon Sep 17 00:00:00 2001
+From: Achim Gratz <Achim.Gratz@Stromeko.DE>
+Date: Sun, 25 Apr 2021 11:33:55 +0200
+Subject: [PATCH 12/13] Cygwin: enable libgccjit not just for MingW
+
+---
+ configure            | 17 +++++++++++++++--
+ configure.ac         |  3 ++-
+ gcc/cp/Make-lang.in  |  2 +-
+ gcc/jit/Make-lang.in | 15 ++++++++++-----
+ gcc/system.h         |  5 +++--
+ 5 files changed, 31 insertions(+), 11 deletions(-)
+
+diff --git a/configure b/configure
+index e218a19e333..b43d5b8124d 100755
+--- a/configure
++++ b/configure
+@@ -766,6 +766,7 @@ infodir
+ docdir
+ oldincludedir
+ includedir
++runstatedir
+ localstatedir
+ sharedstatedir
+ sysconfdir
+@@ -934,6 +935,7 @@ datadir='${datarootdir}'
+ sysconfdir='${prefix}/etc'
+ sharedstatedir='${prefix}/com'
+ localstatedir='${prefix}/var'
++runstatedir='${localstatedir}/run'
+ includedir='${prefix}/include'
+ oldincludedir='/usr/include'
+ docdir='${datarootdir}/doc/${PACKAGE}'
+@@ -1186,6 +1188,15 @@ do
+   | -silent | --silent | --silen | --sile | --sil)
+     silent=yes ;;
+ 
++  -runstatedir | --runstatedir | --runstatedi | --runstated \
++  | --runstate | --runstat | --runsta | --runst | --runs \
++  | --run | --ru | --r)
++    ac_prev=runstatedir ;;
++  -runstatedir=* | --runstatedir=* | --runstatedi=* | --runstated=* \
++  | --runstate=* | --runstat=* | --runsta=* | --runst=* | --runs=* \
++  | --run=* | --ru=* | --r=*)
++    runstatedir=$ac_optarg ;;
++
+   -sbindir | --sbindir | --sbindi | --sbind | --sbin | --sbi | --sb)
+     ac_prev=sbindir ;;
+   -sbindir=* | --sbindir=* | --sbindi=* | --sbind=* | --sbin=* \
+@@ -1323,7 +1334,7 @@ fi
+ for ac_var in	exec_prefix prefix bindir sbindir libexecdir datarootdir \
+ 		datadir sysconfdir sharedstatedir localstatedir includedir \
+ 		oldincludedir docdir infodir htmldir dvidir pdfdir psdir \
+-		libdir localedir mandir
++		libdir localedir mandir runstatedir
+ do
+   eval ac_val=\$$ac_var
+   # Remove trailing slashes.
+@@ -1483,6 +1494,7 @@ Fine tuning of the installation directories:
+   --sysconfdir=DIR        read-only single-machine data [PREFIX/etc]
+   --sharedstatedir=DIR    modifiable architecture-independent data [PREFIX/com]
+   --localstatedir=DIR     modifiable single-machine data [PREFIX/var]
++  --runstatedir=DIR       modifiable per-process data [LOCALSTATEDIR/run]
+   --libdir=DIR            object code libraries [EPREFIX/lib]
+   --includedir=DIR        C header files [PREFIX/include]
+   --oldincludedir=DIR     C header files for non-gcc [/usr/include]
+@@ -8900,6 +8912,7 @@ $as_echo "$as_me: WARNING: GNAT is required to build $language" >&2;}
+         # is position independent code (PIC).
+         case $target in
+           *mingw*) ;;
++          *cygwin*) ;;
+           *)
+           case ${add_this_lang}:${language}:${host_shared} in
+             yes:jit:no)
+@@ -8924,7 +8937,7 @@ $as_echo "$as_me: WARNING: --enable-host-shared required to build $language" >&2
+               # Silently disable.
+               add_this_lang=unsupported
+               ;;
+-	        esac
++	  esac
+           ;;
+         esac
+ 
+diff --git a/configure.ac b/configure.ac
+index 7e8e628b325..a688d4ae24a 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -2166,6 +2166,7 @@ if test -d ${srcdir}/gcc; then
+         # is position independent code (PIC).
+         case $target in
+           *mingw*) ;;
++          *cygwin*) ;;
+           *)
+           case ${add_this_lang}:${language}:${host_shared} in
+             yes:jit:no)
+@@ -2189,7 +2190,7 @@ directories, to avoid imposing the performance cost of
+               # Silently disable.
+               add_this_lang=unsupported
+               ;;
+-	        esac
++	  esac
+           ;;
+         esac
+ 
+diff --git a/gcc/jit/Make-lang.in b/gcc/jit/Make-lang.in
+index 2a774d7feb1..6bd882c5ddf 100644
+--- a/gcc/jit/Make-lang.in
++++ b/gcc/jit/Make-lang.in
+@@ -44,8 +44,13 @@ LIBGCCJIT_VERSION_NUM = 0
+ LIBGCCJIT_MINOR_NUM = 0
+ LIBGCCJIT_RELEASE_NUM = 1
+ 
+-ifneq (,$(findstring mingw,$(target)))
+-LIBGCCJIT_FILENAME = libgccjit-$(LIBGCCJIT_VERSION_NUM).dll
++SHARED_PFX=lib
++ifneq (,$(filter %cygwin,$(target)))
++SHARED_PFX=cyg
++endif
++
++ifneq (,$(filter %-mingw% %-cygwin,$(target)))
++LIBGCCJIT_FILENAME = $(SHARED_PFX)gccjit-$(LIBGCCJIT_VERSION_NUM).dll
+ LIBGCCJIT_IMPORT_LIB = libgccjit.dll.a
+ 
+ jit: $(LIBGCCJIT_FILENAME) \
+@@ -139,7 +144,7 @@ endif
+ # Use strict warnings for this front end.
+ jit-warn = $(STRICT_WARN)
+ 
+-ifneq (,$(findstring mingw,$(target)))
++ifneq (,$(filter %-mingw% %-cygwin,$(target)))
+ # Create import library
+ LIBGCCJIT_EXTRA_OPTS = -Wl,--out-implib,$(LIBGCCJIT_IMPORT_LIB)
+ else
+@@ -173,7 +178,7 @@ $(LIBGCCJIT_FILENAME): $(jit_OBJS) \
+ 	@$(call LINK_PROGRESS,$(INDEX.jit),end)
+ 
+ # Create symlinks when not building for Windows
+-ifeq (,$(findstring mingw,$(target)))
++ifeq (,$(filter %-mingw% %-cygwin,$(target)))
+ 
+ ifeq (,$(findstring darwin,$(host)))
+ # but only one level for Darwin, version info is embedded.
+@@ -359,7 +364,7 @@ jit.install-headers: installdirs
+ 	$(INSTALL_DATA) $(srcdir)/jit/libgccjit++.h \
+ 	  $(DESTDIR)$(includedir)/libgccjit++.h
+ 
+-ifneq (,$(findstring mingw,$(target)))
++ifneq (,$(filter %-mingw% %-cygwin,$(target)))
+ jit.install-common: installdirs jit.install-headers
+ # Install import library
+ 	$(INSTALL_PROGRAM) $(LIBGCCJIT_IMPORT_LIB) \
+diff --git a/gcc/system.h b/gcc/system.h
+index b13e9429577..42ccb48e671 100644
+--- a/gcc/system.h
++++ b/gcc/system.h
+@@ -693,8 +693,9 @@ extern int vsnprintf (char *, size_t, const char *, va_list);
+ # endif
+ #endif
+ 
+-#if defined (ENABLE_PLUGIN) && defined (HAVE_DLFCN_H)
+-/* If plugin support is enabled, we could use libdl.  */
++#if defined (HAVE_DLFCN_H) && (defined (ENABLE_PLUGIN) || defined (__CYGWIN__))
++/* If plugin support is enabled, we could use libdl.
++   On Cygwin libdl is needed for libgccjit but no plugin support is available.  */
+ #include <dlfcn.h>
+ #endif
+ 
+-- 
+2.39.0
+

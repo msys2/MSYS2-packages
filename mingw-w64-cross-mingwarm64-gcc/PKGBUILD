@@ -1,0 +1,207 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+_realname=gcc
+_mingw_suff=mingw-w64-cross
+pkgbase="${_mingw_suff}-${_realname}"
+_targetpkgs=("${_mingw_suff}-mingwarm64-${_realname}")
+pkgname=("${_targetpkgs[@]}")
+_realver=15.0.0
+pkgver=15.0.0dev
+pkgrel=1
+pkgdesc="Cross GCC for the MinGW-w64"
+arch=('aarch64' 'i686' 'x86_64')
+url="https://gcc.gnu.org"
+license=('GPL' 'LGPL' 'FDL' 'custom')
+msys2_references=(
+  'archlinux: gcc'
+  'cpe: cpe:/a:gnu:gcc'
+)
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+depends=("zlib" "mpc" "isl" "libzstd")
+makedepends=("gcc" 'lndir' "gmp-devel" "mpc-devel" "zlib-devel" "isl-devel" 'autotools' 'gperf' 'libzstd-devel'
+             "${_mingw_suff}-mingwarm64-crt" "${_mingw_suff}-mingwarm64-headers" "${_mingw_suff}-mingwarm64-winpthreads"
+             "${_mingw_suff}-mingwarm64-windows-default-manifest" "${_mingw_suff}-mingwarm64-binutils")
+provides=("mingw-w64-aarch64-cc mingw-w64-aarch64-gcc-libs")
+#checkdepends=('dejagnu')
+options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
+_commit='f9667acd4ca73941cca10aeecab52f58640297e2'
+source=("${_realname}"::"git+https://github.com/Windows-on-ARM-Experiments/gcc-woarm64.git#commit=${_commit}"
+        0001-Cygwin-use-SysV-ABI-on-x86_64.patch
+        0002-Cygwin-add-dummy-pthread-tsaware-and-large-address-a.patch
+        0003-Cygwin-handle-dllimport-properly-in-medium-model-V2.patch
+        0004-Cygwin-MinGW-skip-test.patch
+        0005-Cygwin-define-RTS_CONTROL_ENABLE-and-DTR_CONTROL_ENA.patch
+        0006-Cygwin-fix-some-implicit-declaration-warnings-and-re.patch
+        0007-Cygwin-__cxa-atexit.patch
+        0008-Cygwin-libgomp-soname.patch
+        0009-Cygwin-g-time.patch
+        0010-Cygwin-newlib-ftm.patch
+        0011-Cygwin-define-STD_UNIX.patch
+        0101-Cygwin-enable-libgccjit-not-just-for-MingW.patch
+        0102-Cygwin-testsuite-fixes-for-libgccjit.patch
+        0012-Handle-spaces-in-path-for-default-manifest.patch
+        0014-gcc-9-branch-clone_function_name_1-Retain-any-stdcall-suffix.patch
+        0020-libgomp-Don-t-hard-code-MS-printf-attributes.patch
+        0200-add-m-no-align-vector-insn-option-for-i386.patch)
+sha256sums=('a289aa13355060a13761be238dd5bd04eea81cf09036c54acbf86d452be79e7d'
+            'bc788aa466a83184d285cc2f6c1ffc40c6ed416dd08c6999015262a53f1ab1b5'
+            '704acfaeb11d24d3fe5aab34bc883c184ca93aff03d752016c9a50fdd82c5655'
+            'c5676fd62d5f7f69be26062b95d42ef47f28151af83b83efa3998ecd8e939e19'
+            '03ecf29419119286ebcef35864f9bd26d3bf3eaa355945856953204ed727e173'
+            '06214859ae4030ce30bb68aa35aa4a9ac92d1e79e34133089dcbfeb7cc8066e8'
+            'a843c038042811265d6ce5917b0c76b709e2591822e5cab53a32b7e9c806da29'
+            'e27f82af1eb7a4aad955ec36d5fd7d9a4c24575845bcf718372df9bc2b099eb6'
+            'de5692673731f90b888bf301a547481ab8e3cc0029713b6fd5abaabd860250f0'
+            'a40e7025507130a2a5d2eb2eea8ba4b053398c307cd55b3c9421a8507bd315ed'
+            '2658eb376f7829179963978b69a048ed105a41508adc55d0fc0d607c14181926'
+            '83b6aea4a462ae80121fd68d42c6234d02e20865132197a10575bbf95fd33b7e'
+            'd1de250ac8d634b63410a8644904d1b2e6a6f17091ed0de000ce980108b44721'
+            '3707b0aab99b203cbd9e513be46c7d4600de06e6c8344160b7fb1779061d08da'
+            'e98805ead7d78ee2a92f237894c4b2b7ddc1688e1b517d8c04f28d440202e40f'
+            'fd9bdecb2bbc4796bbc9f00b708dac42ef9e3464a06d6d27e5475cee117de5be'
+            'ad1f7b5e7afaaec008b7cbd14feea13a10989fa91bda7003af72d457619bb199'
+            'caf8f789c5eb63b4bb6e658a7eeb0c021b6cfe21029203de3e7f7e044487e3ed')
+
+_threads="win32"
+
+apply_patch_with_msg() {
+  for _fname in "$@"
+  do
+    msg2 "Applying ${_fname}"
+    patch -Nbp1 -i "${srcdir}"/${_fname}
+  done
+}
+
+del_file_exists() {
+  for _fname in "$@"
+  do
+    if [ -f $_fname ] || [ -d $_fname ]; then
+      rm -rf $_fname
+    fi
+  done
+}
+
+prepare() {
+  cd ${srcdir}/${_realname}
+
+  del_file_exists \
+    libgomp/config/cygwin/plugin-suffix.h
+
+  # Cygwin patches
+  apply_patch_with_msg \
+    0001-Cygwin-use-SysV-ABI-on-x86_64.patch \
+    0002-Cygwin-add-dummy-pthread-tsaware-and-large-address-a.patch \
+    0003-Cygwin-handle-dllimport-properly-in-medium-model-V2.patch \
+    0004-Cygwin-MinGW-skip-test.patch \
+    0005-Cygwin-define-RTS_CONTROL_ENABLE-and-DTR_CONTROL_ENA.patch \
+    0006-Cygwin-fix-some-implicit-declaration-warnings-and-re.patch \
+    0007-Cygwin-__cxa-atexit.patch \
+    0008-Cygwin-libgomp-soname.patch \
+    0009-Cygwin-g-time.patch \
+    0010-Cygwin-newlib-ftm.patch \
+    0011-Cygwin-define-STD_UNIX.patch \
+    0101-Cygwin-enable-libgccjit-not-just-for-MingW.patch \
+    0102-Cygwin-testsuite-fixes-for-libgccjit.patch
+
+  # MinGW Patches
+  apply_patch_with_msg \
+    0012-Handle-spaces-in-path-for-default-manifest.patch \
+    0014-gcc-9-branch-clone_function_name_1-Retain-any-stdcall-suffix.patch \
+    0020-libgomp-Don-t-hard-code-MS-printf-attributes.patch \
+    0200-add-m-no-align-vector-insn-option-for-i386.patch
+}
+
+_build() {
+  _target=$1
+  export lt_cv_deplibs_check_method='pass_all'
+
+  mkdir -p ${srcdir}/gcc-build-${_target} && cd ${srcdir}/gcc-build-${_target}
+
+  local _langs="c,lto,c++"
+  case "${_target}" in
+    aarch64*)
+      local _arch=armv8.1-a
+      local _tune=cortex-x1
+      local _conf=""
+      _langs="${_langs} fortran"
+    ;;
+  esac
+
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+
+  ../${_realname}/configure \
+    --prefix=/opt \
+    --build=${CYGWIN_CHOST} \
+    --host=${CYGWIN_CHOST} \
+    --target=${_target} \
+    --libexecdir=/opt/lib \
+    --disable-bootstrap \
+    --with-arch=${_arch} \
+    --with-tune=${_tune} \
+    --enable-languages=${_langs} \
+    --enable-shared \
+    --enable-static \
+    --enable-threads=${_threads} \
+    --enable-graphite \
+    --enable-fully-dynamic-string \
+    --enable-libstdcxx-filesystem-ts \
+    --enable-libstdcxx-time \
+    --disable-libstdcxx-pch \
+    --disable-libstdcxx-debug \
+    --enable-cloog-backend=isl \
+    --enable-version-specific-runtime-libs \
+    --disable-isl-version-check \
+    --enable-lto \
+    --enable-libgomp \
+    --disable-libssp \
+    --disable-multilib \
+    --enable-checking=release \
+    --disable-rpath \
+    --disable-win32-registry \
+    --disable-werror \
+    --disable-symvers \
+    --with-libiconv \
+    --with-system-zlib \
+    --with-{gmp,mpfr,mpc,isl}=/usr \
+    --with-gnu-as \
+    --with-gnu-ld \
+    ${_conf} \
+    CFLAGS="-O2 -pipe" \
+    CXXFLAGS="-O2 -pipe"
+
+  make all
+}
+
+_package() {
+  _target=$1
+  cd ${srcdir}/gcc-build-${_target}
+  make -j1 DESTDIR=${pkgdir} install
+  mv ${pkgdir}/opt/lib/gcc/${_target}/libgcc*.dll ${pkgdir}/opt/lib/gcc/${_target}/${_realver}/
+  for _f in ${pkgdir}/opt/bin/*.exe; do
+    strip -s ${_f}
+  done
+  for _f in ${pkgdir}/opt/lib/gcc/${_target}/${_realver}/*.exe; do
+    strip -s ${_f}
+  done
+  rm -rf ${pkgdir}/opt/share
+}
+
+build() {
+  for _pkg in "${_targetpkgs[@]}"; do
+    case "$_pkg" in
+      "${_mingw_suff}-mingwarm64-${_realname}") _build "aarch64-w64-mingw32" ;;
+    esac
+  done
+}
+
+package_mingw-w64-cross-mingwarm64-gcc() {
+  conflicts=("${_mingw_suff}-${_realname}<=14.2.0-1")
+  depends+=(
+    "${_mingw_suff}-mingwarm64-crt"
+    "${_mingw_suff}-mingwarm64-headers"
+    "${_mingw_suff}-mingwarm64-winpthreads"
+    "${_mingw_suff}-mingwarm64-windows-default-manifest"
+    "${_mingw_suff}-mingwarm64-binutils"
+  )
+  _package "aarch64-w64-mingw32"
+}
