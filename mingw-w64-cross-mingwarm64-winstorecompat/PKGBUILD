@@ -1,0 +1,61 @@
+# Maintainer: Martell Malone <martellmalone@gmail.com>
+
+_realname=winstorecompat
+_mingw_suff=mingw-w64-cross
+pkgbase="${_mingw_suff}-mingwarm64-${_realname}"
+_targetpkgs=("${_mingw_suff}-mingwarm64-${_realname}")
+pkgname=("${_targetpkgs[@]}")
+pkgver=12.0.0dev
+pkgrel=1
+pkgdesc="MinGW-w64 winRT compat library"
+arch=('i686' 'x86_64')
+url='https://www.mingw-w64.org'
+msys2_repository_url='https://sourceforge.net/p/mingw-w64/mingw-w64/ci/master/tree/mingw-w64-libraries/winstorecompat'
+license=('custom')
+groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
+makedepends=("git" "${_mingw_suff}-mingwarm64-gcc" "${_mingw_suff}-mingwarm64-binutils" "${_mingw_suff}-mingwarm64-crt" "${_mingw_suff}-mingwarm64-headers" 'autotools')
+backup=()
+options=('!strip' '!buildflags' 'staticlibs' '!emptydirs' '!buildflags')
+_commit='a1bf19077c012284d0398177799ea0476c1a1e79'
+source=("mingw-w64"::"git+https://github.com/Windows-on-ARM-Experiments/mingw-woarm64.git#commit=$_commit")
+sha256sums=('dca6aaa5ababa53aaee63f5f0ebbf4570896b91e2ff41bff055dc91af75f2e34')
+msys2_references=(
+  # doesn't exist in arch, this is the next best thing
+  'archlinux: mingw-w64-headers'
+  'cpe: cpe:/a:mingw-w64:mingw-w64'
+)
+
+_build() {
+  _target=$1
+  mkdir -p ${srcdir}/build-${_target} && cd ${srcdir}/build-${_target}
+  unset CC
+  ${srcdir}/mingw-w64/mingw-w64-libraries/winstorecompat/configure \
+    --prefix=/opt/${_target} \
+    --build=${CHOST} \
+    --host=${_target}
+  make
+}
+
+_package() {
+  _target=$1
+  cd ${srcdir}/build-${_target}
+  make DESTDIR=${pkgdir} install
+}
+
+build() {
+  for _pkg in "${_targetpkgs[@]}"; do
+    case "$_pkg" in
+      "${_mingw_suff}-ucrt64-${_realname}") _build "x86_64-w64-mingw32ucrt" ;;
+      "${_mingw_suff}-mingw32-${_realname}") _build "i686-w64-mingw32" ;;
+      "${_mingw_suff}-mingw64-${_realname}") _build "x86_64-w64-mingw32" ;;
+      "${_mingw_suff}-mingwarm64-${_realname}") _build "aarch64-w64-mingw32" ;;
+    esac
+  done
+}
+
+package_mingw-w64-cross-mingwarm64-winstorecompat() {
+  depends=("${_mingw_suff}-mingwarm64-crt")
+  conflicts=("${_mingw_suff}-${_realname}<=12.0.0.r0.g819a6ec2e-1")
+
+  _package "aarch64-w64-mingw32"
+}
