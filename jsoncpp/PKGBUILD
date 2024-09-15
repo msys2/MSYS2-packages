@@ -3,7 +3,7 @@
 pkgbase="jsoncpp"
 pkgname=("${pkgbase}" "${pkgbase}-devel")
 pkgver=1.9.6
-pkgrel=1
+pkgrel=2
 pkgdesc="A C++ library for interacting with JSON"
 arch=('any')
 url="https://github.com/open-source-parsers/jsoncpp"
@@ -14,44 +14,40 @@ msys2_references=(
 license=('MIT')
 depends=("gcc-libs")
 makedepends=("gcc"
-             "cmake"
-             "python")
+             "meson"
+             "pkgconf"
+             "ninja")
 source=(${pkgname}-${pkgver}.tar.gz::"https://github.com/open-source-parsers/jsoncpp/archive/${pkgver}.tar.gz")
 sha256sums=('f93b6dd7ce796b13d02c108bc9f79812245a82e577581c4c9aabe57075c90ea2')
 
 build() {
-  declare -a extra_config
-  if check_option "debug" "n"; then
-    extra_config+=("-DCMAKE_BUILD_TYPE=Release")
-  else
-    extra_config+=("-DCMAKE_BUILD_TYPE=Debug")
-  fi
-
   [[ -d "${srcdir}/build-${CARCH}-static" ]] && rm -rf "${srcdir}/build-${CARCH}-static"
   mkdir -p "${srcdir}/build-${CARCH}-static" && cd "${srcdir}/build-${CARCH}-static"
 
-  cmake \
-    -DCMAKE_INSTALL_PREFIX=/usr \
-    -DJSONCPP_WITH_CMAKE_PACKAGE=ON \
-    -DBUILD_SHARED_LIBS=OFF \
-    ${extra_config} \
+  meson setup \
+    --prefix=/usr \
+    --wrap-mode=nodownload \
+    --auto-features=enabled \
+    --default-library=static \
+    --buildtype=plain \
     ../${pkgbase}-${pkgver}
 
-  make
-  make DESTDIR=${srcdir}/dest install
+  meson compile
+  DESTDIR=${srcdir}/dest meson install
 
   [[ -d "${srcdir}/build-${CARCH}-shared" ]] && rm -rf "${srcdir}/build-${CARCH}-shared"
   mkdir -p "${srcdir}/build-${CARCH}-shared" && cd "${srcdir}/build-${CARCH}-shared"
 
-  cmake \
-    -DCMAKE_INSTALL_PREFIX=/usr \
-    -DJSONCPP_WITH_CMAKE_PACKAGE=ON \
-    -DBUILD_SHARED_LIBS=ON \
-    ${extra_config} \
+  meson setup \
+    --prefix=/usr \
+    --wrap-mode=nodownload \
+    --auto-features=enabled \
+    --default-library=shared \
+    --buildtype=plain \
     ../${pkgbase}-${pkgver}
 
-  make
-  make DESTDIR=${srcdir}/dest install
+  meson compile
+  DESTDIR=${srcdir}/dest meson install
 }
 
 package_jsoncpp() {
