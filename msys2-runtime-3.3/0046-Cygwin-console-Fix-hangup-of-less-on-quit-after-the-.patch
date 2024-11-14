@@ -1,0 +1,44 @@
+From 8148ef7547f1fb8394810f9e24a28ebd2c83a375 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Thu, 22 Dec 2022 20:25:22 +0900
+Subject: [PATCH 46/N] Cygwin: console: Fix hangup of less on quit after the
+ window is resized.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+https://cygwin.com/pipermail/cygwin/2022-December/252737.html
+
+If the less is started from non-cygwin shell and window size is
+changed, it will hang-up when quitting. The cause of the proglem is
+that less uses longjump() in signal handler. If the signal handler
+is called while cygwin is acquiring the mutex, cygwin loses the
+chance to release mutex. With this patch, the mutex is released
+just before calling kill_pgrp() and re-acquired when kill_pgrp()
+returns.
+
+[ma: dropped changes to release notes file from patch for backport]
+
+Reported-by: Gregory Mason <grmason@epic.com>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+Signed-off-by: Matthias Aßhauer <mha1993@live.de>
+---
+ winsup/cygwin/fhandler_console.cc | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/winsup/cygwin/fhandler_console.cc b/winsup/cygwin/fhandler_console.cc
+index b5594a6..e3a42ac 100644
+--- a/winsup/cygwin/fhandler_console.cc
++++ b/winsup/cygwin/fhandler_console.cc
+@@ -937,7 +937,11 @@ fhandler_console::send_winch_maybe ()
+       con.scroll_region.Bottom = -1;
+       if (wincap.has_con_24bit_colors () && !con_is_legacy)
+ 	fix_tab_position (get_output_handle ());
++      /* longjmp() may be called in the signal handler like less,
++	 so release input_mutex temporarily before kill_pgrp(). */
++      release_input_mutex ();
+       get_ttyp ()->kill_pgrp (SIGWINCH);
++      acquire_input_mutex (mutex_timeout);
+       return true;
+     }
+   return false;

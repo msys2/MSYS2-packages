@@ -1,0 +1,115 @@
+From 3cba82a63c4f3a8c10565ab531fb64a5d2117474 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Sat, 25 Nov 2023 02:25:00 +0100
+Subject: [PATCH 50/N] nlsfuncs: work around an overzealous GCC warning
+
+GCC 13 (and maybe 12, too), warn about pointers used after `free()`.
+
+In `nlsfuncs.cc`, they are used on purpose, though, in
+`rebase_locale_buf()`, to adjust pointers that were invalidated because
+of a `realloc()` (not a `free()`, actually).
+
+So let's shush GCC about those instances.
+
+However, we must be careful only to do that with GCC >= 12 because older
+versions would complain about an unknown warning...
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/nlsfuncs.cc | 30 ++++++++++++++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+
+diff --git a/winsup/cygwin/nlsfuncs.cc b/winsup/cygwin/nlsfuncs.cc
+index a518d2b..0d1e692 100644
+--- a/winsup/cygwin/nlsfuncs.cc
++++ b/winsup/cygwin/nlsfuncs.cc
+@@ -255,8 +255,13 @@ rebase_locale_buf (const void *ptrv, const void *ptrvend, const char *newbase,
+ {
+   const char **ptrsend = (const char **) ptrvend;
+   for (const char **ptrs = (const char **) ptrv; ptrs < ptrsend; ++ptrs)
++#pragma GCC diagnostic push
++#if __GNUC__ >= 12
++#pragma GCC diagnostic ignored "-Wuse-after-free"
++#endif
+     if (*ptrs >= oldbase && *ptrs < oldend)
+       *ptrs += newbase - oldbase;
++#pragma GCC diagnostic pop
+ }
+ 
+ static wchar_t *
+@@ -613,10 +618,15 @@ __set_lc_time_from_win (const char *name,
+ 		era = NULL;
+ 	      else
+ 		{
++#pragma GCC diagnostic push
++#if __GNUC__ >= 12
++#pragma GCC diagnostic ignored "-Wuse-after-free"
++#endif
+ 		  if (tmp != new_lc_time_buf)
+ 		    rebase_locale_buf (_time_locale, _time_locale + 1, tmp,
+ 				       new_lc_time_buf, lc_time_ptr);
+ 		  lc_time_ptr = tmp + (lc_time_ptr - new_lc_time_buf);
++#pragma GCC diagnostic pop
+ 		  new_lc_time_buf = tmp;
+ 		  lc_time_end = new_lc_time_buf + len;
+ 		}
+@@ -675,9 +685,14 @@ __set_lc_time_from_win (const char *name,
+       free (new_lc_time_buf);
+       return -1;
+     }
++#pragma GCC diagnostic push
++#if __GNUC__ >= 12
++#pragma GCC diagnostic ignored "-Wuse-after-free"
++#endif
+   if (tmp != new_lc_time_buf)
+     rebase_locale_buf (_time_locale, _time_locale + 1, tmp,
+ 		       new_lc_time_buf, lc_time_ptr);
++#pragma GCC diagnostic pop
+   *lc_time_buf = tmp;
+   return 1;
+ }
+@@ -747,9 +762,14 @@ __set_lc_ctype_from_win (const char *name,
+       free (new_lc_ctype_buf);
+       return -1;
+     }
++#pragma GCC diagnostic push
++#if __GNUC__ >= 12
++#pragma GCC diagnostic ignored "-Wuse-after-free"
++#endif
+   if (tmp != new_lc_ctype_buf)
+     rebase_locale_buf (_ctype_locale, _ctype_locale + 1, tmp,
+ 		       new_lc_ctype_buf, lc_ctype_ptr);
++#pragma GCC diagnostic pop
+   *lc_ctype_buf = tmp;
+   return 1;
+ }
+@@ -822,9 +842,14 @@ __set_lc_numeric_from_win (const char *name,
+       free (new_lc_numeric_buf);
+       return -1;
+     }
++#pragma GCC diagnostic push
++#if __GNUC__ >= 12
++#pragma GCC diagnostic ignored "-Wuse-after-free"
++#endif
+   if (tmp != new_lc_numeric_buf)
+     rebase_locale_buf (_numeric_locale, _numeric_locale + 1, tmp,
+ 		       new_lc_numeric_buf, lc_numeric_ptr);
++#pragma GCC diagnostic pop
+   *lc_numeric_buf = tmp;
+   return 1;
+ }
+@@ -959,9 +984,14 @@ __set_lc_monetary_from_win (const char *name,
+       free (new_lc_monetary_buf);
+       return -1;
+     }
++#pragma GCC diagnostic push
++#if __GNUC__ >= 12
++#pragma GCC diagnostic ignored "-Wuse-after-free"
++#endif
+   if (tmp != new_lc_monetary_buf)
+     rebase_locale_buf (_monetary_locale, _monetary_locale + 1, tmp,
+ 		       new_lc_monetary_buf, lc_monetary_ptr);
++#pragma GCC diagnostic pop
+   *lc_monetary_buf = tmp;
+   return 1;
+ }

@@ -21,8 +21,10 @@ base_tag=refs/tags/cygwin-"$(sed -ne 'y/./_/' -e 's/^pkgver=//p' <PKGBUILD)"-rel
 msys2_branch=refs/heads/msys2-${base_tag#refs/tags/cygwin-}
 url=https://github.com/msys2/msys2-runtime
 
-test -d msys2-runtime ||
-git clone --bare $url msys2-runtime ||
+test -d msys2-runtime || {
+	git clone --bare $url msys2-runtime &&
+	git --git-dir=msys2-runtime config remote.origin.url git://sourceware.org/git/newlib-cygwin.git # required by PKGBUILD
+} ||
 die "Could not clone msys2-runtime"
 
 git -C msys2-runtime fetch --no-tags $url $base_tag:$base_tag $msys2_branch:$msys2_branch
@@ -44,7 +46,8 @@ git -c core.abbrev=7 \
 		--suffix=.patch \
 		--subject-prefix=PATCH \
 		--output-directory .. \
-			$base_tag..$msys2_branch ||
+		$base_tag..$msys2_branch \
+		-- ':(exclude).github/' ||
 die "Could not generate new patch set"
 
 patches="$(ls -1 0*.patch)" &&
@@ -72,6 +75,7 @@ then
 	exit 0
 fi
 
+GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS+$GIT_CONFIG_PARAMETERS }'core.autocrlf=false'" \
 updpkgsums ||
 die "Could not update the patch set checksums in PKGBUILD"
 
