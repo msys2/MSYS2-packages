@@ -1,0 +1,61 @@
+From 69e4fbea86b07a7960c1fd98b0e17bd5bdb4d2b8 Mon Sep 17 00:00:00 2001
+From: Jon Turney <jon.turney@dronecode.org.uk>
+Date: Tue, 14 Feb 2023 13:52:39 +0000
+Subject: [PATCH 52/N] Cygwin: dumper: also link with libzstd, as libbfd may
+ require it
+
+Also allow that linkage to be dynamic, as libzstd-devel doesn't
+currently provide a static library.
+
+(cherry picked from commit 1387ea9f984d5a7aa096a66b67d61dc2cc565d21)
+---
+ winsup/configure.ac      | 10 ++++++----
+ winsup/utils/Makefile.am |  7 ++-----
+ 2 files changed, 8 insertions(+), 9 deletions(-)
+
+diff --git a/winsup/configure.ac b/winsup/configure.ac
+index ca2b8c0..977a5ce 100644
+--- a/winsup/configure.ac
++++ b/winsup/configure.ac
+@@ -110,10 +110,12 @@ AC_CHECK_LIB([bfd], [bfd_init], [true],
+ 
+ AM_CONDITIONAL(BUILD_DUMPER, [test "x$ac_cv_lib_bfd_bfd_init" = "xyes"])
+ 
+-AC_CHECK_LIB([sframe], [sframe_decode],
+-	     AC_MSG_NOTICE([Detected libsframe; Assuming that libbfd depends on it]), [true])
+-
+-AM_CONDITIONAL(HAVE_LIBSFRAME, [test "x$ac_cv_lib_sframe_sframe_decode" = "xyes"])
++# libbfd.a doesn't have a pkgconfig file, so we guess what it's dependencies
++# are, based on what's present in the build environment
++BFD_LIBS="-lintl -liconv -liberty -lz"
++AC_CHECK_LIB([sframe], [sframe_decode], [BFD_LIBS="${BFD_LIBS} -lsframe"])
++AC_CHECK_LIB([zstd], [ZSTD_isError], [BFD_LIBS="${BFD_LIBS} -lzstd"])
++AC_SUBST([BFD_LIBS])
+ 
+ AC_CONFIG_FILES([
+     Makefile
+diff --git a/winsup/utils/Makefile.am b/winsup/utils/Makefile.am
+index 08f6212..1132b09 100644
+--- a/winsup/utils/Makefile.am
++++ b/winsup/utils/Makefile.am
+@@ -78,7 +78,8 @@ LDADD = -lnetapi32
+ cygpath_CXXFLAGS = -fno-threadsafe-statics $(AM_CXXFLAGS)
+ cygpath_LDADD = $(LDADD) -luserenv -lntdll
+ dumper_CXXFLAGS = -I$(top_srcdir)/../include $(AM_CXXFLAGS)
+-dumper_LDADD = $(LDADD) -lpsapi -lbfd -lintl -liconv -liberty -lz -lntdll
++dumper_LDADD = $(LDADD) -lpsapi -lntdll -lbfd @BFD_LIBS@
++dumper_LDFLAGS =
+ ldd_LDADD = $(LDADD) -lpsapi -lntdll
+ mount_CXXFLAGS = -DFSTAB_ONLY $(AM_CXXFLAGS)
+ minidumper_LDADD = $(LDADD) -ldbghelp
+@@ -87,10 +88,6 @@ profiler_CXXFLAGS = -I$(srcdir) -idirafter ${top_srcdir}/cygwin -idirafter ${top
+ profiler_LDADD = $(LDADD) -lntdll
+ cygps_LDADD = $(LDADD) -lpsapi -lntdll
+ 
+-if HAVE_LIBSFRAME
+-dumper_LDADD += -lsframe
+-endif
+-
+ if CROSS_BOOTSTRAP
+ SUBDIRS = mingw
+ endif

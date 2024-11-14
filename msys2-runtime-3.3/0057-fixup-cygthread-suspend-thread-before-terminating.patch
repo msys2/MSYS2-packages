@@ -1,0 +1,33 @@
+From 41e8b455d7e73ac05ca051bf114f7fa36ef5f0fe Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Wed, 13 Nov 2024 15:13:04 -0800
+Subject: [PATCH 57/N] fixup! cygthread: suspend thread before terminating.
+
+Suppress error output if ReadFile on child wait pipe returns
+ERROR_OPERATION_ABORTED due to addition of CancelSynchronousIo call.
+---
+ winsup/cygwin/pinfo.cc | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/winsup/cygwin/pinfo.cc b/winsup/cygwin/pinfo.cc
+index dcd0285..5d148e9 100644
+--- a/winsup/cygwin/pinfo.cc
++++ b/winsup/cygwin/pinfo.cc
+@@ -1210,13 +1210,14 @@ proc_waiter (void *arg)
+ 
+   for (;;)
+     {
+-      DWORD nb;
++      DWORD nb, err;
+       char buf = '\0';
+ 
+       if (!ReadFile (vchild.rd_proc_pipe, &buf, 1, &nb, NULL)
+-	  && GetLastError () != ERROR_BROKEN_PIPE)
++	  && (err = GetLastError ()) != ERROR_BROKEN_PIPE)
+ 	{
+-	  system_printf ("error on read of child wait pipe %p, %E", vchild.rd_proc_pipe);
++	  if (err != ERROR_OPERATION_ABORTED)
++	    system_printf ("error on read of child wait pipe %p, %E", vchild.rd_proc_pipe);
+ 	  break;
+ 	}
+ 

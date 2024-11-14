@@ -1,0 +1,74 @@
+From 32c179db9db373b1278f64bcba6ec7e059500a01 Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Mon, 11 Nov 2024 20:09:49 -0800
+Subject: [PATCH 56/N] cygthread: suspend thread before terminating.
+
+This addresses an extremely difficult to debug deadlock when running
+under emulation on ARM64.
+
+A relatively easy way to trigger this bug is to call `fork()`, then within the
+child process immediately call another `fork()` and then `exit()` the
+intermediate process.
+
+It would seem that there is a "code emulation" lock on the wait thread at
+this stage, and if the thread is terminated too early, that lock still exists
+albeit without a thread, and nothing moves forward.
+
+It seems that a `SuspendThread()` combined with a `GetThreadContext()`
+(to force the thread to _actually_ be suspended, for more details see
+https://devblogs.microsoft.com/oldnewthing/20150205-00/?p=44743)
+makes sure the thread is "booted" from emulation before it is suspended.
+
+Hopefully this means it won't be holding any locks or otherwise leave
+emulation in a bad state when the thread is terminated.
+
+Also, attempt to use `CancelSynchonousIo()` (as seen in `flock.cc`) to avoid
+the need for `TerminateThread()` altogether.  This doesn't always work,
+however, so was not a complete fix for the deadlock issue.
+
+Addresses: https://cygwin.com/pipermail/cygwin-developers/2024-May/012694.html
+Signed-off-by: Jeremy Drake <cygwin@jdrake.com>
+---
+ winsup/cygwin/cygthread.cc | 14 ++++++++++++++
+ winsup/cygwin/sigproc.cc   |  3 ++-
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/cygthread.cc b/winsup/cygwin/cygthread.cc
+index 11c21d8..e487439 100644
+--- a/winsup/cygwin/cygthread.cc
++++ b/winsup/cygwin/cygthread.cc
+@@ -302,6 +302,20 @@ cygthread::terminate_thread ()
+   if (!inuse)
+     goto force_notterminated;
+ 
++  if (_my_tls._ctinfo != this)
++    {
++      CONTEXT context;
++      context.ContextFlags = CONTEXT_CONTROL;
++      /* SuspendThread makes sure a thread is "booted" from emulation before
++	 it is suspended.  As such, the emulator hopefully won't be in a bad
++	 state (aka, holding any locks) when the thread is terminated. */
++      SuspendThread (h);
++      /* We need to call GetThreadContext, even though we don't care about the
++	 context, because SuspendThread is asynchronous and GetThreadContext
++	 will make sure the thread is *really* suspended before returning */
++      GetThreadContext (h, &context);
++    }
++
+   TerminateThread (h, 0);
+   WaitForSingleObject (h, INFINITE);
+   CloseHandle (h);
+diff --git a/winsup/cygwin/sigproc.cc b/winsup/cygwin/sigproc.cc
+index fbb1f0e..cf53ba9 100644
+--- a/winsup/cygwin/sigproc.cc
++++ b/winsup/cygwin/sigproc.cc
+@@ -417,7 +417,8 @@ proc_terminate ()
+ 	  if (!have_execed || !have_execed_cygwin)
+ 	    chld_procs[i]->ppid = 1;
+ 	  if (chld_procs[i].wait_thread)
+-	    chld_procs[i].wait_thread->terminate_thread ();
++	    if (!CancelSynchronousIo (chld_procs[i].wait_thread->thread_handle ()))
++	      chld_procs[i].wait_thread->terminate_thread ();
+ 	  /* Release memory associated with this process unless it is 'myself'.
+ 	     'myself' is only in the chld_procs table when we've execed.  We
+ 	     reach here when the next process has finished initializing but we
