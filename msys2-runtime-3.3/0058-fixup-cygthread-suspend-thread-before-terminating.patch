@@ -1,0 +1,64 @@
+From 3c8ee96adce21189f4b499a1f0ae04537d042597 Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Tue, 19 Nov 2024 10:57:05 -0800
+Subject: [PATCH 58/N] fixup! cygthread: suspend thread before terminating.
+
+Address review comments:
+* add comments
+* change nested ifs to && conditions
+
+Added CancelSynchronousIo before another terminate_thread call, which
+was not the one that was causing issues, but still makes sense to avoid
+termination if possible.
+---
+ winsup/cygwin/pinfo.cc   |  3 +++
+ winsup/cygwin/sigproc.cc | 15 +++++++++++----
+ 2 files changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/winsup/cygwin/pinfo.cc b/winsup/cygwin/pinfo.cc
+index 5d148e9..8238e64 100644
+--- a/winsup/cygwin/pinfo.cc
++++ b/winsup/cygwin/pinfo.cc
+@@ -1216,6 +1216,9 @@ proc_waiter (void *arg)
+       if (!ReadFile (vchild.rd_proc_pipe, &buf, 1, &nb, NULL)
+ 	  && (err = GetLastError ()) != ERROR_BROKEN_PIPE)
+ 	{
++	  /* ERROR_OPERATION_ABORTED is expected due to the possibility that
++	     CancelSynchronousIo interruped the ReadFile call, so don't output
++	     that error */
+ 	  if (err != ERROR_OPERATION_ABORTED)
+ 	    system_printf ("error on read of child wait pipe %p, %E", vchild.rd_proc_pipe);
+ 	  break;
+diff --git a/winsup/cygwin/sigproc.cc b/winsup/cygwin/sigproc.cc
+index cf53ba9..75fdcc2 100644
+--- a/winsup/cygwin/sigproc.cc
++++ b/winsup/cygwin/sigproc.cc
+@@ -416,9 +416,12 @@ proc_terminate ()
+ 	     to 1 iff it is a Cygwin process.  */
+ 	  if (!have_execed || !have_execed_cygwin)
+ 	    chld_procs[i]->ppid = 1;
+-	  if (chld_procs[i].wait_thread)
+-	    if (!CancelSynchronousIo (chld_procs[i].wait_thread->thread_handle ()))
+-	      chld_procs[i].wait_thread->terminate_thread ();
++	  /* Attempt to exit the wait_thread cleanly via CancelSynchronousIo
++	     before falling back to the (explicitly dangerous) cross-thread
++	     termination */
++	  if (chld_procs[i].wait_thread
++	      && !CancelSynchronousIo (chld_procs[i].wait_thread->thread_handle ()))
++	    chld_procs[i].wait_thread->terminate_thread ();
+ 	  /* Release memory associated with this process unless it is 'myself'.
+ 	     'myself' is only in the chld_procs table when we've execed.  We
+ 	     reach here when the next process has finished initializing but we
+@@ -1209,7 +1212,11 @@ remove_proc (int ci)
+ {
+   if (have_execed)
+     {
+-      if (_my_tls._ctinfo != chld_procs[ci].wait_thread)
++      /* Attempt to exit the wait_thread cleanly via CancelSynchronousIo
++	 before falling back to the (explicitly dangerous) cross-thread
++	 termination */
++      if (_my_tls._ctinfo != chld_procs[ci].wait_thread
++	  && !CancelSynchronousIo (chld_procs[ci].wait_thread->thread_handle ()))
+ 	chld_procs[ci].wait_thread->terminate_thread ();
+     }
+   else if (chld_procs[ci] && chld_procs[ci]->exists ())
