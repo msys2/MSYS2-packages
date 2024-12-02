@@ -1,0 +1,117 @@
+From c427dfe3218f9b918571ce1f8daf226b67bac8b6 Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Tue, 19 Nov 2024 17:18:16 -0800
+Subject: [PATCH 60/N] Cygwin: cache IsWow64Process2 host arch in wincap.
+
+This was already used in the FAST_CWD check, and could be used in a
+couple other places.
+
+I found the "emulated"/process value returned from the function largely
+useless, so I did not cache it.  It is useless because, as the docs say,
+it is set to IMAGE_FILE_MACHINE_UNKNOWN (0) if the process is not
+running under WOW64, but Microsoft also doesn't consider x64-on-ARM64 to
+be WOW64, so it is set to 0 regardless if the process is ARM64 or x64.
+You can tell the difference via
+GetProcessInformation(ProcessMachineTypeInfo), but for the current
+process even that's overkill: what we really want to know is the
+IMAGE_FILE_MACHINE_* constant for the Cygwin dll itself, which is
+conveniently located in memory already, so cache that in wincap also for
+easy comparisons.
+
+Signed-off-by: Jeremy Drake <cygwin@jdrake.com>
+---
+ winsup/cygwin/path.cc   |  6 ++----
+ winsup/cygwin/wincap.cc | 28 ++++++++++++++++++++++++++++
+ winsup/cygwin/wincap.h  |  4 ++++
+ 3 files changed, 34 insertions(+), 4 deletions(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 8a373c4..abb6f27 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -5023,14 +5023,12 @@ find_fast_cwd_pointer ()
+ static fcwd_access_t **
+ find_fast_cwd ()
+ {
+-  USHORT emulated, hosted;
+   fcwd_access_t **f_cwd_ptr;
+ 
+-  /* First check if we're running in WOW64 on ARM64 emulating AMD64.  Skip
++  /* First check if we're running on an ARM64 system.  Skip
+      fetching FAST_CWD pointer as long as there's no solution for finding
+      it on that system. */
+-  if (IsWow64Process2 (GetCurrentProcess (), &emulated, &hosted)
+-      && hosted == IMAGE_FILE_MACHINE_ARM64)
++  if (wincap.host_machine () == IMAGE_FILE_MACHINE_ARM64)
+     f_cwd_ptr = NULL;
+   else
+     {
+diff --git a/winsup/cygwin/wincap.cc b/winsup/cygwin/wincap.cc
+index f37ed6b..256d3fd 100644
+--- a/winsup/cygwin/wincap.cc
++++ b/winsup/cygwin/wincap.cc
+@@ -438,9 +438,16 @@ wincaps wincap_10_1903 __attribute__((section (".cygwin_dll_common"), shared)) =
+ 
+ wincapc wincap __attribute__((section (".cygwin_dll_common"), shared));
+ 
++/* __asm__ to work around i386 leading underscore */
++extern IMAGE_DOS_HEADER
++__image_base__ __asm__ ("__image_base__");
++
+ void
+ wincapc::init ()
+ {
++  PIMAGE_NT_HEADERS ntheader;
++  USHORT emul_mach;
++
+   if (caps)
+     return;		// already initialized
+ 
+@@ -512,4 +519,25 @@ wincapc::init ()
+ 
+   __small_sprintf (osnam, "NT-%d.%d", version.dwMajorVersion,
+ 		   version.dwMinorVersion);
++
++  if (!IsWow64Process2 (GetCurrentProcess (), &emul_mach, &host_mach))
++    {
++      /* If IsWow64Process2 succeeded, it filled in host_mach.  Assume the only
++	 way it fails for the current process is that we're running on an OS
++	 version where it's not implemented yet.  As such, the only two
++	 realistic options for host_mach are AMD64 or I386 */
++#if defined (__x86_64__)
++      host_mach = IMAGE_FILE_MACHINE_AMD64;
++#elif defined (__i386__)
++      host_mach = wow64 ? IMAGE_FILE_MACHINE_AMD64 : IMAGE_FILE_MACHINE_I386;
++#else
++      /* this should not happen */
++      assert (0 && "IsWow64Process2 failed on non-i386/x86_64");
++      host_mach = IMAGE_FILE_MACHINE_UNKNOWN;
++#endif
++    }
++
++  ntheader = (PIMAGE_NT_HEADERS)((LPBYTE) &__image_base__
++				 + __image_base__.e_lfanew);
++  cygwin_mach = ntheader->FileHeader.Machine;
+ }
+diff --git a/winsup/cygwin/wincap.h b/winsup/cygwin/wincap.h
+index c5e7c9a..951fa6a 100644
+--- a/winsup/cygwin/wincap.h
++++ b/winsup/cygwin/wincap.h
+@@ -57,6 +57,8 @@ class wincapc
+   char			osnam[40];
+   ULONG_PTR		wow64;
+   void			*caps;
++  USHORT		host_mach;
++  USHORT		cygwin_mach;
+ 
+ public:
+   void init ();
+@@ -76,6 +78,8 @@ public:
+   const char *osname () const { return osnam; }
+   const DWORD build_number () const { return version.dwBuildNumber; }
+   const bool is_wow64 () const { return !!wow64; }
++  const USHORT host_machine () const { return host_mach; }
++  const USHORT cygwin_machine () const { return cygwin_mach; }
+ 
+ #define IMPLEMENT(cap) cap() const { return ((wincaps *) this->caps)->cap; }
+ 
