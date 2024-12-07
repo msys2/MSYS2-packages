@@ -2,28 +2,33 @@
 
 _realname=libargp
 pkgname=(${_realname} ${_realname}-devel)
-pkgver=20110921
-pkgrel=4
+pkgver=20241207
+pkgrel=1
 arch=('i686' 'x86_64')
 pkgdesc="Interface for parsing command-line arguments"
-url="https://www.gnu.org/software/libc/libc.html"
-license=('GPL' 'LGPL')
-makedepends=('autotools' 'gcc')
-source=(${_realname}-${pkgver}.tar.bz2
-        ${_realname}-so.patch
-        ${_realname}-optional-variables.patch
-        README COPYING COPYING.LESSER)
-sha256sums=('775c236a0c87005e5b27779894bc82055cdb3906f7f2359cca893e803762109a'
-            'e404bd845e62c9664eac3ef020113be76a15c2b10257cbbd60531f63f0053f97'
-            '73591d22f58ff20c879d931ee116f63ff943ed10a5f1e67ff82a718131b2fbd2'
-            '975d628768674c1ebf62530c445c8b57f0d917a1782e019cf850a7baa848483e'
-            '8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903'
-            'da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768')
+url="https://www.gnu.org/software/gnulib/"
+license=('spdx:LGPL-3.0-or-later')
+makedepends=('autotools' 'gcc' 'git')
+_commit=5e1283bb13d74c6619afb71c6a322c648a8cc91e
+source=("git+git://git.savannah.gnu.org/gnulib.git#commit=${_commit}"
+        libargp-config.patch
+        libargp-global-variables.patch
+        libargp-so.patch)
+msys2_repository_url="https://git.savannah.gnu.org/cgit/gnulib.git/tree/modules/argp"
+sha256sums=('03cb3660580d3f0a9742cc72bd8aaf27392375a66049f09588836f093c1fddef'
+            'daa133c2b8cbc8218ba2c11b86783e3e5acef79f833a9e126ce86acf30336564'
+            '2ec8108e7583711768355a8d30226219cdfe1bc9a4d49d89c6c659dbfaeb2d39'
+            'be94afdd1e6f3cbf886c1de707a699214c836a2505ab9e82cfa464135e8b8a0f')
 
 prepare() {
-  cd ${_realname}-${pkgver}
-  patch -p1 -i ${srcdir}/${_realname}-so.patch
-  patch -p2 -i ${srcdir}/${_realname}-optional-variables.patch
+  cd "gnulib"
+  ./gnulib-tool --verbose --create-testdir --dir="${srcdir}/argp" --libtool --lib=libargp --lgpl 3 argp
+  cd "${srcdir}/argp"
+
+  # from cygwin (https://cygwin.com/cgit/cygwin-packages/libargp/tree/)
+  patch -p2 -i ${srcdir}/libargp-config.patch
+  patch -p2 -i ${srcdir}/libargp-global-variables.patch
+  patch -p2 -i ${srcdir}/libargp-so.patch
 
   autoreconf -fi
 }
@@ -33,19 +38,20 @@ build() {
   mkdir -p "${srcdir}/install-${CHOST}"
   cd "${srcdir}/build-${CHOST}"
 
-  ../${_realname}-${pkgver}/configure \
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+  ../argp/configure \
     --prefix=/usr \
-    --build=${CHOST} \
-    --host=${CHOST} \
-    --target=${CHOST}
+    --build=${CYGWIN_CHOST} \
+    --host=${CYGWIN_CHOST} \
+    --target=${CYGWIN_CHOST}
 
+  cp config.h gllib/argp-config.h
   make
   make DESTDIR="${srcdir}/install-${CHOST}" install
 
-  mkdir -p "${srcdir}/install-${CHOST}/usr/share/doc/${_realname}"
-  cp ${srcdir}/README "${srcdir}/install-${CHOST}/usr/share/doc/${_realname}"
+  cp gllib/argp-config.h "${srcdir}/install-${CHOST}/usr/include"
   mkdir -p "${srcdir}/install-${CHOST}/usr/share/licenses/${_realname}"
-  cp ${srcdir}/COPYING{,.LESSER} "${srcdir}/install-${CHOST}/usr/share/licenses/${_realname}"
+  cp ${srcdir}/gnulib/doc/COPYING.LESSERv3 "${srcdir}/install-${CHOST}/usr/share/licenses/${_realname}"
 }
 
 package_libargp() {
