@@ -27,13 +27,6 @@ switch $MSYSTEM
     set -x MINGW_CHOST "$MSYSTEM_CHOST"
     set -x MINGW_PREFIX "$MSYSTEM_PREFIX"
     set -x MINGW_PACKAGE_PREFIX "mingw-w64-$MSYSTEM_CARCH"
-  case CLANG32
-    set -x MSYSTEM_PREFIX '/clang32'
-    set -x MSYSTEM_CARCH 'i686'
-    set -x MSYSTEM_CHOST 'i686-w64-mingw32'
-    set -x MINGW_CHOST "$MSYSTEM_CHOST"
-    set -x MINGW_PREFIX "$MSYSTEM_PREFIX"
-    set -x MINGW_PACKAGE_PREFIX "mingw-w64-clang-$MSYSTEM_CARCH"
   case CLANG64
     set -x MSYSTEM_PREFIX '/clang64'
     set -x MSYSTEM_CARCH 'x86_64'
