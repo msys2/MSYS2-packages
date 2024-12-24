@@ -1,5 +1,5 @@
 pkgname=procps-ng
-pkgver=4.0.4
+pkgver=4.0.5
 pkgrel=1
 pkgdesc='Utilities for monitoring your system and its processes'
 arch=('i686' 'x86_64')
@@ -18,12 +18,16 @@ replaces=('procps')
 source=("https://downloads.sourceforge.net/project/${pkgname}/Production/${pkgname}-${pkgver}.tar.xz"{,.asc}
          "procps-ng-4.0.4-manpage.patch"
          "procps-ng-4.0.4-wchan.patch"
-         "procps-ng-4.0.4-LDADD.patch")
-sha256sums=('22870d6feb2478adb617ce4f09a787addaf2d260c5a8aa7b17d889a962c5e42e'
+         "procps-ng-4.0.4-LDADD.patch"
+         "0001-duplicate-signal-build-error.patch"
+         "0002-no-hugetlb.patch")
+sha256sums=('c2e6d193cc78f84cd6ddb72aaf6d5c6a9162f0470e5992092057f5ff518562fa'
             'SKIP'
             'bbe3eacad042da824c78d634022c405f8900bc98b56744220f537216daa82bc7'
             '6b89d78b1d48d3f7d704d12da05c6bc6d95d009f0b6833fa7a527f9ec909cc18'
-            '254768bf9fd844fd937df71f5201eda2f03dd7358ac365741de50c92afcccb41')
+            '254768bf9fd844fd937df71f5201eda2f03dd7358ac365741de50c92afcccb41'
+            'cfbf4614ef971a7ddfa65316e5aa80b98b8dc0645cda48d0aeaa7ed08f9db510'
+            '3e26c3c925d25e7cf0a6c37923f15f8759d9b9612a72433dc02470d3cf2e44a5')
 validpgpkeys=('5D2FB320B825D93904D205193938F96BDF50FEA5') # Craig Small <csmall@debian.org>
 
 prepare() {
@@ -33,6 +37,11 @@ prepare() {
   patch -p2 -i ${srcdir}/procps-ng-4.0.4-manpage.patch
   patch -p2 -i ${srcdir}/procps-ng-4.0.4-wchan.patch
   patch -p2 -i ${srcdir}/procps-ng-4.0.4-LDADD.patch
+
+  # cygwin is missing sigabbrev_np() and the fallback doesn't deal with duplicate signals
+  patch -p1 -i ${srcdir}/0001-duplicate-signal-build-error.patch
+  # cygwin doesn't have hugetlb
+  patch -p1 -i ${srcdir}/0002-no-hugetlb.patch
 
   autoreconf -fi
 }
@@ -51,6 +60,7 @@ build() {
     --without-libiconv-prefix \
     --without-libintl-prefix \
     --enable-watch8bit \
+    --disable-pidwait \
     --disable-numa \
     --disable-kill
     # kill is provided by util-linux
