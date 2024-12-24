@@ -1,7 +1,7 @@
-From e09c64ef65cf51011122e55b26abdbda9e70f7e6 Mon Sep 17 00:00:00 2001
+From 2c55ca50eeb8532432f51391c2ec28a14fc4e510 Mon Sep 17 00:00:00 2001
 From: Jeremy Drake <github@jdrake.com>
 Date: Mon, 11 Nov 2024 20:09:49 -0800
-Subject: [PATCH 42/N] cygthread: suspend thread before terminating.
+Subject: [PATCH 41/N] cygthread: suspend thread before terminating.
 
 This addresses an extremely difficult to debug deadlock when running
 under emulation on ARM64.
@@ -30,8 +30,9 @@ Addresses: https://cygwin.com/pipermail/cygwin-developers/2024-May/012694.html
 Signed-off-by: Jeremy Drake <cygwin@jdrake.com>
 ---
  winsup/cygwin/cygthread.cc | 14 ++++++++++++++
- winsup/cygwin/sigproc.cc   |  3 ++-
- 2 files changed, 16 insertions(+), 1 deletion(-)
+ winsup/cygwin/pinfo.cc     | 10 +++++++---
+ winsup/cygwin/sigproc.cc   | 12 ++++++++++--
+ 3 files changed, 31 insertions(+), 5 deletions(-)
 
 diff --git a/winsup/cygwin/cygthread.cc b/winsup/cygwin/cygthread.cc
 index 54918e7..4f16097 100644
@@ -58,17 +59,58 @@ index 54918e7..4f16097 100644
    TerminateThread (h, 0);
    WaitForSingleObject (h, INFINITE);
    CloseHandle (h);
+diff --git a/winsup/cygwin/pinfo.cc b/winsup/cygwin/pinfo.cc
+index a5f5d6e..4bb1946 100644
+--- a/winsup/cygwin/pinfo.cc
++++ b/winsup/cygwin/pinfo.cc
+@@ -1262,13 +1262,17 @@ proc_waiter (void *arg)
+ 
+   for (;;)
+     {
+-      DWORD nb;
++      DWORD nb, err;
+       char buf = '\0';
+ 
+       if (!ReadFile (vchild.rd_proc_pipe, &buf, 1, &nb, NULL)
+-	  && GetLastError () != ERROR_BROKEN_PIPE)
++	  && (err = GetLastError ()) != ERROR_BROKEN_PIPE)
+ 	{
+-	  system_printf ("error on read of child wait pipe %p, %E", vchild.rd_proc_pipe);
++	  /* ERROR_OPERATION_ABORTED is expected due to the possibility that
++	     CancelSynchronousIo interruped the ReadFile call, so don't output
++	     that error */
++	  if (err != ERROR_OPERATION_ABORTED)
++	    system_printf ("error on read of child wait pipe %p, %E", vchild.rd_proc_pipe);
+ 	  break;
+ 	}
+ 
 diff --git a/winsup/cygwin/sigproc.cc b/winsup/cygwin/sigproc.cc
-index a89f09d..0089626 100644
+index cf43aa9..4260f88 100644
 --- a/winsup/cygwin/sigproc.cc
 +++ b/winsup/cygwin/sigproc.cc
-@@ -410,7 +410,8 @@ proc_terminate ()
+@@ -413,7 +413,11 @@ proc_terminate ()
+ 	     to 1 iff it is a Cygwin process.  */
  	  if (!have_execed || !have_execed_cygwin)
  	    chld_procs[i]->ppid = 1;
- 	  if (chld_procs[i].wait_thread)
--	    chld_procs[i].wait_thread->terminate_thread ();
-+	    if (!CancelSynchronousIo (chld_procs[i].wait_thread->thread_handle ()))
-+	      chld_procs[i].wait_thread->terminate_thread ();
+-	  if (chld_procs[i].wait_thread)
++	  /* Attempt to exit the wait_thread cleanly via CancelSynchronousIo
++	     before falling back to the (explicitly dangerous) cross-thread
++	     termination */
++	  if (chld_procs[i].wait_thread
++	      && !CancelSynchronousIo (chld_procs[i].wait_thread->thread_handle ()))
+ 	    chld_procs[i].wait_thread->terminate_thread ();
  	  /* Release memory associated with this process unless it is 'myself'.
  	     'myself' is only in the chld_procs table when we've execed.  We
- 	     reach here when the next process has finished initializing but we
+@@ -1199,7 +1203,11 @@ remove_proc (int ci)
+ {
+   if (have_execed)
+     {
+-      if (_my_tls._ctinfo != chld_procs[ci].wait_thread)
++      /* Attempt to exit the wait_thread cleanly via CancelSynchronousIo
++	 before falling back to the (explicitly dangerous) cross-thread
++	 termination */
++      if (_my_tls._ctinfo != chld_procs[ci].wait_thread
++	  && !CancelSynchronousIo (chld_procs[ci].wait_thread->thread_handle ()))
+ 	chld_procs[ci].wait_thread->terminate_thread ();
+     }
+   else if (chld_procs[ci] && chld_procs[ci]->exists ())
