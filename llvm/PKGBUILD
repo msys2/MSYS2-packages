@@ -1,0 +1,280 @@
+# Maintainer: Mateusz Mikuła <oss@mateuszmikula.dev>
+
+_compiler=gcc
+
+pkgbase=llvm
+pkgname=("llvm"
+         "clang"
+         "clang-analyzer"
+         "compiler-rt"
+         "lld")
+_version=20.1.2
+_rc=""
+_tag=llvmorg-${_version}${_rc}
+pkgver=${_version}${_rc/-/}
+pkgrel=1
+pkgdesc="C language family frontend for LLVM"
+arch=('x86_64')
+url="https://llvm.org/"
+msys2_references=(
+  "cpe: cpe:/a:llvm:llvm"
+)
+license=("spdx:Apache-2.0 WITH LLVM-exception")
+makedepends=('cmake'
+             'ninja'
+             'pkgconf'
+             'libffi'
+             'python'
+             'git'
+             )
+_url=https://github.com/llvm/llvm-project/releases/download/${_tag}
+source=("${_url}/llvm-${pkgver}.src.tar.xz"{,.sig}
+        "${_url}/clang-${pkgver}.src.tar.xz"{,.sig}
+        "${_url}/compiler-rt-${pkgver}.src.tar.xz"{,.sig}
+        "${_url}/lld-${pkgver}.src.tar.xz"{,.sig}
+        "${_url}/cmake-${pkgver}.src.tar.xz"{,.sig}
+        "${_url}/libunwind-${pkgver}.src.tar.xz"{,.sig}
+        "${_url}/runtimes-${pkgver}.src.tar.xz"{,.sig}
+        "0001-LLVM-Cygwin-Fix-symbol-visibility-definition.patch"
+        "0101-hack-dynamically-resolve-G-include-dir.patch"
+        "0102-Clang-Cygwin-Enable-few-conditions-that-are-shared-w.patch"
+        "0103-Clang-Cygwin-Enable-TLS.patch"
+        "0104-Clang-Cygwin-Fix-symbol-visibility-definition.patch"
+        "0105-hack-cygwin-use-proper-EH-model.patch"
+        "0106-disable-shared-libs-on-Cygwin-by-default.patch"
+        "0107-Clang-Cygwin-Remove-erroneous-define.patch"
+        "0201-LLD-MinGW-Implement-dll-search-prefix-option.patch"
+        "0202-hack-add-system-search-paths.patch"
+        )
+sha256sums=('6286c526db3b84ce79292f80118e7e6d3fbd5b5ce3e4a0ebb32b2d205233bd86'
+            'SKIP'
+            '65031207d088937d0ffdf4d7dd7167cae640b7c9188fc0be3d7e286a89b7787c'
+            'SKIP'
+            'eb4bec5583e28f69ae35715bce25f60a67a146286cefefe1f46e74e1aee6aba4'
+            'SKIP'
+            'e42327710309be9da2574a10ab7a45010240594393e9a524302902750208981d'
+            'SKIP'
+            '8a48d5ff59a078b7a94395b34f7d5a769f435a3211886e2c8bf83aa2981631bc'
+            'SKIP'
+            '941ef5c156d177b215a91b6075b82f2041a8159a9c07daffbc45101a9d74059a'
+            'SKIP'
+            '57e29a8f37836d21e1bd6c90fa0cec210a94b7a2d150f231ce5a2583ccb2a31a'
+            'SKIP'
+            '3e248aa39a7b837d88c69a67c44b0df7b7543669c1e17aa40605a5b5d192155e'
+            '250aa7b7c8d9652210c06fa124ea6469ce3a6b30480414932206bab519013c27'
+            '5c6bee32203e46bb753bb617010893fda8955bbaf7e6a1f0c787ef51f3677ca4'
+            '0952f176cc871f2a527f780a5848aa009100402234aca7b855b1060f3229b70e'
+            '6ef0825e5110e343a4149c353f0f91be1aa7e754241436f8550c7a2e63efbc05'
+            '5ebf482126196be6ae2764a1b679cf620a1fa3fae3653634907a032f90446d7e'
+            'bb5092e0eead24259bae4fd294e5bb21a6f8f5d9e7dce512c3882cdaf5d17707'
+            'e0eb057009fbfd6b9099d652c289a4b4d8ba9056a4746c85c898ffefe178dc55'
+            'e0be8739d7423021a713d7b9e86d5841cc82f8666857a4c9cd855692266f0cd4'
+            'cd3b441073e007b2e2900ea778be96076286178b7c1c6db0f2ef43fe1836906e')
+validpgpkeys=('B6C8F98282B944E3B0D5C2530FC3042E345AD05D'  # Hans Wennborg, Google.
+              '474E22316ABF4785A88C6E8EA2C794A986419D8A'  # Tom Stellard
+              'D574BD5D1D0E98895E3BF90044F2485E45D59042') # Tobias Hieta
+noextract=(clang-${pkgver}.src.tar.xz
+           runtimes-${pkgver}.src.tar.xz)
+
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying ${_patch}"
+    patch -Nbp1 -i "${srcdir}/${_patch}"
+  done
+}
+
+revert_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Reverting ${_patch}"
+    patch -p1 -i "${srcdir}/${_patch}"
+  done
+}
+
+apply_git_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying ${_patch}"
+    patch -Nbp2 -i "${srcdir}/${_patch}"
+  done
+}
+
+prepare() {
+  cd "${srcdir}"
+  for pkg in clang runtimes; do
+    plain "Extracting ${pkg}-${pkgver}.src.tar.xz due to symlink(s) without pre-existing target(s)"
+    tar -xJf "${srcdir}"/${pkg}-${pkgver}.src.tar.xz -C "${srcdir}" || true
+  done
+
+  # Rename Directories
+  # We need libunwind for LLD: https://github.com/llvm/llvm-project/issues/48572
+  for pkg in llvm clang compiler-rt lld cmake libunwind runtimes; do
+    mv ${pkg}-$pkgver.src ${pkg}
+  done
+
+  # Patch llvm
+  cd "${srcdir}"/llvm
+  apply_git_patch_with_msg 0001-LLVM-Cygwin-Fix-symbol-visibility-definition.patch
+
+  # Patch clang
+  cd "${srcdir}"/clang
+  apply_git_patch_with_msg 0101-hack-dynamically-resolve-G-include-dir.patch
+  apply_git_patch_with_msg 0102-Clang-Cygwin-Enable-few-conditions-that-are-shared-w.patch
+  apply_git_patch_with_msg 0103-Clang-Cygwin-Enable-TLS.patch
+  apply_git_patch_with_msg 0104-Clang-Cygwin-Fix-symbol-visibility-definition.patch
+  apply_git_patch_with_msg 0105-hack-cygwin-use-proper-EH-model.patch
+  apply_git_patch_with_msg 0106-disable-shared-libs-on-Cygwin-by-default.patch
+  apply_git_patch_with_msg 0107-Clang-Cygwin-Remove-erroneous-define.patch
+
+  # Patch lld
+  cd "${srcdir}"/lld
+  apply_git_patch_with_msg 0201-LLD-MinGW-Implement-dll-search-prefix-option.patch
+  apply_git_patch_with_msg 0202-hack-add-system-search-paths.patch
+}
+
+build() {
+  local -a platform_config
+  local -a common_cmake_args
+
+  if check_option "debug" "y"; then
+    common_cmake_args+=(-DCMAKE_BUILD_TYPE=Debug
+                        -DLLVM_ENABLE_ASSERTIONS=ON)
+    VERBOSE="VERBOSE=1"
+  else
+    common_cmake_args+=(-DCMAKE_BUILD_TYPE=Release
+                        -DLLVM_ENABLE_ASSERTIONS=OFF
+                        -DLLVM_ENABLE_DUMP=ON)
+  fi
+  common_cmake_args+=(-Wno-dev
+    -DCMAKE_INSTALL_PREFIX=/usr
+    -DCOMPILER_RT_BUILD_ORC=OFF
+    -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON
+    -DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-pc-cygwin
+    -DLLVM_ENABLE_BACKTRACES=OFF
+    -DLLVM_ENABLE_THREADS=ON
+    -DLLVM_HOST_TRIPLE=x86_64-pc-cygwin
+    -DLLVM_INCLUDE_BENCHMARKS=OFF
+    -DLLVM_INCLUDE_EXAMPLES=OFF
+    -DLLVM_INCLUDE_TESTS=OFF
+    -DLLVM_USE_SYMLINKS=OFF
+    -DPython3_EXECUTABLE=/usr/bin/python.exe
+  )
+
+  if [ "${_compiler}" == "gcc" ]; then
+    common_cmake_args+=(
+      -DLIBCLANG_BUILD_STATIC=ON
+    )
+  elif [ "${_compiler}" == "clang" ]; then
+    export CC='clang'
+    export CXX='clang++'
+    common_cmake_args+=(
+      # Doesn't work (we hit symbols limit)
+      # -DLLVM_BUILD_LLVM_DYLIB=ON
+      # -DLLVM_LINK_LLVM_DYLIB=ON
+      # Remove this one when linking to LLVM DLL works
+      -DLIBCLANG_BUILD_STATIC=ON
+    )
+  else
+    error "Unsupported compiler: $_compiler"
+    exit 1
+  fi
+
+  local _projects="clang;lld"
+
+  platform_config+=(-DLLVM_TARGETS_TO_BUILD="AArch64;X86")
+
+  cmake \
+    -GNinja \
+    -B build \
+    -DLLVM_ENABLE_PROJECTS="${_projects}" \
+    -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
+    -DLLVM_ENABLE_RTTI=ON \
+    -DLLD_DEFAULT_LD_LLD_IS_MINGW=ON \
+    "${common_cmake_args[@]}" \
+    "${platform_config[@]}" \
+    llvm
+
+  cmake --build build
+}
+
+package_clang() {
+  pkgdesc="C language family frontend for LLVM"
+  url="https://clang.llvm.org/"
+  depends=("llvm=${pkgver}")
+
+  # Disable automatic installation of components that go into subpackages
+  # -i.orig to check what has been removed in-case it starts dropping more than it should
+  sed -i.orig '/\(extra\|scan-build\|scan-build-py\|scan-view\)\/cmake_install.cmake/d' "${srcdir}"/build/tools/clang/tools/cmake_install.cmake
+  DESTDIR="${pkgdir}" cmake --install "${srcdir}"/build/tools/clang
+
+  install -Dm644 "${srcdir}"/clang/LICENSE.TXT "${pkgdir}"/usr/share/licenses/clang/LICENSE
+
+  # Install Python bindings
+  _site_packages=$(python -c "import site; print(site.getsitepackages()[0])")
+  site_packages=$(cygpath ${_site_packages})
+  install -d "${pkgdir}"/${site_packages}
+  cp -a "${srcdir}"/clang/bindings/python/clang "${pkgdir}"/${site_packages}
+  python -m compileall -o 0 -o 1 "${pkgdir}"/${site_packages}
+}
+
+package_clang-analyzer() {
+  pkgdesc="A source code analysis framework"
+  url="https://clang-analyzer.llvm.org/"
+  depends=("clang=${pkgver}"
+           "python")
+
+  local _analyzer
+  for _analyzer in scan-build scan-build-py scan-view; do
+    DESTDIR="${pkgdir}" cmake --install "${srcdir}"/build/tools/clang/tools/${_analyzer}
+  done
+
+  # Compile Python scripts
+  ${MINGW_PREFIX}/bin/python -m compileall -o 0 -o 1 "${pkgdir}"${MINGW_PREFIX}/lib/libscanbuild
+
+  install -Dm644 "${srcdir}"/clang/LICENSE.TXT "${pkgdir}"${MINGW_PREFIX}/share/licenses/clang-analyzer/LICENSE
+}
+
+package_compiler-rt() {
+  pkgdesc="Runtime libraries for Clang and LLVM"
+  url="https://compiler-rt.llvm.org/"
+  depends=("gcc-libs")
+
+  DESTDIR="${pkgdir}" cmake --install "${srcdir}"/build/runtimes/builtins-bins
+  DESTDIR="${pkgdir}" cmake --install "${srcdir}"/build/runtimes/runtimes-bins
+
+  install -Dm644 "${srcdir}"/compiler-rt/LICENSE.TXT "${pkgdir}"/usr/share/licenses/compiler-rt/LICENSE
+}
+
+package_lld() {
+  pkgdesc="Linker tools for LLVM"
+  url="https://lld.llvm.org/"
+  depends=("gcc-libs"
+           "zlib"
+           "zstd")
+
+  DESTDIR="${pkgdir}" cmake --install "${srcdir}"/build/tools/lld
+
+  install -Dm644 "${srcdir}"/lld/LICENSE.TXT "${pkgdir}"/usr/share/licenses/lld/LICENSE
+}
+
+package_llvm() {
+  pkgdesc="Low Level Virtual Machine"
+
+  # Disable automatic installation of components that go into subpackages
+  # -i.orig to check what has been removed in-case it starts dropping more than it should
+  sed -i.orig '/\(clang\|lld\)\/cmake_install.cmake/d' "${srcdir}"/build/tools/cmake_install.cmake
+  sed -i.orig '/\(builtins\|runtimes\)-bins\/\+cmake_install.cmake/d' "${srcdir}"/build/runtimes/cmake_install.cmake
+  DESTDIR="${pkgdir}" cmake --install "${srcdir}"/build
+
+  install -Dm644 "${srcdir}"/llvm/LICENSE.TXT "${pkgdir}"/usr/share/licenses/llvm/LICENSE
+
+  # Install CMake stuff
+  install -d "${pkgdir}"/usr/share/llvm/cmake/{modules,platforms}
+  install -Dm644 "${srcdir}"/llvm/cmake/modules/*.cmake "${pkgdir}"/usr/share/llvm/cmake/modules/
+  install -Dm644 "${srcdir}"/llvm/cmake/platforms/*.cmake "${pkgdir}"/usr/share/llvm/cmake/platforms/
+
+  # fix cmake files.
+  local PREFIX_WIN=$(cygpath -a "${srcdir}"/build)
+  sed -e "s|${PREFIX_WIN}|/usr|g" -i ${pkgdir}/usr/lib/cmake/llvm/LLVMConfig.cmake
+}
