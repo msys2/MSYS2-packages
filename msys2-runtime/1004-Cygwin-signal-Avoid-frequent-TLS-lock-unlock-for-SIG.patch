@@ -1,0 +1,105 @@
+From 2be4821075cc6250b5c2d70f8a445925959e361b Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Mon, 20 Jan 2025 23:23:05 +0900
+Subject: [PATCH 1004/1004] Cygwin: signal: Avoid frequent TLS lock/unlock for
+ SIGCONT processing
+
+It seems that current _cygtls::handle_SIGCONT() code sometimes falls
+into a deadlock due to frequent TLS lock/unlock operation in the
+yield() loop. With this patch, the yield() in the wait loop is placed
+outside the TLS lock to avoid frequent TLS lock/unlock.
+
+Fixes: 9ae51bcc51a7 ("Cygwin: signal: Fix another deadlock between main and sig thread")
+Reviewed-by:
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+---
+ winsup/cygwin/exceptions.cc           | 36 ++++++++++-----------------
+ winsup/cygwin/local_includes/cygtls.h |  4 +--
+ 2 files changed, 15 insertions(+), 25 deletions(-)
+
+diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
+index 469052a98a..000cc3daaf 100644
+--- a/winsup/cygwin/exceptions.cc
++++ b/winsup/cygwin/exceptions.cc
+@@ -1420,7 +1420,7 @@ api_fatal_debug ()
+ 
+ /* Attempt to carefully handle SIGCONT when we are stopped. */
+ void
+-_cygtls::handle_SIGCONT (threadlist_t * &tl_entry)
++_cygtls::handle_SIGCONT ()
+ {
+   if (NOTSTATE (myself, PID_STOPPED))
+     return;
+@@ -1431,23 +1431,17 @@ _cygtls::handle_SIGCONT (threadlist_t * &tl_entry)
+      Make sure that any pending signal is handled before trying to
+      send a new one.  Then make sure that SIGCONT has been recognized
+      before exiting the loop.  */
+-  bool sigsent = false;
+-  while (1)
+-    if (sig)		/* Assume that it's ok to just test sig outside of a
+-			   lock since setup_handler does it this way.  */
+-      {
+-	cygheap->unlock_tls (tl_entry);
+-	yield ();	/* Attempt to schedule another thread.  */
+-	tl_entry = cygheap->find_tls (_main_tls);
+-      }
+-    else if (sigsent)
+-      break;		/* SIGCONT has been recognized by other thread */
+-    else
+-      {
+-	sig = SIGCONT;
+-	set_signal_arrived (); /* alert sig_handle_tty_stop */
+-	sigsent = true;
+-      }
++  while (sig)  /* Assume that it's ok to just test sig outside of a */
++    yield ();          /* lock since setup_handler does it this way.  */
++
++  lock ();
++  sig = SIGCONT;
++  set_signal_arrived (); /* alert sig_handle_tty_stop */
++  unlock ();
++
++  while (sig == SIGCONT)
++    yield ();
++
+   /* Clear pending stop signals */
+   sig_clear (SIGSTOP, false);
+   sig_clear (SIGTSTP, false);
+@@ -1479,11 +1473,7 @@ sigpacket::process ()
+   myself->rusage_self.ru_nsignals++;
+ 
+   if (si.si_signo == SIGCONT)
+-    {
+-      tl_entry = cygheap->find_tls (_main_tls);
+-      _main_tls->handle_SIGCONT (tl_entry);
+-      cygheap->unlock_tls (tl_entry);
+-    }
++    _main_tls->handle_SIGCONT ();
+ 
+   /* SIGKILL is special.  It always goes through.  */
+   if (si.si_signo == SIGKILL)
+diff --git a/winsup/cygwin/local_includes/cygtls.h b/winsup/cygwin/local_includes/cygtls.h
+index 4bd79c36d7..328912f1ec 100644
+--- a/winsup/cygwin/local_includes/cygtls.h
++++ b/winsup/cygwin/local_includes/cygtls.h
+@@ -195,7 +195,7 @@ public: /* Do NOT remove this public: line, it's a marker for gentls_offsets. */
+   class cygthread *_ctinfo;
+   class san *andreas;
+   waitq wq;
+-  int sig;
++  volatile int sig;
+   unsigned incyg;
+   volatile unsigned spinning;
+   volatile unsigned stacklock;
+@@ -276,7 +276,7 @@ public: /* Do NOT remove this public: line, it's a marker for gentls_offsets. */
+   {
+     will_wait_for_signal = false;
+   }
+-  void handle_SIGCONT (threadlist_t * &);
++  void handle_SIGCONT ();
+   static void cleanup_early(struct _reent *);
+ private:
+   void call2 (DWORD (*) (void *, void *), void *, void *);
+-- 
+2.47.1.windows.2
+
