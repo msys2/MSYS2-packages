@@ -1,0 +1,80 @@
+From aa2ce2a8a1db49dfe2ca880b372c9948da6bb1a6 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Sat, 18 Jan 2025 19:21:51 +0900
+Subject: [PATCH 1003/1003] Cygwin: signal: Do not handle signal when
+ __SIGFLUSHFAST is sent
+
+The commit a22a0ad7c4f0 was not exactly the correct thing. Even with
+the patch, some hangs still happen. This patch overrides the previous
+commit to fix these hangs.
+
+Addresses: https://cygwin.com/pipermail/cygwin/2024-December/256987.html
+Fixes: a22a0ad7c4f0 ("Cygwin: signal: Do not handle signal when __SIGFLUSHFAST is sent")
+Reported-by: Jeremy Drake <cygwin@jdrake.com>
+Reviewed-by:
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+---
+ winsup/cygwin/sigproc.cc | 33 +++++++++++++++++++++++++++------
+ 1 file changed, 27 insertions(+), 6 deletions(-)
+
+diff --git a/winsup/cygwin/sigproc.cc b/winsup/cygwin/sigproc.cc
+index cf43aa9335..20046eb738 100644
+--- a/winsup/cygwin/sigproc.cc
++++ b/winsup/cygwin/sigproc.cc
+@@ -751,8 +751,19 @@ sig_send (_pinfo *p, siginfo_t& si, _cygtls *tls)
+       res = WriteFile (sendsig, leader, packsize, &nb, NULL);
+       if (!res || packsize == nb)
+ 	break;
+-      if (cygwait (NULL, 10, cw_sig_eintr) == WAIT_SIGNALED)
+-	_my_tls.call_signal_handler ();
++      if (pack.si.si_signo == __SIGFLUSHFAST)
++	Sleep (10);
++      else /* Handle signals */
++	do
++	  {
++	    DWORD rc = WaitForSingleObject (_my_tls.get_signal_arrived (), 10);
++	    if (rc == WAIT_OBJECT_0)
++	      {
++		_my_tls.call_signal_handler ();
++		continue;
++	      }
++	  }
++	while (false);
+       res = 0;
+     }
+ 
+@@ -785,7 +796,20 @@ sig_send (_pinfo *p, siginfo_t& si, _cygtls *tls)
+   if (wait_for_completion)
+     {
+       sigproc_printf ("Waiting for pack.wakeup %p", pack.wakeup);
+-      rc = cygwait (pack.wakeup, WSSC);
++      if (pack.si.si_signo == __SIGFLUSHFAST)
++	rc = WaitForSingleObject (pack.wakeup, WSSC);
++      else /* Handle signals */
++	do
++	  {
++	    HANDLE w[2] = {pack.wakeup, _my_tls.get_signal_arrived ()};
++	    rc = WaitForMultipleObjects (2, w, FALSE, WSSC);
++	    if (rc == WAIT_OBJECT_0 + 1) /* signal arrived */
++	      {
++		_my_tls.call_signal_handler ();
++		continue;
++	      }
++	  }
++	while (false);
+       ForceCloseHandle (pack.wakeup);
+     }
+   else
+@@ -806,9 +830,6 @@ sig_send (_pinfo *p, siginfo_t& si, _cygtls *tls)
+       rc = -1;
+     }
+ 
+-  if (wait_for_completion && si.si_signo != __SIGFLUSHFAST)
+-    _my_tls.call_signal_handler ();
+-
+ out:
+   if (communing && rc)
+     {
+-- 
+2.47.1.windows.2
+
