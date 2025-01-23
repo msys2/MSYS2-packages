@@ -1,0 +1,143 @@
+From 16b83734dabb2fa5dfeaf30caaf62e4fac599b44 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Mon, 20 Jan 2025 23:54:56 +0900
+Subject: [PATCH 48/N] Cygwin: cygwait: Make cygwait() reentrant
+
+To allow cygwait() to be called in the signal handler, a locally
+created timer is used instead of _cygtls::locals.cw_timer if it is
+in use.
+
+Co-Authored-By: Corinna Vinschen <corinna@vinschen.de>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+(cherry picked from commit ea1914000adcbed5c16fc0ba2676173b2f6016c4)
+---
+ winsup/cygwin/cygtls.cc               |  2 ++
+ winsup/cygwin/cygwait.cc              | 22 +++++++++++++++-------
+ winsup/cygwin/local_includes/cygtls.h |  3 ++-
+ winsup/cygwin/select.cc               | 10 +++++++++-
+ 4 files changed, 28 insertions(+), 9 deletions(-)
+
+diff --git a/winsup/cygwin/cygtls.cc b/winsup/cygwin/cygtls.cc
+index afaee8e..b8b5a01 100644
+--- a/winsup/cygwin/cygtls.cc
++++ b/winsup/cygwin/cygtls.cc
+@@ -64,6 +64,7 @@ _cygtls::init_thread (void *x, DWORD (*func) (void *, void *))
+   initialized = CYGTLS_INITIALIZED;
+   errno_addr = &(local_clib._errno);
+   locals.cw_timer = NULL;
++  locals.cw_timer_inuse = false;
+   locals.pathbufs.clear ();
+ 
+   if ((void *) func == (void *) cygthread::stub
+@@ -85,6 +86,7 @@ _cygtls::fixup_after_fork ()
+   signal_arrived = NULL;
+   locals.select.sockevt = NULL;
+   locals.cw_timer = NULL;
++  locals.cw_timer_inuse = false;
+   locals.pathbufs.clear ();
+   wq.thread_ev = NULL;
+ }
+diff --git a/winsup/cygwin/cygwait.cc b/winsup/cygwin/cygwait.cc
+index dbbe1db..bb653f6 100644
+--- a/winsup/cygwin/cygwait.cc
++++ b/winsup/cygwin/cygwait.cc
+@@ -58,16 +58,20 @@ cygwait (HANDLE object, PLARGE_INTEGER timeout, unsigned mask)
+     }
+ 
+   DWORD timeout_n;
++  HANDLE local_timer = NULL;
++  HANDLE &wait_timer =
++    _my_tls.locals.cw_timer_inuse ? local_timer : _my_tls.locals.cw_timer;
+   if (!timeout)
+     timeout_n = WAIT_TIMEOUT + 1;
+   else
+     {
++      if (!_my_tls.locals.cw_timer_inuse)
++	_my_tls.locals.cw_timer_inuse = true;
+       timeout_n = WAIT_OBJECT_0 + num++;
+-      if (!_my_tls.locals.cw_timer)
+-	NtCreateTimer (&_my_tls.locals.cw_timer, TIMER_ALL_ACCESS, NULL,
+-		       NotificationTimer);
+-      NtSetTimer (_my_tls.locals.cw_timer, timeout, NULL, NULL, FALSE, 0, NULL);
+-      wait_objects[timeout_n] = _my_tls.locals.cw_timer;
++      if (!wait_timer)
++	NtCreateTimer (&wait_timer, TIMER_ALL_ACCESS, NULL, NotificationTimer);
++      NtSetTimer (wait_timer, timeout, NULL, NULL, FALSE, 0, NULL);
++      wait_objects[timeout_n] = wait_timer;
+     }
+ 
+   while (1)
+@@ -100,7 +104,7 @@ cygwait (HANDLE object, PLARGE_INTEGER timeout, unsigned mask)
+     {
+       TIMER_BASIC_INFORMATION tbi;
+ 
+-      NtQueryTimer (_my_tls.locals.cw_timer, TimerBasicInformation, &tbi,
++      NtQueryTimer (wait_timer, TimerBasicInformation, &tbi,
+ 		    sizeof tbi, NULL);
+       /* if timer expired, TimeRemaining is negative and represents the
+ 	  system uptime when signalled */
+@@ -108,7 +112,11 @@ cygwait (HANDLE object, PLARGE_INTEGER timeout, unsigned mask)
+ 	timeout->QuadPart = tbi.SignalState || tbi.TimeRemaining.QuadPart < 0LL
+                             ? 0LL : tbi.TimeRemaining.QuadPart;
+       }
+-      NtCancelTimer (_my_tls.locals.cw_timer, NULL);
++      NtCancelTimer (wait_timer, NULL);
++      if (local_timer)
++	NtClose(local_timer);
++      else
++	_my_tls.locals.cw_timer_inuse = false;
+     }
+ 
+   if (res == WAIT_CANCELED && is_cw_cancel_self)
+diff --git a/winsup/cygwin/local_includes/cygtls.h b/winsup/cygwin/local_includes/cygtls.h
+index e4e3889..4bd79c3 100644
+--- a/winsup/cygwin/local_includes/cygtls.h
++++ b/winsup/cygwin/local_includes/cygtls.h
+@@ -135,6 +135,7 @@ struct _local_storage
+ 
+   /* thread.cc */
+   HANDLE cw_timer;
++  bool cw_timer_inuse;
+ 
+   tls_pathbuf pathbufs;
+   char ttybuf[32];
+@@ -180,7 +181,7 @@ public: /* Do NOT remove this public: line, it's a marker for gentls_offsets. */
+   siginfo_t *sigwait_info;
+   HANDLE signal_arrived;
+   bool will_wait_for_signal;
+-#if 0
++#if 1
+   long __align;			/* Needed to align context to 16 byte. */
+ #endif
+   /* context MUST be aligned to 16 byte, otherwise RtlCaptureContext fails.
+diff --git a/winsup/cygwin/select.cc b/winsup/cygwin/select.cc
+index bc02c3f..48e811e 100644
+--- a/winsup/cygwin/select.cc
++++ b/winsup/cygwin/select.cc
+@@ -385,10 +385,14 @@ next_while:;
+      to create the timer once per thread.  Since WFMO checks the handles
+      in order, we append the timer as last object, otherwise it's preferred
+      over actual events on the descriptors. */
+-  HANDLE &wait_timer = _my_tls.locals.cw_timer;
++  HANDLE local_timer = NULL;
++  HANDLE &wait_timer =
++    _my_tls.locals.cw_timer_inuse ? local_timer : _my_tls.locals.cw_timer;
+   if (us > 0LL)
+     {
+       NTSTATUS status;
++      if (!_my_tls.locals.cw_timer_inuse)
++	_my_tls.locals.cw_timer_inuse = true;
+       if (!wait_timer)
+ 	{
+ 	  status = NtCreateTimer (&wait_timer, TIMER_ALL_ACCESS, NULL,
+@@ -431,6 +435,10 @@ next_while:;
+     {
+       BOOLEAN current_state;
+       NtCancelTimer (wait_timer, &current_state);
++      if (local_timer)
++	NtClose (local_timer);
++      else
++	_my_tls.locals.cw_timer_inuse = false;
+     }
+ 
+   wait_states res;
