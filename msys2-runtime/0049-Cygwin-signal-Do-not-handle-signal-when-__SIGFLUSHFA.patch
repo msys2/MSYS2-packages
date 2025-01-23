@@ -1,0 +1,63 @@
+From ae26e1742aab63051e6dd790de4e5a516e3ef854 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Tue, 21 Jan 2025 00:13:04 +0900
+Subject: [PATCH 49/N] Cygwin: signal: Do not handle signal when
+ __SIGFLUSHFAST is sent
+
+The commit a22a0ad7c4f0 was not entirely correct. Even with the patch,
+some hangs still occur. This patch overrides the previous commit along
+with the patch that makes cygwait() reentrant, to fix these hangs.
+
+Addresses: https://cygwin.com/pipermail/cygwin/2024-December/256954.html
+Fixes: d243e51ef1d3 ("Cygwin: signal: Fix deadlock between main thread and sig thread")
+Reported-by: Daisuke Fujimura <booleanlabel@gmail.com>
+Reviewed-by: Corinna Vinschen <corinna@vinshcen.de>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+(cherry picked from commit 83afe3e238cd12fb7d4799ba6b3c77e9e3618d91)
+---
+ winsup/cygwin/sigproc.cc | 11 +++++------
+ 1 file changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/winsup/cygwin/sigproc.cc b/winsup/cygwin/sigproc.cc
+index cf43aa9..858a7fd 100644
+--- a/winsup/cygwin/sigproc.cc
++++ b/winsup/cygwin/sigproc.cc
+@@ -742,6 +742,9 @@ sig_send (_pinfo *p, siginfo_t& si, _cygtls *tls)
+       memcpy (p, si._si_commune._si_str, n); p += n;
+     }
+ 
++  unsigned cw_mask;
++  cw_mask = pack.si.si_signo == __SIGFLUSHFAST ? 0 : cw_sig_restart;
++
+   DWORD nb;
+   BOOL res;
+   /* Try multiple times to send if packsize != nb since that probably
+@@ -751,8 +754,7 @@ sig_send (_pinfo *p, siginfo_t& si, _cygtls *tls)
+       res = WriteFile (sendsig, leader, packsize, &nb, NULL);
+       if (!res || packsize == nb)
+ 	break;
+-      if (cygwait (NULL, 10, cw_sig_eintr) == WAIT_SIGNALED)
+-	_my_tls.call_signal_handler ();
++      cygwait (NULL, 10, cw_mask);
+       res = 0;
+     }
+ 
+@@ -785,7 +787,7 @@ sig_send (_pinfo *p, siginfo_t& si, _cygtls *tls)
+   if (wait_for_completion)
+     {
+       sigproc_printf ("Waiting for pack.wakeup %p", pack.wakeup);
+-      rc = cygwait (pack.wakeup, WSSC);
++      rc = cygwait (pack.wakeup, WSSC, cw_mask);
+       ForceCloseHandle (pack.wakeup);
+     }
+   else
+@@ -806,9 +808,6 @@ sig_send (_pinfo *p, siginfo_t& si, _cygtls *tls)
+       rc = -1;
+     }
+ 
+-  if (wait_for_completion && si.si_signo != __SIGFLUSHFAST)
+-    _my_tls.call_signal_handler ();
+-
+ out:
+   if (communing && rc)
+     {

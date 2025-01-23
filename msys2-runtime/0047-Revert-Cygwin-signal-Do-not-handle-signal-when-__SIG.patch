@@ -1,0 +1,75 @@
+From 674137e51c7739707af23e04b9bb78df760746b0 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Tue, 21 Jan 2025 12:15:33 +0900
+Subject: [PATCH 47/N] Revert "Cygwin: signal: Do not handle signal when
+ __SIGFLUSHFAST is sent"
+
+This reverts commit a22a0ad7c4f0 to apply a new patch for the same
+purpose.
+
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+---
+ winsup/cygwin/release/3.5.6 |  5 -----
+ winsup/cygwin/sigproc.cc    | 20 +++++---------------
+ 2 files changed, 5 insertions(+), 20 deletions(-)
+ delete mode 100644 winsup/cygwin/release/3.5.6
+
+diff --git a/winsup/cygwin/release/3.5.6 b/winsup/cygwin/release/3.5.6
+deleted file mode 100644
+index 643d58e..0000000
+--- a/winsup/cygwin/release/3.5.6
++++ /dev/null
+@@ -1,5 +0,0 @@
+-Fixes:
+-------
+-
+-- Fix zsh hang at startup.
+-  Addresses: https://cygwin.com/pipermail/cygwin/2024-December/256954.html
+diff --git a/winsup/cygwin/sigproc.cc b/winsup/cygwin/sigproc.cc
+index c298527..cf43aa9 100644
+--- a/winsup/cygwin/sigproc.cc
++++ b/winsup/cygwin/sigproc.cc
+@@ -751,14 +751,10 @@ sig_send (_pinfo *p, siginfo_t& si, _cygtls *tls)
+       res = WriteFile (sendsig, leader, packsize, &nb, NULL);
+       if (!res || packsize == nb)
+ 	break;
+-      if (cygwait (NULL, 10, cw_sig_eintr) == WAIT_SIGNALED
+-	  && pack.si.si_signo != __SIGFLUSHFAST)
++      if (cygwait (NULL, 10, cw_sig_eintr) == WAIT_SIGNALED)
+ 	_my_tls.call_signal_handler ();
+       res = 0;
+     }
+-  /* Re-assert signal_arrived which has been cleared in cygwait(). */
+-  if (_my_tls.sig)
+-    _my_tls.set_signal_arrived ();
+ 
+   if (!res)
+     {
+@@ -789,16 +785,7 @@ sig_send (_pinfo *p, siginfo_t& si, _cygtls *tls)
+   if (wait_for_completion)
+     {
+       sigproc_printf ("Waiting for pack.wakeup %p", pack.wakeup);
+-      do
+-	{
+-	  rc = cygwait (pack.wakeup, WSSC, cw_sig_eintr);
+-	  if (rc == WAIT_SIGNALED && pack.si.si_signo != __SIGFLUSHFAST)
+-	    _my_tls.call_signal_handler ();
+-	}
+-      while (rc != WAIT_OBJECT_0 && rc != WAIT_TIMEOUT);
+-      /* Re-assert signal_arrived which has been cleared in cygwait(). */
+-      if (_my_tls.sig)
+-	_my_tls.set_signal_arrived ();
++      rc = cygwait (pack.wakeup, WSSC);
+       ForceCloseHandle (pack.wakeup);
+     }
+   else
+@@ -819,6 +806,9 @@ sig_send (_pinfo *p, siginfo_t& si, _cygtls *tls)
+       rc = -1;
+     }
+ 
++  if (wait_for_completion && si.si_signo != __SIGFLUSHFAST)
++    _my_tls.call_signal_handler ();
++
+ out:
+   if (communing && rc)
+     {
