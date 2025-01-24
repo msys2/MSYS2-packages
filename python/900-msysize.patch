@@ -44,20 +44,25 @@
              print(find_library("crypt"))
          else:
              print(cdll.LoadLibrary("libm.so"))
-diff -Naur Python-3.8.2-orig/Lib/sysconfig.py Python-3.8.2/Lib/sysconfig.py
---- Python-3.8.2-orig/Lib/sysconfig.py	2020-02-25 00:36:25.000000000 +0300
-+++ Python-3.8.2/Lib/sysconfig.py	2020-04-16 11:24:20.643039800 +0300
-@@ -673,6 +673,13 @@
-         m = rel_re.match(release)
-         if m:
-             release = m.group()
-+    elif osname[:4] == "msys":
-+        osname = "msys"
-+        import re
-+        rel_re = re.compile (r'[\d.]+')
-+        m = rel_re.match(release)
-+        if m:
-+            release = m.group()
+--- Python-3.12.8/Lib/sysconfig.py.orig	2024-12-03 19:42:41.000000000 +0100
++++ Python-3.12.8/Lib/sysconfig.py	2025-01-24 20:14:10.834146500 +0100
+@@ -815,13 +815,13 @@
+     elif osname[:3] == "aix":
+         from _aix_support import aix_platform
+         return aix_platform()
+-    elif osname[:6] == "cygwin":
++    elif osname[:6] == "cygwin" or osname[:4] == "msys":
++        # https://github.com/msys2/MSYS2-packages/issues/5143
++        # Various build tools use the platform to derive the wheel tag
++        # and the wheel tag needs to be stable for a specific platform
++        # so we can't include a version here.
+         osname = "cygwin"
+-        import re
+-        rel_re = re.compile(r'[\d.]+')
+-        m = rel_re.match(release)
+-        if m:
+-            release = m.group()
++        return  f"{osname}-{machine}"
      elif osname[:6] == "darwin":
          import _osx_support
          osname, release, machine = _osx_support.get_platform_osx(
