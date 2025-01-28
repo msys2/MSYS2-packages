@@ -1,0 +1,83 @@
+From 2c0e426da70f161af3776ffaa3559498b81c9df4 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Mon, 27 Jan 2025 20:49:14 +0100
+Subject: [PATCH 45/N] fixup! Instead of creating Cygwin symlinks, use deep
+ copy by default
+
+In Cygwin v3.5.6, the `isdevice()` method was dropped, and the commit
+message of 002aad0410 (Cygwin: path_conv: simplify, rearrange, rename
+combined device checks, 2025-01-21), which is the commit that dropped
+it, explains:
+
+    Drop the isdevice() check in favor of a new isondisk() check.
+
+On the face of it, the message is clear: we should use `isondisk()`
+instead of `isdevice()`.
+
+As it turns out, MSYS2's code that pretends to create a symbolic link
+upon `ln -s` but instead makes a deep copy used to call `isdevice()`:
+
+	if (!src_path.isdevice () && !src_path.is_fs_special ())
+		// do a deep copy and return
+
+	// otherwise fall back to creating a sysfile link
+
+A deep dive into the issue reveals that in this instance, the condition
+is actually equivalent to:
+
+	if (!src_path.isspecial() ||
+	    (src_path.isfifo() && !src_path.isondisk()))
+
+Further study (by trying it out) reveals that replacing this condition
+with `src_path.isondisk()` fails to produce the expected result. Here is
+the expected result, which we receive whether we use MSYS2 runtime
+v3.5.5 or the version with `src_path.isspecial()`:
+
+	$ mknod foo c 1 3
+	$ ln -s foo foolnk
+	$ ls -l foo*
+	crw-rw-rw- 1 x None 1, 3 Jan 27 10:43 foo
+	lrwxrwxrwx 1 x None    3 Jan 27 10:43 foolnk -> foo
+
+and with `isondisk()`, this happens instead:
+
+	$ mknod foo c 1 3
+	$ ln -s foo foolnk
+	$ ls -l foo*
+	crw-rw-rw- 1 x None  1, 3 Jan 27 10:41 foo
+	-r--r--r-- 1 x None   126 Jan 27 10:41 foolnk
+
+Further experimentation reveals that FIFOs are handled without bothering
+with the `isfifo() && !isondisk()` condition, merely testing
+`!isspecial()` is enough (and recapitulates the behavior of v3.5.5):
+
+	$ mkfifo fifo
+	$ ln -s fifo fifolnk
+	$ ls -l fifo fifolnk
+	prw-rw-rw- 1 None 0 Jan 27 20:44 fifo
+	lrwxrwxrwx 1 None 4 Jan 27 20:44 fifolnk -> fifo
+
+Therefore, let's just go with the sweet-and-simple `!isspecial()`.
+
+This commit will live un-autosquashed in the `msys2-3.5.6` branch to
+allow for all of the above to be documented in the commit history.
+
+Helped-by: Jeremy Drake <cygwin@jdrake.com>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/path.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index b634c40..c49025a 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -2320,7 +2320,7 @@ symlink_worker (const char *oldpath, path_conv &win32_newpath, bool isdevice)
+ 		  set_errno (src_path.error);
+ 		  __leave;
+ 		}
+-	      if (!src_path.isdevice () && !src_path.is_fs_special ())
++	      if (!src_path.isspecial ())
+ 	        {
+ 		  /* MSYS copy file instead make symlink */
+ 
