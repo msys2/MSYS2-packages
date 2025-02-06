@@ -1,0 +1,57 @@
+From ed1c4f3322f115bd9a8e9306014d50bc41ad467b Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Thu, 30 Jan 2025 17:45:16 -0800
+Subject: [PATCH 48/N] fixup! Instead of creating Cygwin symlinks, use deep
+ copy by default
+
+Don't assume the first two entries are always `.` and `..`.  On the root
+of a volume, those don't seem to be present.
+---
+ winsup/cygwin/path.cc | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index dfbbdaa..1e6baef 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -1697,7 +1697,6 @@ recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
+ {
+   WIN32_FIND_DATAW dHfile;
+   HANDLE dH = INVALID_HANDLE_VALUE;
+-  BOOL findfiles;
+   int srcpos = src->Length;
+   int dstpos = dst->Length;
+   int res = -1;
+@@ -1729,15 +1728,15 @@ recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
+   dH = FindFirstFileExW (src->Buffer, FindExInfoBasic, &dHfile,
+ 			 FindExSearchNameMatch, NULL,
+ 			 FIND_FIRST_EX_LARGE_FETCH);
+-  debug_printf ("dHfile(1): %W", dHfile.cFileName);
+-  findfiles = FindNextFileW (dH, &dHfile);
+-  debug_printf ("dHfile(2): %W", dHfile.cFileName);
+-  findfiles = FindNextFileW (dH, &dHfile);
+-  while (findfiles)
++  do
+     {
+       bool isdirlink = false;
++      debug_printf ("dHfile: %W", dHfile.cFileName);
++      if (dHfile.cFileName[0] == L'.' &&
++	  (!dHfile.cFileName[1] ||
++	   (dHfile.cFileName[1] == L'.' && !dHfile.cFileName[2])))
++	continue;
+       /* Append the directory item filename to both source and destination */
+-      debug_printf ("dHfile(3): %W", dHfile.cFileName);
+       src->Length = srcpos + sizeof (WCHAR);
+       dst->Length = dstpos + sizeof (WCHAR);
+       RtlAppendUnicodeToString (src, dHfile.cFileName);
+@@ -1781,8 +1780,9 @@ recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
+ 	      goto done;
+ 	    }
+ 	}
+-      findfiles = FindNextFileW (dH, &dHfile);
+     }
++  while (FindNextFileW (dH, &dHfile));
++
+   if (GetLastError() != ERROR_NO_MORE_FILES)
+     {
+       __seterrno ();
