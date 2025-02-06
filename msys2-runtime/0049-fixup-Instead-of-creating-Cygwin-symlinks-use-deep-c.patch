@@ -1,0 +1,97 @@
+From b581e48de68ede7ac406b4c03d297822ce9e4613 Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Thu, 30 Jan 2025 22:00:06 -0800
+Subject: [PATCH 49/N] fixup! Instead of creating Cygwin symlinks, use deep
+ copy by default
+
+Add error handling.
+---
+ winsup/cygwin/path.cc | 42 +++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 37 insertions(+), 5 deletions(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 1e6baef..56f9d6a 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -1697,6 +1697,7 @@ recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
+ {
+   WIN32_FIND_DATAW dHfile;
+   HANDLE dH = INVALID_HANDLE_VALUE;
++  NTSTATUS status;
+   int srcpos = src->Length;
+   int dstpos = dst->Length;
+   int res = -1;
+@@ -1713,21 +1714,37 @@ recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
+   /* Descend into the source directory */
+   if (src->Buffer[(src->Length - 1) / sizeof (WCHAR)] != L'\\')
+     {
+-      RtlAppendUnicodeToString (src, L"\\*");
++      status = RtlAppendUnicodeToString (src, L"\\*");
+     }
+   else
+     {
+-      RtlAppendUnicodeToString (src, L"*");
++      status = RtlAppendUnicodeToString (src, L"*");
+       srcpos -= sizeof (WCHAR);
+     }
++  if (!NT_SUCCESS (status))
++    {
++      __seterrno_from_nt_status (status);
++      goto done;
++    }
+   if (dst->Buffer[(dst->Length - 1) / sizeof (WCHAR)] != L'\\')
+-      RtlAppendUnicodeToString (dst, L"\\");
++      status = RtlAppendUnicodeToString (dst, L"\\");
+   else
+       dstpos -= sizeof (WCHAR);
++  if (!NT_SUCCESS (status))
++    {
++      __seterrno_from_nt_status (status);
++      goto done;
++    }
+ 
+   dH = FindFirstFileExW (src->Buffer, FindExInfoBasic, &dHfile,
+ 			 FindExSearchNameMatch, NULL,
+ 			 FIND_FIRST_EX_LARGE_FETCH);
++  if (dH == INVALID_HANDLE_VALUE)
++    {
++      __seterrno ();
++      goto done;
++    }
++
+   do
+     {
+       bool isdirlink = false;
+@@ -1739,8 +1756,18 @@ recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
+       /* Append the directory item filename to both source and destination */
+       src->Length = srcpos + sizeof (WCHAR);
+       dst->Length = dstpos + sizeof (WCHAR);
+-      RtlAppendUnicodeToString (src, dHfile.cFileName);
+-      RtlAppendUnicodeToString (dst, dHfile.cFileName);
++      status = RtlAppendUnicodeToString (src, dHfile.cFileName);
++      if (!NT_SUCCESS (status))
++	{
++	  __seterrno_from_nt_status (status);
++	  goto done;
++	}
++      status = RtlAppendUnicodeToString (dst, dHfile.cFileName);
++      if (!NT_SUCCESS (status))
++	{
++	  __seterrno_from_nt_status (status);
++	  goto done;
++	}
+       debug_printf ("%S -> %S", src, dst);
+       if ((dHfile.dwFileAttributes &
+ 	    (FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT)) ==
+@@ -1748,6 +1775,11 @@ recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
+ 	{
+ 	  /* this sucks hard */
+ 	  path_conv pc (src, PC_SYM_NOFOLLOW|PC_SYM_NOFOLLOW_REP);
++	  if (pc.error)
++	    {
++	      set_errno (pc.error);
++	      goto done;
++	    }
+ 	  isdirlink = pc.issymlink ();
+ 	}
+       if (isdirlink)

@@ -1,0 +1,49 @@
+From 19b50e4bbb3f833ed43d16741d15735bd5fe682b Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Tue, 4 Feb 2025 11:05:18 -0800
+Subject: [PATCH 52/N] amend! Instead of creating Cygwin symlinks, use deep
+ copy by default
+
+Instead of creating Cygwin symlinks, use deep copy by default
+
+The new `winsymlinks` mode `deepcopy` (which is made the default) lets
+calls to `symlink()` create (deep) copies of the source file/directory.
+
+This is necessary because unlike Cygwin, MSYS2 does not try to be its
+own little ecosystem that lives its life separate from regular Win32
+programs: the latter have _no idea_ about Cygwin-emulated symbolic links
+(i.e. system files whose contents start with `!<symlink>\xff\xfe` and
+the remainder consists of the NUL-terminated, UTF-16LE-encoded symlink
+target).
+
+To support Cygwin-style symlinks, the new mode `sysfile` is introduced.
+
+Co-authored-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+Co-authored-by: Jeremy Drake <github@jdrake.com>
+---
+ winsup/cygwin/path.cc | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 373aec9..33eb644 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -2160,6 +2160,10 @@ symlink_deepcopy (const char *oldpath, path_conv &win32_newpath)
+   tmp_pathbuf tp;
+   path_conv win32_oldpath;
+ 
++  /* **BEGIN** replace this with
++     resolve_symlink_target (oldpath, win32_newpath. win32_oldpath);
++     when rebasing over 5a706ff0fceb83fd1fe7f072fc28a741fdde65f2
++     (probably Cygwin 3.6) */
+   /* The symlink target is relative to the directory in which the
+      symlink gets created, not relative to the cwd.  Therefore we
+      have to mangle the path quite a bit before calling path_conv.*/
+@@ -2174,6 +2178,7 @@ symlink_deepcopy (const char *oldpath, path_conv &win32_newpath)
+ 	      oldpath);
+       win32_oldpath.check (absoldpath, PC_SYM_NOFOLLOW, stat_suffixes);
+     }
++  /* **END** */
+   if (win32_oldpath.error)
+     {
+       set_errno (win32_oldpath.error);
