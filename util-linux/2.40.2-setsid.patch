@@ -1,0 +1,36 @@
+--- origsrc/util-linux-2.40.2/sys-utils/setsid.c	2024-05-28 01:12:08.335258800 -0700
++++ src/util-linux-2.40.2/sys-utils/setsid.c	2024-10-24 21:01:38.745405400 -0700
+@@ -15,6 +15,8 @@
+  * 2008-08-20 Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+  * - if forked, wait on child process and emit its return code.
+  */
++
++#include <fcntl.h>
+ #include <getopt.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -53,6 +55,7 @@ int main(int argc, char **argv)
+ {
+ 	int ch, forcefork = 0;
+ 	int ctty = 0;
++	int fd;
+ 	pid_t pid;
+ 	int status = 0;
+ 
+@@ -120,6 +123,16 @@ int main(int argc, char **argv)
+ 
+ 	if (ctty && ioctl(STDIN_FILENO, TIOCSCTTY, 1))
+ 		err(EXIT_FAILURE, _("failed to set the controlling terminal"));
++	if ((fd = open ("/dev/null", O_RDWR, 0)) >= 0) {
++		if (isatty (STDIN_FILENO))
++			dup2 (fd, STDIN_FILENO);
++		if (isatty (STDOUT_FILENO))
++			dup2 (fd, STDOUT_FILENO);
++		if (isatty (STDERR_FILENO))
++			dup2 (fd, STDERR_FILENO);
++		if (fd > 2)
++			close (fd);
++	}
+ 	execvp(argv[optind], argv + optind);
+ 	errexec(argv[optind]);
+ }

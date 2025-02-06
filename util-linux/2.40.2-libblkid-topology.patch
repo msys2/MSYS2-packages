@@ -1,0 +1,73 @@
+--- origsrc/util-linux-2.40.2/libblkid/src/Makemodule.am	2024-05-28 01:12:08.105260200 -0700
++++ src/util-linux-2.40.2/libblkid/src/Makemodule.am	2024-12-22 22:13:56.730336600 -0800
+@@ -104,6 +104,7 @@ libblkid_la_SOURCES = \
+ 	libblkid/src/superblocks/zonefs.c \
+ 	libblkid/src/superblocks/erofs.c \
+ 	\
++	libblkid/src/topology/ioctl.c \
+ 	libblkid/src/topology/topology.c \
+ 	libblkid/src/topology/topology.h
+ 
+@@ -111,7 +112,6 @@ if LINUX
+ libblkid_la_SOURCES += \
+ 	libblkid/src/topology/dm.c \
+ 	libblkid/src/topology/evms.c \
+-	libblkid/src/topology/ioctl.c \
+ 	libblkid/src/topology/lvm.c \
+ 	libblkid/src/topology/md.c \
+ 	libblkid/src/topology/sysfs.c
+--- origsrc/util-linux-2.40.2/libblkid/src/topology/ioctl.c	2024-05-28 01:12:08.110260200 -0700
++++ src/util-linux-2.40.2/libblkid/src/topology/ioctl.c	2024-12-22 22:07:36.471633800 -0800
+@@ -21,8 +21,8 @@
+ static int probe_ioctl_tp(blkid_probe pr,
+ 		const struct blkid_idmag *mag __attribute__((__unused__)))
+ {
+-	uint64_t u64;
+-	int s32;
++	uint64_t u64 = 0;
++	int s32 = 0;
+ 
+ 	if (ioctl(pr->fd, BLKALIGNOFF, &s32) == -1)
+ 		return 1;
+@@ -43,12 +43,12 @@ static int probe_ioctl_tp(blkid_probe pr
+ 		return 1;
+ 	if (blkid_topology_set_physical_sector_size(pr, s32))
+ 		return -1;
+-
++#ifdef BLKGETDISKSEQ
+ 	if (ioctl(pr->fd, BLKGETDISKSEQ, &u64) == -1)
+ 		return 1;
+ 	if (blkid_topology_set_physical_sector_size(pr, u64))
+ 		return -1;
+-
++#endif
+ 	return 0;
+ }
+
+--- origsrc/util-linux-2.40.2/libblkid/src/topology/topology.c	2024-05-28 01:12:08.110260200 -0700
++++ src/util-linux-2.40.2/libblkid/src/topology/topology.c	2024-12-22 22:11:38.723644100 -0800
+@@ -77,7 +77,9 @@ struct blkid_struct_topology {
+  */
+ static const struct blkid_idinfo *idinfos[] =
+ {
+-#ifdef __linux__
++#if defined(__CYGWIN__)
++	&ioctl_tp_idinfo,
++#elif defined(__linux__)
+ 	&sysfs_tp_idinfo,
+ 	&ioctl_tp_idinfo,
+ 	&md_tp_idinfo,
+--- origsrc/util-linux-2.40.2/libblkid/src/topology/topology.h	2024-01-31 02:02:15.475811400 -0800
++++ src/util-linux-2.40.2/libblkid/src/topology/topology.h	2024-12-22 22:09:11.820784000 -0800
+@@ -13,8 +13,10 @@ extern int blkid_topology_set_diskseq(bl
+ /*
+  * topology probers
+  */
+-#ifdef __linux__
++#if defined(__linux__) || defined(__CYGWIN__)
+ extern const struct blkid_idinfo ioctl_tp_idinfo;
++#endif
++#ifdef __linux__
+ extern const struct blkid_idinfo md_tp_idinfo;
+ extern const struct blkid_idinfo evms_tp_idinfo;
+ extern const struct blkid_idinfo sysfs_tp_idinfo;
