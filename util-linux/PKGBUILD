@@ -3,7 +3,7 @@
 pkgname=("util-linux" "libutil-linux" "libutil-linux-devel")
 _pkgmajor=2.40
 pkgver=${_pkgmajor}.2
-pkgrel=1
+pkgrel=2
 pkgdesc="Miscellaneous system utilities for Linux"
 arch=('i686' 'x86_64')
 license=('spdx:GPL-2.0-or-later')
@@ -88,6 +88,14 @@ build() {
 
   export MSYSTEM=CYGWIN
   local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+  local -a extra_config
+  # 32-bit cygwin only has 32-bit time_t
+  # https://github.com/msys2/MSYS2-packages/issues/4078
+  #
+  # fallocate only builds for Cygwin 3.5+, and i686 is stuck on 3.3
+  if [[ "$CARCH" == "i686" ]]; then
+    extra_config+=("--disable-year2038" "--disable-fallocate")
+  fi
   ../${pkgname}-${pkgver}/configure \
     --build=${CYGWIN_CHOST} \
     --prefix=/usr \
@@ -151,6 +159,7 @@ build() {
     --disable-makeinstall-setuid \
     --without-libiconv-prefix \
     --without-libintl-prefix \
+    "${extra_config[@]}" \
     SOLIB_LDFLAGS=-no-undefined
 
   make
