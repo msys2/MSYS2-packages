@@ -1,0 +1,54 @@
+# This was copied from the arch linux PKGBUILD.
+# GNU Enscript is more or less feature complete, so it's a drop in file.
+
+pkgname=enscript
+pkgver=1.6.6
+pkgrel=1
+pkgdesc="Convert ASCII files to PostScript suitable for printing"
+arch=('i686' 'x86_64')
+url="https://git.savannah.gnu.org/cgit/enscript.git"
+msys2_references=(
+  "anitya: 699"
+  "cpe: cpe:/a:gnu:enscript"
+)
+license=('sdpx:GPL-3.0-or-later')
+depends=('perl')
+
+makedepends=('autotools' 'gcc' 'perl')
+optdepends=('cygutils: Send the output to a physical printer instead of stdout.')
+source=(
+        "https://ftp.gnu.org/gnu/$pkgname/$pkgname-$pkgver.tar.gz"
+        "300ecf85a8fe166a39f9dd818945c7b8a970db39.patch"::"https://git.savannah.gnu.org/cgit/enscript.git/patch/?id=300ecf85a8fe166a39f9dd818945c7b8a970db39"
+)
+sha256sums=('6d56bada6934d055b34b6c90399aa85975e66457ac5bf513427ae7fc77f5c0bb'
+            '53705eb99a11fbc4277140534331813fff526e5380f5d5a2046484ae92900186')
+
+# To avoid a mess with lpr, the config file will be patched to send to stdout by default.
+prepare() {
+  cd $pkgname-$pkgver
+  sed -i '52s/DefaultOutputMethod: printer/DefaultOutputMethod: stdout/' lib/enscript.cfg.in
+
+  # Also, tiny additional modification to fix issue with compilation warning fixed in the upstream git, but not stable tarball yet.
+  patch -Nbp1 -i "${srcdir}/300ecf85a8fe166a39f9dd818945c7b8a970db39.patch"
+}
+
+build() {
+  cd $pkgname-$pkgver
+  ./configure --prefix=/usr --sysconfdir=/etc/enscript
+  make
+}
+
+check() {
+  cd $pkgname-$pkgver
+  make check
+}
+
+package() {
+  cd $pkgname-$pkgver
+  make DESTDIR="$pkgdir" install
+  # There is a conflict between the gettext locale.alias and the encsript supplied one.
+  # The elinks PKGBUILD script for example, removes the installed one from the tarball, I'll do the same.
+  rm -f "$pkgdir/usr/share/locale/locale.alias"
+  # Also this one as well, can't hurt.
+  rm -f "$pkgdir/usr/lib/charset.alias"
+}
