@@ -21,9 +21,13 @@ jobs:
     runs-on: ${{ matrix.runner }}
 
     steps:
-      - name: Get CPU Name
+      - name: Gather Facts
+        id: facts
         run : |
+          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize -Wrap
           Get-CIMInstance -Class Win32_Processor | Select-Object -Property Name
+          $BUILD_DRIVE = Split-Path $env:GITHUB_WORKSPACE -Qualifier
+          echo "drive=$BUILD_DRIVE" >> $env:GITHUB_OUTPUT
 
       - name: Configure Pagefile
         if: ${{ matrix.msystem != 'CLANGARM64' }}
@@ -33,6 +37,7 @@ jobs:
         with:
           minimum-size: 4GB
           maximum-size: 16GB
+          # Needs to be C:, see https://github.com/al-cheb/configure-pagefile-action/issues/18
           disk-root: "C:"
 
       - uses: actions/checkout@v4
@@ -66,13 +71,14 @@ jobs:
 
       - name: Move Checkout
         run: |
-          If (Test-Path "C:\_") { rm -r -fo "C:\_" }
-          Copy-Item -Path ".\temp" -Destination "C:\_" -Recurse
+          $path = "${{ steps.facts.outputs.drive }}\_"
+          If (Test-Path "$path") { rm -r -fo "$path" }
+          Move-Item -Path ".\temp" -Destination "$path"
 
       - name: CI-Build
         shell: msys2 {0}
         run: |
-          cd /C/_
+          cd "$(cygpath '${{ steps.facts.outputs.drive }}/_')"
           ./.ci/ci-build.sh
 
       - name: "Upload binaries"
@@ -80,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.msystem }}-packages
-          path: C:/_/artifacts/*.pkg.tar.*
+          path: ${{ steps.facts.outputs.drive }}/_/artifacts/*.pkg.tar.*
 
   package-grokker:
     runs-on: ubuntu-latest
