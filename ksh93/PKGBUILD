@@ -1,0 +1,48 @@
+# Note: You may run into issues with for() because of ASLR on windows 10/11
+# TODO: Add patches from the gisburn repo (Such as the ksh93 config), red hat, and debian.
+#
+#
+pkgname=ksh93
+pkgver=1.0.10
+pkgrel=1
+pkgdesc="The Original ATT Korn Shell, Now Maintained By The Community."
+arch=('x86_64')
+url="https://www.github.com/ksh93/ksh"
+license=('spdx:EPL-2.0')
+# Dpeneds (Add Later)
+makedepends=(
+	'gcc'
+) #Need to update later.
+# optdepends
+source=("${pkgname}-${pkgver}.zip"::https://github.com/ksh93/ksh/archive/refs/tags/v1.0.10.zip)
+sha256sums=('ab412118ce9527c6d805335080593fa874a0b859e9229c172f3fcf55d26f92e9')
+
+# Things might get a bit messary, prepare yourselves.
+build() {
+	cd "${srcdir}/ksh-${pkgver}"
+
+	local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+
+	# Clean up the arch subdir
+	rm -rf ./arch
+
+	# Bit of a workaround with cc1.exe not found for some reason.
+	export gccdir="/usr/lib/gcc/x86_64-pc-msys/13.3.0"
+	export PATH="/bin:/usr/bin:$gccdir:$gccdir/include:/usr/include"
+
+	# Additional weird workaround.
+	export CFLAGS="-I/usr/lib/gcc/x86_64-pc-msys/13.3.0/include"
+	export CFLAGS="$CFLAGS -L/usr/lib/gcc/x86_64-pc-msys/13.3.0"
+	export CCFLAGS="${CFLAGS} -fno-use-linker-plugin"
+	export LIBRARY_PATH="/usr/lib/gcc/x86_64-pc-msys/13.3.0"
+
+	export PATH="$PATH:$PWD/arch/msys.i386/lib/probe/C/make"
+	
+	# What the inane build system does by default is
+	# entirely a shell script system. It sets 'chmod +x' to the script
+	# but that does nothing with windows. Need to append
+	# shebang at the start.
+	sed -i '1s/^/#!\/usr\/bin\/bash\n/' src/cmd/INIT/mamprobe.sh
+
+	CC="/usr/bin/gcc" /usr/bin/bash bin/package make PACKAGEROOT="$PWD"
+}
