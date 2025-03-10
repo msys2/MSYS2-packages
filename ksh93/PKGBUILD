@@ -1,5 +1,5 @@
-# TODO: Add patches from the gisburn repo (Such as the ksh93 config), red hat, and debian.
-#
+# TODO(?): Add patches from the gisburn repo (Such as the ksh93 config), red hat, and debian.
+# I did borrow some parts from the AUR script.
 #
 #
 pkgname=ksh93
@@ -9,13 +9,32 @@ pkgdesc="The Original ATT Korn Shell, Now Maintained By The Community."
 arch=('x86_64')
 url="https://www.github.com/ksh93/ksh"
 license=('spdx:EPL-2.0')
-# Dpeneds (Add Later)
+
+# These makedeps were suggested by 'gisburn' in a ksh93 issue.
 makedepends=(
 	'gcc'
-) #Need to update later.
-# optdepends
-source=("${pkgname}-${pkgver}.zip"::https://github.com/ksh93/ksh/archive/refs/tags/v1.0.10.zip)
-sha256sums=('ab412118ce9527c6d805335080593fa874a0b859e9229c172f3fcf55d26f92e9')
+	'gdb'
+	'make'
+	'gettext'
+	'gettext-devel'
+	'flex'
+	'bison'
+	'unzip'
+	'pax'
+	'tar'
+	'libiconv-devel'
+	'ncurses-devel'
+	'gmp-devel'
+	'mpfr-devel'
+	'mpc-devel'
+	'isl-devel'
+	'procps-ng'
+)
+
+source=("${pkgname}-${pkgver}.zip"::https://github.com/ksh93/ksh/archive/refs/tags/v1.0.10.zip
+	'ksh.kshrc')
+sha256sums=('ab412118ce9527c6d805335080593fa874a0b859e9229c172f3fcf55d26f92e9'
+	'SKIP')
 
 # This is necessary
 export PATH="/bin:/usr/bin:$gccdir:$gccdir/include:/usr/include"
@@ -36,7 +55,7 @@ build() {
 
 	# Additional weird workaround.
 	export CFLAGS="-I/usr/lib/gcc/x86_64-pc-msys/13.3.0/include"
-	export CFLAGS="$CFLAGS -L/usr/lib/gcc/x86_64-pc-msys/13.3.0"
+	export CFLAGS="$CFLAGS -L/usr/lib/gcc/x86_64-pc-msys/13.3.0 -L/usr/lib"
 	export CCFLAGS="${CFLAGS} -fno-use-linker-plugin"
 	export LIBRARY_PATH="/usr/lib/gcc/x86_64-pc-msys/13.3.0"
 
@@ -47,6 +66,7 @@ build() {
 	# but that does nothing with windows. Need to append
 	# shebang at the start.
 	sed -i '1s/^/#!\/usr\/bin\/bash\n/' src/cmd/INIT/mamprobe.sh
+	sed -i '6s/^/#undef _lib_iconv_open\n/' src/lib/libast/features/iconv # Without this, fails with libiconv installed.
 
 	# It WILL fail during the first round. It MUST be ran twice.
 	printf "This WILL show an error at some point. This is to be expected.\n"
@@ -79,7 +99,22 @@ package() {
 	CC="/usr/bin/gcc" /usr/bin/bash bin/package install "${pkgdir}/usr" PACKAGEROOT="$PWD"
 
 	# install ksh sample rc file
+	install -Dm644 "${srcdir}/ksh.kshrc" "${pkgdir}/etc/ksh.kshrc"
 
 	# Install copyright and license files
-	# Other stuff
+	install -Dm0644 LICENSE.md "${pkgdir}/usr/share/licenses/ksh/LICENSE.md"
+	install -Dm0644 COPYRIGHT "${pkgdir}/usr/share/licenses/ksh/COPYRIGHT"
+
+	local _docs
+	for _docs in 'builtins.mm' 'COMPATIBILITY' 'DESIGN' 'OBSOLETE' 'PROMO.mm' 'README' 'README-AUDIT.md' \
+		'RELEASE' 'RELEASE88' 'RELEASE93' 'sh.memo' 'TYPES'; do
+	install -Dm0644 "src/cmd/ksh93/${_docs}" "${pkgdir}/usr/share/doc/ksh/${_docs}"
+done
+
+	# Lastly, move ksh-specific /usr/share/fun to /usr/share/ksh/functions
+	mv "${pkgdir}/usr/share/fun" "${pkgdir}/usr/share/ksh/functions"
+
+	# Maybe the gisburn and other patches I've found online might be useful?
+
+	# Finished!
 }
