@@ -1,89 +1,64 @@
-# This took a lot of trial and error. There possibly should be patches from the linked gisburn repo and the ones from debian and red hat.
-#
+# This PKGBUILD is derived from one found on the AUR and includes patches contributed by gisburn.
 pkgname=ksh93
 pkgver=1.0.10
 pkgrel=1
 pkgdesc="The Original ATT Korn Shell, Now Maintained By The Community."
-arch=('x86_64')
+arch=('i686' 'x86_64')
 url="https://www.github.com/ksh93/ksh"
 license=('spdx:EPL-2.0')
-
-# These makedeps were suggested by 'gisburn' in a ksh93 issue.
 makedepends=(
 	'gcc'
-	'gdb'
-	'make'
-	'gettext'
-	'gettext-devel'
-	'flex'
-	'bison'
-	'unzip'
-	'pax'
-	'tar'
-	'libiconv-devel'
+  'gettext'	
+  'gettext-devel'
 	'ncurses-devel'
 	'gmp-devel'
 	'mpfr-devel'
 	'mpc-devel'
 	'isl-devel'
-	'procps-ng'
 )
 # There exists already a package that provides ksh.exe, mksh, so I will set this to be a conflict.
 # Unless there can be a convincing reason to let both packages be installed.
 conflicts=('mksh')
 
 source=("${pkgname}-${pkgver}.zip"::https://github.com/ksh93/ksh/archive/refs/tags/v1.0.10.zip
-	'ksh.kshrc')
-sha256sums=('ab412118ce9527c6d805335080593fa874a0b859e9229c172f3fcf55d26f92e9'
-	'SKIP')
+	'ksh.kshrc'
+  'ksh-mamake.patch'
+  'ksh-unc-paths.patch')
 
-# This is necessary
-export PATH="/bin:/usr/bin:$gccdir:$gccdir/include:/usr/include"
+sha256sums=('ab412118ce9527c6d805335080593fa874a0b859e9229c172f3fcf55d26f92e9'
+	'SKIP'
+  'b92aa2a8bd801b6f0a6c30013d1e6c13597d2de799ddc6c244b155aacb76d5e9'
+  '4838b950e32fc61dbfbb5e446570f4f7503f302a26305dff1f9b0769585a94bc')
+
+prepare() {
+  cd "${srcdir}/ksh-${pkgver}"
+  patch -p1 -i ../ksh-mamake.patch
+  patch -p1 -i ../ksh-unc-paths.patch
+}
 
 # Things might get a bit messary, prepare yourselves.
 # I really should use gisburn's kshrc default config.
 build() {
 	cd "${srcdir}/ksh-${pkgver}"
-	
-	export CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
-
-	# Do not, I repeat, DO NOT delete the src subdir.
-	# For now, multiple rounds must be done.
-
-	# Bit of a workaround with cc1.exe not found for some reason.
-	export gccdir="/usr/lib/gcc/x86_64-pc-msys/13.3.0"
-	export PATH="/bin:/usr/bin:$gccdir:$gccdir/include:/usr/include"
+  
+  	# For now, it literally fails if cc1.exe is not explicitly on the PATH.
+  	local GCC_DIR="/usr/lib/gcc/x86_64-pc-msys/13.3.0" 
+  	export PATH="$PATH:$GCC_DIR"
+	export CYGWIN='ntsec'
 
 	# Additional weird workaround.
-	export CFLAGS="-I/usr/lib/gcc/x86_64-pc-msys/13.3.0/include"
-	export CFLAGS="$CFLAGS -L/usr/lib/gcc/x86_64-pc-msys/13.3.0 -L/usr/lib"
+	export CFLAGS="-I${GCC_DIR}/include -L${GCC_DIR} -L/usr/lib"
 	export CCFLAGS="${CFLAGS} -fno-use-linker-plugin"
-	export LIBRARY_PATH="/usr/lib/gcc/x86_64-pc-msys/13.3.0"
+	export LIBRARY_PATH="${GCC_DIR}"
 
-	export PATH="$PATH:$PWD/arch/msys.i386/lib/probe/C/make"
-
-	# What the inane build system does by default is
+	# What the build system does by default is
 	# entirely a shell script system. It sets 'chmod +x' to the script
 	# but that does nothing with windows. Need to append
 	# shebang at the start.
 	sed -i '1s/^/#!\/usr\/bin\/bash\n/' src/cmd/INIT/mamprobe.sh
 	sed -i '6s/^/#undef _lib_iconv_open\n/' src/lib/libast/features/iconv # Without this, fails with libiconv installed.
 
-	# It WILL fail during the first round. It MUST be ran twice.
-	printf "This WILL show an error at some point. This is to be expected.\n"
-	printf "The build command is ran twice because of fork() issue.\n"
-	printf "\n\nRound 1 begins now.\n\n"
-	sleep 2
-
-	CC="/usr/bin/gcc" /usr/bin/bash bin/package make PACKAGEROOT="$PWD" || true
-
-	printf "\n\nSecond and final round begins now.\n\n"
-	sleep 2
-	CC="/usr/bin/gcc" /usr/bin/bash bin/package make PACKAGEROOT="$PWD" || true
-
-	sleep 2
-	printf "\n\nFinished!\n\n"
-	sleep 2
+	CC="/usr/bin/gcc" /usr/bin/bash bin/package make PACKAGEROOT="$PWD" HOSTTYPE="cygwin.i386" || true
 
 
 }
@@ -114,7 +89,7 @@ done
 
 	# Because ksh.exe, like mksh, provided by this package and often people want to specify ksh93,
  	# I will make a copy of of the ksh executable naming it ksh93.exe.
-  	cp "${pkgdir}/usr/bin/ksh.exe" "${pkgdir}/usr/bin/ksh93.exe"
+ 	cp "${pkgdir}/usr/bin/ksh.exe" "${pkgdir}/usr/bin/ksh93.exe"
    
 	# Lastly, move ksh-specific /usr/share/fun to /usr/share/ksh/functions
 	mv "${pkgdir}/usr/share/fun" "${pkgdir}/usr/share/ksh/functions"
