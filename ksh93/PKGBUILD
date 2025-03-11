@@ -6,33 +6,26 @@ pkgdesc="The Original ATT Korn Shell, Now Maintained By The Community."
 arch=('i686' 'x86_64')
 url="https://www.github.com/ksh93/ksh"
 license=('spdx:EPL-2.0')
-makedepends=(
-	'gcc'
-  'gettext'	
-  'gettext-devel'
-	'ncurses-devel'
-	'gmp-devel'
-	'mpfr-devel'
-	'mpc-devel'
-	'isl-devel'
-)
+makedepends=('gcc' 'binutils')
+# You might be wondering why there is almost nothing for makedepends. It turns out that
+# it has almost no dependencies beyond a C compiler and POSIX compliant shell.
+# This is a curse and a blessing. It works literally anywhere, however,
+# it's extremely stubborn in how it's built.
+
 # There exists already a package that provides ksh.exe, mksh, so I will set this to be a conflict.
 # Unless there can be a convincing reason to let both packages be installed.
 conflicts=('mksh')
 
 source=("${pkgname}-${pkgver}.zip"::https://github.com/ksh93/ksh/archive/refs/tags/v1.0.10.zip
-	'ksh.kshrc'
-  'ksh-mamake.patch'
+  'ksh.kshrc'
   'ksh-unc-paths.patch')
 
 sha256sums=('ab412118ce9527c6d805335080593fa874a0b859e9229c172f3fcf55d26f92e9'
-	'SKIP'
-  'b92aa2a8bd801b6f0a6c30013d1e6c13597d2de799ddc6c244b155aacb76d5e9'
+  'SKIP'
   '4838b950e32fc61dbfbb5e446570f4f7503f302a26305dff1f9b0769585a94bc')
 
 prepare() {
   cd "${srcdir}/ksh-${pkgver}"
-  patch -p1 -i ../ksh-mamake.patch
   patch -p1 -i ../ksh-unc-paths.patch
 }
 
@@ -42,9 +35,9 @@ build() {
 	cd "${srcdir}/ksh-${pkgver}"
   
   	# For now, it literally fails if cc1.exe is not explicitly on the PATH.
-  	local GCC_DIR="/usr/lib/gcc/x86_64-pc-msys/13.3.0" 
+  	local GCC_DIR="$(gcc -print-search-dirs | sed -ne '/^install: /s///p')"
   	export PATH="$PATH:$GCC_DIR"
-	export CYGWIN='ntsec'
+
 
 	# Additional weird workaround.
 	export CFLAGS="-I${GCC_DIR}/include -L${GCC_DIR} -L/usr/lib"
@@ -58,7 +51,20 @@ build() {
 	sed -i '1s/^/#!\/usr\/bin\/bash\n/' src/cmd/INIT/mamprobe.sh
 	sed -i '6s/^/#undef _lib_iconv_open\n/' src/lib/libast/features/iconv # Without this, fails with libiconv installed.
 
-	CC="/usr/bin/gcc" /usr/bin/bash bin/package make PACKAGEROOT="$PWD" HOSTTYPE="cygwin.i386" || true
+	# My previous attempt at patching the mamake.exe replacement failed. Reason being, is that
+	# this build process is highly biased towards unix way of thinking, which doesn't work well with
+	# windows. It might kinda work on cygwin, but that fails with msys2. The only successful way so far
+	# it's been to build it, is to build it twice. Failure is expected.
+
+	# First round. Note that '|| true' has to be there, it WILL bail the build process when the expected fork() issue
+	# happens, so this tells bash to keep going anyways in spite of non zero return code.
+	printf "If it reports back fork() error, this is to be expected.\n"
+	printf "It will simply run the build command again to finish the job.\n"
+	CC="/usr/bin/gcc" /usr/bin/bash bin/package make PACKAGEROOT="$PWD" || true
+
+	sleep 2
+
+	CC="/usr/bin/gcc" /usr/bin/bash bin/package make PACKAGEROOT="$PWD" || true
 
 
 }
