@@ -1,0 +1,109 @@
+# This PKGBUILD is derived from one found on the AUR and includes patches contributed by gisburn.
+pkgname=ksh93
+pkgver=1.0.10
+pkgrel=1
+pkgdesc="The Original ATT Korn Shell, Now Maintained By The Community."
+arch=('i686' 'x86_64')
+url="https://www.github.com/ksh93/ksh"
+license=('spdx:EPL-2.0')
+makedepends=('gcc' 'bison' 'libiconv-devel' 'gettext-devel' 'ncurses-devel' 'texinfo')
+depends=('libiconv')
+conflicts=('mksh')
+backup=('etc/ksh.kshrc')
+
+source=("${pkgname}-${pkgver}.zip"::https://github.com/ksh93/ksh/archive/refs/tags/v1.0.10.zip
+        'ksh.kshrc'
+        'ksh-defpath-usr-bin.patch'
+        'ksh-mamake.patch'
+        'ksh-shtests-mkdir-m.patch'
+        'ksh-unc-paths.patch')
+
+sha256sums=('ab412118ce9527c6d805335080593fa874a0b859e9229c172f3fcf55d26f92e9'
+            'ed57db19753904b3969884f5768fa84d158f5ba65ba0766c095961cce0c8e267'
+            'ca07713ffe1b4e2bafde1b3a5aa7ad112445f49f105388c5bb117d486953c3c7'
+            '4b58bd938615b03ba1f68ea3deed5e536a5e815d1dddc90b83c0bdaa67e0d409'
+            'c7d1489142cbce27122fb11e506cf4b56459fc6803ec384bae52eaea8a012118'
+            '4838b950e32fc61dbfbb5e446570f4f7503f302a26305dff1f9b0769585a94bc')
+
+prepare() {
+  cd "${srcdir}/ksh-${pkgver}"
+  patch -p1 -i ../ksh-unc-paths.patch
+  patch -p1 -i ../ksh-defpath-usr-bin.patch
+  patch -p1 -i ../ksh-mamake.patch
+  patch -p1 -i ../ksh-shtests-mkdir-m.patch
+
+  # What the build system does by default is
+  # entirely a shell script system. It sets 'chmod +x' to the script
+  # but that does nothing with windows. Need to append
+  # shebang at the start.
+  sed -i '1s/^/#!\/usr\/bin\/bash\n/' src/cmd/INIT/mamprobe.sh
+}
+
+build() {
+  cd "${srcdir}/ksh-${pkgver}"
+
+  CFLAGS+=" -fno-strict-aliasing -std=gnu17"
+  export CCFLAGS="${CFLAGS}"
+
+  case "$CARCH" in
+    i?86)
+      export HOSTTYPE=cygwin.i386
+      ;;
+    x86_64)
+      export HOSTTYPE=cygwin.i386-64
+      ;;
+    *)
+      echo "Unhandled architecture ${CARCH}" >&2
+      false
+      ;;
+  esac
+
+  # the brain-dead build system insists on setting CYGWIN=ntsec, even though
+  # the CYGWIN variable does nothing on MSYS2, and the ntsec option is obsolete
+  # and no longer does anything on Cygwin anyway
+  export CYGWIN=ntsec
+  bash bin/package make PACKAGEROOT="$PWD" CC="cc" SHELL="/usr/bin/bash" HOSTTYPE="${HOSTTYPE}"
+}
+
+check() {
+  cd "${srcdir}/ksh-${pkgver}"
+  bash bin/shtests PACKAGEROOT="$PWD" CC="cc" HOSTTYPE="${HOSTTYPE}" || true
+}
+
+package() {
+  cd "${srcdir}"
+  install -dm0755 "${pkgdir}/etc/skel"
+  install -dm0755 "${pkgdir}/usr/share/ksh"
+  install -dm0755 "${pkgdir}/usr/share/doc/ksh"
+  install -dm0755 "${pkgdir}/usr/share/licenses/ksh"
+
+  # Install the core components of ksh93
+  cd "${srcdir}/ksh-${pkgver}"
+  bash bin/package install CC="cc" SHELL="/usr/bin/bash" "${pkgdir}/usr" PACKAGEROOT="$PWD" HOSTTYPE="${HOSTTYPE}"
+
+  # install ksh sample rc file
+  install -Dm644 "${srcdir}/ksh.kshrc" "${pkgdir}/etc/ksh.kshrc"
+
+  # Install copyright and license files
+  install -Dm0644 LICENSE.md "${pkgdir}/usr/share/licenses/ksh/LICENSE.md"
+  install -Dm0644 COPYRIGHT "${pkgdir}/usr/share/licenses/ksh/COPYRIGHT"
+
+  local _docs
+  for _docs in 'builtins.mm' 'COMPATIBILITY' 'DESIGN' 'OBSOLETE' 'PROMO.mm' \
+    'README' 'README-AUDIT.md' 'RELEASE' 'RELEASE88' 'RELEASE93' 'sh.memo' \
+    'TYPES'; do
+    install -Dm0644 "src/cmd/ksh93/${_docs}" "${pkgdir}/usr/share/doc/ksh/${_docs}"
+  done
+
+  # Because ksh.exe, like mksh, provided by this package and often people want to specify ksh93,
+  # I will make a copy of of the ksh executable naming it ksh93.exe.
+  cp "${pkgdir}/usr/bin/ksh.exe" "${pkgdir}/usr/bin/ksh93.exe"
+
+  # Lastly, move ksh-specific /usr/share/fun to /usr/share/ksh/functions
+  mv "${pkgdir}/usr/share/fun" "${pkgdir}/usr/share/ksh/functions"
+
+  # It was requested to add as well the tests subdir
+  for I in src/cmd/ksh93/tests/*; do
+    install -Dm0644 "$I" "${pkgdir}/usr/share/ksh/tests/$(basename $I)"
+  done
+}
