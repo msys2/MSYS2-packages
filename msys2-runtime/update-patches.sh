@@ -56,7 +56,7 @@ do
 	sed -i 's/^\(Subject: \[PATCH [0-9]*\/\)[1-9][0-9]*/\1N/' $p ||
 	die "Could not fix Subject: line in $p"
 done &&
-git -C msys2-runtime rev-parse --verify HEAD >msys2-runtime.commit &&
+git -C msys2-runtime rev-parse --verify $msys2_branch >msys2-runtime.commit &&
 git add $patches msys2-runtime.commit ||
 die "Could not stage new patch set"
 
