@@ -1,0 +1,60 @@
+# Maintainer: Jeremy Drake
+
+pkgname='udis86'
+pkgver=1.7.2
+pkgrel=1
+pkgdesc="Minimalistic disassembler library"
+arch=('i686' 'x86_64')
+url="http://sourceforge.net/projects/udis86"
+msys2_references=(
+  "anitya: 5026"
+  "cpe: cpe:2.3:a:vmt:udis86"
+)
+license=('BSD')
+options=('staticlibs')
+makedepends=('autotools' 'gcc' 'python')
+checkdepends=('yasm')
+source=(https://downloads.sourceforge.net/${pkgname}/${pkgname}-${pkgver}.tar.gz
+        'udis86-1.7.2-cygwin-msys.patch'
+        'udis86-1.7.2-docdir.patch'
+        'udis86-1.7.2-python3.patch'
+        'udis86-1.7.2-uninitialized-variable.patch')
+sha256sums=('9c52ac626ac6f531e1d6828feaad7e797d0f3cce1e9f34ad4e84627022b3c2f4'
+            'a351a8f242d74367a822a321309aae76fc4ad57d34027690296d09398845de49'
+            '48813d19cba7797abafc247c6463c501062be4120e4c52d26b168265d683737e'
+            'f307ff6c02aba6cbc53e231ba15a121435a08c9525fff2cedc58762ac5d4ca09'
+            'ca3b9b5d767b9de39dbc175ab782036bcc7967bec490df35c0d3d7de3630dc33')
+
+prepare() {
+  cd ${pkgname}-${pkgver}
+  patch -p1 -i ${srcdir}/udis86-1.7.2-cygwin-msys.patch
+
+  # These patches came from Gentoo
+  patch -p1 -i ${srcdir}/udis86-1.7.2-docdir.patch
+  patch -p1 -i ${srcdir}/udis86-1.7.2-python3.patch
+  patch -p1 -i ${srcdir}/udis86-1.7.2-uninitialized-variable.patch
+
+  autoreconf -fiv
+}
+
+build() {
+  mkdir -p build-${CARCH} && cd build-${CARCH}
+  local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
+  ../${pkgname}-${pkgver}/configure \
+    --prefix=/usr \
+    --enable-static \
+    --enable-shared \
+    --build="${CYGWIN_CHOST}"
+  make
+}
+
+check() {
+  cd build-${CARCH}
+  make check
+}
+
+package() {
+  cd build-${CARCH}
+  make DESTDIR="${pkgdir}" install
+  install -Dm644 "${srcdir}/${pkgname}-${pkgver}/README" "${pkgdir}/usr/share/doc/${pkgname}"
+}
