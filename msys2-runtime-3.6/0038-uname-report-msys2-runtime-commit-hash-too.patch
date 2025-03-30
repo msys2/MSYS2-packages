@@ -1,0 +1,159 @@
+From a69861d558e69e1baf3e9595fdb6c5c62f3ede15 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 21 Feb 2023 16:36:36 +0100
+Subject: [PATCH 38/N] uname: report msys2-runtime commit hash, too
+
+Having just Cygwin's version in the output of `uname` is not helpful, as
+both MSYS2 as well as Git for Windows release intermediate versions of
+the MSYS2 runtime much more often than Cygwin runtime versions are
+released.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/configure.ac             | 10 ++++++++--
+ winsup/cygwin/Makefile.am       |  6 ++++--
+ winsup/cygwin/scripts/mkvers.sh |  8 ++++++++
+ winsup/cygwin/uname.cc          | 16 +++++++++-------
+ 4 files changed, 29 insertions(+), 11 deletions(-)
+
+diff --git a/winsup/configure.ac b/winsup/configure.ac
+index 3aa2b16..4dd5ccb 100644
+--- a/winsup/configure.ac
++++ b/winsup/configure.ac
+@@ -65,24 +65,30 @@ AC_ARG_WITH([msys2-runtime-commit],
+ case "$MSYS2_RUNTIME_COMMIT" in
+ no)
+     MSYS2_RUNTIME_COMMIT=
++    MSYS2_RUNTIME_COMMIT_SHORT=
+     MSYS2_RUNTIME_COMMIT_HEX=0
+     ;;
+ yes|auto)
+     if MSYS2_RUNTIME_COMMIT="$(git --git-dir="$srcdir/../.git" rev-parse HEAD)"
+     then
+-        MSYS2_RUNTIME_COMMIT_HEX="0x$(expr "$MSYS2_RUNTIME_COMMIT" : '\(.\{,8\}\)')ull"
++        MSYS2_RUNTIME_COMMIT_SHORT="$(expr "$MSYS2_RUNTIME_COMMIT" : '\(.\{,8\}\)')"
++        MSYS2_RUNTIME_COMMIT_HEX="0x${MSYS2_RUNTIME_COMMIT_SHORT}ul"
+     else
+         AC_MSG_WARN([Could not determine msys2-runtime commit])
+         MSYS2_RUNTIME_COMMIT=
++        MSYS2_RUNTIME_COMMIT_SHORT=
+         MSYS2_RUNTIME_COMMIT_HEX=0
+     fi
+     ;;
+ *)
+     expr "$MSYS2_RUNTIME_COMMIT" : '@<:@0-9a-f@:>@\{6,64\}$' ||
+     AC_MSG_ERROR([Invalid commit name: "$MSYS2_RUNTIME_COMMIT"])
+-    MSYS2_RUNTIME_COMMIT_HEX="0x$(expr "$MSYS2_RUNTIME_COMMIT" : '\(.\{,8\}\)')ull"
++    MSYS2_RUNTIME_COMMIT_SHORT="$(expr "$MSYS2_RUNTIME_COMMIT" : '\(.\{,8\}\)')"
++    MSYS2_RUNTIME_COMMIT_HEX="0x${MSYS2_RUNTIME_COMMIT_SHORT}ul"
+     ;;
+ esac
++AC_SUBST(MSYS2_RUNTIME_COMMIT)
++AC_SUBST(MSYS2_RUNTIME_COMMIT_SHORT)
+ AC_SUBST(MSYS2_RUNTIME_COMMIT_HEX)
+ 
+ AC_ARG_ENABLE(debugging,
+diff --git a/winsup/cygwin/Makefile.am b/winsup/cygwin/Makefile.am
+index 3dae33a..1765a08 100644
+--- a/winsup/cygwin/Makefile.am
++++ b/winsup/cygwin/Makefile.am
+@@ -17,7 +17,9 @@ if TARGET_X86_64
+ COMMON_CFLAGS+=-mcmodel=small
+ endif
+ 
+-VERSION_CFLAGS = -DMSYS2_RUNTIME_COMMIT_HEX="@MSYS2_RUNTIME_COMMIT_HEX@"
++VERSION_CFLAGS = -DMSYS2_RUNTIME_COMMIT="\"@MSYS2_RUNTIME_COMMIT@\""
++VERSION_CFLAGS += -DMSYS2_RUNTIME_COMMIT_SHORT="\"@MSYS2_RUNTIME_COMMIT_SHORT@\""
++VERSION_CFLAGS += -DMSYS2_RUNTIME_COMMIT_HEX="@MSYS2_RUNTIME_COMMIT_HEX@"
+ COMMON_CFLAGS += $(VERSION_CFLAGS)
+ 
+ AM_CFLAGS=$(cflags_common) $(COMMON_CFLAGS)
+@@ -452,7 +454,7 @@ uname_version.c: .FORCE
+ version.cc: scripts/mkvers.sh include/cygwin/version.h winver.rc $(src_files)
+ 	@echo "Making version.cc and winver.o";\
+ 	export CC="$(CC)";\
+-	/bin/sh $(word 1,$^) $(word 2,$^) $(word 3,$^) $(WINDRES) $(CFLAGS)
++	/bin/sh $(word 1,$^) $(word 2,$^) $(word 3,$^) $(WINDRES) $(CFLAGS) $(VERSION_CFLAGS)
+ 
+ winver.o: version.cc
+ 
+diff --git a/winsup/cygwin/scripts/mkvers.sh b/winsup/cygwin/scripts/mkvers.sh
+index a3d45c5..34d8d6d 100755
+--- a/winsup/cygwin/scripts/mkvers.sh
++++ b/winsup/cygwin/scripts/mkvers.sh
+@@ -16,6 +16,7 @@ incfile="$1"; shift
+ rcfile="$1"; shift
+ windres="$1"; shift
+ iflags=
++msys2_runtime_commit=
+ # Find header file locations
+ while [ -n "$*" ]; do
+   case "$1" in
+@@ -26,6 +27,9 @@ while [ -n "$*" ]; do
+     shift
+     iflags="$iflags -I$1"
+       ;;
++  -DMSYS2_RUNTIME_COMMIT=*)
++    msys2_runtime_commit="${1#*=}"
++    ;;
+   esac
+   shift
+ done
+@@ -168,6 +172,10 @@ then
+   cvs_tag="$(echo $wv_cvs_tag | sed -e 's/-branch.*//')"
+   cygwin_ver="$cygwin_ver-$cvs_tag"
+ fi
++if [ -n "$msys2_runtime_commit" ]
++then
++  cygwin_ver="$cygwin_ver-$msys2_runtime_commit"
++fi
+ 
+ echo "Version $cygwin_ver"
+ set -$- $builddate
+diff --git a/winsup/cygwin/uname.cc b/winsup/cygwin/uname.cc
+index cca66be..8f984fa 100644
+--- a/winsup/cygwin/uname.cc
++++ b/winsup/cygwin/uname.cc
+@@ -91,18 +91,19 @@ uname_x (struct utsname *name)
+ #pragma GCC diagnostic push
+ #pragma GCC diagnostic ignored "-Wformat-truncation="
+ #ifdef CYGPORT_RELEASE_INFO
+-      snprintf (name->release, _UTSNAME_LENGTH, "%s.%s",
+-		__XSTRING (CYGPORT_RELEASE_INFO), name->machine);
++      snprintf (name->release, _UTSNAME_LENGTH, "%s-%s.%s",
++		__XSTRING (CYGPORT_RELEASE_INFO), MSYS2_RUNTIME_COMMIT_SHORT, name->machine);
+ #else
+       extern const char *uname_dev_version;
+       if (uname_dev_version && uname_dev_version[0])
+-	snprintf (name->release, _UTSNAME_LENGTH, "%s.%s",
+-		  uname_dev_version, name->machine);
++	snprintf (name->release, _UTSNAME_LENGTH, "%s-%s.%s",
++		  uname_dev_version, MSYS2_RUNTIME_COMMIT_SHORT, name->machine);
+       else
+-	__small_sprintf (name->release, "%d.%d.%d-api-%d.%s",
++	__small_sprintf (name->release, "%d.%d.%d-%s-api-%d.%s",
+ 			 cygwin_version.dll_major / 1000,
+ 			 cygwin_version.dll_major % 1000,
+ 			 cygwin_version.dll_minor,
++			 MSYS2_RUNTIME_COMMIT_SHORT,
+ 			 cygwin_version.api_minor,
+ 			 name->machine);
+ #endif
+@@ -145,14 +146,15 @@ uname (struct utsname *in_name)
+       cygwin_gethostname (name->nodename, sizeof (name->nodename) - 1);
+ 
+       /* Cygwin dll release */
+-      __small_sprintf (name->release, "%d.%d.%d(%d.%d/%d/%d)",
++      __small_sprintf (name->release, "%d.%d.%d(%d.%d/%d/%d/%s)",
+ 		       cygwin_version.dll_major / 1000,
+ 		       cygwin_version.dll_major % 1000,
+ 		       cygwin_version.dll_minor,
+ 		       cygwin_version.api_major,
+ 		       cygwin_version.api_minor,
+ 		       cygwin_version.shared_data,
+-		       cygwin_version.mount_registry);
++		       cygwin_version.mount_registry,
++		       MSYS2_RUNTIME_COMMIT_SHORT);
+ 
+       /* Cygwin "version" aka build date */
+       strcpy (name->version, cygwin_version.dll_build_date);
