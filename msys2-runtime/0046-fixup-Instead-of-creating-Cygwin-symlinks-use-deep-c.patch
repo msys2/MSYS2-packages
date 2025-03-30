@@ -1,0 +1,231 @@
+From 4606ccb4588d0993ca2351f3ed9e0e15f180e590 Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Thu, 30 Jan 2025 13:30:25 -0800
+Subject: [PATCH 46/N] fixup! Instead of creating Cygwin symlinks, use deep
+ copy by default
+
+Use unicode APIs instead of ANSI, for better handling of long paths and
+unicode characters.
+
+Use FindFirstFileExW with FindExInfoBasic (because recursiveCopy doesn't
+care about short file names) and FIND_FIRST_EX_LARGE_FETCH (for better
+performance).
+
+Use CopyFileExW with COPY_FILE_COPY_SYMLINK, so native symlinks act like
+sys and lnk file symlinks (they're copied as links instead of their
+target).
+---
+ winsup/cygwin/path.cc | 144 +++++++++++++++++++++---------------------
+ 1 file changed, 72 insertions(+), 72 deletions(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index cf582c7..9671e8f 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -1693,69 +1693,75 @@ conv_path_list (const char *src, char *dst, size_t size,
+   Create a deep copy of src as dst, while avoiding descending in origpath.
+ */
+ static int
+-recursiveCopy (char * src, char * dst, const char * origpath)
++recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
+ {
+-  WIN32_FIND_DATA dHfile;
++  WIN32_FIND_DATAW dHfile;
+   HANDLE dH = INVALID_HANDLE_VALUE;
+   BOOL findfiles;
+-  int srcpos = strlen (src);
+-  int dstpos = strlen (dst);
++  int srcpos = src->Length;
++  int dstpos = dst->Length;
+   int res = -1;
+ 
+-  debug_printf("recursiveCopy (%s, %s)", src, dst);
++  debug_printf ("recursiveCopy (%S, %S)", src, dst);
+ 
+   /* Create the destination directory */
+-  if (!CreateDirectoryEx (src, dst, NULL))
++  if (!CreateDirectoryExW (src->Buffer, dst->Buffer, NULL))
+     {
+-      debug_printf("CreateDirectoryEx(%s, %s, 0) failed", src, dst);
++      debug_printf ("CreateDirectoryExW(%S, %S, 0) failed", src, dst);
+       __seterrno ();
+       goto done;
+     }
+   /* Descend into the source directory */
+-  if (srcpos + 2 >= MAX_PATH || dstpos + 1 >= MAX_PATH)
++  if (src->Buffer[(src->Length - 1) / sizeof (WCHAR)] != L'\\')
+     {
+-      set_errno (ENAMETOOLONG);
+-      goto done;
++      RtlAppendUnicodeToString (src, L"\\*");
++    }
++  else
++    {
++      RtlAppendUnicodeToString (src, L"*");
++      srcpos -= sizeof (WCHAR);
+     }
+-  strcat (src, "\\*");
+-  strcat (dst, "\\");
+-  dH = FindFirstFile (src, &dHfile);
+-  debug_printf("dHfile(1): %s", dHfile.cFileName);
+-  findfiles = FindNextFile (dH, &dHfile);
+-  debug_printf("dHfile(2): %s", dHfile.cFileName);
+-  findfiles = FindNextFile (dH, &dHfile);
++  if (dst->Buffer[(dst->Length - 1) / sizeof (WCHAR)] != L'\\')
++      RtlAppendUnicodeToString (dst, L"\\");
++  else
++      dstpos -= sizeof (WCHAR);
++
++  dH = FindFirstFileExW (src->Buffer, FindExInfoBasic, &dHfile,
++			 FindExSearchNameMatch, NULL,
++			 FIND_FIRST_EX_LARGE_FETCH);
++  debug_printf ("dHfile(1): %W", dHfile.cFileName);
++  findfiles = FindNextFileW (dH, &dHfile);
++  debug_printf ("dHfile(2): %W", dHfile.cFileName);
++  findfiles = FindNextFileW (dH, &dHfile);
+   while (findfiles)
+     {
+       /* Append the directory item filename to both source and destination */
+-      int filelen = strlen (dHfile.cFileName);
+-      debug_printf("dHfile(3): %s", dHfile.cFileName);
+-      if (srcpos + 1 + filelen >= MAX_PATH ||
+-          dstpos + 1 + filelen >= MAX_PATH)
+-        {
+-          set_errno (ENAMETOOLONG);
+-          goto done;
+-        }
+-      strcpy (&src[srcpos+1], dHfile.cFileName);
+-      strcpy (&dst[dstpos+1], dHfile.cFileName);
+-      debug_printf("%s -> %s", src, dst);
++      debug_printf ("dHfile(3): %W", dHfile.cFileName);
++      src->Length = srcpos + sizeof (WCHAR);
++      dst->Length = dstpos + sizeof (WCHAR);
++      RtlAppendUnicodeToString (src, dHfile.cFileName);
++      RtlAppendUnicodeToString (dst, dHfile.cFileName);
++      debug_printf ("%S -> %S", src, dst);
+       if (dHfile.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+         {
+           /* Recurse into the child directory */
+-          debug_printf("%s <-> %s", src, origpath);
+-          if (strcmp (src, origpath)) // avoids endless recursion
++          debug_printf ("%S <-> %W", src, origpath);
++	  // avoids endless recursion
++          if (wcsncmp (src->Buffer, origpath, src->Length / sizeof (WCHAR)))
+             if (recursiveCopy (src, dst, origpath))
+               goto done;
+         }
+       else
+         {
+           /* Just copy the file */
+-          if (!CopyFile (src, dst, FALSE))
++          if (!CopyFileExW (src->Buffer, dst->Buffer, NULL, NULL, NULL,
++			    COPY_FILE_COPY_SYMLINK))
+             {
+               __seterrno ();
+               goto done;
+             }
+         }
+-      findfiles = FindNextFile (dH, &dHfile);
++      findfiles = FindNextFileW (dH, &dHfile);
+     }
+   if (GetLastError() != ERROR_NO_MORE_FILES)
+     {
+@@ -2076,64 +2082,58 @@ int
+ symlink_deepcopy (const char *oldpath, path_conv &win32_newpath)
+ {
+   tmp_pathbuf tp;
+-  path_conv src_path;
++  path_conv win32_oldpath;
+ 
+-  src_path.check (oldpath, PC_SYM_NOFOLLOW, stat_suffixes);
+-  if (src_path.error)
++  /* The symlink target is relative to the directory in which the
++     symlink gets created, not relative to the cwd.  Therefore we
++     have to mangle the path quite a bit before calling path_conv.*/
++  if (isabspath (oldpath))
++    win32_oldpath.check (oldpath, PC_SYM_NOFOLLOW, stat_suffixes);
++  else
+     {
+-      set_errno (src_path.error);
++      size_t len = strrchr (win32_newpath.get_posix (), '/')
++		    - win32_newpath.get_posix () + 1;
++      char *absoldpath = tp.t_get ();
++      stpcpy (stpncpy (absoldpath, win32_newpath.get_posix (), len),
++	      oldpath);
++      win32_oldpath.check (absoldpath, PC_SYM_NOFOLLOW, stat_suffixes);
++    }
++  if (win32_oldpath.error)
++    {
++      set_errno (win32_oldpath.error);
+       return -1;
+     }
+-  if (src_path.isspecial ())
++  if (win32_oldpath.isspecial ())
+     return -2;
+ 
+   /* MSYS copy file instead make symlink */
+-  char * real_oldpath;
+-  if (isabspath (oldpath))
+-    strcpy (real_oldpath = tp.c_get (), oldpath);
+-  else
+-    /* Find the real source path, relative
+-       to the directory of the destination */
+-    {
+-      /* Determine the character position of the last path component */
+-      const char *newpath = win32_newpath.get_posix();
+-      int pos = strlen (newpath);
+-      while (--pos >= 0)
+-	if (isdirsep (newpath[pos]))
+-	  break;
+-      /* Append the source path to the directory
+-	 component of the destination */
+-      if (pos+1+strlen(oldpath) >= MAX_PATH)
+-	{
+-	  set_errno(ENAMETOOLONG);
+-	  return -1;
+-	}
+-      strcpy (real_oldpath = tp.c_get (), newpath);
+-      strcpy (&real_oldpath[pos+1], oldpath);
+-    }
+-
+   /* As a MSYS limitation, the source path must exist. */
+-  path_conv win32_oldpath;
+-  win32_oldpath.check (real_oldpath, PC_SYM_NOFOLLOW, stat_suffixes);
+   if (!win32_oldpath.exists ())
+     {
+       set_errno (ENOENT);
+       return -1;
+     }
+ 
+-  char *w_newpath;
+-  char *w_oldpath;
+-  stpcpy (w_newpath = tp.c_get (), win32_newpath.get_win32());
+-  stpcpy (w_oldpath = tp.c_get (), win32_oldpath.get_win32());
+-  if (win32_oldpath.isdir())
++  PUNICODE_STRING w_oldpath = win32_oldpath.get_nt_native_path ();
++  PUNICODE_STRING w_newpath = win32_newpath.get_nt_native_path ();
++  if (w_oldpath->Buffer[1] == L'?')
++    w_oldpath->Buffer[1] = L'\\';
++  if (w_newpath->Buffer[1] == L'?')
++    w_newpath->Buffer[1] = L'\\';
++  if (win32_oldpath.isdir ())
+     {
+-      char *origpath;
+-      strcpy (origpath = tp.c_get (), w_oldpath);
+-      return recursiveCopy (w_oldpath, w_newpath, origpath);
++      PWCHAR origpath = win32_oldpath.get_wide_win32_path (tp.w_get ());
++      /* we need a larger UNICODE_STRING MaximumLength than
++	 get_nt_native_path allocates for the recursive copy */
++      UNICODE_STRING u_oldpath, u_newpath;
++      RtlCopyUnicodeString (tp.u_get (&u_oldpath), w_oldpath);
++      RtlCopyUnicodeString (tp.u_get (&u_newpath), w_newpath);
++      return recursiveCopy (&u_oldpath, &u_newpath, origpath);
+     }
+   else
+     {
+-      if (!CopyFile (w_oldpath, w_newpath, FALSE))
++      if (!CopyFileExW (w_oldpath->Buffer, w_newpath->Buffer,
++			NULL, NULL, NULL, COPY_FILE_COPY_SYMLINK))
+ 	{
+ 	  __seterrno ();
+ 	  return -1;
