@@ -1,0 +1,155 @@
+From e5effeec3bb1bbfd4849b03c92a7cc2ff3b146a7 Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Fri, 31 Jan 2025 10:33:27 -0800
+Subject: [PATCH 50/N] fixup! Instead of creating Cygwin symlinks, use deep
+ copy by default
+
+Allocate one WIN32_FIND_DATAW on the heap for the whole recursiveCopy,
+to avoid running out of stack space before hitting path limit.
+
+Move the path_conv object into its own function to avoid it being in the
+recursion's stack frame.
+---
+ winsup/cygwin/path.cc | 61 ++++++++++++++++++++++++++++---------------
+ 1 file changed, 40 insertions(+), 21 deletions(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 56f9d6a..4a9d500 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -1689,18 +1689,37 @@ conv_path_list (const char *src, char *dst, size_t size,
+ 
+ /********************** Symbolic Link Support **************************/
+ 
++static int
++recursiveCopyCheckSymlink(PUNICODE_STRING src, bool& isdirlink)
++{
++  path_conv pc (src, PC_SYM_NOFOLLOW|PC_SYM_NOFOLLOW_REP);
++  if (pc.error)
++    {
++      set_errno (pc.error);
++      return -1;
++    }
++  isdirlink = pc.issymlink ();
++  return 0;
++}
++
+ /*
+   Create a deep copy of src as dst, while avoiding descending in origpath.
+ */
+ static int
+-recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
++recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath, PWIN32_FIND_DATAW dHfile = NULL)
+ {
+-  WIN32_FIND_DATAW dHfile;
+   HANDLE dH = INVALID_HANDLE_VALUE;
+   NTSTATUS status;
+   int srcpos = src->Length;
+   int dstpos = dst->Length;
+   int res = -1;
++  bool freedHfile = false;
++
++  if (!dHfile)
++    {
++      dHfile = (PWIN32_FIND_DATAW) cmalloc_abort (HEAP_STR, sizeof (*dHfile));
++      freedHfile = true;
++    }
+ 
+   debug_printf ("recursiveCopy (%S, %S)", src, dst);
+ 
+@@ -1736,7 +1755,7 @@ recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
+       goto done;
+     }
+ 
+-  dH = FindFirstFileExW (src->Buffer, FindExInfoBasic, &dHfile,
++  dH = FindFirstFileExW (src->Buffer, FindExInfoBasic, dHfile,
+ 			 FindExSearchNameMatch, NULL,
+ 			 FIND_FIRST_EX_LARGE_FETCH);
+   if (dH == INVALID_HANDLE_VALUE)
+@@ -1748,39 +1767,36 @@ recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
+   do
+     {
+       bool isdirlink = false;
+-      debug_printf ("dHfile: %W", dHfile.cFileName);
+-      if (dHfile.cFileName[0] == L'.' &&
+-	  (!dHfile.cFileName[1] ||
+-	   (dHfile.cFileName[1] == L'.' && !dHfile.cFileName[2])))
++      debug_printf ("dHfile: %W", dHfile->cFileName);
++      if (dHfile->cFileName[0] == L'.' &&
++	  (!dHfile->cFileName[1] ||
++	   (dHfile->cFileName[1] == L'.' && !dHfile->cFileName[2])))
+ 	continue;
+       /* Append the directory item filename to both source and destination */
+       src->Length = srcpos + sizeof (WCHAR);
+       dst->Length = dstpos + sizeof (WCHAR);
+-      status = RtlAppendUnicodeToString (src, dHfile.cFileName);
++      status = RtlAppendUnicodeToString (src, dHfile->cFileName);
+       if (!NT_SUCCESS (status))
+ 	{
+ 	  __seterrno_from_nt_status (status);
+ 	  goto done;
+ 	}
+-      status = RtlAppendUnicodeToString (dst, dHfile.cFileName);
++      status = RtlAppendUnicodeToString (dst, dHfile->cFileName);
+       if (!NT_SUCCESS (status))
+ 	{
+ 	  __seterrno_from_nt_status (status);
+ 	  goto done;
+ 	}
+       debug_printf ("%S -> %S", src, dst);
+-      if ((dHfile.dwFileAttributes &
++      if ((dHfile->dwFileAttributes &
+ 	    (FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT)) ==
+ 	  (FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT))
+ 	{
+-	  /* this sucks hard */
+-	  path_conv pc (src, PC_SYM_NOFOLLOW|PC_SYM_NOFOLLOW_REP);
+-	  if (pc.error)
+-	    {
+-	      set_errno (pc.error);
+-	      goto done;
+-	    }
+-	  isdirlink = pc.issymlink ();
++	  /* I was really hoping to avoid using path_conv in the recursion,
++	     but maybe putting it in its own function will prevent it from
++	     taking up space in the stack frame */
++	  if (recursiveCopyCheckSymlink (src, isdirlink))
++	    goto done;
+ 	}
+       if (isdirlink)
+         {
+@@ -1793,13 +1809,13 @@ recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
+ 	      goto done;
+ 	    }
+ 	}
+-      else if (dHfile.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
++      else if (dHfile->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+ 	{
+ 	  /* Recurse into the child directory */
+ 	  debug_printf ("%S <-> %W", src, origpath);
+ 	  // avoids endless recursion
+ 	  if (wcsncmp (src->Buffer, origpath, src->Length / sizeof (WCHAR)))
+-	    if (recursiveCopy (src, dst, origpath))
++	    if (recursiveCopy (src, dst, origpath, dHfile))
+ 	      goto done;
+ 	}
+       else
+@@ -1813,7 +1829,7 @@ recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, PCWSTR origpath)
+ 	    }
+ 	}
+     }
+-  while (FindNextFileW (dH, &dHfile));
++  while (FindNextFileW (dH, dHfile));
+ 
+   if (GetLastError() != ERROR_NO_MORE_FILES)
+     {
+@@ -1827,6 +1843,9 @@ done:
+   if (dH != INVALID_HANDLE_VALUE)
+     FindClose (dH);
+ 
++  if (freedHfile)
++    cfree (dHfile);
++
+   return res;
+ }
+ 

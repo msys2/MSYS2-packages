@@ -1,0 +1,115 @@
+From cd64230854f212cdaa60f00a1568deae293affb8 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Mon, 3 Mar 2025 15:31:23 +0900
+Subject: [PATCH 53/N] Cygwin: console: Redesign mode set strategy on close().
+
+The required console mode for a non-cygwin process is different from
+that for a cygwin process. There are currently three modes: tty::cygwin,
+tty::native, and tty::restore. The latter two are for the non-cygwin
+processes. tty::restore is the mode for the non-cygwin processes that
+started the cygwin process, used to restore the previous behaviour.
+tty::native is the mode that reflects some terminfo flags. The issue
+below is caused because the console mode fails to be restored to the
+previous console mode used by cmd.exe.
+This patch redesigns the strategy to determine which mode should be
+set on console close() to fix all similar problems. Previously, the
+number of handle count is used to determine the appropriate console
+mode. However, the handle count seems uncertain for that purpose.
+In the new design, the relation ship between the master process and
+the process that is about to close the console is mainly used. This
+can provide more certain result than previous one.
+
+Addresses: https://github.com/microsoft/git/issues/730
+Backported-from: 3312f2d21f (Cygwin: console: Redesign mode set strategy on close()., 2025-03-03)
+Fixes: 30d266947842 ("Cygwin: console: Fix clean up conditions in close()")
+Reported-by: Mike Marcelais, Johannes Schindelin <Johannes.Schindelin@gmx.de>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/fhandler/console.cc       | 47 ++++++++++++++++---------
+ winsup/cygwin/local_includes/fhandler.h |  1 +
+ 2 files changed, 32 insertions(+), 16 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler/console.cc b/winsup/cygwin/fhandler/console.cc
+index 2651e49..b095afa 100644
+--- a/winsup/cygwin/fhandler/console.cc
++++ b/winsup/cygwin/fhandler/console.cc
+@@ -916,8 +916,7 @@ fhandler_console::cleanup_for_non_cygwin_app (handle_set_t *p)
+   /* Cleaning-up console mode for non-cygwin app. */
+   /* conmode can be tty::restore when non-cygwin app is
+      exec'ed from login shell. */
+-  tty::cons_mode conmode =
+-    (con.owner == GetCurrentProcessId ()) ? tty::restore : tty::cygwin;
++  tty::cons_mode conmode = cons_mode_on_close (p);
+   set_output_mode (conmode, ti, p);
+   set_input_mode (conmode, ti, p);
+   set_disable_master_thread (con.owner == GetCurrentProcessId ());
+@@ -1976,22 +1975,13 @@ fhandler_console::close ()
+ 
+   acquire_output_mutex (mutex_timeout);
+ 
+-  if (shared_console_info[unit] && !myself->cygstarted
++  if (shared_console_info[unit] && myself->ppid == 1
+       && (dev_t) myself->ctty == get_device ())
+     {
+-      /* Restore console mode if this is the last closure. */
+-      OBJECT_BASIC_INFORMATION obi;
+-      NTSTATUS status;
+-      status = NtQueryObject (get_handle (), ObjectBasicInformation,
+-			      &obi, sizeof obi, NULL);
+-      if (NT_SUCCESS (status)
+-	  && obi.HandleCount == (con.owner == GetCurrentProcessId () ? 2 : 3))
+-	{
+-	  /* Cleaning-up console mode for cygwin apps. */
+-	  set_output_mode (tty::restore, &get_ttyp ()->ti, &handle_set);
+-	  set_input_mode (tty::restore, &get_ttyp ()->ti, &handle_set);
+-	  set_disable_master_thread (true, this);
+-	}
++      tty::cons_mode conmode = cons_mode_on_close (&handle_set);
++      set_output_mode (conmode, &get_ttyp ()->ti, &handle_set);
++      set_input_mode (conmode, &get_ttyp ()->ti, &handle_set);
++      set_disable_master_thread (true, this);
+     }
+ 
+   if (shared_console_info[unit] && con.owner == GetCurrentProcessId ())
+@@ -4690,3 +4680,28 @@ fhandler_console::fstat (struct stat *st)
+     }
+   return 0;
+ }
++
++tty::cons_mode
++fhandler_console::cons_mode_on_close (handle_set_t *p)
++{
++  const _minor_t unit = p->unit;
++
++  if (myself->ppid != 1) /* Execed from normal cygwin process. */
++    return tty::cygwin;
++
++  if (!process_alive (con.owner)) /* The Master process already died. */
++    return tty::restore;
++  if (con.owner == GetCurrentProcessId ()) /* Master process */
++    return tty::restore;
++
++  PROCESS_BASIC_INFORMATION pbi;
++  NTSTATUS status =
++    NtQueryInformationProcess (GetCurrentProcess (), ProcessBasicInformation,
++			       &pbi, sizeof (pbi), NULL);
++  if (NT_SUCCESS (status)
++      && con.owner == (DWORD) pbi.InheritedFromUniqueProcessId)
++    /* The parent is the stub process. */
++    return tty::restore;
++
++  return tty::native; /* Otherwise */
++}
+diff --git a/winsup/cygwin/local_includes/fhandler.h b/winsup/cygwin/local_includes/fhandler.h
+index 88a6b7d..e19aca5 100644
+--- a/winsup/cygwin/local_includes/fhandler.h
++++ b/winsup/cygwin/local_includes/fhandler.h
+@@ -2391,6 +2391,7 @@ private:
+ 
+   void setup_pcon_hand_over ();
+   static void pcon_hand_over_proc ();
++  static tty::cons_mode cons_mode_on_close (handle_set_t *);
+ 
+   friend tty_min * tty_list::get_cttyp ();
+ };
