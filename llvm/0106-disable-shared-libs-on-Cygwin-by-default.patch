@@ -1,0 +1,43 @@
+From 830dc203e77cde729161939d5a8082ca20a32ef5 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Mateusz=20Miku=C5=82a?= <oss@mateuszmikula.dev>
+Date: Fri, 4 Apr 2025 15:08:18 +0200
+Subject: [PATCH] disable shared libs on Cygwin by default
+
+---
+ clang/tools/CMakeLists.txt          | 5 +++--
+ clang/tools/libclang/CMakeLists.txt | 2 +-
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/clang/tools/CMakeLists.txt b/clang/tools/CMakeLists.txt
+index e3557c1328d5..67820d1d3c8b 100644
+--- a/clang/tools/CMakeLists.txt
++++ b/clang/tools/CMakeLists.txt
+@@ -26,9 +26,10 @@ endif()
+ add_clang_subdirectory(c-index-test)
+ 
+ add_clang_subdirectory(clang-refactor)
+-# For MinGW we only enable shared library if LLVM_LINK_LLVM_DYLIB=ON.
++# For Cygwin/MinGW we only enable shared library if LLVM_LINK_LLVM_DYLIB=ON.
+ # Without that option resulting library is too close to 2^16 DLL exports limit.
+-if(UNIX OR (MSVC AND LLVM_BUILD_LLVM_DYLIB_VIS) OR (MINGW AND LLVM_LINK_LLVM_DYLIB))
++if((UNIX AND NOT CYGWIN) OR (MSVC AND LLVM_BUILD_LLVM_DYLIB_VIS) OR
++  ((CYGWIN OR MINGW) AND LLVM_LINK_LLVM_DYLIB))
+   add_clang_subdirectory(clang-shlib)
+ endif()
+ 
+diff --git a/clang/tools/libclang/CMakeLists.txt b/clang/tools/libclang/CMakeLists.txt
+index 299c14660f3d..ac7a9a8db37c 100644
+--- a/clang/tools/libclang/CMakeLists.txt
++++ b/clang/tools/libclang/CMakeLists.txt
+@@ -106,7 +106,7 @@ if (LLVM_EXPORTED_SYMBOL_FILE)
+                      DEPENDS ${LIBCLANG_VERSION_SCRIPT_FILE})
+ endif()
+ 
+-if(LLVM_ENABLE_PIC OR (WIN32 AND NOT LIBCLANG_BUILD_STATIC))
++if(LLVM_ENABLE_PIC OR ((WIN32 OR CYGWIN) AND NOT LIBCLANG_BUILD_STATIC))
+   set(ENABLE_SHARED SHARED)
+ endif()
+ 
+-- 
+2.49.0
+

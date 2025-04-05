@@ -1,0 +1,183 @@
+From c95c2724dc567f878b3e1a33322077d7a6f9cd13 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Mateusz=20Miku=C5=82a?= <oss@mateuszmikula.dev>
+Date: Sat, 8 Feb 2025 01:13:06 +0100
+Subject: [PATCH 2/5] [Clang][Cygwin] Enable few conditions that are shared
+ with MinGW
+
+---
+ clang/lib/AST/ItaniumCXXABI.cpp       | 2 +-
+ clang/lib/AST/RecordLayoutBuilder.cpp | 2 +-
+ clang/lib/CodeGen/CodeGenModule.cpp   | 2 +-
+ clang/lib/CodeGen/ItaniumCXXABI.cpp   | 4 ++--
+ clang/lib/CodeGen/Targets/X86.cpp     | 2 +-
+ clang/lib/Driver/ToolChain.cpp        | 2 +-
+ clang/lib/Sema/SemaDecl.cpp           | 2 +-
+ clang/lib/Sema/SemaDeclCXX.cpp        | 4 ++--
+ clang/lib/Sema/SemaTemplate.cpp       | 8 ++++----
+ 9 files changed, 14 insertions(+), 14 deletions(-)
+
+diff --git a/clang/lib/AST/ItaniumCXXABI.cpp b/clang/lib/AST/ItaniumCXXABI.cpp
+index a1b2551419f5..d866f6023e14 100644
+--- a/clang/lib/AST/ItaniumCXXABI.cpp
++++ b/clang/lib/AST/ItaniumCXXABI.cpp
+@@ -236,7 +236,7 @@ public:
+ 
+   CallingConv getDefaultMethodCallConv(bool isVariadic) const override {
+     const llvm::Triple &T = Context.getTargetInfo().getTriple();
+-    if (!isVariadic && T.isWindowsGNUEnvironment() &&
++    if (!isVariadic && T.isOSCygMing() &&
+         T.getArch() == llvm::Triple::x86)
+       return CC_X86ThisCall;
+     return Context.getTargetInfo().getDefaultCallingConv();
+diff --git a/clang/lib/AST/RecordLayoutBuilder.cpp b/clang/lib/AST/RecordLayoutBuilder.cpp
+index ae6d299024c6..b0a19ea55d6d 100644
+--- a/clang/lib/AST/RecordLayoutBuilder.cpp
++++ b/clang/lib/AST/RecordLayoutBuilder.cpp
+@@ -1946,7 +1946,7 @@ void ItaniumRecordLayoutBuilder::LayoutField(const FieldDecl *D,
+           // silently there. For other targets that have ms_struct enabled
+           // (most probably via a pragma or attribute), trigger a diagnostic
+           // that defaults to an error.
+-          if (!Context.getTargetInfo().getTriple().isWindowsGNUEnvironment())
++          if (!Context.getTargetInfo().getTriple().isOSCygMing())
+             Diag(D->getLocation(), diag::warn_npot_ms_struct);
+         }
+         if (TypeSize > FieldAlign &&
+diff --git a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/CodeGen/CodeGenModule.cpp
+index 47c03ea5e72c..c01f8ef5aef0 100644
+--- a/clang/lib/CodeGen/CodeGenModule.cpp
++++ b/clang/lib/CodeGen/CodeGenModule.cpp
+@@ -1678,7 +1678,7 @@ static bool shouldAssumeDSOLocal(const CodeGenModule &CGM,
+ 
+   const llvm::Triple &TT = CGM.getTriple();
+   const auto &CGOpts = CGM.getCodeGenOpts();
+-  if (TT.isWindowsGNUEnvironment()) {
++  if (TT.isOSCygMing()) {
+     // In MinGW, variables without DLLImport can still be automatically
+     // imported from a DLL by the linker; don't mark variables that
+     // potentially could come from another DLL as DSO local.
+diff --git a/clang/lib/CodeGen/ItaniumCXXABI.cpp b/clang/lib/CodeGen/ItaniumCXXABI.cpp
+index 7375a511809b..a8e1a6de0f07 100644
+--- a/clang/lib/CodeGen/ItaniumCXXABI.cpp
++++ b/clang/lib/CodeGen/ItaniumCXXABI.cpp
+@@ -3749,7 +3749,7 @@ static bool ShouldUseExternalRTTIDescriptor(CodeGenModule &CGM,
+     bool IsDLLImport = RD->hasAttr<DLLImportAttr>();
+ 
+     // Don't import the RTTI but emit it locally.
+-    if (CGM.getTriple().isWindowsGNUEnvironment())
++    if (CGM.getTriple().isOSCygMing())
+       return false;
+ 
+     if (CGM.getVTables().isVTableExternal(RD)) {
+@@ -4038,7 +4038,7 @@ static llvm::GlobalVariable::LinkageTypes getTypeInfoLinkage(CodeGenModule &CGM,
+           !CGM.getContext()
+                .getTargetInfo()
+                .getTriple()
+-               .isWindowsGNUEnvironment())
++               .isOSCygMing())
+         return CGM.getVTableLinkage(RD);
+     }
+ 
+diff --git a/clang/lib/CodeGen/Targets/X86.cpp b/clang/lib/CodeGen/Targets/X86.cpp
+index 7e470abe078f..801ccbc951dd 100644
+--- a/clang/lib/CodeGen/Targets/X86.cpp
++++ b/clang/lib/CodeGen/Targets/X86.cpp
+@@ -1383,7 +1383,7 @@ class WinX86_64ABIInfo : public ABIInfo {
+ public:
+   WinX86_64ABIInfo(CodeGen::CodeGenTypes &CGT, X86AVXABILevel AVXLevel)
+       : ABIInfo(CGT), AVXLevel(AVXLevel),
+-        IsMingw64(getTarget().getTriple().isWindowsGNUEnvironment()) {}
++        IsMingw64(getTarget().getTriple().isOSCygMing()) {}
+ 
+   void computeInfo(CGFunctionInfo &FI) const override;
+ 
+diff --git a/clang/lib/Driver/ToolChain.cpp b/clang/lib/Driver/ToolChain.cpp
+index 56bc500da66b..a8e42e901df0 100644
+--- a/clang/lib/Driver/ToolChain.cpp
++++ b/clang/lib/Driver/ToolChain.cpp
+@@ -748,7 +748,7 @@ std::string ToolChain::buildCompilerRTBasename(const llvm::opt::ArgList &Args,
+     break;
+   case ToolChain::FT_Shared:
+     Suffix = TT.isOSWindows()
+-                 ? (TT.isWindowsGNUEnvironment() ? ".dll.a" : ".lib")
++                 ? (TT.isOSCygMing() ? ".dll.a" : ".lib")
+                  : ".so";
+     break;
+   }
+diff --git a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
+index 74e0fcec2d91..35e734d673d5 100644
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -12515,7 +12515,7 @@ static bool isDefaultStdCall(FunctionDecl *FD, Sema &S) {
+ 
+   // Default calling convention for MinGW is __cdecl
+   const llvm::Triple &T = S.Context.getTargetInfo().getTriple();
+-  if (T.isWindowsGNUEnvironment())
++  if (T.isOSCygMing())
+     return false;
+ 
+   // Default calling convention for WinMain, wWinMain and DllMain
+diff --git a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/SemaDeclCXX.cpp
+index 0cf02fe6407c..3ec78f20cfb3 100644
+--- a/clang/lib/Sema/SemaDeclCXX.cpp
++++ b/clang/lib/Sema/SemaDeclCXX.cpp
+@@ -6214,7 +6214,7 @@ static void ReferenceDllExportedMembers(Sema &S, CXXRecordDecl *Class) {
+     }
+   } MarkingDllexportedContext(S, Class, ClassAttr->getLocation());
+ 
+-  if (S.Context.getTargetInfo().getTriple().isWindowsGNUEnvironment())
++  if (S.Context.getTargetInfo().getTriple().isOSCygMing())
+     S.MarkVTableUsed(Class->getLocation(), Class, true);
+ 
+   for (Decl *Member : Class->decls()) {
+@@ -6516,7 +6516,7 @@ void Sema::checkClassLevelDLLAttribute(CXXRecordDecl *Class) {
+   // declarations, except in MinGW mode.
+   if (ClassExported && !ClassAttr->isInherited() &&
+       TSK == TSK_ExplicitInstantiationDeclaration &&
+-      !Context.getTargetInfo().getTriple().isWindowsGNUEnvironment()) {
++      !Context.getTargetInfo().getTriple().isOSCygMing()) {
+     Class->dropAttr<DLLExportAttr>();
+     return;
+   }
+diff --git a/clang/lib/Sema/SemaTemplate.cpp b/clang/lib/Sema/SemaTemplate.cpp
+index 9e68972b33f0..36c93f25c39f 100644
+--- a/clang/lib/Sema/SemaTemplate.cpp
++++ b/clang/lib/Sema/SemaTemplate.cpp
+@@ -8884,7 +8884,7 @@ Sema::CheckSpecializationInstantiationRedecl(SourceLocation NewLoc,
+         // still okay to specialize it.
+         StripImplicitInstantiation(
+             PrevDecl,
+-            Context.getTargetInfo().getTriple().isWindowsGNUEnvironment());
++            Context.getTargetInfo().getTriple().isOSCygMing());
+         return false;
+       }
+       // Fall through
+@@ -9752,7 +9752,7 @@ DeclResult Sema::ActOnExplicitInstantiation(
+                                        : TSK_ExplicitInstantiationDeclaration;
+ 
+   if (TSK == TSK_ExplicitInstantiationDeclaration &&
+-      !Context.getTargetInfo().getTriple().isWindowsGNUEnvironment()) {
++      !Context.getTargetInfo().getTriple().isOSCygMing()) {
+     // Check for dllexport class template instantiation declarations,
+     // except for MinGW mode.
+     for (const ParsedAttr &AL : Attr) {
+@@ -9817,7 +9817,7 @@ DeclResult Sema::ActOnExplicitInstantiation(
+     = PrevDecl ? PrevDecl->getTemplateSpecializationKind() : TSK_Undeclared;
+ 
+   if (TSK == TSK_ExplicitInstantiationDefinition && PrevDecl != nullptr &&
+-      Context.getTargetInfo().getTriple().isWindowsGNUEnvironment()) {
++      Context.getTargetInfo().getTriple().isOSCygMing()) {
+     // Check for dllexport class template instantiation definitions in MinGW
+     // mode, if a previous declaration of the instantiation was seen.
+     for (const ParsedAttr &AL : Attr) {
+@@ -9985,7 +9985,7 @@ DeclResult Sema::ActOnExplicitInstantiation(
+     // In MinGW mode, export the template instantiation if the declaration
+     // was marked dllexport.
+     if (PrevDecl_TSK == TSK_ExplicitInstantiationDeclaration &&
+-        Context.getTargetInfo().getTriple().isWindowsGNUEnvironment() &&
++        Context.getTargetInfo().getTriple().isOSCygMing() &&
+         PrevDecl->hasAttr<DLLExportAttr>()) {
+       dllExportImportClassTemplateSpecialization(*this, Def);
+     }
+-- 
+2.47.1.windows.2
+

@@ -1,0 +1,81 @@
+From b44a1f8cc90b8c24924ff766b1ca6063c8e8862c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Mateusz=20Miku=C5=82a?= <oss@mateuszmikula.dev>
+Date: Fri, 4 Apr 2025 20:12:21 +0200
+Subject: [PATCH] [LLVM][Cygwin] Fix symbol visibility definition
+
+---
+ llvm/cmake/modules/AddLLVM.cmake     | 2 +-
+ llvm/include/llvm/Support/Compiler.h | 4 ++--
+ llvm/lib/Target/CMakeLists.txt       | 2 +-
+ llvm/tools/llvm-shlib/CMakeLists.txt | 4 ++--
+ 4 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/llvm/cmake/modules/AddLLVM.cmake b/llvm/cmake/modules/AddLLVM.cmake
+index 39f0e28a249d..66462dc328dd 100644
+--- a/llvm/cmake/modules/AddLLVM.cmake
++++ b/llvm/cmake/modules/AddLLVM.cmake
+@@ -666,7 +666,7 @@ function(llvm_add_library name)
+     # When building shared objects for each target there are some internal APIs
+     # that are used across shared objects which we can't hide.
+     if (LLVM_BUILD_LLVM_DYLIB_VIS AND NOT BUILD_SHARED_LIBS AND NOT APPLE AND
+-        (NOT (WIN32 OR CYGWIN) OR (MINGW AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")) AND
++        (NOT (WIN32 OR CYGWIN) OR ((MINGW OR CYGWIN) AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")) AND
+         NOT (${CMAKE_SYSTEM_NAME} MATCHES "AIX") AND
+         NOT DEFINED CMAKE_CXX_VISIBILITY_PRESET)
+ 
+diff --git a/llvm/include/llvm/Support/Compiler.h b/llvm/include/llvm/Support/Compiler.h
+index d3772896069c..7fd92f1d799c 100644
+--- a/llvm/include/llvm/Support/Compiler.h
++++ b/llvm/include/llvm/Support/Compiler.h
+@@ -129,7 +129,7 @@
+ #endif
+ 
+ #if (!(defined(_WIN32) || defined(__CYGWIN__)) ||                              \
+-     (defined(__MINGW32__) && defined(__clang__)))
++     ((defined(__MINGW32__) || defined(__CYGWIN__)) && defined(__clang__)))
+ #define LLVM_LIBRARY_VISIBILITY LLVM_ATTRIBUTE_VISIBILITY_HIDDEN
+ // Clang compilers older then 15 do not support gnu style attributes on
+ // namespaces.
+@@ -198,7 +198,7 @@
+ #endif
+ #define LLVM_ABI_EXPORT __declspec(dllexport)
+ #elif defined(__ELF__) || defined(__MINGW32__) || defined(_AIX) ||             \
+-    defined(__MVS__)
++    defined(__MVS__) || defined(__CYGWIN__)
+ #define LLVM_ABI LLVM_ATTRIBUTE_VISIBILITY_DEFAULT
+ #define LLVM_TEMPLATE_ABI LLVM_ATTRIBUTE_VISIBILITY_DEFAULT
+ #define LLVM_EXPORT_TEMPLATE
+diff --git a/llvm/lib/Target/CMakeLists.txt b/llvm/lib/Target/CMakeLists.txt
+index 9472288229ca..f5f6f5386f89 100644
+--- a/llvm/lib/Target/CMakeLists.txt
++++ b/llvm/lib/Target/CMakeLists.txt
+@@ -22,7 +22,7 @@ add_llvm_component_library(LLVMTarget
+ # When building shared objects for each target there are some internal APIs
+ # that are used across shared objects which we can't hide.
+ if (NOT BUILD_SHARED_LIBS AND NOT APPLE AND
+-    (NOT (WIN32 OR CYGWIN) OR (MINGW AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")) AND
++    (NOT (WIN32 OR CYGWIN) OR ((MINGW OR CYGWIN) AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")) AND
+     NOT (${CMAKE_SYSTEM_NAME} MATCHES "AIX") AND
+     NOT DEFINED CMAKE_CXX_VISIBILITY_PRESET)
+   # Set default visibility to hidden, so we don't export all the Target classes
+diff --git a/llvm/tools/llvm-shlib/CMakeLists.txt b/llvm/tools/llvm-shlib/CMakeLists.txt
+index a5b0cab0f1ce..05551dc57402 100644
+--- a/llvm/tools/llvm-shlib/CMakeLists.txt
++++ b/llvm/tools/llvm-shlib/CMakeLists.txt
+@@ -66,11 +66,11 @@ if(LLVM_BUILD_LLVM_DYLIB)
+     else()
+       # GNU ld doesn't resolve symbols in the version script.
+       set(LIB_NAMES -Wl,--whole-archive ${LIB_NAMES} -Wl,--no-whole-archive)
+-      if (NOT LLVM_LINKER_IS_SOLARISLD AND NOT MINGW)
++      if (NOT LLVM_LINKER_IS_SOLARISLD AND NOT (MINGW OR CYGWIN))
+         # Solaris ld does not accept global: *; so there is no way to version *all* global symbols
+         set(LIB_NAMES -Wl,--version-script,${LLVM_LIBRARY_DIR}/tools/llvm-shlib/simple_version_script.map ${LIB_NAMES})
+       endif()
+-      if (NOT MINGW AND NOT LLVM_LINKER_IS_SOLARISLD_ILLUMOS)
++      if (NOT (MINGW OR CYGWIN) AND NOT LLVM_LINKER_IS_SOLARISLD_ILLUMOS)
+         # Optimize function calls for default visibility definitions to avoid PLT and
+         # reduce dynamic relocations.
+         # Note: for -fno-pic default, the address of a function may be different from
+-- 
+2.49.0
+
