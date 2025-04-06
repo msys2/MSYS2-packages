@@ -1,0 +1,49 @@
+From b9d1047a76b15fccc7109d095b256e47a5add814 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Mon, 31 Mar 2025 08:30:15 +0200
+Subject: [PATCH 43/N] Cygwin: signal: Clear direction flag in sigdeleyed
+
+x86_64 ABI requires the direction flag in CPU flags register cleared.
+https://learn.microsoft.com/en-us/cpp/build/x64-software-conventions
+However, currently that flag is not maintained in signal handler.
+Therefore, if the signal handler is called when that flag is set, it
+destroys the data and may crash if rep instruction is used in the
+signal handler. With this patch, the direction flag is cleared in
+sigdelayed() by adding cld instruction.
+
+Backported-from: d71aeccff4 (Cygwin: signal: Clear direction flag in sigdeleyed, 2025-03-24)
+Addresses: https://cygwin.com/pipermail/cygwin/2025-March/257704.html
+Fixes: 1fd5e000ace5 ("import winsup-2000-02-17 snapshot")
+Reported-by: Christian Franke <Christian.Franke@t-online.de>
+Reviewed-by: Corinna Vischen <corinna@vinschen.de>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+(cherry picked from commit 9f4cec47df66a913256912c358afe5e597dec25c)
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/release/3.6.1  | 3 +++
+ winsup/cygwin/scripts/gendef | 1 +
+ 2 files changed, 4 insertions(+)
+
+diff --git a/winsup/cygwin/release/3.6.1 b/winsup/cygwin/release/3.6.1
+index 0b54b5f..0b05f45 100644
+--- a/winsup/cygwin/release/3.6.1
++++ b/winsup/cygwin/release/3.6.1
+@@ -3,3 +3,6 @@ Fixes:
+ 
+ - Console mode is really restored to the previous mode.
+   Addresses: https://github.com/msys2/msys2-runtime/issues/268
++
++- Clear direction flag in sigdeleyed before calling signal handler.
++  Addresses: https://cygwin.com/pipermail/cygwin/2025-March/257704.html
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index a2f0392..861a240 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -179,6 +179,7 @@ sigdelayed:
+ 	movq	%rsp,%rbp
+ 	pushf
+ 	.seh_pushreg %rax			# fake, there's no .seh_pushreg for the flags
++	cld					# x86_64 ABI requires direction flag cleared
+ 	# stack is aligned or unaligned on entry!
+ 	# make sure it is aligned from here on
+ 	# We could be called from an interrupted thread which doesn't know
