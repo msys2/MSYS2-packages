@@ -1,4 +1,4 @@
-From aebb0471f35665f3fab4c574c273ac7769cd757a Mon Sep 17 00:00:00 2001
+From b127b7469e05d0d974ae0f89626522e01a138443 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?=D0=90=D0=BB=D0=B5=D0=BA=D1=81=D0=B5=D0=B8=CC=86=20=D0=9F?=
  =?UTF-8?q?=D0=B0=D0=B2=D0=BB=D0=BE=D0=B2?= <alexey.pawlow@gmail.com>
 Date: Sun, 14 Apr 2019 21:47:21 +0300
@@ -22,8 +22,8 @@ Co-authored-by: Jeremy Drake <github@jdrake.com>
 ---
  winsup/cygwin/environ.cc |   4 +
  winsup/cygwin/globals.cc |   3 +-
- winsup/cygwin/path.cc    | 268 +++++++++++++++++++++++++++++++++++++++
- 3 files changed, 274 insertions(+), 1 deletion(-)
+ winsup/cygwin/path.cc    | 250 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 256 insertions(+), 1 deletion(-)
 
 diff --git a/winsup/cygwin/environ.cc b/winsup/cygwin/environ.cc
 index b9f7e05..5fb3f53 100644
@@ -62,7 +62,7 @@ index d8e058f..b7e0e21 100644
  bool winjitdebug = false;
  
 diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
-index 0e7ebdf..251c6a6 100644
+index 0e7ebdf..d8e456a 100644
 --- a/winsup/cygwin/path.cc
 +++ b/winsup/cygwin/path.cc
 @@ -1722,6 +1722,171 @@ conv_path_list (const char *src, char *dst, size_t size,
@@ -237,7 +237,7 @@ index 0e7ebdf..251c6a6 100644
  /* Create a symlink from FROMPATH to TOPATH. */
  
  extern "C" int
-@@ -2034,6 +2199,102 @@ symlink_wsl (const char *oldpath, path_conv &win32_newpath)
+@@ -2034,6 +2199,84 @@ symlink_wsl (const char *oldpath, path_conv &win32_newpath)
    return 0;
  }
  
@@ -247,25 +247,7 @@ index 0e7ebdf..251c6a6 100644
 +  tmp_pathbuf tp;
 +  path_conv win32_oldpath;
 +
-+  /* **BEGIN** replace this with
-+     resolve_symlink_target (oldpath, win32_newpath. win32_oldpath);
-+     when rebasing over 5a706ff0fceb83fd1fe7f072fc28a741fdde65f2
-+     (probably Cygwin 3.6) */
-+  /* The symlink target is relative to the directory in which the
-+     symlink gets created, not relative to the cwd.  Therefore we
-+     have to mangle the path quite a bit before calling path_conv.*/
-+  if (isabspath (oldpath))
-+    win32_oldpath.check (oldpath, PC_SYM_NOFOLLOW, stat_suffixes);
-+  else
-+    {
-+      size_t len = strrchr (win32_newpath.get_posix (), '/')
-+		    - win32_newpath.get_posix () + 1;
-+      char *absoldpath = tp.t_get ();
-+      stpcpy (stpncpy (absoldpath, win32_newpath.get_posix (), len),
-+	      oldpath);
-+      win32_oldpath.check (absoldpath, PC_SYM_NOFOLLOW, stat_suffixes);
-+    }
-+  /* **END** */
++  resolve_symlink_target (oldpath, win32_newpath, win32_oldpath);
 +  if (win32_oldpath.error)
 +    {
 +      set_errno (win32_oldpath.error);
@@ -340,7 +322,7 @@ index 0e7ebdf..251c6a6 100644
  int
  symlink_worker (const char *oldpath, path_conv &win32_newpath, bool isdevice)
  {
-@@ -2101,6 +2362,13 @@ symlink_worker (const char *oldpath, path_conv &win32_newpath, bool isdevice)
+@@ -2101,6 +2344,13 @@ symlink_worker (const char *oldpath, path_conv &win32_newpath, bool isdevice)
  	case WSYM_nfs:
  	  res = symlink_nfs (oldpath, win32_newpath);
  	  __leave;
