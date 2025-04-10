@@ -1,0 +1,75 @@
+From e5a22ee5ca1a96df5f16e194a53a5e2d171673a7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Mateusz=20Miku=C5=82a?= <oss@mateuszmikula.dev>
+Date: Fri, 7 Feb 2025 22:28:12 +0100
+Subject: [PATCH 1/2] [LLD][MinGW] Implement --dll-search-prefix option
+
+---
+ lld/MinGW/Driver.cpp | 17 ++++++++++++++---
+ lld/MinGW/Options.td |  2 ++
+ 2 files changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/lld/MinGW/Driver.cpp b/lld/MinGW/Driver.cpp
+index a77d86b443a6..131bacdf1468 100644
+--- a/lld/MinGW/Driver.cpp
++++ b/lld/MinGW/Driver.cpp
+@@ -139,8 +139,9 @@ static std::optional<std::string> findFile(StringRef path1,
+ }
+ 
+ // This is for -lfoo. We'll look for libfoo.dll.a or libfoo.a from search paths.
+-static std::string
+-searchLibrary(StringRef name, ArrayRef<StringRef> searchPaths, bool bStatic) {
++static std::string searchLibrary(StringRef name,
++                                 ArrayRef<StringRef> searchPaths, bool bStatic,
++                                 StringRef dllPrefix = "") {
+   if (name.starts_with(":")) {
+     for (StringRef dir : searchPaths)
+       if (std::optional<std::string> s = findFile(dir, name.substr(1)))
+@@ -161,6 +162,11 @@ searchLibrary(StringRef name, ArrayRef<StringRef> searchPaths, bool bStatic) {
+     if (std::optional<std::string> s = findFile(dir, name + ".lib"))
+       return *s;
+     if (!bStatic) {
++      if (!dllPrefix.empty()) {
++        if (std::optional<std::string> s =
++                findFile(dir, dllPrefix + name + ".dll"))
++          return *s;
++      }
+       if (std::optional<std::string> s = findFile(dir, "lib" + name + ".dll"))
+         return *s;
+       if (std::optional<std::string> s = findFile(dir, name + ".dll"))
+@@ -545,6 +551,10 @@ bool link(ArrayRef<const char *> argsArr, llvm::raw_ostream &stdoutOS,
+     add("-libpath:" + StringRef(a->getValue()));
+   }
+ 
++  StringRef dllPrefix;
++  if (auto *a = args.getLastArg(OPT_dll_search_prefix))
++    dllPrefix = a->getValue();
++
+   StringRef prefix = "";
+   bool isStatic = false;
+   for (auto *a : args) {
+@@ -556,7 +566,8 @@ bool link(ArrayRef<const char *> argsArr, llvm::raw_ostream &stdoutOS,
+         add(prefix + StringRef(a->getValue()));
+       break;
+     case OPT_l:
+-      add(prefix + searchLibrary(a->getValue(), searchPaths, isStatic));
++      add(prefix +
++          searchLibrary(a->getValue(), searchPaths, isStatic, dllPrefix));
+       break;
+     case OPT_whole_archive:
+       prefix = "-wholearchive:";
+diff --git a/lld/MinGW/Options.td b/lld/MinGW/Options.td
+index 01b01972112a..d3ee6792218b 100644
+--- a/lld/MinGW/Options.td
++++ b/lld/MinGW/Options.td
+@@ -65,6 +65,8 @@ def disable_runtime_pseudo_reloc: F<"disable-runtime-pseudo-reloc">,
+     HelpText<"Don't do automatic imports that require runtime fixups">;
+ def disable_stdcall_fixup: F<"disable-stdcall-fixup">,
+     HelpText<"Don't resolve stdcall/fastcall/vectorcall to undecorated symbols">;
++defm dll_search_prefix: EEq<"dll-search-prefix",
++    "Prefer DLL with this prefix if importlib is missing">;
+ defm dynamicbase: B_disable<"dynamicbase", "Enable ASLR", "Disable ASLR">;
+ def enable_auto_import: F<"enable-auto-import">,
+     HelpText<"Automatically import data symbols from other DLLs where needed">;
+-- 
+2.47.1.windows.2
+
