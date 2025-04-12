@@ -1,0 +1,91 @@
+From 8ed79cf850b602a8fe6432027145f871f04d5690 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Thu, 10 Apr 2025 16:18:17 +0900
+Subject: [PATCH 40/N] Cygwin: console: Fix the console states after the
+ console is closed
+
+Due to a bug introduced by the commit 3312f2d21f13, when the parent
+process exits before the child process exits, disable_master_thread
+is wrongly set to true, that disables special key handling such as
+Ctrl-C. With this patch, the disable_master_thread is set to true if
+any of the following conditions is met.
+  - The parent process is not a cygwin process.
+  - The master process already died.
+  - The current process is the master process.
+Otherwise, disable_master_thread remains false to keep special key
+handling enabled.
+
+Addresses: https://cygwin.com/pipermail/cygwin/2025-April/257909.html
+Fixed: 3312f2d21f13 ("Cygwin: console: Redesign mode set strategy on close().")
+Reported-by: Jeremy Drake <cygwin@jdrake.com>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+---
+ winsup/cygwin/fhandler/console.cc       | 24 ++++++++++++++++++++----
+ winsup/cygwin/local_includes/fhandler.h |  2 +-
+ 2 files changed, 21 insertions(+), 5 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler/console.cc b/winsup/cygwin/fhandler/console.cc
+index a38487f..f33e354 100644
+--- a/winsup/cygwin/fhandler/console.cc
++++ b/winsup/cygwin/fhandler/console.cc
+@@ -932,7 +932,7 @@ fhandler_console::cleanup_for_non_cygwin_app (handle_set_t *p)
+   /* Cleaning-up console mode for non-cygwin app. */
+   /* conmode can be tty::restore when non-cygwin app is
+      exec'ed from login shell. */
+-  tty::cons_mode conmode = cons_mode_on_close ();
++  tty::cons_mode conmode = cons_mode_on_close (p);
+   set_output_mode (conmode, ti, p);
+   set_input_mode (conmode, ti, p);
+   set_disable_master_thread (con.owner == GetCurrentProcessId ());
+@@ -1991,8 +1991,9 @@ fhandler_console::close (int flag)
+ 
+   acquire_output_mutex (mutex_timeout);
+ 
+-  if (shared_console_info[unit] && myself->ppid == 1
+-      && (dev_t) myself->ctty == get_device ())
++  if (shared_console_info[unit] && con.curr_input_mode != tty::restore
++      && (dev_t) myself->ctty == get_device ()
++      && cons_mode_on_close (&handle_set) == tty::restore)
+     {
+       set_output_mode (tty::restore, &get_ttyp ()->ti, &handle_set);
+       set_input_mode (tty::restore, &get_ttyp ()->ti, &handle_set);
+@@ -4704,10 +4705,25 @@ fhandler_console::fstat (struct stat *st)
+ }
+ 
+ tty::cons_mode
+-fhandler_console::cons_mode_on_close ()
++fhandler_console::cons_mode_on_close (handle_set_t *p)
+ {
++  int unit = p->unit;
+   if (myself->ppid != 1) /* Execed from normal cygwin process. */
+     return tty::cygwin;
+ 
++  if (!process_alive (con.owner)) /* The Master process already died. */
++    return tty::restore;
++  if (con.owner == GetCurrentProcessId ()) /* Master process */
++    return tty::restore;
++
++  PROCESS_BASIC_INFORMATION pbi;
++  NTSTATUS status =
++    NtQueryInformationProcess (GetCurrentProcess (), ProcessBasicInformation,
++			       &pbi, sizeof (pbi), NULL);
++  if (NT_SUCCESS (status)
++      && !process_alive ((DWORD) pbi.InheritedFromUniqueProcessId))
++    /* Execed from normal cygwin process and the parent has been exited. */
++    return tty::cygwin;
++
+   return tty::restore; /* otherwise, restore */
+ }
+diff --git a/winsup/cygwin/local_includes/fhandler.h b/winsup/cygwin/local_includes/fhandler.h
+index 8c71d84..4c013dd 100644
+--- a/winsup/cygwin/local_includes/fhandler.h
++++ b/winsup/cygwin/local_includes/fhandler.h
+@@ -2368,7 +2368,7 @@ private:
+ 
+   void setup_pcon_hand_over ();
+   static void pcon_hand_over_proc ();
+-  static tty::cons_mode cons_mode_on_close ();
++  static tty::cons_mode cons_mode_on_close (handle_set_t *);
+ 
+   friend tty_min * tty_list::get_cttyp ();
+ };

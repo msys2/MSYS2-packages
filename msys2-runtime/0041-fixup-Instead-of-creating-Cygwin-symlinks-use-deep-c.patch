@@ -1,0 +1,31 @@
+From 0cfedd4f820f1b32ea0a7d8afd2795bd4910ae16 Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Thu, 10 Apr 2025 10:18:01 -0700
+Subject: [PATCH 41/N] fixup! Instead of creating Cygwin symlinks, use deep
+ copy by default
+
+Adjust the infinite recursion check to make sure the source ends with a
+dir sep, so it doesn't think abcd is a subdirectory of a.
+
+Fixes #277
+
+Signed-off-by: Jeremy Drake <github@jdrake.com>
+---
+ winsup/cygwin/path.cc | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 26ca1cf..6e35c5d 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -1855,7 +1855,9 @@ recursiveCopy (PUNICODE_STRING src, PUNICODE_STRING dst, USHORT origsrclen,
+ 	  /* Recurse into the child directory */
+ 	  /* avoids endless recursion */
+ 	  if (src->Length <= origsrclen ||
+-	      !wcsncmp (src->Buffer, dst->Buffer, origdstlen / sizeof (WCHAR)))
++	      (!wcsncmp (src->Buffer, dst->Buffer, origdstlen / sizeof (WCHAR)) &&
++	       (!src->Buffer[origdstlen / sizeof (WCHAR)] ||
++		iswdirsep(src->Buffer[origdstlen / sizeof (WCHAR)]))))
+ 	    {
+ 	      set_errno (ELOOP);
+ 	      goto done;
