@@ -2,8 +2,10 @@
 setlocal EnableDelayedExpansion
 
 set "WD=%__CD__%"
-if NOT EXIST "%WD%msys-2.0.dll" set "WD=%~dp0usr\bin\"
 set "LOGINSHELL=bash"
+if EXIST "%WD%msys-2.0.dll" if EXIST "%WD%%LOGINSHELL%.exe" goto use_cwd
+set "WD=%~dp0usr\bin\"
+:use_cwd
 set /a msys2_shiftCounter=0
 
 rem To activate windows native symlinks uncomment next line
