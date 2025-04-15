@@ -57,7 +57,7 @@ if "x%~1" == "x-where" (
     exit /b 2
   )
   cd /d "%~2" || (
-    echo Cannot set specified working diretory "%~2". 1>&2
+    echo Cannot set specified working directory "%~2". 1>&2
     exit /b 2
   )
   set CHERE_INVOKING=enabled_from_arguments
