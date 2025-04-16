@@ -1,7 +1,7 @@
-From bcac0f066aa12cd4313fbbc203bf4badc0627aca Mon Sep 17 00:00:00 2001
+From 0d70b24e4a9054e9b3ee52a4b63a783b8890d732 Mon Sep 17 00:00:00 2001
 From: Jeremy Drake <github@jdrake.com>
 Date: Mon, 14 Apr 2025 10:37:59 -0700
-Subject: [PATCH 14/15] [Clang] [Driver] add a Cygwin ToolChain
+Subject: [PATCH 13/15] [Clang] [Driver] add a Cygwin ToolChain
 
 Add a new Cygwin toolchain that just goes through the motions to
 initialize the Generic_GCC base properly.  This allows removing some
@@ -12,11 +12,11 @@ Signed-off-by: Jeremy Drake <github@jdrake.com>
 ---
  clang/lib/Driver/CMakeLists.txt        |   1 +
  clang/lib/Driver/Driver.cpp            |   4 +
- clang/lib/Driver/ToolChains/Cygwin.cpp | 102 +++++++++++++++++++++++++
- clang/lib/Driver/ToolChains/Cygwin.h   |  33 ++++++++
+ clang/lib/Driver/ToolChains/Cygwin.cpp | 109 +++++++++++++++++++++++++
+ clang/lib/Driver/ToolChains/Cygwin.h   |  36 ++++++++
  clang/lib/Driver/ToolChains/Gnu.cpp    |  21 +++++
- clang/lib/Lex/InitHeaderSearch.cpp     |  86 +--------------------
- 6 files changed, 164 insertions(+), 83 deletions(-)
+ clang/lib/Lex/InitHeaderSearch.cpp     |  86 +------------------
+ 6 files changed, 174 insertions(+), 83 deletions(-)
  create mode 100644 clang/lib/Driver/ToolChains/Cygwin.cpp
  create mode 100644 clang/lib/Driver/ToolChains/Cygwin.h
 
@@ -56,11 +56,11 @@ index 87855fdb7..c5c2af6eb 100644
                                                                    Args);
 diff --git a/clang/lib/Driver/ToolChains/Cygwin.cpp b/clang/lib/Driver/ToolChains/Cygwin.cpp
 new file mode 100644
-index 000000000..62ac12923
+index 000000000..c310f096a
 --- /dev/null
 +++ b/clang/lib/Driver/ToolChains/Cygwin.cpp
-@@ -0,0 +1,102 @@
-+//===--- Cygwin.cpp - Cygwin ToolChain Implementations --------*- C++ -*-===//
+@@ -0,0 +1,109 @@
++//===--- Cygwin.cpp - Cygwin ToolChain Implementations ----------*- C++ -*-===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 +// See https://llvm.org/LICENSE.txt for license information.
@@ -106,6 +106,13 @@ index 000000000..62ac12923
 +  addPathIfExists(D, SysRoot + "/lib", Paths);
 +  addPathIfExists(D, SysRoot + "/usr/lib", Paths);
 +  addPathIfExists(D, SysRoot + "/usr/lib/w32api", Paths);
++}
++
++llvm::ExceptionHandling Cygwin::GetExceptionModel(const ArgList &Args) const {
++  if (getArch() == llvm::Triple::x86_64 || getArch() == llvm::Triple::aarch64 ||
++      getArch() == llvm::Triple::arm || getArch() == llvm::Triple::thumb)
++    return llvm::ExceptionHandling::WinEH;
++  return llvm::ExceptionHandling::DwarfCFI;
 +}
 +
 +void Cygwin::AddClangSystemIncludeArgs(const ArgList &DriverArgs,
@@ -164,11 +171,11 @@ index 000000000..62ac12923
 +}
 diff --git a/clang/lib/Driver/ToolChains/Cygwin.h b/clang/lib/Driver/ToolChains/Cygwin.h
 new file mode 100644
-index 000000000..3a4a2cf4f
+index 000000000..a4c0ee86a
 --- /dev/null
 +++ b/clang/lib/Driver/ToolChains/Cygwin.h
-@@ -0,0 +1,33 @@
-+//===--- Cygwin.h - Cygwin ToolChain Implementations ----------*- C++ -*-===//
+@@ -0,0 +1,36 @@
++//===--- Cygwin.h - Cygwin ToolChain Implementations ------------*- C++ -*-===//
 +//
 +// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 +// See https://llvm.org/LICENSE.txt for license information.
@@ -190,6 +197,9 @@ index 000000000..3a4a2cf4f
 +public:
 +  Cygwin(const Driver &D, const llvm::Triple &Triple,
 +         const llvm::opt::ArgList &Args);
++
++  llvm::ExceptionHandling
++  GetExceptionModel(const llvm::opt::ArgList &Args) const override;
 +
 +  void
 +  AddClangSystemIncludeArgs(const llvm::opt::ArgList &DriverArgs,
