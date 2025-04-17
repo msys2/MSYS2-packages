@@ -1,0 +1,64 @@
+From a86450e05d96df7e1b33672319beff3e0fa0d81f Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Mon, 14 Apr 2025 14:43:42 -0700
+Subject: [PATCH 15/15] [Clang] [Driver] use __cxa_atexit by default on Cygwin.
+
+GCC on Cygwin and MSYS2 are built with --enable-__cxa_atexit.
+
+Adjust test to expect this change.
+
+Signed-off-by: Jeremy Drake <github@jdrake.com>
+---
+ clang/lib/Driver/ToolChains/Clang.cpp | 4 +++-
+ clang/test/Driver/cxa-atexit.cpp      | 7 ++++---
+ 2 files changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
+index 57b7d2bd4..f8b4267b9 100644
+--- a/clang/lib/Driver/ToolChains/Clang.cpp
++++ b/clang/lib/Driver/ToolChains/Clang.cpp
+@@ -7230,7 +7230,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
+   // -fuse-cxa-atexit is default.
+   if (!Args.hasFlag(
+           options::OPT_fuse_cxa_atexit, options::OPT_fno_use_cxa_atexit,
+-          !RawTriple.isOSAIX() && !RawTriple.isOSWindows() &&
++          !RawTriple.isOSAIX() &&
++              (!RawTriple.isOSWindows() ||
++               RawTriple.isWindowsCygwinEnvironment()) &&
+               ((RawTriple.getVendor() != llvm::Triple::MipsTechnologies) ||
+                RawTriple.hasEnvironment())) ||
+       KernelOrKext)
+diff --git a/clang/test/Driver/cxa-atexit.cpp b/clang/test/Driver/cxa-atexit.cpp
+index 537a11a35..8bfb938e8 100644
+--- a/clang/test/Driver/cxa-atexit.cpp
++++ b/clang/test/Driver/cxa-atexit.cpp
+@@ -1,15 +1,15 @@
+ // RUN: %clang -### -target armv7-unknown-windows-msvc -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-WINDOWS
+ // RUN: %clang -### -target armv7-unknown-windows-itanium -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-WINDOWS
+ // RUN: %clang -### -target armv7-unknown-windows-gnu -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-WINDOWS
+-// RUN: %clang -### -target armv7-unknown-windows-cygnus -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-WINDOWS
++// RUN: %clang -### -target armv7-unknown-windows-cygnus -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-CYGWIN
+ // RUN: %clang -### -target i686-unknown-windows-msvc -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-WINDOWS
+ // RUN: %clang -### -target i686-unknown-windows-itanium -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-WINDOWS
+ // RUN: %clang -### -target i686-unknown-windows-gnu -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-WINDOWS
+-// RUN: %clang -### -target i686-unknown-windows-cygnus -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-WINDOWS
++// RUN: %clang -### -target i686-unknown-windows-cygnus -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-CYGWIN
+ // RUN: %clang -### -target x86_64-unknown-windows-msvc -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-WINDOWS
+ // RUN: %clang -### -target x86_64-unknown-windows-itanium -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-WINDOWS
+ // RUN: %clang -### -target x86_64-unknown-windows-gnu -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-WINDOWS
+-// RUN: %clang -### -target x86_64-unknown-windows-cygnus -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-WINDOWS
++// RUN: %clang -### -target x86_64-unknown-windows-cygnus -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-CYGWIN
+ // RUN: %clang -### -target hexagon-unknown-none -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-HEXAGON
+ // RUN: %clang -### -target xcore-unknown-none -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-XCORE
+ // RUN: %clang -### -target armv7-mti-none -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-MTI
+@@ -21,6 +21,7 @@
+ // RUN: %clang -### -target powerpc64-ibm-aix-xcoff -c %s -o /dev/null 2>&1 | FileCheck %s -check-prefix CHECK-AIX
+ 
+ // CHECK-WINDOWS: "-fno-use-cxa-atexit"
++// CHECK-CYGWIN-NOT: "-fno-use-cxa-atexit"
+ // CHECK-SOLARIS-NOT: "-fno-use-cxa-atexit"
+ // CHECK-HEXAGON-NOT: "-fno-use-cxa-atexit"
+ // CHECK-XCORE: "-fno-use-cxa-atexit"
+-- 
+2.49.0.windows.1
+
