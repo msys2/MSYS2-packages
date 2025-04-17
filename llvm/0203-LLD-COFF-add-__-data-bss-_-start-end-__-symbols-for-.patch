@@ -1,13 +1,18 @@
-From 03dd9259f5d37b861387607af8e77610a8d94499 Mon Sep 17 00:00:00 2001
+From 6a552fa2d904773ac0b9aa1f11ccf642b96f8dd2 Mon Sep 17 00:00:00 2001
 From: Jeremy Drake <github@jdrake.com>
 Date: Sun, 13 Apr 2025 22:41:05 -0700
-Subject: [PATCH 12/15] [LLD][COFF] add __{data,bss}_{start,end}__ symbols for
+Subject: [PATCH 11/15] [LLD][COFF] add __{data,bss}_{start,end}__ symbols for
  Cygwin support
 
+Cygwin requires these symbols for its fork emulation to know what data
+to copy into the child.  GNU ld defines these symbols for MinGW targets
+also, so do the same here.
+
+Signed-off-by: Jeremy Drake <github@jdrake.com>
 ---
  lld/COFF/Driver.cpp |  5 +++++
- lld/COFF/Writer.cpp | 36 ++++++++++++++++++++++++++++++++++--
- 2 files changed, 39 insertions(+), 2 deletions(-)
+ lld/COFF/Writer.cpp | 33 +++++++++++++++++++++++++++++++--
+ 2 files changed, 36 insertions(+), 2 deletions(-)
 
 diff --git a/lld/COFF/Driver.cpp b/lld/COFF/Driver.cpp
 index ac3ac57bd..fa882f883 100644
@@ -33,7 +38,7 @@ index ac3ac57bd..fa882f883 100644
      if (config->debug || config->buildIDHash != BuildIDHash::None)
        if (symtab.findUnderscore("__buildid"))
 diff --git a/lld/COFF/Writer.cpp b/lld/COFF/Writer.cpp
-index 2bdaeb58a..3b3c490f5 100644
+index 2bdaeb58a..41973a245 100644
 --- a/lld/COFF/Writer.cpp
 +++ b/lld/COFF/Writer.cpp
 @@ -239,6 +239,7 @@ private:
@@ -73,7 +78,7 @@ index 2bdaeb58a..3b3c490f5 100644
  }
  
  // Create .idata section for the DLL-imported symbol table.
-@@ -2334,6 +2338,34 @@ void Writer::insertCtorDtorSymbols() {
+@@ -2334,6 +2338,31 @@ void Writer::insertCtorDtorSymbols() {
                                    dtorListHead);
  }
  
@@ -81,28 +86,25 @@ index 2bdaeb58a..3b3c490f5 100644
 +// The Cygwin startup code uses __data_start__ __data_end__ __bss_start__
 +// and __bss_end__ to know what to copy during fork emulation.
 +void Writer::insertBssDataStartEndSymbols() {
-+  EmptyChunk *startOfData = make<EmptyChunk>();
-+  EmptyChunk *endOfData = make<EmptyChunk>();
-+  EmptyChunk *startOfBss = make<EmptyChunk>();
-+  EmptyChunk *endOfBss = make<EmptyChunk>();
-+  dataSec->insertChunkAtStart(startOfData);
-+  dataSec->addChunk(endOfData);
-+  bssSec->insertChunkAtStart(startOfBss);
-+  bssSec->addChunk(endOfBss);
++  if (!dataSec->chunks.empty()) {
++    Symbol *dataStartSym = ctx.symtab.find("__data_start__");
++    Symbol *dataEndSym = ctx.symtab.find("__data_end__");
++    Chunk *endChunk = dataSec->chunks.back();
++    replaceSymbol<DefinedSynthetic>(dataStartSym, dataStartSym->getName(),
++                                    dataSec->chunks.front());
++    replaceSymbol<DefinedSynthetic>(dataEndSym, dataEndSym->getName(), endChunk,
++                                    endChunk->getSize());
++  }
 +
-+  Symbol *dataStartSym = ctx.symtab.find("__data_start__");
-+  Symbol *dataEndSym = ctx.symtab.find("__data_end__");
-+  Symbol *bssStartSym = ctx.symtab.find("__bss_start__");
-+  Symbol *bssEndSym = ctx.symtab.find("__bss_end__");
-+  replaceSymbol<DefinedSynthetic>(dataStartSym, dataStartSym->getName(),
-+                                  startOfData);
-+  replaceSymbol<DefinedSynthetic>(dataEndSym, dataEndSym->getName(),
-+                                  endOfData);
-+  replaceSymbol<DefinedSynthetic>(bssStartSym, bssStartSym->getName(),
-+                                  startOfBss);
-+  replaceSymbol<DefinedSynthetic>(bssEndSym, bssEndSym->getName(),
-+                                  endOfBss);
-+
++  if (!bssSec->chunks.empty()) {
++    Symbol *bssStartSym = ctx.symtab.find("__bss_start__");
++    Symbol *bssEndSym = ctx.symtab.find("__bss_end__");
++    Chunk *endChunk = bssSec->chunks.back();
++    replaceSymbol<DefinedSynthetic>(bssStartSym, bssStartSym->getName(),
++                                    bssSec->chunks.front());
++    replaceSymbol<DefinedSynthetic>(bssEndSym, bssEndSym->getName(), endChunk,
++                                    endChunk->getSize());
++  }
 +}
 +
  // Handles /section options to allow users to overwrite
