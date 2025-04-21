@@ -1,0 +1,83 @@
+# Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
+
+pkgbase=libgit2
+pkgname=('libgit2' 'libgit2-devel')
+pkgver=1.9.0
+pkgrel=1
+pkgdesc="A linkable library for Git"
+arch=('i686' 'x86_64')
+url='https://libgit2.org/'
+msys2_repository_url="https://github.com/libgit2/libgit2"
+msys2_references=(
+  "cpe: cpe:/a:libgit2:libgit2"
+  "cpe: cpe:/a:libgit2_project:libgit2"
+)
+license=('GPL2' 'custom')
+makedepends=(
+  'gcc'
+  'ninja'
+  'cmake'
+  'pkgconf'
+  'libssh2-devel'
+  'libiconv-devel'
+  'pcre2-devel'
+  'zlib-devel'
+  'openssl-devel'
+)
+source=("https://github.com/libgit2/libgit2/archive/v${pkgver}/${pkgbase}-${pkgver}.tar.gz"
+        "0001-missing-alloca.patch")
+sha256sums=('75b27d4d6df44bd34e2f70663cfd998f5ec41e680e1e593238bbe517a84c7ed2'
+            '1b4bc2fe1e380374b760d24a73f719249d6bf048ad0305d777f2714609991b3e')
+validpgpkeys=('4EF4AC63455FC9F4545D9B7DEF8FE99528B52FFD')
+noextract=("${pkgbase}-${pkgver}.tar.gz")
+
+prepare() {
+  tar -xzf "${pkgbase}-${pkgver}.tar.gz" 2> /dev/null || tar -xzf "${pkgbase}-${pkgver}.tar.gz"
+
+  cd "${pkgbase}-${pkgver}"
+  patch -p1 < "../0001-missing-alloca.patch"
+}
+
+build() {
+  cmake \
+    -GNinja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DUSE_SSH=ON \
+    -DUSE_ICONV=ON \
+    -DREGEX_BACKEND=pcre2 \
+    -DBUILD_TESTS=OFF \
+    -S "${pkgbase}-${pkgver}" \
+    -B "build"
+
+  cmake --build "build"
+}
+
+package_libgit2() {
+  depends=(
+    "libssh2"
+    "libiconv"
+    "libpcre2_8"
+    "zlib"
+    "openssl"
+  )
+
+  DESTDIR="${pkgdir}" cmake --install "build"
+
+  rm -rf "${srcdir}/devel"
+  mkdir -p "${srcdir}/devel/usr"
+  mv "${pkgdir}/usr/include" "${srcdir}/devel/usr/"
+  mv "${pkgdir}/usr/lib/pkgconfig" "${srcdir}/devel/usr/lib/"
+  mv "${pkgdir}/usr/lib/cmake" "${srcdir}/devel/usr/lib/"
+  mv "${pkgdir}/usr/lib/libgit2.dll.a" "${srcdir}/devel/usr/lib/"
+
+  install -Dm644 "${pkgbase}-${pkgver}/COPYING" "${pkgdir}/usr/share/licenses/${pkgbase}/COPYING"
+}
+
+package_libgit2-devel() {
+  pkgdesc="Development files for libgit2"
+  depends=("libgit2=${pkgver}")
+
+  mkdir -p "${pkgdir}"
+  cp -r "${srcdir}/devel"/* "${pkgdir}"/
+}
