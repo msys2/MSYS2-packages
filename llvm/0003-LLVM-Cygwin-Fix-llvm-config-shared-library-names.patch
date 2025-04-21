@@ -1,0 +1,114 @@
+From 5cb3c0bc6beeb169ab08ffc7da8a78276f254c25 Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Mon, 21 Apr 2025 10:37:40 -0700
+Subject: [PATCH 17/17] [LLVM][Cygwin] Fix llvm shared library name
+
+Treat Cygwin like WIN32 in llvm-shlib for naming the library.
+
+Don't create shlib symlinks on Cygwin, they don't help anything there,
+but teach llvm_install_library_symlink that Cygwin's shared libraries
+live in BINDIR like WIN32.
+
+Add a new variable to BuildVariables to have CMake's shared library
+prefix, to avoid having to patch between "cyg" and "msys-" on MSYS2.
+---
+ llvm/cmake/modules/AddLLVM.cmake             | 4 ++--
+ llvm/tools/llvm-config/BuildVariables.inc.in | 1 +
+ llvm/tools/llvm-config/CMakeLists.txt        | 1 +
+ llvm/tools/llvm-config/llvm-config.cpp       | 9 ++++++---
+ llvm/tools/llvm-shlib/CMakeLists.txt         | 2 +-
+ 5 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/llvm/cmake/modules/AddLLVM.cmake b/llvm/cmake/modules/AddLLVM.cmake
+index 7e1449e1a..93ce51e69 100644
+--- a/llvm/cmake/modules/AddLLVM.cmake
++++ b/llvm/cmake/modules/AddLLVM.cmake
+@@ -750,7 +750,7 @@ function(llvm_add_library name)
+       set(library_name ${output_name}-${LLVM_VERSION_MAJOR}${LLVM_VERSION_SUFFIX})
+       set(api_name ${output_name}-${LLVM_VERSION_MAJOR}.${LLVM_VERSION_MINOR}.${LLVM_VERSION_PATCH}${LLVM_VERSION_SUFFIX})
+       set_target_properties(${name} PROPERTIES OUTPUT_NAME ${library_name})
+-      if(UNIX)
++      if(UNIX AND NOT CYGWIN)
+         llvm_install_library_symlink(${api_name} ${library_name} SHARED
+           COMPONENT ${name})
+         llvm_install_library_symlink(${output_name} ${library_name} SHARED
+@@ -2241,7 +2241,7 @@ function(llvm_install_library_symlink name dest type)
+   endif()
+ 
+   set(output_dir lib${LLVM_LIBDIR_SUFFIX})
+-  if(WIN32 AND "${type}" STREQUAL "SHARED")
++  if((WIN32 OR CYGWIN) AND "${type}" STREQUAL "SHARED")
+     set(output_dir "${CMAKE_INSTALL_BINDIR}")
+   endif()
+ 
+diff --git a/llvm/tools/llvm-config/BuildVariables.inc.in b/llvm/tools/llvm-config/BuildVariables.inc.in
+index 370005cd8..e4e1d449b 100644
+--- a/llvm/tools/llvm-config/BuildVariables.inc.in
++++ b/llvm/tools/llvm-config/BuildVariables.inc.in
+@@ -35,3 +35,4 @@
+ #define LLVM_DYLIB_COMPONENTS "@LLVM_DYLIB_COMPONENTS_expanded@"
+ #define LLVM_DYLIB_VERSION "@LLVM_DYLIB_VERSION@"
+ #define LLVM_TOOLS_INSTALL_DIR "@LLVM_TOOLS_INSTALL_DIR@"
++#define LLVM_SHARED_LIBRARY_PREFIX "@LLVM_SHARED_LIBRARY_PREFIX@"
+diff --git a/llvm/tools/llvm-config/CMakeLists.txt b/llvm/tools/llvm-config/CMakeLists.txt
+index 02c2532db..3a8f40b9c 100644
+--- a/llvm/tools/llvm-config/CMakeLists.txt
++++ b/llvm/tools/llvm-config/CMakeLists.txt
+@@ -65,6 +65,7 @@ set(LLVM_CXXFLAGS "${CMAKE_CXX${CMAKE_CXX_STANDARD}_STANDARD_COMPILE_OPTION} ${L
+ set(LLVM_BUILD_SYSTEM cmake)
+ set(LLVM_HAS_RTTI ${LLVM_CONFIG_HAS_RTTI})
+ set(LLVM_DYLIB_VERSION "${LLVM_VERSION_MAJOR}${LLVM_VERSION_SUFFIX}")
++set(LLVM_SHARED_LIBRARY_PREFIX "${CMAKE_SHARED_LIBRARY_PREFIX}")
+ 
+ # Use the C++ link flags, since they should be a superset of C link flags.
+ set(LLVM_LDFLAGS "${CMAKE_CXX_LINK_FLAGS}")
+diff --git a/llvm/tools/llvm-config/llvm-config.cpp b/llvm/tools/llvm-config/llvm-config.cpp
+index d5b76b1bb..a54538bb5 100644
+--- a/llvm/tools/llvm-config/llvm-config.cpp
++++ b/llvm/tools/llvm-config/llvm-config.cpp
+@@ -390,7 +390,7 @@ int main(int argc, char **argv) {
+     SharedExt = "dll";
+     SharedVersionedExt = LLVM_DYLIB_VERSION ".dll";
+     if (HostTriple.isOSCygMing()) {
+-      SharedPrefix = "lib";
++      SharedPrefix = LLVM_SHARED_LIBRARY_PREFIX;
+       StaticExt = "a";
+       StaticPrefix = "lib";
+     } else {
+@@ -454,7 +454,7 @@ int main(int argc, char **argv) {
+   /// extension. Returns true if Lib is in a recognized format.
+   auto GetComponentLibraryNameSlice = [&](const StringRef &Lib,
+                                           StringRef &Out) {
+-    if (Lib.starts_with("lib")) {
++    if (Lib.starts_with(StaticPrefix) || Lib.starts_with(SharedPrefix)) {
+       unsigned FromEnd;
+       if (Lib.ends_with(StaticExt)) {
+         FromEnd = StaticExt.size() + 1;
+@@ -465,7 +465,10 @@ int main(int argc, char **argv) {
+       }
+ 
+       if (FromEnd != 0) {
+-        Out = Lib.slice(3, Lib.size() - FromEnd);
++        unsigned FromStart = Lib.starts_with(SharedPrefix)
++                                 ? SharedPrefix.size()
++                                 : StaticPrefix.size();
++        Out = Lib.slice(FromStart, Lib.size() - FromEnd);
+         return true;
+       }
+     }
+diff --git a/llvm/tools/llvm-shlib/CMakeLists.txt b/llvm/tools/llvm-shlib/CMakeLists.txt
+index 9ad6154ae..64492f9db 100644
+--- a/llvm/tools/llvm-shlib/CMakeLists.txt
++++ b/llvm/tools/llvm-shlib/CMakeLists.txt
+@@ -33,7 +33,7 @@ if(LLVM_BUILD_LLVM_DYLIB)
+   if (LLVM_LINK_LLVM_DYLIB)
+     set(INSTALL_WITH_TOOLCHAIN INSTALL_WITH_TOOLCHAIN)
+   endif()
+-  if (WIN32)
++  if (WIN32 OR CYGWIN)
+     add_llvm_library(LLVM SHARED DISABLE_LLVM_LINK_LLVM_DYLIB SONAME ${INSTALL_WITH_TOOLCHAIN} ${SOURCES})
+   else()
+     add_llvm_library(LLVM SHARED DISABLE_LLVM_LINK_LLVM_DYLIB OUTPUT_NAME LLVM ${INSTALL_WITH_TOOLCHAIN} ${SOURCES})
+-- 
+2.49.0.windows.1
+
