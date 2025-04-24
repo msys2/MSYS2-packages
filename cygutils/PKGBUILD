@@ -1,8 +1,11 @@
 # Maintainer: Jeremy Drake <github@jdrake.com>
 
 pkgname=cygutils
-pkgver=1.4.17
-pkgrel=2
+# it sucks, but upstream adds features in packaging patches, so treat
+# their -4 as a .4 so we can have our own pkgrel
+pkgver=1.4.17.4
+_realpkgver=${pkgver%.*}
+pkgrel=1
 pkgdesc="${pkgname} is a collection of simple utilities"
 arch=('i686' 'x86_64')
 url="https://cygwin.org/"
@@ -18,11 +21,18 @@ conflicts=('winln')
 replaces=('winln')
 provides=('winln')
 _commit='a804501b8c33c55a45a87b6e505b4e5db41e4f2f'
-source=("${pkgname}-${pkgver}::git+https://sourceware.org/git/cygwin-apps/${pkgname}.git#commit=${_commit}")
-sha256sums=('SKIP')
+source=("${pkgname}-${_realpkgver}::git+https://sourceware.org/git/cygwin-apps/${pkgname}.git#commit=${_commit}"
+        "cygutils-1.4.17-4.src.patch"
+        "lssparse-support-check.patch")
+sha256sums=('35ad70ebebd40cafc1bf7a87d308ad658e48f65462bf641241d75f95edd50abd'
+            '07d8184f5ed63c085450f9e27ca4a7d2e86d9ef7a6a23a2da20fe120f163668b'
+            '6170756c292a606fcf1876a2bd57ecb72262e4c1062132874be623d8de9233af')
 
 prepare(){
-  cd ${pkgname}-${pkgver}
+  cd ${pkgname}-${_realpkgver}
+
+  patch -Nbp1 -i "${srcdir}/cygutils-1.4.17-4.src.patch"
+  patch -Nbp1 -i "${srcdir}/lssparse-support-check.patch"
 
   autoreconf -fi
 }
@@ -35,7 +45,7 @@ build() {
 
   export MSYSTEM=CYGWIN
   local CYGWIN_CHOST="${CHOST/-msys/-cygwin}"
-  ../${pkgname}-${pkgver}/configure \
+  ../${pkgname}-${_realpkgver}/configure \
     --prefix=/usr \
     --build=${CYGWIN_CHOST} \
     --host=${CYGWIN_CHOST} \
@@ -48,5 +58,5 @@ package() {
   cd "${srcdir}/build-${CHOST}"
   make DESTDIR="${pkgdir}" install
 
-  install -Dm644 "${srcdir}/${pkgname}-${pkgver}/COPYING" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 "${srcdir}/${pkgname}-${_realpkgver}/COPYING" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
