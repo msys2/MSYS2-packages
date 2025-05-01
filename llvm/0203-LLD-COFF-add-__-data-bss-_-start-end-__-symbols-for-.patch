@@ -1,21 +1,30 @@
-From 6a552fa2d904773ac0b9aa1f11ccf642b96f8dd2 Mon Sep 17 00:00:00 2001
-From: Jeremy Drake <github@jdrake.com>
-Date: Sun, 13 Apr 2025 22:41:05 -0700
-Subject: [PATCH 11/15] [LLD][COFF] add __{data,bss}_{start,end}__ symbols for
- Cygwin support
+From fdd77991d204abd6a4a67132130e5e7256752dde Mon Sep 17 00:00:00 2001
+From: jeremyd2019 <github@jdrake.com>
+Date: Fri, 2 May 2025 00:58:14 -0700
+Subject: [PATCH] [LLD][COFF] add __{data,bss}_{start,end}__ symbols for Cygwin
+ support (#136180)
 
 Cygwin requires these symbols for its fork emulation to know what data
-to copy into the child.  GNU ld defines these symbols for MinGW targets
+to copy into the child. GNU ld defines these symbols for MinGW targets
 also, so do the same here.
+
+Cygwin also has the `.data_cygwin_nocopy` section, which is merged into
+`.data` outside the `__data_start__` to `__data_end__` range. This
+excludes it from fork's copying. AFAIK it's only used by the Cygwin DLL
+itself (which requires a custom linker script to link, that's not
+supported by LLD), but the section is included in GNU ld's default
+linker script so handle it here too.
 
 Signed-off-by: Jeremy Drake <github@jdrake.com>
 ---
- lld/COFF/Driver.cpp |  5 +++++
- lld/COFF/Writer.cpp | 33 +++++++++++++++++++++++++++++++--
- 2 files changed, 36 insertions(+), 2 deletions(-)
+ lld/COFF/Driver.cpp            |  5 ++
+ lld/COFF/Writer.cpp            | 33 +++++++++++-
+ lld/test/COFF/cygwin-symbols.s | 99 ++++++++++++++++++++++++++++++++++
+ 3 files changed, 135 insertions(+), 2 deletions(-)
+ create mode 100644 lld/test/COFF/cygwin-symbols.s
 
 diff --git a/lld/COFF/Driver.cpp b/lld/COFF/Driver.cpp
-index ac3ac57bd..fa882f883 100644
+index ac3ac57bd1..fa882f883d 100644
 --- a/lld/COFF/Driver.cpp
 +++ b/lld/COFF/Driver.cpp
 @@ -2018,6 +2018,7 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
@@ -38,10 +47,10 @@ index ac3ac57bd..fa882f883 100644
      if (config->debug || config->buildIDHash != BuildIDHash::None)
        if (symtab.findUnderscore("__buildid"))
 diff --git a/lld/COFF/Writer.cpp b/lld/COFF/Writer.cpp
-index 2bdaeb58a..41973a245 100644
+index 28c10ad1f6..083d4e1ecc 100644
 --- a/lld/COFF/Writer.cpp
 +++ b/lld/COFF/Writer.cpp
-@@ -239,6 +239,7 @@ private:
+@@ -240,6 +240,7 @@ private:
    void createRuntimePseudoRelocs();
    void createECChunks();
    void insertCtorDtorSymbols();
@@ -49,7 +58,7 @@ index 2bdaeb58a..41973a245 100644
    void markSymbolsWithRelocations(ObjFile *file, SymbolRVASet &usedSymbols);
    void createGuardCFTables();
    void markSymbolsForRVATable(ObjFile *file,
-@@ -314,6 +315,7 @@ private:
+@@ -315,6 +316,7 @@ private:
  
    OutputSection *textSec;
    OutputSection *hexpthkSec;
@@ -57,7 +66,7 @@ index 2bdaeb58a..41973a245 100644
    OutputSection *rdataSec;
    OutputSection *buildidSec;
    OutputSection *dataSec;
-@@ -1068,7 +1070,7 @@ void Writer::createSections() {
+@@ -1069,7 +1071,7 @@ void Writer::createSections() {
    textSec = createSection(".text", code | r | x);
    if (isArm64EC(ctx.config.machine))
      hexpthkSec = createSection(".hexpthk", code | r | x);
@@ -66,7 +75,7 @@ index 2bdaeb58a..41973a245 100644
    rdataSec = createSection(".rdata", data | r);
    buildidSec = createSection(".buildid", data | r);
    dataSec = createSection(".data", data | r | w);
-@@ -1242,8 +1244,10 @@ void Writer::createMiscChunks() {
+@@ -1243,8 +1245,10 @@ void Writer::createMiscChunks() {
    if (config->autoImport)
      createRuntimePseudoRelocs();
  
@@ -78,7 +87,7 @@ index 2bdaeb58a..41973a245 100644
  }
  
  // Create .idata section for the DLL-imported symbol table.
-@@ -2334,6 +2338,31 @@ void Writer::insertCtorDtorSymbols() {
+@@ -2347,6 +2351,31 @@ void Writer::insertCtorDtorSymbols() {
                                    dtorListHead);
  }
  
@@ -110,6 +119,111 @@ index 2bdaeb58a..41973a245 100644
  // Handles /section options to allow users to overwrite
  // section attributes.
  void Writer::setSectionPermissions() {
+diff --git a/lld/test/COFF/cygwin-symbols.s b/lld/test/COFF/cygwin-symbols.s
+new file mode 100644
+index 0000000000..d1aec42784
+--- /dev/null
++++ b/lld/test/COFF/cygwin-symbols.s
+@@ -0,0 +1,99 @@
++# REQUIRES: x86
++# RUN: split-file %s %t.dir && cd %t.dir
++
++# RUN: llvm-mc -triple=x86_64-windows-cygnus -filetype=obj -o data-no-bss.obj data-no-bss.s
++# RUN: lld-link -lldmingw -entry:main data-no-bss.obj -out:data-no-bss.exe
++# RUN: llvm-objdump -s data-no-bss.exe | FileCheck --check-prefix=DATANOBSS %s
++
++# RUN: llvm-mc -triple=x86_64-windows-cygnus -filetype=obj -o bss-no-data.obj bss-no-data.s
++# RUN: lld-link -lldmingw -entry:main bss-no-data.obj -out:bss-no-data.exe
++# RUN: llvm-objdump -s bss-no-data.exe | FileCheck --check-prefix=BSSNODATA %s
++
++# RUN: llvm-mc -triple=x86_64-windows-cygnus -filetype=obj -o data-and-bss.obj data-and-bss.s
++# RUN: lld-link -lldmingw -entry:main data-and-bss.obj -out:data-and-bss.exe
++# RUN: llvm-objdump -s data-and-bss.exe | FileCheck --check-prefix=DATAANDBSS %s
++
++#--- data-no-bss.s
++.globl main
++main:
++  nop
++
++.data
++  .quad 1
++  .byte 2
++
++.section .data_cygwin_nocopy, "w"
++  .align 4
++  .quad 3
++  .byte 4
++
++.section .test, "w"
++  .quad __data_start__
++  .quad __data_end__
++  .quad __bss_start__
++  .quad __bss_end__
++
++#--- bss-no-data.s
++.globl main
++main:
++  nop
++
++.bss
++  .zero 8192
++
++.section .test, "w"
++  .quad __data_start__
++  .quad __data_end__
++  .quad __bss_start__
++  .quad __bss_end__
++
++#--- data-and-bss.s
++.globl main
++main:
++  nop
++
++.data
++  .quad 1
++  .byte 2
++
++.section .data_cygwin_nocopy, "w"
++  .align 4
++  .quad 3
++  .byte 4
++
++.bss
++  .zero 8192
++
++.section .test, "w"
++  .quad __data_start__
++  .quad __data_end__
++  .quad __bss_start__
++  .quad __bss_end__
++
++# DATANOBSS:      Contents of section .data:
++# DATANOBSS-NEXT: 140003000 01000000 00000000 02000000 03000000
++# DATANOBSS-NEXT: 140003010 00000000 04
++# __data_start__ pointing at 0x140003000 and
++# __data_end__   pointing at 0x140003009.
++# DATANOBSS-NEXT: Contents of section .test:
++# DATANOBSS-NEXT: 140004000 00300040 01000000 09300040 01000000
++# DATANOBSS-NEXT: 140004010 18300040 01000000 18300040 01000000
++
++# __bss_start__ pointing at 0x140003000 and
++# __bss_end__   pointing at 0x140005000.
++# BSSNODATA-NOT:  Contents of section .data:
++# BSSNODATA:      Contents of section .test:
++# BSSNODATA-NEXT: 140005000 00300040 01000000 00300040 01000000
++# BSSNODATA-NEXT: 140005010 00300040 01000000 00500040 01000000
++
++# DATAANDBSS:      Contents of section .data:
++# DATAANDBSS-NEXT: 140003000 01000000 00000000 02000000 03000000
++# DATAANDBSS-NEXT: 140003010 00000000 04000000 00000000 00000000
++# __data_start__ pointing at 0x140003000 and
++# __data_end__   pointing at 0x140003009.
++# __bss_start__ pointing at 0x140003018 and
++# __bss_end__   pointing at 0x140005018.
++# DATAANDBSS:      1400031f0 00000000 00000000 00000000 00000000
++# DATAANDBSS-NEXT: Contents of section .test:
++# DATAANDBSS-NEXT: 140006000 00300040 01000000 09300040 01000000
++# DATAANDBSS-NEXT: 140006010 18300040 01000000 18500040 01000000
 -- 
 2.49.0.windows.1
 

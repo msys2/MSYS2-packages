@@ -1,0 +1,197 @@
+From bddcc28756f453ef0a6e3b334f0daa41a854f940 Mon Sep 17 00:00:00 2001
+From: jeremyd2019 <github@jdrake.com>
+Date: Wed, 30 Apr 2025 02:09:20 -0700
+Subject: [PATCH] [LLD][COFF] Ensure .bss is merged at the end of a section.
+ (#137677)
+
+Because it is full of zeros, it is expected that as much of it as
+possible is elided from the actual image, and that cannot happen if
+there is initialized data in the section after it.
+---
+ lld/COFF/Writer.cpp               | 55 +++++++++++-------
+ lld/test/COFF/merge-data-bss.test | 92 +++++++++++++++++++++++++++++++
+ 2 files changed, 126 insertions(+), 21 deletions(-)
+ create mode 100644 lld/test/COFF/merge-data-bss.test
+
+diff --git a/lld/COFF/Writer.cpp b/lld/COFF/Writer.cpp
+index 2bdaeb58ab..28c10ad1f6 100644
+--- a/lld/COFF/Writer.cpp
++++ b/lld/COFF/Writer.cpp
+@@ -215,6 +215,7 @@ private:
+   void appendImportThunks();
+   void locateImportTables();
+   void createExportTable();
++  void mergeSection(const std::map<StringRef, StringRef>::value_type &p);
+   void mergeSections();
+   void sortECChunks();
+   void appendECImportTables();
+@@ -1547,6 +1548,30 @@ void Writer::createSymbolAndStringTable() {
+   fileSize = alignTo(fileOff, ctx.config.fileAlign);
+ }
+ 
++void Writer::mergeSection(const std::map<StringRef, StringRef>::value_type &p) {
++  StringRef toName = p.second;
++  if (p.first == toName)
++    return;
++  StringSet<> names;
++  while (true) {
++    if (!names.insert(toName).second)
++      Fatal(ctx) << "/merge: cycle found for section '" << p.first << "'";
++    auto i = ctx.config.merge.find(toName);
++    if (i == ctx.config.merge.end())
++      break;
++    toName = i->second;
++  }
++  OutputSection *from = findSection(p.first);
++  OutputSection *to = findSection(toName);
++  if (!from)
++    return;
++  if (!to) {
++    from->name = toName;
++    return;
++  }
++  to->merge(from);
++}
++
+ void Writer::mergeSections() {
+   llvm::TimeTraceScope timeScope("Merge sections");
+   if (!pdataSec->chunks.empty()) {
+@@ -1575,28 +1600,16 @@ void Writer::mergeSections() {
+   }
+ 
+   for (auto &p : ctx.config.merge) {
+-    StringRef toName = p.second;
+-    if (p.first == toName)
+-      continue;
+-    StringSet<> names;
+-    while (true) {
+-      if (!names.insert(toName).second)
+-        Fatal(ctx) << "/merge: cycle found for section '" << p.first << "'";
+-      auto i = ctx.config.merge.find(toName);
+-      if (i == ctx.config.merge.end())
+-        break;
+-      toName = i->second;
+-    }
+-    OutputSection *from = findSection(p.first);
+-    OutputSection *to = findSection(toName);
+-    if (!from)
+-      continue;
+-    if (!to) {
+-      from->name = toName;
+-      continue;
+-    }
+-    to->merge(from);
++    if (p.first != ".bss")
++      mergeSection(p);
+   }
++
++  // Because .bss contains all zeros, it should be merged at the end of
++  // whatever section it is being merged into (usually .data) so that the image
++  // need not actually contain all of the zeros.
++  auto it = ctx.config.merge.find(".bss");
++  if (it != ctx.config.merge.end())
++    mergeSection(*it);
+ }
+ 
+ // EC targets may have chunks of various architectures mixed together at this
+diff --git a/lld/test/COFF/merge-data-bss.test b/lld/test/COFF/merge-data-bss.test
+new file mode 100644
+index 0000000000..a821f8d6e9
+--- /dev/null
++++ b/lld/test/COFF/merge-data-bss.test
+@@ -0,0 +1,92 @@
++# RUN: yaml2obj %s -o %t.obj
++# RUN: lld-link /out:%t.exe /entry:main /subsystem:console /force \
++# RUN:   /merge:.other=.data %t.obj /debug
++# RUN: llvm-readobj --sections %t.exe | FileCheck %s
++
++# CHECK:      Name: .data
++# CHECK-NEXT: VirtualSize: 0x2018
++# CHECK-NEXT: VirtualAddress: 0x3000
++# CHECK-NEXT: RawDataSize: 512
++# CHECK-NOT: Name: .other
++
++--- !COFF
++header:
++  Machine:         IMAGE_FILE_MACHINE_AMD64
++  Characteristics: [  ]
++sections:
++  - Name:            .text
++    Characteristics: [ IMAGE_SCN_CNT_CODE, IMAGE_SCN_MEM_EXECUTE, IMAGE_SCN_MEM_READ ]
++    Alignment:       4
++    SectionData:     '90'
++    SizeOfRawData:   1
++  - Name:            .data
++    Characteristics: [ IMAGE_SCN_CNT_INITIALIZED_DATA, IMAGE_SCN_MEM_READ, IMAGE_SCN_MEM_WRITE ]
++    Alignment:       4
++    SectionData:     '010000000000000002'
++    SizeOfRawData:   9
++  - Name:            .bss
++    Characteristics: [ IMAGE_SCN_CNT_UNINITIALIZED_DATA, IMAGE_SCN_MEM_READ, IMAGE_SCN_MEM_WRITE ]
++    Alignment:       4
++    SectionData:     ''
++    SizeOfRawData:   8192
++  - Name:            .other
++    Characteristics: [ IMAGE_SCN_CNT_INITIALIZED_DATA, IMAGE_SCN_MEM_READ, IMAGE_SCN_MEM_WRITE ]
++    Alignment:       4
++    SectionData:     '030000000000000004'
++    SizeOfRawData:   9
++symbols:
++  - Name:            .text
++    Value:           0
++    SectionNumber:   1
++    SimpleType:      IMAGE_SYM_TYPE_NULL
++    ComplexType:     IMAGE_SYM_DTYPE_NULL
++    StorageClass:    IMAGE_SYM_CLASS_STATIC
++    SectionDefinition:
++      Length:          1
++      NumberOfRelocations: 0
++      NumberOfLinenumbers: 0
++      CheckSum:        4027552580
++      Number:          1
++  - Name:            .data
++    Value:           0
++    SectionNumber:   2
++    SimpleType:      IMAGE_SYM_TYPE_NULL
++    ComplexType:     IMAGE_SYM_DTYPE_NULL
++    StorageClass:    IMAGE_SYM_CLASS_STATIC
++    SectionDefinition:
++      Length:          9
++      NumberOfRelocations: 0
++      NumberOfLinenumbers: 0
++      CheckSum:        4185224559
++      Number:          2
++  - Name:            .bss
++    Value:           0
++    SectionNumber:   3
++    SimpleType:      IMAGE_SYM_TYPE_NULL
++    ComplexType:     IMAGE_SYM_DTYPE_NULL
++    StorageClass:    IMAGE_SYM_CLASS_STATIC
++    SectionDefinition:
++      Length:          8192
++      NumberOfRelocations: 0
++      NumberOfLinenumbers: 0
++      CheckSum:        0
++      Number:          3
++  - Name:            .other
++    Value:           0
++    SectionNumber:   4
++    SimpleType:      IMAGE_SYM_TYPE_NULL
++    ComplexType:     IMAGE_SYM_DTYPE_NULL
++    StorageClass:    IMAGE_SYM_CLASS_STATIC
++    SectionDefinition:
++      Length:          9
++      NumberOfRelocations: 0
++      NumberOfLinenumbers: 0
++      CheckSum:        1054931164
++      Number:          4
++  - Name:            main
++    Value:           0
++    SectionNumber:   1
++    SimpleType:      IMAGE_SYM_TYPE_NULL
++    ComplexType:     IMAGE_SYM_DTYPE_NULL
++    StorageClass:    IMAGE_SYM_CLASS_EXTERNAL
++...
+-- 
+2.49.0.windows.1
+
