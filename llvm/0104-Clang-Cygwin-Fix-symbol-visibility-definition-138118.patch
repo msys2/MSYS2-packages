@@ -1,0 +1,36 @@
+From f087a8c88fd3a3e869224f93e92919e08217e35c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Mateusz=20Miku=C5=82a?= <oss@mateuszmikula.dev>
+Date: Fri, 2 May 2025 10:01:37 +0200
+Subject: [PATCH] [Clang][Cygwin] Fix symbol visibility definition (#138118)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Currently building for Cygwin hits this error:
+```
+In file included from /h/projects/llvm-project/clang/lib/Basic/Attributes.cpp:17:
+/h/projects/llvm-project/clang/include/clang/Basic/ParsedAttrInfo.h:180:73: error: invalid declarator before ‘;’ token
+  180 | extern template class CLANG_TEMPLATE_ABI Registry<clang::ParsedAttrInfo>;
+```
+That's because `CLANG_TEMPLATE_ABI` ends up not being defined. The
+solution here is to follow MinGW case.
+---
+ clang/include/clang/Support/Compiler.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/clang/include/clang/Support/Compiler.h b/clang/include/clang/Support/Compiler.h
+index 5a74f8e3b6..e1ae3eda4c 100644
+--- a/clang/include/clang/Support/Compiler.h
++++ b/clang/include/clang/Support/Compiler.h
+@@ -50,7 +50,7 @@
+ #define CLANG_EXPORT_TEMPLATE
+ #endif
+ #elif defined(__ELF__) || defined(__MINGW32__) || defined(_AIX) ||             \
+-    defined(__MVS__)
++    defined(__MVS__) || defined(__CYGWIN__)
+ #define CLANG_ABI LLVM_ATTRIBUTE_VISIBILITY_DEFAULT
+ #define CLANG_TEMPLATE_ABI LLVM_ATTRIBUTE_VISIBILITY_DEFAULT
+ #define CLANG_EXPORT_TEMPLATE
+-- 
+2.49.0.windows.1
+

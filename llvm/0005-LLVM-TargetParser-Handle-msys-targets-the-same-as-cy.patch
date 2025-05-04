@@ -1,0 +1,66 @@
+From b8c0bfbafddce093d85448438fce0bc46ca510fb Mon Sep 17 00:00:00 2001
+From: jeremyd2019 <github@jdrake.com>
+Date: Thu, 24 Apr 2025 03:28:27 -0700
+Subject: [PATCH] [LLVM][TargetParser] Handle -msys targets the same as
+ -cygwin. (#136817)
+
+MSYS2 uses i686-pc-msys and x86_64-pc-msys as target, and is a fork of
+Cygwin. There's an effort underway to try to switch as much as possible
+to use -pc-cygwin targets, but the -msys target will be hanging around
+for the forseeable future.
+---
+ llvm/lib/TargetParser/Triple.cpp           | 5 +++--
+ llvm/unittests/TargetParser/TripleTest.cpp | 7 +++++++
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/llvm/lib/TargetParser/Triple.cpp b/llvm/lib/TargetParser/Triple.cpp
+index e9e6f130f7..74363f8d71 100644
+--- a/llvm/lib/TargetParser/Triple.cpp
++++ b/llvm/lib/TargetParser/Triple.cpp
+@@ -1150,7 +1150,8 @@ std::string Triple::normalize(StringRef Str, CanonicalForm Form) {
+   OSType OS = UnknownOS;
+   if (Components.size() > 2) {
+     OS = parseOS(Components[2]);
+-    IsCygwin = Components[2].starts_with("cygwin");
++    IsCygwin = Components[2].starts_with("cygwin") ||
++               Components[2].starts_with("msys");
+     IsMinGW32 = Components[2].starts_with("mingw");
+   }
+   EnvironmentType Environment = UnknownEnvironment;
+@@ -1195,7 +1196,7 @@ std::string Triple::normalize(StringRef Str, CanonicalForm Form) {
+         break;
+       case 2:
+         OS = parseOS(Comp);
+-        IsCygwin = Comp.starts_with("cygwin");
++        IsCygwin = Comp.starts_with("cygwin") || Comp.starts_with("msys");
+         IsMinGW32 = Comp.starts_with("mingw");
+         Valid = OS != UnknownOS || IsCygwin || IsMinGW32;
+         break;
+diff --git a/llvm/unittests/TargetParser/TripleTest.cpp b/llvm/unittests/TargetParser/TripleTest.cpp
+index 61b3637bb4..e409a3b6a6 100644
+--- a/llvm/unittests/TargetParser/TripleTest.cpp
++++ b/llvm/unittests/TargetParser/TripleTest.cpp
+@@ -2572,6 +2572,8 @@ TEST(TripleTest, NormalizeWindows) {
+   EXPECT_EQ("i686-unknown-windows-gnu", Triple::normalize("i686-mingw32-w64"));
+   EXPECT_EQ("i686-pc-windows-cygnus", Triple::normalize("i686-pc-cygwin"));
+   EXPECT_EQ("i686-unknown-windows-cygnus", Triple::normalize("i686-cygwin"));
++  EXPECT_EQ("i686-pc-windows-cygnus", Triple::normalize("i686-pc-msys"));
++  EXPECT_EQ("i686-unknown-windows-cygnus", Triple::normalize("i686-msys"));
+ 
+   EXPECT_EQ("x86_64-pc-windows-msvc", Triple::normalize("x86_64-pc-win32"));
+   EXPECT_EQ("x86_64-unknown-windows-msvc", Triple::normalize("x86_64-win32"));
+@@ -2581,6 +2583,11 @@ TEST(TripleTest, NormalizeWindows) {
+             Triple::normalize("x86_64-pc-mingw32-w64"));
+   EXPECT_EQ("x86_64-unknown-windows-gnu",
+             Triple::normalize("x86_64-mingw32-w64"));
++  EXPECT_EQ("x86_64-pc-windows-cygnus", Triple::normalize("x86_64-pc-cygwin"));
++  EXPECT_EQ("x86_64-unknown-windows-cygnus",
++            Triple::normalize("x86_64-cygwin"));
++  EXPECT_EQ("x86_64-pc-windows-cygnus", Triple::normalize("x86_64-pc-msys"));
++  EXPECT_EQ("x86_64-unknown-windows-cygnus", Triple::normalize("x86_64-msys"));
+ 
+   EXPECT_EQ("i686-pc-windows-elf", Triple::normalize("i686-pc-win32-elf"));
+   EXPECT_EQ("i686-unknown-windows-elf", Triple::normalize("i686-win32-elf"));
+-- 
+2.49.0.windows.1
+
