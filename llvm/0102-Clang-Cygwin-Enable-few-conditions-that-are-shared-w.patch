@@ -1,4 +1,4 @@
-From 03c850993ecc5aa7e892bb14ac152bd209755a94 Mon Sep 17 00:00:00 2001
+From 2df687871d7a1817643989903f97051593baf4d5 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Mateusz=20Miku=C5=82a?= <oss@mateuszmikula.dev>
 Date: Sat, 8 Feb 2025 01:13:06 +0100
 Subject: [PATCH] [Clang][Cygwin] Enable few conditions that are shared with
@@ -6,14 +6,10 @@ Subject: [PATCH] [Clang][Cygwin] Enable few conditions that are shared with
 
 ---
  clang/lib/AST/RecordLayoutBuilder.cpp | 2 +-
- clang/lib/CodeGen/CodeGenModule.cpp   | 2 +-
- clang/lib/CodeGen/ItaniumCXXABI.cpp   | 4 ++--
  clang/lib/CodeGen/Targets/X86.cpp     | 2 +-
  clang/lib/Driver/ToolChain.cpp        | 2 +-
  clang/lib/Sema/SemaDecl.cpp           | 2 +-
- clang/lib/Sema/SemaDeclCXX.cpp        | 4 ++--
- clang/lib/Sema/SemaTemplate.cpp       | 8 ++++----
- 8 files changed, 13 insertions(+), 13 deletions(-)
+ 4 files changed, 4 insertions(+), 4 deletions(-)
 
 diff --git a/clang/lib/AST/RecordLayoutBuilder.cpp b/clang/lib/AST/RecordLayoutBuilder.cpp
 index ae6d299024..b0a19ea55d 100644
@@ -28,41 +24,6 @@ index ae6d299024..b0a19ea55d 100644
              Diag(D->getLocation(), diag::warn_npot_ms_struct);
          }
          if (TypeSize > FieldAlign &&
-diff --git a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/CodeGen/CodeGenModule.cpp
-index eb8d3ceeeb..2dddfb31e4 100644
---- a/clang/lib/CodeGen/CodeGenModule.cpp
-+++ b/clang/lib/CodeGen/CodeGenModule.cpp
-@@ -1671,7 +1671,7 @@ static bool shouldAssumeDSOLocal(const CodeGenModule &CGM,
- 
-   const llvm::Triple &TT = CGM.getTriple();
-   const auto &CGOpts = CGM.getCodeGenOpts();
--  if (TT.isWindowsGNUEnvironment()) {
-+  if (TT.isOSCygMing()) {
-     // In MinGW, variables without DLLImport can still be automatically
-     // imported from a DLL by the linker; don't mark variables that
-     // potentially could come from another DLL as DSO local.
-diff --git a/clang/lib/CodeGen/ItaniumCXXABI.cpp b/clang/lib/CodeGen/ItaniumCXXABI.cpp
-index 7c463f51f6..7e83692075 100644
---- a/clang/lib/CodeGen/ItaniumCXXABI.cpp
-+++ b/clang/lib/CodeGen/ItaniumCXXABI.cpp
-@@ -3749,7 +3749,7 @@ static bool ShouldUseExternalRTTIDescriptor(CodeGenModule &CGM,
-     bool IsDLLImport = RD->hasAttr<DLLImportAttr>();
- 
-     // Don't import the RTTI but emit it locally.
--    if (CGM.getTriple().isWindowsGNUEnvironment())
-+    if (CGM.getTriple().isOSCygMing())
-       return false;
- 
-     if (CGM.getVTables().isVTableExternal(RD)) {
-@@ -4038,7 +4038,7 @@ static llvm::GlobalVariable::LinkageTypes getTypeInfoLinkage(CodeGenModule &CGM,
-           !CGM.getContext()
-                .getTargetInfo()
-                .getTriple()
--               .isWindowsGNUEnvironment())
-+               .isOSCygMing())
-         return CGM.getVTableLinkage(RD);
-     }
- 
 diff --git a/clang/lib/CodeGen/Targets/X86.cpp b/clang/lib/CodeGen/Targets/X86.cpp
 index 5ee5179dd0..c446add081 100644
 --- a/clang/lib/CodeGen/Targets/X86.cpp
@@ -102,68 +63,6 @@ index 41d5f9f2f3..8ee89e1feb 100644
      return false;
  
    // Default calling convention for WinMain, wWinMain and DllMain
-diff --git a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/SemaDeclCXX.cpp
-index 85de46c9ad..899a34fe9c 100644
---- a/clang/lib/Sema/SemaDeclCXX.cpp
-+++ b/clang/lib/Sema/SemaDeclCXX.cpp
-@@ -6163,7 +6163,7 @@ static void ReferenceDllExportedMembers(Sema &S, CXXRecordDecl *Class) {
-     }
-   } MarkingDllexportedContext(S, Class, ClassAttr->getLocation());
- 
--  if (S.Context.getTargetInfo().getTriple().isWindowsGNUEnvironment())
-+  if (S.Context.getTargetInfo().getTriple().isOSCygMing())
-     S.MarkVTableUsed(Class->getLocation(), Class, true);
- 
-   for (Decl *Member : Class->decls()) {
-@@ -6465,7 +6465,7 @@ void Sema::checkClassLevelDLLAttribute(CXXRecordDecl *Class) {
-   // declarations, except in MinGW mode.
-   if (ClassExported && !ClassAttr->isInherited() &&
-       TSK == TSK_ExplicitInstantiationDeclaration &&
--      !Context.getTargetInfo().getTriple().isWindowsGNUEnvironment()) {
-+      !Context.getTargetInfo().getTriple().isOSCygMing()) {
-     Class->dropAttr<DLLExportAttr>();
-     return;
-   }
-diff --git a/clang/lib/Sema/SemaTemplate.cpp b/clang/lib/Sema/SemaTemplate.cpp
-index 1c555b3827..59a70e15f9 100644
---- a/clang/lib/Sema/SemaTemplate.cpp
-+++ b/clang/lib/Sema/SemaTemplate.cpp
-@@ -8936,7 +8936,7 @@ Sema::CheckSpecializationInstantiationRedecl(SourceLocation NewLoc,
-         // still okay to specialize it.
-         StripImplicitInstantiation(
-             PrevDecl,
--            Context.getTargetInfo().getTriple().isWindowsGNUEnvironment());
-+            Context.getTargetInfo().getTriple().isOSCygMing());
-         return false;
-       }
-       // Fall through
-@@ -9804,7 +9804,7 @@ DeclResult Sema::ActOnExplicitInstantiation(
-                                        : TSK_ExplicitInstantiationDeclaration;
- 
-   if (TSK == TSK_ExplicitInstantiationDeclaration &&
--      !Context.getTargetInfo().getTriple().isWindowsGNUEnvironment()) {
-+      !Context.getTargetInfo().getTriple().isOSCygMing()) {
-     // Check for dllexport class template instantiation declarations,
-     // except for MinGW mode.
-     for (const ParsedAttr &AL : Attr) {
-@@ -9869,7 +9869,7 @@ DeclResult Sema::ActOnExplicitInstantiation(
-     = PrevDecl ? PrevDecl->getTemplateSpecializationKind() : TSK_Undeclared;
- 
-   if (TSK == TSK_ExplicitInstantiationDefinition && PrevDecl != nullptr &&
--      Context.getTargetInfo().getTriple().isWindowsGNUEnvironment()) {
-+      Context.getTargetInfo().getTriple().isOSCygMing()) {
-     // Check for dllexport class template instantiation definitions in MinGW
-     // mode, if a previous declaration of the instantiation was seen.
-     for (const ParsedAttr &AL : Attr) {
-@@ -10038,7 +10038,7 @@ DeclResult Sema::ActOnExplicitInstantiation(
-     // In MinGW mode, export the template instantiation if the declaration
-     // was marked dllexport.
-     if (PrevDecl_TSK == TSK_ExplicitInstantiationDeclaration &&
--        Context.getTargetInfo().getTriple().isWindowsGNUEnvironment() &&
-+        Context.getTargetInfo().getTriple().isOSCygMing() &&
-         PrevDecl->hasAttr<DLLExportAttr>()) {
-       dllExportImportClassTemplateSpecialization(*this, Def);
-     }
 -- 
 2.49.0.windows.1
 

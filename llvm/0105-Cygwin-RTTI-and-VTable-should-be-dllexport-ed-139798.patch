@@ -1,0 +1,136 @@
+From dc5507618ac44583c9a032b2391b5de8c1dc991e Mon Sep 17 00:00:00 2001
+From: Tomohiro Kashiwada <kikairoya@gmail.com>
+Date: Thu, 15 May 2025 04:22:18 +0900
+Subject: [PATCH] [Cygwin] RTTI and VTable should be dllexport-ed (#139798)
+
+Behaves as same as both of Clang and GCC targetting MinGW. Required for
+compatibility for Cygwin-GCC.
+
+Divided from https://github.com/llvm/llvm-project/pull/138773
+---
+ clang/lib/CodeGen/ItaniumCXXABI.cpp               | 7 ++-----
+ clang/lib/Sema/SemaDeclCXX.cpp                    | 2 +-
+ clang/test/CodeGenCXX/dllexport-missing-key.cpp   | 1 +
+ clang/test/CodeGenCXX/dllimport-missing-key.cpp   | 1 +
+ clang/test/CodeGenCXX/dllimport-rtti.cpp          | 7 +++++--
+ clang/test/CodeGenCXX/rtti-mingw64.cpp            | 2 ++
+ clang/test/CodeGenCXX/virt-dtor-key.cpp           | 8 ++++++--
+ clang/test/CodeGenCXX/vtable-key-function-ios.cpp | 2 ++
+ 8 files changed, 20 insertions(+), 10 deletions(-)
+
+diff --git a/clang/lib/CodeGen/ItaniumCXXABI.cpp b/clang/lib/CodeGen/ItaniumCXXABI.cpp
+index 7c463f51f6..b8b19f366b 100644
+--- a/clang/lib/CodeGen/ItaniumCXXABI.cpp
++++ b/clang/lib/CodeGen/ItaniumCXXABI.cpp
+@@ -3749,7 +3749,7 @@ static bool ShouldUseExternalRTTIDescriptor(CodeGenModule &CGM,
+     bool IsDLLImport = RD->hasAttr<DLLImportAttr>();
+ 
+     // Don't import the RTTI but emit it locally.
+-    if (CGM.getTriple().isWindowsGNUEnvironment())
++    if (CGM.getTriple().isOSCygMing())
+       return false;
+ 
+     if (CGM.getVTables().isVTableExternal(RD)) {
+@@ -4035,10 +4035,7 @@ static llvm::GlobalVariable::LinkageTypes getTypeInfoLinkage(CodeGenModule &CGM,
+           return llvm::GlobalValue::ExternalLinkage;
+       // MinGW always uses LinkOnceODRLinkage for type info.
+       if (RD->isDynamicClass() &&
+-          !CGM.getContext()
+-               .getTargetInfo()
+-               .getTriple()
+-               .isWindowsGNUEnvironment())
++          !CGM.getContext().getTargetInfo().getTriple().isOSCygMing())
+         return CGM.getVTableLinkage(RD);
+     }
+ 
+diff --git a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/SemaDeclCXX.cpp
+index 85de46c9ad..5480ef170e 100644
+--- a/clang/lib/Sema/SemaDeclCXX.cpp
++++ b/clang/lib/Sema/SemaDeclCXX.cpp
+@@ -6163,7 +6163,7 @@ static void ReferenceDllExportedMembers(Sema &S, CXXRecordDecl *Class) {
+     }
+   } MarkingDllexportedContext(S, Class, ClassAttr->getLocation());
+ 
+-  if (S.Context.getTargetInfo().getTriple().isWindowsGNUEnvironment())
++  if (S.Context.getTargetInfo().getTriple().isOSCygMing())
+     S.MarkVTableUsed(Class->getLocation(), Class, true);
+ 
+   for (Decl *Member : Class->decls()) {
+diff --git a/clang/test/CodeGenCXX/dllexport-missing-key.cpp b/clang/test/CodeGenCXX/dllexport-missing-key.cpp
+index 90e736f6fa..505679f315 100644
+--- a/clang/test/CodeGenCXX/dllexport-missing-key.cpp
++++ b/clang/test/CodeGenCXX/dllexport-missing-key.cpp
+@@ -1,4 +1,5 @@
+ // RUN: %clang_cc1 -triple x86_64-windows-gnu -emit-llvm -std=c++11 -o - %s | FileCheck --check-prefix=GNU %s
++// RUN: %clang_cc1 -triple x86_64-pc-cygwin   -emit-llvm -std=c++11 -o - %s | FileCheck --check-prefix=GNU %s
+ 
+ class __declspec(dllexport) QAbstractLayoutStyleInfo {
+ public:
+diff --git a/clang/test/CodeGenCXX/dllimport-missing-key.cpp b/clang/test/CodeGenCXX/dllimport-missing-key.cpp
+index d8ef7aa7ea..9eb9e7b5bb 100644
+--- a/clang/test/CodeGenCXX/dllimport-missing-key.cpp
++++ b/clang/test/CodeGenCXX/dllimport-missing-key.cpp
+@@ -1,4 +1,5 @@
+ // RUN: %clang_cc1 -triple i686-windows-gnu -emit-llvm -std=c++1y -O0 -o - %s -w | FileCheck --check-prefix=GNU %s
++// RUN: %clang_cc1 -triple i686-pc-cygwin   -emit-llvm -std=c++1y -O0 -o - %s -w | FileCheck --check-prefix=GNU %s
+ 
+ class __declspec(dllimport) QObjectData {
+ public:
+diff --git a/clang/test/CodeGenCXX/dllimport-rtti.cpp b/clang/test/CodeGenCXX/dllimport-rtti.cpp
+index f23a242c4b..046bf50203 100644
+--- a/clang/test/CodeGenCXX/dllimport-rtti.cpp
++++ b/clang/test/CodeGenCXX/dllimport-rtti.cpp
+@@ -1,5 +1,8 @@
+-// RUN: %clang_cc1 -triple i686-windows-msvc -emit-llvm -std=c++1y -fms-extensions -O1 -disable-llvm-passes -o - %s | FileCheck %s --check-prefix=MSVC
+-// RUN: %clang_cc1 -triple i686-windows-gnu  -emit-llvm -std=c++1y -fms-extensions -O1 -disable-llvm-passes -o - %s | FileCheck %s --check-prefix=GNU
++// RUN: %clang_cc1 -triple i686-windows-msvc  -emit-llvm -std=c++1y -fms-extensions -O1 -disable-llvm-passes -o - %s | FileCheck %s --check-prefix=MSVC
++// RUN: %clang_cc1 -triple i686-windows-gnu   -emit-llvm -std=c++1y -fms-extensions -O1 -disable-llvm-passes -o - %s | FileCheck %s --check-prefix=GNU
++// RUN: %clang_cc1 -triple x86_64-windows-gnu -emit-llvm -std=c++1y -fms-extensions -O1 -disable-llvm-passes -o - %s | FileCheck %s --check-prefix=GNU
++// RUN: %clang_cc1 -triple i686-pc-cygwin     -emit-llvm -std=c++1y -fms-extensions -O1 -disable-llvm-passes -o - %s | FileCheck %s --check-prefix=GNU
++// RUN: %clang_cc1 -triple x86_64-pc-cygwin   -emit-llvm -std=c++1y -fms-extensions -O1 -disable-llvm-passes -o - %s | FileCheck %s --check-prefix=GNU
+ 
+ struct __declspec(dllimport) S {
+   virtual void f() {}
+diff --git a/clang/test/CodeGenCXX/rtti-mingw64.cpp b/clang/test/CodeGenCXX/rtti-mingw64.cpp
+index e0a4607cf2..9de2806029 100644
+--- a/clang/test/CodeGenCXX/rtti-mingw64.cpp
++++ b/clang/test/CodeGenCXX/rtti-mingw64.cpp
+@@ -1,4 +1,6 @@
+ // RUN: %clang_cc1 -triple x86_64-windows-gnu %s -emit-llvm -o - | FileCheck %s
++// RUN: %clang_cc1 -triple x86_64-pc-cygwin   %s -emit-llvm -o - | FileCheck %s
++
+ struct A { int a; };
+ struct B : virtual A { int b; };
+ B b;
+diff --git a/clang/test/CodeGenCXX/virt-dtor-key.cpp b/clang/test/CodeGenCXX/virt-dtor-key.cpp
+index d3b9ab3351..cd169ab01d 100644
+--- a/clang/test/CodeGenCXX/virt-dtor-key.cpp
++++ b/clang/test/CodeGenCXX/virt-dtor-key.cpp
+@@ -1,5 +1,9 @@
+-// RUN: %clang_cc1 -triple i386-linux -emit-llvm %s -o - | FileCheck %s
+-// RUN: %clang_cc1 -triple i386-windows-gnu -emit-llvm %s -o - | FileCheck %s -check-prefix CHECK-MINGW
++// RUN: %clang_cc1 -triple i686-linux         -emit-llvm %s -o - | FileCheck %s
++// RUN: %clang_cc1 -triple i686-windows-gnu   -emit-llvm %s -o - | FileCheck %s -check-prefix CHECK-MINGW
++// RUN: %clang_cc1 -triple x86_64-windows-gnu -emit-llvm %s -o - | FileCheck %s -check-prefix CHECK-MINGW
++// RUN: %clang_cc1 -triple i686-pc-cygwin     -emit-llvm %s -o - | FileCheck %s -check-prefix CHECK-MINGW
++// RUN: %clang_cc1 -triple x86_64-pc-cygwin   -emit-llvm %s -o - | FileCheck %s -check-prefix CHECK-MINGW
++
+ // CHECK: @_ZTI3foo ={{.*}} constant
+ // CHECK-MINGW: @_ZTI3foo = linkonce_odr
+ class foo {
+diff --git a/clang/test/CodeGenCXX/vtable-key-function-ios.cpp b/clang/test/CodeGenCXX/vtable-key-function-ios.cpp
+index 43abfb62c7..b11d0a62a0 100644
+--- a/clang/test/CodeGenCXX/vtable-key-function-ios.cpp
++++ b/clang/test/CodeGenCXX/vtable-key-function-ios.cpp
+@@ -3,6 +3,8 @@
+ 
+ // RUN: %clang_cc1 %s -triple=x86_64-pc-windows-gnu -emit-llvm -o - | FileCheck -check-prefixes=CHECK,CHECK-MINGW %s
+ // RUN: %clang_cc1 %s -triple=x86_64-pc-windows-gnu -emit-llvm -o - | FileCheck -check-prefix=CHECK-LATE %s
++// RUN: %clang_cc1 %s -triple=x86_64-pc-cygwin      -emit-llvm -o - | FileCheck -check-prefixes=CHECK,CHECK-MINGW %s
++// RUN: %clang_cc1 %s -triple=x86_64-pc-cygwin      -emit-llvm -o - | FileCheck -check-prefix=CHECK-LATE %s
+ 
+ // The 'a' variants ask for the vtable first.
+ // The 'b' variants ask for the vtable second.
+-- 
+2.49.0.windows.1
+
