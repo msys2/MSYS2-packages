@@ -1,0 +1,3731 @@
+From 55985e687b774bdc0e96465f1f605043876c28c8 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Fri, 24 Nov 2023 00:34:48 +0900
+Subject: [PATCH] libstdc++: Implement most of locale features for newlib.
+
+Previously, locale implementation for newlib supports only "C" locale.
+With this patch, the locale implementation for newlib has been much
+improved using newlib functionality currently supported so that most
+of locale features can be used. The most of the codes are based on
+the implementation for the GNU libc.
+---
+ gcc/config/i386/cygwin.h                      |   2 +
+ libgcc/config/i386/t-cygwin                   |   2 +-
+ libstdc++-v3/Makefile.in                      |   1 +
+ libstdc++-v3/acinclude.m4                     |  39 +-
+ .../config/locale/dragonfly/c_locale.cc       |   1 +
+ .../config/locale/generic/c_locale.cc         |   1 +
+ libstdc++-v3/config/locale/gnu/c_locale.cc    |   1 +
+ .../locale/ieee_1003.1-2001/c_locale.cc       |   2 +
+ .../config/locale/newlib/c++locale_internal.h |  95 ++
+ libstdc++-v3/config/locale/newlib/c_locale.cc | 483 +++++++++
+ libstdc++-v3/config/locale/newlib/c_locale.h  | 100 ++
+ .../config/locale/newlib/codecvt_members.cc   | 288 ++++++
+ .../config/locale/newlib/collate_members.cc   |  74 ++
+ .../config/locale/newlib/ctype_members.cc     |  60 +-
+ .../config/locale/newlib/messages_members.cc  | 178 ++++
+ .../config/locale/newlib/messages_members.h   | 148 +++
+ .../config/locale/newlib/monetary_members.cc  | 942 ++++++++++++++++++
+ .../config/locale/newlib/numeric_members.cc   | 273 +++++
+ .../config/locale/newlib/time_members.cc      | 381 +++++++
+ .../config/locale/newlib/time_members.h       |  90 ++
+ .../config/os/newlib/ctype_configure_char.cc  |  32 +-
+ libstdc++-v3/configure                        |  66 +-
+ .../include/bits/locale_facets_nonio.tcc      |   1 +
+ libstdc++-v3/src/Makefile.in                  |   3 +-
+ libstdc++-v3/src/c++11/locale_init.cc         |   3 +-
+ 25 files changed, 3192 insertions(+), 74 deletions(-)
+ create mode 100644 libstdc++-v3/config/locale/newlib/c++locale_internal.h
+ create mode 100644 libstdc++-v3/config/locale/newlib/c_locale.cc
+ create mode 100644 libstdc++-v3/config/locale/newlib/c_locale.h
+ create mode 100644 libstdc++-v3/config/locale/newlib/codecvt_members.cc
+ create mode 100644 libstdc++-v3/config/locale/newlib/collate_members.cc
+ create mode 100644 libstdc++-v3/config/locale/newlib/messages_members.cc
+ create mode 100644 libstdc++-v3/config/locale/newlib/messages_members.h
+ create mode 100644 libstdc++-v3/config/locale/newlib/monetary_members.cc
+ create mode 100644 libstdc++-v3/config/locale/newlib/numeric_members.cc
+ create mode 100644 libstdc++-v3/config/locale/newlib/time_members.cc
+ create mode 100644 libstdc++-v3/config/locale/newlib/time_members.h
+
+diff --git a/gcc/config/i386/cygwin.h b/gcc/config/i386/cygwin.h
+index 94765b72fb0..c3267a12f8f 100644
+--- a/gcc/config/i386/cygwin.h
++++ b/gcc/config/i386/cygwin.h
+@@ -83,6 +83,8 @@ along with GCC; see the file COPYING3.  If not see
+ #define LIB_SPEC "\
+   %{pg:-lgmon} \
+   %{pthread: } \
++  -lintl \
++  -liconv \
+   -lcygwin \
+   %{mwindows:-lgdi32 -lcomdlg32} \
+   %{fvtable-verify=preinit:-lvtv -lpsapi; \
+diff --git a/libgcc/config/i386/t-cygwin b/libgcc/config/i386/t-cygwin
+index f85ec24220e..d3f0884b323 100644
+--- a/libgcc/config/i386/t-cygwin
++++ b/libgcc/config/i386/t-cygwin
+@@ -5,7 +5,7 @@ LIBGCC2_INCLUDES += -I$(srcdir)/../winsup/include \
+ 	-I$(srcdir)/../winsup/cygwin/include
+ 
+ # Cygwin-specific parts of LIB_SPEC
+-SHLIB_LC = -lcygwin -ladvapi32 -lshell32 -luser32 -lkernel32
++SHLIB_LC = -lintl -liconv -lcygwin -ladvapi32 -lshell32 -luser32 -lkernel32
+ 
+ # We have already included one of the t-{dw2,sjlj}-eh fragments for EH_MODEL
+ SHLIB_EH_EXTENSION = $(subst -dw2,,-$(EH_MODEL))
+diff --git a/libstdc++-v3/Makefile.in b/libstdc++-v3/Makefile.in
+index 5beb3146ee6..1406266c13d 100644
+--- a/libstdc++-v3/Makefile.in
++++ b/libstdc++-v3/Makefile.in
+@@ -244,6 +244,7 @@ ERROR_CONSTANTS_SRCDIR = @ERROR_CONSTANTS_SRCDIR@
+ EXEEXT = @EXEEXT@
+ EXTRA_CFLAGS = @EXTRA_CFLAGS@
+ EXTRA_CXX_FLAGS = @EXTRA_CXX_FLAGS@
++EXTRA_LIBS = @EXTRA_LIBS@
+ FGREP = @FGREP@
+ FORMAT_FILE = @FORMAT_FILE@
+ FREESTANDING_FLAGS = @FREESTANDING_FLAGS@
+diff --git a/libstdc++-v3/acinclude.m4 b/libstdc++-v3/acinclude.m4
+index 2c7929ef97c..4778338456e 100644
+--- a/libstdc++-v3/acinclude.m4
++++ b/libstdc++-v3/acinclude.m4
+@@ -2810,7 +2810,7 @@ AC_DEFUN([GLIBCXX_ENABLE_CLOCALE], [
+       dragonfly* | freebsd*)
+ 	enable_clocale_flag=dragonfly
+ 	;;
+-      openbsd*)
++      openbsd* | cygwin*)
+ 	enable_clocale_flag=newlib
+ 	;;
+       *)
+@@ -2822,6 +2822,10 @@ AC_DEFUN([GLIBCXX_ENABLE_CLOCALE], [
+ 	;;
+     esac
+   fi
++  case ${target_os} in cygwin*)
++    EXTRA_LIBS="-lintl"
++    ;;
++  esac
+ 
+   # Sanity check model, and test for special functionality.
+   if test $enable_clocale_flag = gnu; then
+@@ -2986,19 +2990,30 @@ AC_DEFUN([GLIBCXX_ENABLE_CLOCALE], [
+       ;;
+     newlib)
+       AC_MSG_RESULT(newlib)
++      AC_CHECK_HEADERS(libintl.h, ac_has_libintl_h=yes, ac_has_libintl_h=no)
++      AC_CHECK_HEADERS(iconv.h, ac_has_iconv_h=yes, ac_has_iconv_h=no)
+ 
+-      CLOCALE_H=config/locale/generic/c_locale.h
+-      CLOCALE_CC=config/locale/generic/c_locale.cc
+-      CCODECVT_CC=config/locale/generic/codecvt_members.cc
+-      CCOLLATE_CC=config/locale/generic/collate_members.cc
++      CLOCALE_H=config/locale/newlib/c_locale.h
++      CLOCALE_CC=config/locale/newlib/c_locale.cc
++      CCODECVT_CC=config/locale/newlib/codecvt_members.cc
++      CCOLLATE_CC=config/locale/newlib/collate_members.cc
+       CCTYPE_CC=config/locale/newlib/ctype_members.cc
+-      CMESSAGES_H=config/locale/generic/messages_members.h
+-      CMESSAGES_CC=config/locale/generic/messages_members.cc
+-      CMONEY_CC=config/locale/generic/monetary_members.cc
+-      CNUMERIC_CC=config/locale/generic/numeric_members.cc
+-      CTIME_H=config/locale/generic/time_members.h
+-      CTIME_CC=config/locale/generic/time_members.cc
+-      CLOCALE_INTERNAL_H=config/locale/generic/c++locale_internal.h
++      if test $ac_has_libintl_h = yes; then
++	CMESSAGES_H=config/locale/newlib/messages_members.h
++	CMESSAGES_CC=config/locale/newlib/messages_members.cc
++      else
++	CMESSAGES_H=config/locale/generic/messages_members.h
++	CMESSAGES_CC=config/locale/generic/messages_members.cc
++      fi
++      CMONEY_CC=config/locale/newlib/monetary_members.cc
++      if test $ac_has_iconv_h = yes; then
++	CNUMERIC_CC=config/locale/newlib/numeric_members.cc
++      else
++	CNUMERIC_CC=config/locale/generic/numeric_members.cc
++      fi
++      CTIME_H=config/locale/newlib/time_members.h
++      CTIME_CC=config/locale/newlib/time_members.cc
++      CLOCALE_INTERNAL_H=config/locale/newlib/c++locale_internal.h
+       ;;
+   esac
+ 
+diff --git a/libstdc++-v3/config/locale/dragonfly/c_locale.cc b/libstdc++-v3/config/locale/dragonfly/c_locale.cc
+index 88011d1975b..4282cf322b3 100644
+--- a/libstdc++-v3/config/locale/dragonfly/c_locale.cc
++++ b/libstdc++-v3/config/locale/dragonfly/c_locale.cc
+@@ -188,6 +188,7 @@ namespace std _GLIBCXX_VISIBILITY(default)
+ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+ 
+   const char* const* const locale::_S_categories = __gnu_cxx::category_names;
++  const __typeof(setlocale) *__setlocale = setlocale;
+ 
+ _GLIBCXX_END_NAMESPACE_VERSION
+ } // namespace
+diff --git a/libstdc++-v3/config/locale/generic/c_locale.cc b/libstdc++-v3/config/locale/generic/c_locale.cc
+index bfd02b5c2c6..8af73a89e32 100644
+--- a/libstdc++-v3/config/locale/generic/c_locale.cc
++++ b/libstdc++-v3/config/locale/generic/c_locale.cc
+@@ -284,6 +284,7 @@ namespace std _GLIBCXX_VISIBILITY(default)
+ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+ 
+   const char* const* const locale::_S_categories = __gnu_cxx::category_names;
++  const __typeof(setlocale) *__setlocale = setlocale;
+ 
+ _GLIBCXX_END_NAMESPACE_VERSION
+ } // namespace
+diff --git a/libstdc++-v3/config/locale/gnu/c_locale.cc b/libstdc++-v3/config/locale/gnu/c_locale.cc
+index 0c6bd17005b..1706661e738 100644
+--- a/libstdc++-v3/config/locale/gnu/c_locale.cc
++++ b/libstdc++-v3/config/locale/gnu/c_locale.cc
+@@ -283,6 +283,7 @@ namespace std _GLIBCXX_VISIBILITY(default)
+ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+ 
+   const char* const* const locale::_S_categories = __gnu_cxx::category_names;
++  const __typeof(setlocale) *__setlocale = setlocale;
+ 
+ _GLIBCXX_END_NAMESPACE_VERSION
+ } // namespace
+diff --git a/libstdc++-v3/config/locale/ieee_1003.1-2001/c_locale.cc b/libstdc++-v3/config/locale/ieee_1003.1-2001/c_locale.cc
+index 07e0524ba15..f91771550ea 100644
+--- a/libstdc++-v3/config/locale/ieee_1003.1-2001/c_locale.cc
++++ b/libstdc++-v3/config/locale/ieee_1003.1-2001/c_locale.cc
+@@ -103,5 +103,7 @@ namespace std _GLIBCXX_VISIBILITY(default)
+       _M_neg_format = money_base::_S_default_pattern;
+     }
+ #endif
++
++  const __typeof(setlocale) *__setlocale = setlocale;
+ }  // namespace std
+ 
+diff --git a/libstdc++-v3/config/locale/newlib/c++locale_internal.h b/libstdc++-v3/config/locale/newlib/c++locale_internal.h
+new file mode 100644
+index 00000000000..351d4566b3a
+--- /dev/null
++++ b/libstdc++-v3/config/locale/newlib/c++locale_internal.h
+@@ -0,0 +1,95 @@
++// Locale internal implementation header -*- C++ -*-
++
++// Copyright (C) 2002-2023 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 3, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// Under Section 7 of GPL version 3, you are granted additional
++// permissions described in the GCC Runtime Library Exception, version
++// 3.1, as published by the Free Software Foundation.
++
++// You should have received a copy of the GNU General Public License and
++// a copy of the GCC Runtime Library Exception along with this program;
++// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
++// <http://www.gnu.org/licenses/>.
++
++/** @file bits/c++locale_internal.h
++ *  This is an internal header file, included by other library headers.
++ *  Do not attempt to use it directly. @headername{locale}
++ */
++
++// Written by Jakub Jelinek <jakub@redhat.com>
++// Modified by Takashi Yano <takashi.yano@nifty.ne.jp>
++
++#include <bits/c++config.h>
++#include <clocale>
++#include <cstdlib>
++#include <cstring>
++#include <cstddef>
++#include <langinfo.h>
++
++#include <vector>
++#include <string.h>	// ::strdup
++
++#include <ext/concurrence.h>
++
++namespace std _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++  struct Catalog_info
++  {
++    Catalog_info(messages_base::catalog __id, const char* __domain,
++		 locale __loc)
++      : _M_id(__id), _M_domain(strdup(__domain)), _M_locale(__loc)
++    { }
++
++    ~Catalog_info()
++    { free(_M_domain); }
++
++    messages_base::catalog _M_id;
++    char* _M_domain;
++    locale _M_locale;
++
++  private:
++    Catalog_info(const Catalog_info&);
++
++    Catalog_info&
++    operator=(const Catalog_info&);
++  };
++
++  class Catalogs
++  {
++  public:
++    Catalogs() : _M_catalog_counter(0) { }
++    ~Catalogs();
++
++    messages_base::catalog
++    _M_add(const char* __domain, locale __l);
++
++    void
++    _M_erase(messages_base::catalog __c);
++
++    const Catalog_info*
++    _M_get(messages_base::catalog __c) const;
++
++  private:
++    mutable __gnu_cxx::__mutex _M_mutex;
++    messages_base::catalog _M_catalog_counter;
++    vector<Catalog_info*> _M_infos;
++  };
++
++  Catalogs&
++  get_catalogs();
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
+diff --git a/libstdc++-v3/config/locale/newlib/c_locale.cc b/libstdc++-v3/config/locale/newlib/c_locale.cc
+new file mode 100644
+index 00000000000..8156ca8d715
+--- /dev/null
++++ b/libstdc++-v3/config/locale/newlib/c_locale.cc
+@@ -0,0 +1,483 @@
++// Wrapper for underlying C-language localization -*- C++ -*-
++
++// Copyright (C) 2001-2023 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 3, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// Under Section 7 of GPL version 3, you are granted additional
++// permissions described in the GCC Runtime Library Exception, version
++// 3.1, as published by the Free Software Foundation.
++
++// You should have received a copy of the GNU General Public License and
++// a copy of the GCC Runtime Library Exception along with this program;
++// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
++// <http://www.gnu.org/licenses/>.
++
++//
++// ISO C++ 14882: 22.8  Standard locale categories.
++//
++
++// Written by Benjamin Kosnik <bkoz@redhat.com>
++// Modified by Takashi Yano <takashi.yano@nifty.ne.jp>
++
++#define _GNU_SOURCE 1
++#include <cstdio>
++#include <locale>
++#include <stdexcept>
++#include <limits>
++#include <algorithm>
++#include <langinfo.h>
++#include <bits/c++locale_internal.h>
++
++#include <backward/auto_ptr.h>
++
++#if __POSIX_VISIBLE < 200809
++struct __locale_t;
++typedef struct __locale_t *locale_t;
++
++#define LC_ALL_MASK		(1 << LC_ALL)
++#define LC_COLLATE_MASK		(1 << LC_COLLATE)
++#define LC_CTYPE_MASK		(1 << LC_CTYPE)
++#define LC_MONETARY_MASK	(1 << LC_MONETARY)
++#define LC_NUMERIC_MASK		(1 << LC_NUMERIC)
++#define LC_TIME_MASK		(1 << LC_TIME)
++#define LC_MESSAGES_MASK	(1 << LC_MESSAGES)
++
++extern "C" locale_t newlocale(int, const char *, locale_t);
++extern "C" void freelocale(locale_t);
++extern "C" locale_t duplocale(locale_t);
++extern "C" locale_t uselocale(locale_t);
++#endif /* __POSIX_VISIBLE < 200809 */
++
++/* Newlib constant */
++#define ENCODING_LEN 31
++#define CATEGORY_LEN 11
++#define NUM_CATEGORIES 6
++#define xstr(s) str(s)
++#define str(s) #s
++#define FMT_LOCALE "%" xstr(CATEGORY_LEN) "[^=]=%" xstr(ENCODING_LEN) "[^;]"
++
++namespace std _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++  template<>
++    void
++    __convert_to_v(const char* __s, float& __v, ios_base::iostate& __err,
++		   const __c_locale& __cloc) throw()
++    {
++      char* __sanity;
++      __v = strtof_l(__s, &__sanity, __cloc);
++
++      // _GLIBCXX_RESOLVE_LIB_DEFECTS
++      // 23. Num_get overflow result.
++      if (__sanity == __s || *__sanity != '\0')
++	{
++	  __v = 0.0f;
++	  __err = ios_base::failbit;
++	}
++      else if (__v == numeric_limits<float>::infinity())
++	{
++	  __v = numeric_limits<float>::max();
++	  __err = ios_base::failbit;
++	}
++      else if (__v == -numeric_limits<float>::infinity())
++	{
++	  __v = -numeric_limits<float>::max();
++	  __err = ios_base::failbit;
++	}
++    }
++
++  template<>
++    void
++    __convert_to_v(const char* __s, double& __v, ios_base::iostate& __err,
++		   const __c_locale& __cloc) throw()
++    {
++      char* __sanity;
++      __v = strtod_l(__s, &__sanity, __cloc);
++
++      // _GLIBCXX_RESOLVE_LIB_DEFECTS
++      // 23. Num_get overflow result.
++      if (__sanity == __s || *__sanity != '\0')
++	{
++	  __v = 0.0;
++	  __err = ios_base::failbit;
++	}
++      else if (__v == numeric_limits<double>::infinity())
++	{
++	  __v = numeric_limits<double>::max();
++	  __err = ios_base::failbit;
++	}
++      else if (__v == -numeric_limits<double>::infinity())
++	{
++	  __v = -numeric_limits<double>::max();
++	  __err = ios_base::failbit;
++	}
++    }
++
++  template<>
++    void
++    __convert_to_v(const char* __s, long double& __v, ios_base::iostate& __err,
++		   const __c_locale& __cloc) throw()
++    {
++      char* __sanity;
++      __v = strtold_l(__s, &__sanity, __cloc);
++
++      // _GLIBCXX_RESOLVE_LIB_DEFECTS
++      // 23. Num_get overflow result.
++      if (__sanity == __s || *__sanity != '\0')
++	{
++	  __v = 0.0l;
++	  __err = ios_base::failbit;
++	}
++      else if (__v == numeric_limits<long double>::infinity())
++	{
++	  __v = numeric_limits<long double>::max();
++	  __err = ios_base::failbit;
++	}
++      else if (__v == -numeric_limits<long double>::infinity())
++	{
++	  __v = -numeric_limits<long double>::max();
++	  __err = ios_base::failbit;
++	}
++    }
++
++  void
++  locale::facet::_S_create_c_locale(__c_locale& __cloc, const char* __s,
++				    __c_locale __old)
++  {
++    __cloc = newlocale(1 << LC_ALL, __s, __old);
++    if (__cloc)
++      return;
++
++    /* Newlib does not support locale strig such as
++       "LC_CTYPE=en_US.UTF8;LC_NUMERIC=de_DE.UTF8;..." */
++    const char *__p = __s;
++    __cloc = __old;
++    char __cat[CATEGORY_LEN + 1], __loc[ENCODING_LEN + 1];
++    while (2 == sscanf(__p, FMT_LOCALE, __cat, __loc))
++      {
++	struct {const char *__cat; int __mask;} __tbl[NUM_CATEGORIES + 1] =
++	  {
++	      {"LC_CTYPE", LC_CTYPE_MASK},
++	      {"LC_NUMERIC", LC_NUMERIC_MASK},
++	      {"LC_TIME", LC_TIME_MASK},
++	      {"LC_COLLATE", LC_COLLATE_MASK},
++	      {"LC_MONETARY", LC_MONETARY_MASK},
++	      {"LC_MESSAGES", LC_MESSAGES_MASK},
++	      {NULL, 0}
++	  };
++	for (int __i = 0; __tbl[__i].__cat; __i++)
++	  if (strcmp(__tbl[__i].__cat, __cat) == 0)
++	    {
++	      __cloc = newlocale(__tbl[__i].__mask, __loc, __cloc);
++	      break;
++	    }
++	if (!__cloc)
++	  break;
++	if ((__p = strchr(__p, ';')) == NULL)
++	  break;
++	__p++;
++      }
++    if (!__cloc)
++      {
++	// This named locale is not supported by the underlying OS.
++	__throw_runtime_error(__N("locale::facet::_S_create_c_locale "
++				  "name not valid"));
++      }
++  }
++
++  void
++  locale::facet::_S_destroy_c_locale(__c_locale& __cloc)
++  {
++    if (__cloc && _S_get_c_locale() != __cloc)
++      freelocale(__cloc);
++  }
++
++  __c_locale
++  locale::facet::_S_clone_c_locale(__c_locale& __cloc) throw()
++  { return duplocale(__cloc); }
++
++  __c_locale
++  locale::facet::_S_lc_ctype_c_locale(__c_locale __cloc, const char* __s)
++  {
++    __c_locale __dup = duplocale(__cloc);
++    if (__dup == __c_locale(0))
++      __throw_runtime_error(__N("locale::facet::_S_lc_ctype_c_locale "
++				"duplocale error"));
++    __c_locale __changed = newlocale(LC_CTYPE_MASK, __s, __dup);
++    if (__changed == __c_locale(0))
++      {
++	/* Newlib does not support locale strig such as
++	   "LC_CTYPE=en_US.UTF8;LC_NUMERIC=de_DE.UTF8;..." */
++	const char *__p = __s;
++	char __cat[CATEGORY_LEN + 1], __loc[ENCODING_LEN + 1];
++	while (2 == sscanf(__p, FMT_LOCALE, __cat, __loc))
++	  {
++	    if (strcmp("LC_CTYPE", __cat) == 0)
++	      {
++		__changed = newlocale(LC_CTYPE_MASK, __loc, __dup);
++		break;
++	      }
++	    if ((__p = strchr(__p, ';')) == NULL)
++	      break;
++	    __p++;
++	  }
++      }
++    if (__changed == __c_locale(0))
++      {
++	freelocale(__dup);
++	__throw_runtime_error(__N("locale::facet::_S_lc_ctype_c_locale "
++				  "newlocale error"));
++      }
++    return __changed;
++  }
++
++  struct _CatalogIdComp
++  {
++    bool
++    operator()(messages_base::catalog __cat, const Catalog_info* __info) const
++    { return __cat < __info->_M_id; }
++
++    bool
++    operator()(const Catalog_info* __info, messages_base::catalog __cat) const
++    { return __info->_M_id < __cat; }
++  };
++
++  Catalogs::~Catalogs()
++  {
++    for (vector<Catalog_info*>::iterator __it = _M_infos.begin();
++	 __it != _M_infos.end(); ++__it)
++      delete *__it;
++  }
++
++  messages_base::catalog
++  Catalogs::_M_add(const char* __domain, locale __l)
++  {
++    __gnu_cxx::__scoped_lock lock(_M_mutex);
++
++    // The counter is not likely to roll unless catalogs keep on being
++    // opened/closed which is consider as an application mistake for the
++    // moment.
++    if (_M_catalog_counter == numeric_limits<messages_base::catalog>::max())
++      return -1;
++
++    auto_ptr<Catalog_info> info(new Catalog_info(_M_catalog_counter++,
++						 __domain, __l));
++
++    // Check if we managed to allocate memory for domain.
++    if (!info->_M_domain)
++      return -1;
++
++    _M_infos.push_back(info.get());
++    return info.release()->_M_id;
++  }
++
++  void
++  Catalogs::_M_erase(messages_base::catalog __c)
++  {
++    __gnu_cxx::__scoped_lock lock(_M_mutex);
++
++    vector<Catalog_info*>::iterator __res =
++      lower_bound(_M_infos.begin(), _M_infos.end(), __c, _CatalogIdComp());
++    if (__res == _M_infos.end() || (*__res)->_M_id != __c)
++      return;
++
++    delete *__res;
++    _M_infos.erase(__res);
++
++    // Just in case closed catalog was the last open.
++    if (__c == _M_catalog_counter - 1)
++      --_M_catalog_counter;
++  }
++
++  const Catalog_info*
++  Catalogs::_M_get(messages_base::catalog __c) const
++  {
++    __gnu_cxx::__scoped_lock lock(_M_mutex);
++
++    vector<Catalog_info*>::const_iterator __res =
++      lower_bound(_M_infos.begin(), _M_infos.end(), __c, _CatalogIdComp());
++
++    if (__res != _M_infos.end() && (*__res)->_M_id == __c)
++      return *__res;
++
++    return 0;
++  }
++
++  Catalogs&
++  get_catalogs()
++  {
++    static Catalogs __catalogs;
++    return __catalogs;
++  }
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
++
++namespace __gnu_cxx _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++  const char* const category_names[NUM_CATEGORIES] =
++    {
++      "LC_CTYPE",
++      "LC_NUMERIC",
++      "LC_TIME",
++      "LC_COLLATE",
++      "LC_MONETARY",
++      "LC_MESSAGES",
++    };
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
++
++static char *
++__setlocale_for_newlib(int __category, const char *__locale)
++{
++  char *__ret;
++  if ((__ret = setlocale(__category, __locale)) == NULL
++      && __category == LC_ALL)
++    {
++      /* Newlib does not support locale strig such as
++	 "LC_CTYPE=en_US.UTF8;LC_NUMERIC=de_DE.UTF8;..." */
++      char __buf[NUM_CATEGORIES][ENCODING_LEN + 1];
++      const char *__p = __locale;
++      char __cat[CATEGORY_LEN + 1], __loc[ENCODING_LEN + 1];
++      while (2 == sscanf(__p, FMT_LOCALE, __cat, __loc))
++	{
++	  const char *__tbl[NUM_CATEGORIES] =
++	    {
++	      "LC_COLLATE",
++	      "LC_CTYPE",
++	      "LC_MONETARY",
++	      "LC_NUMERIC",
++	      "LC_TIME",
++	      "LC_MESSAGES"
++	    };
++	  for (int __i = 0; __i < NUM_CATEGORIES; __i++)
++	    if (strcmp(__tbl[__i], __cat) == 0)
++	      {
++		strncpy(__buf[__i], __loc, sizeof(__buf[__i]));
++		__buf[__i][ENCODING_LEN] = '\0';
++		break;
++	      }
++	  if ((__p = strchr(__p, ';')) == NULL)
++	    break;
++	  __p ++;
++	}
++      char __newloc[(ENCODING_LEN + 1) * NUM_CATEGORIES];
++      sprintf(__newloc, "%s/%s/%s/%s/%s/%s",
++	      __buf[0], __buf[1], __buf[2], __buf[3], __buf[4], __buf[5]);
++      __ret = setlocale(__category, __newloc);
++
++    }
++  return __ret;
++}
++
++namespace std _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++  const char* const* const locale::_S_categories = __gnu_cxx::category_names;
++  const __typeof(setlocale) *__setlocale = __setlocale_for_newlib;
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
++
++// XXX GLIBCXX_ABI Deprecated
++#ifdef _GLIBCXX_LONG_DOUBLE_COMPAT
++#define _GLIBCXX_LDBL_COMPAT(dbl, ldbl) \
++  extern "C" void ldbl (void) __attribute__ ((alias (#dbl)))
++_GLIBCXX_LDBL_COMPAT(_ZSt14__convert_to_vIdEvPKcRT_RSt12_Ios_IostateRKPi, _ZSt14__convert_to_vIeEvPKcRT_RSt12_Ios_IostateRKPi);
++#endif // _GLIBCXX_LONG_DOUBLE_COMPAT
++
++/* Retain compatibility with the version without newlib locale support. */
++#pragma GCC diagnostic ignored "-Wattribute-alias"
++#define DEF_COMPAT(func, target) \
++extern "C" __attribute__ ((alias (#target))) void func (void)
++DEF_COMPAT(_ZNSt6locale5facet17_S_clone_c_localeERPi, _ZNSt6locale5facet17_S_clone_c_localeERP10__locale_t);
++DEF_COMPAT(_ZNSt6locale5facet18_S_create_c_localeERPiPKcS1_, _ZNSt6locale5facet18_S_create_c_localeERP10__locale_tPKcS2_);
++DEF_COMPAT(_ZNSt6locale5facet19_S_destroy_c_localeERPi, _ZNSt6locale5facet19_S_destroy_c_localeERP10__locale_t);
++DEF_COMPAT(_ZNSt6locale5facet20_S_lc_ctype_c_localeEPiPKc, _ZNSt6locale5facet20_S_lc_ctype_c_localeEP10__locale_tPKc);
++DEF_COMPAT(_ZSt14__convert_to_vIdEvPKcRT_RSt12_Ios_IostateRKPi, _ZSt14__convert_to_vIdEvPKcRT_RSt12_Ios_IostateRKP10__locale_t);
++DEF_COMPAT(_ZSt14__convert_to_vIeEvPKcRT_RSt12_Ios_IostateRKPi, _ZSt14__convert_to_vIeEvPKcRT_RSt12_Ios_IostateRKP10__locale_t);
++DEF_COMPAT(_ZSt14__convert_to_vIfEvPKcRT_RSt12_Ios_IostateRKPi, _ZSt14__convert_to_vIfEvPKcRT_RSt12_Ios_IostateRKP10__locale_t);
++DEF_COMPAT(_ZSt16__convert_from_vRKPiPciPKcz, _ZSt16__convert_from_vRKP10__locale_tPciPKcz);
++#define DEF_COMPAT_EXT(func, target) \
++extern "C" __attribute__ ((weak)) void target (void) {} DEF_COMPAT(func, target)
++DEF_COMPAT_EXT(_ZNSt10moneypunctIcLb0EE24_M_initialize_moneypunctEPiPKc, _ZNSt10moneypunctIcLb0EE24_M_initialize_moneypunctEP10__locale_tPKc);
++DEF_COMPAT_EXT(_ZNSt10moneypunctIcLb0EEC1EPiPKcm, _ZNSt10moneypunctIcLb0EEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt10moneypunctIcLb0EEC2EPiPKcm, _ZNSt10moneypunctIcLb0EEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt10moneypunctIcLb1EE24_M_initialize_moneypunctEPiPKc, _ZNSt10moneypunctIcLb1EE24_M_initialize_moneypunctEP10__locale_tPKc);
++DEF_COMPAT_EXT(_ZNSt10moneypunctIcLb1EEC1EPiPKcm, _ZNSt10moneypunctIcLb1EEC1EPSt18__moneypunct_cacheIcLb1EEm);
++DEF_COMPAT_EXT(_ZNSt10moneypunctIcLb1EEC2EPiPKcm, _ZNSt10moneypunctIcLb1EEC2EPSt18__moneypunct_cacheIcLb1EEm);
++DEF_COMPAT_EXT(_ZNSt10moneypunctIwLb0EE24_M_initialize_moneypunctEPiPKc, _ZNSt10moneypunctIwLb0EE24_M_initialize_moneypunctEP10__locale_tPKc);
++DEF_COMPAT_EXT(_ZNSt10moneypunctIwLb0EEC1EPiPKcm, _ZNSt10moneypunctIwLb0EEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt10moneypunctIwLb0EEC2EPiPKcm, _ZNSt10moneypunctIwLb0EEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt10moneypunctIwLb1EE24_M_initialize_moneypunctEPiPKc, _ZNSt10moneypunctIwLb1EE24_M_initialize_moneypunctEP10__locale_tPKc);
++DEF_COMPAT_EXT(_ZNSt10moneypunctIwLb1EEC1EPiPKcm, _ZNSt10moneypunctIwLb1EEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt10moneypunctIwLb1EEC2EPiPKcm, _ZNSt10moneypunctIwLb1EEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt11__timepunctIcE23_M_initialize_timepunctEPi, _ZNSt11__timepunctIcE23_M_initialize_timepunctEP10__locale_t);
++DEF_COMPAT_EXT(_ZNSt11__timepunctIcEC1EPiPKcm, _ZNSt11__timepunctIcEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt11__timepunctIcEC2EPiPKcm, _ZNSt11__timepunctIcEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt11__timepunctIwE23_M_initialize_timepunctEPi, _ZNSt11__timepunctIwE23_M_initialize_timepunctEP10__locale_t);
++DEF_COMPAT_EXT(_ZNSt11__timepunctIwEC1EPiPKcm, _ZNSt11__timepunctIwEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt11__timepunctIwEC2EPiPKcm, _ZNSt11__timepunctIwEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt5ctypeIcEC1EPiPKcbm, _ZNSt5ctypeIcEC1EP10__locale_tPKcbm);
++DEF_COMPAT_EXT(_ZNSt5ctypeIcEC2EPiPKcbm, _ZNSt5ctypeIcEC2EP10__locale_tPKcbm);
++DEF_COMPAT_EXT(_ZNSt5ctypeIwEC1EPim, _ZNSt5ctypeIwEC1EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt5ctypeIwEC2EPim, _ZNSt5ctypeIwEC2EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7__cxx1110moneypunctIcLb0EE24_M_initialize_moneypunctEPiPKc, _ZNSt7__cxx1110moneypunctIcLb0EE24_M_initialize_moneypunctEP10__locale_tPKc);
++DEF_COMPAT_EXT(_ZNSt7__cxx1110moneypunctIcLb0EEC1EPiPKcm, _ZNSt7__cxx1110moneypunctIcLb0EEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt7__cxx1110moneypunctIcLb0EEC2EPiPKcm, _ZNSt7__cxx1110moneypunctIcLb0EEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt7__cxx1110moneypunctIcLb1EE24_M_initialize_moneypunctEPiPKc, _ZNSt7__cxx1110moneypunctIcLb1EE24_M_initialize_moneypunctEP10__locale_tPKc);
++DEF_COMPAT_EXT(_ZNSt7__cxx1110moneypunctIcLb1EEC1EPiPKcm, _ZNSt7__cxx1110moneypunctIcLb1EEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt7__cxx1110moneypunctIcLb1EEC2EPiPKcm, _ZNSt7__cxx1110moneypunctIcLb1EEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt7__cxx1110moneypunctIwLb0EE24_M_initialize_moneypunctEPiPKc, _ZNSt7__cxx1110moneypunctIwLb0EE24_M_initialize_moneypunctEP10__locale_tPKc);
++DEF_COMPAT_EXT(_ZNSt7__cxx1110moneypunctIwLb0EEC1EPiPKcm, _ZNSt7__cxx1110moneypunctIwLb0EEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt7__cxx1110moneypunctIwLb0EEC2EPiPKcm, _ZNSt7__cxx1110moneypunctIwLb0EEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt7__cxx1110moneypunctIwLb1EE24_M_initialize_moneypunctEPiPKc, _ZNSt7__cxx1110moneypunctIwLb1EE24_M_initialize_moneypunctEP10__locale_tPKc);
++DEF_COMPAT_EXT(_ZNSt7__cxx1110moneypunctIwLb1EEC1EPiPKcm, _ZNSt7__cxx1110moneypunctIwLb1EEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt7__cxx1110moneypunctIwLb1EEC2EPiPKcm, _ZNSt7__cxx1110moneypunctIwLb1EEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt7__cxx117collateIcEC1EPim, _ZNSt7__cxx117collateIcEC1EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7__cxx117collateIcEC2EPim, _ZNSt7__cxx117collateIcEC2EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7__cxx117collateIwEC1EPim, _ZNSt7__cxx117collateIwEC1EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7__cxx117collateIwEC2EPim, _ZNSt7__cxx117collateIwEC2EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7__cxx118messagesIcEC1EPiPKcm, _ZNSt7__cxx118messagesIcEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt7__cxx118messagesIcEC2EPiPKcm, _ZNSt7__cxx118messagesIcEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt7__cxx118messagesIwEC1EPiPKcm, _ZNSt7__cxx118messagesIwEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt7__cxx118messagesIwEC2EPiPKcm, _ZNSt7__cxx118messagesIwEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt7__cxx118numpunctIcE22_M_initialize_numpunctEPi, _ZNSt7__cxx118numpunctIcE22_M_initialize_numpunctEP10__locale_t);
++DEF_COMPAT_EXT(_ZNSt7__cxx118numpunctIcEC1EPim, _ZNSt7__cxx118numpunctIcEC1EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7__cxx118numpunctIcEC2EPim, _ZNSt7__cxx118numpunctIcEC2EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7__cxx118numpunctIwE22_M_initialize_numpunctEPi, _ZNSt7__cxx118numpunctIwE22_M_initialize_numpunctEP10__locale_t);
++DEF_COMPAT_EXT(_ZNSt7__cxx118numpunctIwEC1EPim, _ZNSt7__cxx118numpunctIwEC1EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7__cxx118numpunctIwEC2EPim, _ZNSt7__cxx118numpunctIwEC2EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7codecvtIcc10_mbstate_tEC1EPim, _ZNSt7codecvtIcc10_mbstate_tEC1EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7codecvtIcc10_mbstate_tEC2EPim, _ZNSt7codecvtIcc10_mbstate_tEC2EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7codecvtIwc10_mbstate_tEC1EPim, _ZNSt7codecvtIwc10_mbstate_tEC1EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7codecvtIwc10_mbstate_tEC2EPim, _ZNSt7codecvtIwc10_mbstate_tEC2EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7collateIcEC1EPim, _ZNSt7collateIcEC1EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7collateIcEC2EPim, _ZNSt7collateIcEC2EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7collateIwEC1EPim, _ZNSt7collateIwEC1EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt7collateIwEC2EPim, _ZNSt7collateIwEC2EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt8messagesIcEC1EPiPKcm, _ZNSt8messagesIcEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt8messagesIcEC2EPiPKcm, _ZNSt8messagesIcEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt8messagesIwEC1EPiPKcm, _ZNSt8messagesIwEC1EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt8messagesIwEC2EPiPKcm, _ZNSt8messagesIwEC2EP10__locale_tPKcm);
++DEF_COMPAT_EXT(_ZNSt8numpunctIcE22_M_initialize_numpunctEPi, _ZNSt8numpunctIcE22_M_initialize_numpunctEP10__locale_t);
++DEF_COMPAT_EXT(_ZNSt8numpunctIcEC1EPim, _ZNSt8numpunctIcEC1EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt8numpunctIcEC2EPim, _ZNSt8numpunctIcEC2EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt8numpunctIwE22_M_initialize_numpunctEPi, _ZNSt8numpunctIwE22_M_initialize_numpunctEP10__locale_t);
++DEF_COMPAT_EXT(_ZNSt8numpunctIwEC1EPim, _ZNSt8numpunctIwEC1EP10__locale_tm);
++DEF_COMPAT_EXT(_ZNSt8numpunctIwEC2EPim, _ZNSt8numpunctIwEC2EP10__locale_tm);
+diff --git a/libstdc++-v3/config/locale/newlib/c_locale.h b/libstdc++-v3/config/locale/newlib/c_locale.h
+new file mode 100644
+index 00000000000..c189abc872b
+--- /dev/null
++++ b/libstdc++-v3/config/locale/newlib/c_locale.h
+@@ -0,0 +1,100 @@
++// Wrapper for underlying C-language localization -*- C++ -*-
++
++// Copyright (C) 2001-2023 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 3, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// Under Section 7 of GPL version 3, you are granted additional
++// permissions described in the GCC Runtime Library Exception, version
++// 3.1, as published by the Free Software Foundation.
++
++// You should have received a copy of the GNU General Public License and
++// a copy of the GCC Runtime Library Exception along with this program;
++// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
++// <http://www.gnu.org/licenses/>.
++
++/** @file bits/c++locale.h
++ *  This is an internal header file, included by other library headers.
++ *  Do not attempt to use it directly. @headername{locale}
++ */
++
++//
++// ISO C++ 14882: 22.8  Standard locale categories.
++//
++
++// Written by Benjamin Kosnik <bkoz@redhat.com>
++// Modified by Takashi Yano <takashi.yano@nifty.ne.jp>
++
++#ifndef _GLIBCXX_CXX_LOCALE_H
++#define _GLIBCXX_CXX_LOCALE_H 1
++
++#pragma GCC system_header
++
++#include <clocale>
++
++#if __POSIX_VISIBLE < 200809
++struct __locale_t;
++typedef struct __locale_t *locale_t;
++
++#define LC_ALL_MASK		(1 << LC_ALL)
++#define LC_COLLATE_MASK		(1 << LC_COLLATE)
++#define LC_CTYPE_MASK		(1 << LC_CTYPE)
++#define LC_MONETARY_MASK	(1 << LC_MONETARY)
++#define LC_NUMERIC_MASK		(1 << LC_NUMERIC)
++#define LC_TIME_MASK		(1 << LC_TIME)
++#define LC_MESSAGES_MASK	(1 << LC_MESSAGES)
++
++extern "C" locale_t newlocale(int, const char *, locale_t);
++extern "C" void freelocale(locale_t);
++extern "C" locale_t duplocale(locale_t);
++extern "C" locale_t uselocale(locale_t);
++#endif /* __POSIX_VISIBLE < 200809 */
++
++#define _GLIBCXX_NUM_CATEGORIES 0
++
++namespace std _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++  typedef locale_t __c_locale;
++
++  // Convert numeric value of type double and long double to string and
++  // return length of string.  If vsnprintf is available use it, otherwise
++  // fall back to the unsafe vsprintf which, in general, can be dangerous
++  // and should be avoided.
++  inline int
++  __convert_from_v(const __c_locale& __cloc __attribute__ ((__unused__)),
++		   char* __out,
++		   const int __size __attribute__ ((__unused__)),
++		   const char* __fmt, ...)
++  {
++    __c_locale __old = uselocale(__cloc);
++
++    __builtin_va_list __args;
++    __builtin_va_start(__args, __fmt);
++
++#if _GLIBCXX_USE_C99_STDIO
++    const int __ret = __builtin_vsnprintf(__out, __size, __fmt, __args);
++#else
++    const int __ret = __builtin_vsprintf(__out, __fmt, __args);
++#endif
++
++    __builtin_va_end(__args);
++
++    uselocale(__old);
++    return __ret;
++  }
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
++
++#endif
+diff --git a/libstdc++-v3/config/locale/newlib/codecvt_members.cc b/libstdc++-v3/config/locale/newlib/codecvt_members.cc
+new file mode 100644
+index 00000000000..e483542ceb4
+--- /dev/null
++++ b/libstdc++-v3/config/locale/newlib/codecvt_members.cc
+@@ -0,0 +1,288 @@
++// std::codecvt implementation details, newlib version -*- C++ -*-
++
++// Copyright (C) 2002-2023 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 3, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// Under Section 7 of GPL version 3, you are granted additional
++// permissions described in the GCC Runtime Library Exception, version
++// 3.1, as published by the Free Software Foundation.
++
++// You should have received a copy of the GNU General Public License and
++// a copy of the GCC Runtime Library Exception along with this program;
++// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
++// <http://www.gnu.org/licenses/>.
++
++//
++// ISO C++ 14882: 22.2.1.5 - Template class codecvt
++//
++
++// Written by Benjamin Kosnik <bkoz@redhat.com>
++// Modified by Takashi Yano <takashi.yano@nifty.ne.jp>
++
++#include <locale>
++#include <cstdlib>  // For MB_CUR_MAX
++#include <climits>  // For MB_LEN_MAX
++#include <bits/c++locale_internal.h>
++
++namespace std _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++  // Specializations.
++#ifdef _GLIBCXX_USE_WCHAR_T
++  codecvt_base::result
++  codecvt<wchar_t, char, mbstate_t>::
++  do_out(state_type& __state, const intern_type* __from,
++	 const intern_type* __from_end, const intern_type*& __from_next,
++	 extern_type* __to, extern_type* __to_end,
++	 extern_type*& __to_next) const
++  {
++    result __ret = ok;
++    state_type __tmp_state(__state);
++
++    __c_locale __old = uselocale(_M_c_locale_codecvt);
++
++    // wcsnrtombs is *very* fast but stops if encounters NUL characters:
++    // in case we fall back to wcrtomb and then continue, in a loop.
++    // NB: wcsnrtombs is a GNU extension
++    for (__from_next = __from, __to_next = __to;
++	 __from_next < __from_end && __to_next < __to_end
++	 && __ret == ok;)
++      {
++	const intern_type* __from_chunk_end = wmemchr(__from_next, L'\0',
++						      __from_end - __from_next);
++	if (!__from_chunk_end)
++	  __from_chunk_end = __from_end;
++
++	__from = __from_next;
++	const size_t __conv = wcsnrtombs(__to_next, &__from_next,
++					 __from_chunk_end - __from_next,
++					 __to_end - __to_next, &__state);
++	if (__conv == static_cast<size_t>(-1))
++	  {
++	    // In case of error, in order to stop at the exact place we
++	    // have to start again from the beginning with a series of
++	    // wcrtomb.
++	    for (; __from < __from_next; ++__from)
++	      __to_next += wcrtomb(__to_next, *__from, &__tmp_state);
++	    __state = __tmp_state;
++	    __ret = error;
++	  }
++	else if (__from_next && __from_next < __from_chunk_end)
++	  {
++	    __to_next += __conv;
++	    __ret = partial;
++	  }
++	else
++	  {
++	    __from_next = __from_chunk_end;
++	    __to_next += __conv;
++	  }
++
++	if (__from_next < __from_end && __ret == ok)
++	  {
++	    extern_type __buf[MB_LEN_MAX];
++	    __tmp_state = __state;
++	    const size_t __conv2 = wcrtomb(__buf, *__from_next, &__tmp_state);
++	    if (__conv2 > static_cast<size_t>(__to_end - __to_next))
++	      __ret = partial;
++	    else
++	      {
++		memcpy(__to_next, __buf, __conv2);
++		__state = __tmp_state;
++		__to_next += __conv2;
++		++__from_next;
++	      }
++	  }
++      }
++
++    uselocale(__old);
++
++    return __ret;
++  }
++
++  codecvt_base::result
++  codecvt<wchar_t, char, mbstate_t>::
++  do_in(state_type& __state, const extern_type* __from,
++	const extern_type* __from_end, const extern_type*& __from_next,
++	intern_type* __to, intern_type* __to_end,
++	intern_type*& __to_next) const
++  {
++    result __ret = ok;
++    state_type __tmp_state(__state);
++
++    __c_locale __old = uselocale(_M_c_locale_codecvt);
++
++    // mbsnrtowcs is *very* fast but stops if encounters NUL characters:
++    // in case we store a L'\0' and then continue, in a loop.
++    // NB: mbsnrtowcs is a GNU extension
++    for (__from_next = __from, __to_next = __to;
++	 __from_next < __from_end && __to_next < __to_end
++	 && __ret == ok;)
++      {
++	const extern_type* __from_chunk_end;
++	__from_chunk_end = static_cast<const extern_type*>(memchr(__from_next, '\0',
++								  __from_end
++								  - __from_next));
++	if (!__from_chunk_end)
++	  __from_chunk_end = __from_end;
++
++	__from = __from_next;
++	size_t __conv = mbsnrtowcs(__to_next, &__from_next,
++				   __from_chunk_end - __from_next,
++				   __to_end - __to_next, &__state);
++	if (__conv == static_cast<size_t>(-1))
++	  {
++	    // In case of error, in order to stop at the exact place we
++	    // have to start again from the beginning with a series of
++	    // mbrtowc.
++	    for (;; ++__to_next, __from += __conv)
++	      {
++		__conv = mbrtowc(__to_next, __from, __from_end - __from,
++				 &__tmp_state);
++		if (__conv == static_cast<size_t>(-1)
++		    || __conv == static_cast<size_t>(-2))
++		  break;
++	      }
++	    __from_next = __from;
++	    __state = __tmp_state;
++	    __ret = error;
++	  }
++	else if (__from_next && __from_next < __from_chunk_end)
++	  {
++	    // It is unclear what to return in this case (see DR 382).
++	    __to_next += __conv;
++	    __ret = partial;
++	  }
++	else
++	  {
++	    __from_next = __from_chunk_end;
++	    __to_next += __conv;
++	  }
++
++	if (__from_next < __from_end && __ret == ok)
++	  {
++	    if (__to_next < __to_end)
++	      {
++		// XXX Probably wrong for stateful encodings
++		__tmp_state = __state;
++		++__from_next;
++		*__to_next++ = L'\0';
++	      }
++	    else
++	      __ret = partial;
++	  }
++      }
++
++    uselocale(__old);
++
++    return __ret;
++  }
++
++  int
++  codecvt<wchar_t, char, mbstate_t>::
++  do_encoding() const throw()
++  {
++    // XXX This implementation assumes that the encoding is
++    // stateless and is either single-byte or variable-width.
++    int __ret = 0;
++    __c_locale __old = uselocale(_M_c_locale_codecvt);
++    if (MB_CUR_MAX == 1)
++      __ret = 1;
++    uselocale(__old);
++    return __ret;
++  }
++
++  int
++  codecvt<wchar_t, char, mbstate_t>::
++  do_max_length() const throw()
++  {
++    __c_locale __old = uselocale(_M_c_locale_codecvt);
++    // XXX Probably wrong for stateful encodings.
++    int __ret = MB_CUR_MAX;
++    uselocale(__old);
++    return __ret;
++  }
++
++  int
++  codecvt<wchar_t, char, mbstate_t>::
++  do_length(state_type& __state, const extern_type* __from,
++	    const extern_type* __end, size_t __max) const
++  {
++    int __ret = 0;
++    state_type __tmp_state(__state);
++
++    __c_locale __old = uselocale(_M_c_locale_codecvt);
++
++    // mbsnrtowcs is *very* fast but stops if encounters NUL characters:
++    // in case we advance past it and then continue, in a loop.
++    // NB: mbsnrtowcs is a GNU extension
++
++    // A dummy internal buffer is needed in order for mbsnrtocws to consider
++    // its fourth parameter (it wouldn't with NULL as first parameter).
++    wchar_t* __to = static_cast<wchar_t*>(__builtin_alloca(sizeof(wchar_t)
++							   * __max));
++    while (__from < __end && __max)
++      {
++	const extern_type* __from_chunk_end;
++	__from_chunk_end = static_cast<const extern_type*>(memchr(__from, '\0',
++								  __end
++								  - __from));
++	if (!__from_chunk_end)
++	  __from_chunk_end = __end;
++
++	const extern_type* __tmp_from = __from;
++	size_t __conv = mbsnrtowcs(__to, &__from,
++				   __from_chunk_end - __from,
++				   __max, &__state);
++	if (__conv == static_cast<size_t>(-1))
++	  {
++	    // In case of error, in order to stop at the exact place we
++	    // have to start again from the beginning with a series of
++	    // mbrtowc.
++	    for (__from = __tmp_from;; __from += __conv)
++	      {
++		__conv = mbrtowc(0, __from, __end - __from,
++				 &__tmp_state);
++		if (__conv == static_cast<size_t>(-1)
++		    || __conv == static_cast<size_t>(-2))
++		  break;
++	      }
++	    __state = __tmp_state;
++	    __ret += __from - __tmp_from;
++	    break;
++	  }
++	if (!__from)
++	  __from = __from_chunk_end;
++
++	__ret += __from - __tmp_from;
++	__max -= __conv;
++
++	if (__from < __end && __max)
++	  {
++	    // XXX Probably wrong for stateful encodings
++	    __tmp_state = __state;
++	    ++__from;
++	    ++__ret;
++	    --__max;
++	  }
++      }
++
++    uselocale(__old);
++
++    return __ret;
++  }
++#endif
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
+diff --git a/libstdc++-v3/config/locale/newlib/collate_members.cc b/libstdc++-v3/config/locale/newlib/collate_members.cc
+new file mode 100644
+index 00000000000..74a646143be
+--- /dev/null
++++ b/libstdc++-v3/config/locale/newlib/collate_members.cc
+@@ -0,0 +1,74 @@
++// std::collate implementation details, newlib version -*- C++ -*-
++
++// Copyright (C) 2001-2023 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 3, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// Under Section 7 of GPL version 3, you are granted additional
++// permissions described in the GCC Runtime Library Exception, version
++// 3.1, as published by the Free Software Foundation.
++
++// You should have received a copy of the GNU General Public License and
++// a copy of the GCC Runtime Library Exception along with this program;
++// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
++// <http://www.gnu.org/licenses/>.
++
++//
++// ISO C++ 14882: 22.2.4.1.2  collate virtual functions
++//
++
++// Written by Benjamin Kosnik <bkoz@redhat.com>
++// Modified by Takashi Yano <takashi.yano@nifty.ne.jp>
++
++#include <locale>
++#include <bits/c++locale_internal.h>
++
++namespace std _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++  // These are basically extensions to char_traits, and perhaps should
++  // be put there instead of here.
++  template<>
++    int
++    collate<char>::_M_compare(const char* __one,
++			      const char* __two) const throw()
++    {
++      int __cmp = strcoll_l(__one, __two, _M_c_locale_collate);
++      return (__cmp >> (8 * sizeof (int) - 2)) | (__cmp != 0);
++    }
++
++  template<>
++    size_t
++    collate<char>::_M_transform(char* __to, const char* __from,
++				size_t __n) const throw()
++    { return strxfrm_l(__to, __from, __n, _M_c_locale_collate); }
++
++#ifdef _GLIBCXX_USE_WCHAR_T
++  template<>
++    int
++    collate<wchar_t>::_M_compare(const wchar_t* __one,
++				 const wchar_t* __two) const throw()
++    {
++      int __cmp = wcscoll_l(__one, __two, _M_c_locale_collate);
++      return (__cmp >> (8 * sizeof (int) - 2)) | (__cmp != 0);
++    }
++
++  template<>
++    size_t
++    collate<wchar_t>::_M_transform(wchar_t* __to, const wchar_t* __from,
++				   size_t __n) const throw()
++    { return wcsxfrm_l(__to, __from, __n, _M_c_locale_collate); }
++#endif
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
+diff --git a/libstdc++-v3/config/locale/newlib/ctype_members.cc b/libstdc++-v3/config/locale/newlib/ctype_members.cc
+index 9b844db00ca..eec526ae1d4 100644
+--- a/libstdc++-v3/config/locale/newlib/ctype_members.cc
++++ b/libstdc++-v3/config/locale/newlib/ctype_members.cc
+@@ -58,37 +58,37 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+     switch (__m)
+       {
+       case space:
+-	__ret = wctype("space");
++	__ret = wctype_l("space", _M_c_locale_ctype);
+ 	break;
+       case print:
+-	__ret = wctype("print");
++	__ret = wctype_l("print", _M_c_locale_ctype);
+ 	break;
+       case cntrl:
+-	__ret = wctype("cntrl");
++	__ret = wctype_l("cntrl", _M_c_locale_ctype);
+ 	break;
+       case upper:
+-	__ret = wctype("upper");
++	__ret = wctype_l("upper", _M_c_locale_ctype);
+ 	break;
+       case lower:
+-	__ret = wctype("lower");
++	__ret = wctype_l("lower", _M_c_locale_ctype);
+ 	break;
+       case alpha:
+-	__ret = wctype("alpha");
++	__ret = wctype_l("alpha", _M_c_locale_ctype);
+ 	break;
+       case digit:
+-	__ret = wctype("digit");
++	__ret = wctype_l("digit", _M_c_locale_ctype);
+ 	break;
+       case punct:
+-	__ret = wctype("punct");
++	__ret = wctype_l("punct", _M_c_locale_ctype);
+ 	break;
+       case xdigit:
+-	__ret = wctype("xdigit");
++	__ret = wctype_l("xdigit", _M_c_locale_ctype);
+ 	break;
+       case alnum:
+-	__ret = wctype("alnum");
++	__ret = wctype_l("alnum", _M_c_locale_ctype);
+ 	break;
+       case graph:
+-	__ret = wctype("graph");
++	__ret = wctype_l("graph", _M_c_locale_ctype);
+ 	break;
+       default:
+ 	// Different from the generic version, xdigit and print in
+@@ -100,25 +100,25 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+ 	// equal to _X or _B, the two cases are specifically handled
+ 	// here.
+ 	if (__m & xdigit)
+-	  __ret = wctype("xdigit");
++	  __ret = wctype_l("xdigit", _M_c_locale_ctype);
+ 	else if (__m & print)
+-	  __ret = wctype("print");
++	  __ret = wctype_l("print", _M_c_locale_ctype);
+ 	else
+ 	  __ret = __wmask_type();
+       }
+     return __ret;
+-  };
++  }
+ 
+   wchar_t
+   ctype<wchar_t>::do_toupper(wchar_t __c) const
+-  { return towupper(__c); }
++  { return towupper_l(__c, _M_c_locale_ctype); }
+ 
+   const wchar_t*
+   ctype<wchar_t>::do_toupper(wchar_t* __lo, const wchar_t* __hi) const
+   {
+     while (__lo < __hi)
+       {
+-        *__lo = towupper(*__lo);
++	*__lo = towupper_l(*__lo, _M_c_locale_ctype);
+         ++__lo;
+       }
+     return __hi;
+@@ -126,14 +126,14 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+ 
+   wchar_t
+   ctype<wchar_t>::do_tolower(wchar_t __c) const
+-  { return towlower(__c); }
++  { return towlower_l(__c, _M_c_locale_ctype); }
+ 
+   const wchar_t*
+   ctype<wchar_t>::do_tolower(wchar_t* __lo, const wchar_t* __hi) const
+   {
+     while (__lo < __hi)
+       {
+-        *__lo = towlower(*__lo);
++	*__lo = towlower_l(*__lo, _M_c_locale_ctype);
+         ++__lo;
+       }
+     return __hi;
+@@ -144,11 +144,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+   do_is(mask __m, wchar_t __c) const
+   {
+     bool __ret = false;
+-    // Newlib C library has a compact encoding that uses 8 bits only.
+     const size_t __bitmasksize = 7;
+     for (size_t __bitcur = 0; __bitcur <= __bitmasksize; ++__bitcur)
+       if (__m & _M_bit[__bitcur]
+-	  && iswctype(__c, _M_wmask[__bitcur]))
++	  && iswctype_l(__c, _M_wmask[__bitcur], _M_c_locale_ctype))
+ 	{
+ 	  __ret = true;
+ 	  break;
+@@ -162,11 +161,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+   {
+     for (; __lo < __hi; ++__vec, ++__lo)
+       {
+-	// Newlib C library has a compact encoding that uses 8 bits only.
+ 	const size_t __bitmasksize = 7;
+ 	mask __m = 0;
+ 	for (size_t __bitcur = 0; __bitcur <= __bitmasksize; ++__bitcur)
+-	  if (iswctype(*__lo, _M_wmask[__bitcur]))
++	  if (iswctype_l(*__lo, _M_wmask[__bitcur], _M_c_locale_ctype))
+ 	    __m |= _M_bit[__bitcur];
+ 	*__vec = __m;
+       }
+@@ -215,7 +213,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+   {
+     if (__wc >= 0 && __wc < 128 && _M_narrow_ok)
+       return _M_narrow[__wc];
++    __c_locale __old = uselocale(_M_c_locale_ctype);
+     const int __c = wctob(__wc);
++    uselocale(__old);
+     return (__c == EOF ? __dfault : static_cast<char>(__c));
+   }
+ 
+@@ -224,6 +224,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+   do_narrow(const wchar_t* __lo, const wchar_t* __hi, char __dfault,
+ 	    char* __dest) const
+   {
++    __c_locale __old = uselocale(_M_c_locale_ctype);
+     if (_M_narrow_ok)
+       while (__lo < __hi)
+ 	{
+@@ -245,12 +246,14 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+ 	  ++__lo;
+ 	  ++__dest;
+ 	}
++    uselocale(__old);
+     return __hi;
+   }
+ 
+   void
+   ctype<wchar_t>::_M_initialize_ctype() throw()
+   {
++    __c_locale __old = uselocale(_M_c_locale_ctype);
+     wint_t __i;
+     for (__i = 0; __i < 128; ++__i)
+       {
+@@ -264,15 +267,16 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+       _M_narrow_ok = true;
+     else
+       _M_narrow_ok = false;
+-    for (size_t __i = 0;
+-	 __i < sizeof(_M_widen) / sizeof(wint_t); ++__i)
+-      _M_widen[__i] = btowc(__i);
++    for (size_t __j = 0;
++	 __j < sizeof(_M_widen) / sizeof(wint_t); ++__j)
++      _M_widen[__j] = btowc(__j);
+ 
+-    for (size_t __i = 0; __i <= 7; ++__i)
++    for (size_t __k = 0; __k <= 7; ++__k)
+       {
+-	_M_bit[__i] = static_cast<mask>(1 << __i);
+-	_M_wmask[__i] = _M_convert_to_wmask(_M_bit[__i]);
++	_M_bit[__k] = static_cast<mask>(1 << __k);
++	_M_wmask[__k] = _M_convert_to_wmask(_M_bit[__k]);
+       }
++    uselocale(__old);
+   }
+ #endif //  _GLIBCXX_USE_WCHAR_T
+ 
+diff --git a/libstdc++-v3/config/locale/newlib/messages_members.cc b/libstdc++-v3/config/locale/newlib/messages_members.cc
+new file mode 100644
+index 00000000000..463533a26a2
+--- /dev/null
++++ b/libstdc++-v3/config/locale/newlib/messages_members.cc
+@@ -0,0 +1,178 @@
++// std::messages implementation details, newlib version -*- C++ -*-
++
++// Copyright (C) 2001-2023 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 3, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// Under Section 7 of GPL version 3, you are granted additional
++// permissions described in the GCC Runtime Library Exception, version
++// 3.1, as published by the Free Software Foundation.
++
++// You should have received a copy of the GNU General Public License and
++// a copy of the GCC Runtime Library Exception along with this program;
++// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
++// <http://www.gnu.org/licenses/>.
++
++//
++// ISO C++ 14882: 22.2.7.1.2  messages virtual functions
++//
++
++// Written by Benjamin Kosnik <bkoz@redhat.com>
++// Modified by Takashi Yano <takashi.yano@nifty.ne.jp>
++
++#include <locale>
++#include <bits/c++locale_internal.h>
++
++#include <cstdlib>	// std::free
++#include <string.h>	// ::strdup
++
++namespace
++{
++  using namespace std;
++
++  const char*
++  get_glibc_msg(__c_locale __locale_messages __attribute__((unused)),
++		const char* __name_messages __attribute__((unused)),
++		const char* __domainname,
++		const char* __dfault)
++  {
++    if (char* __sav = strdup(setlocale(LC_ALL, 0)))
++      {
++	setlocale(LC_ALL, __name_messages);
++	const char* __msg = dgettext(__domainname, __dfault);
++	setlocale(LC_ALL, __sav);
++	free(__sav);
++	return __msg;
++      }
++    return __dfault;
++  }
++}
++
++namespace std _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++  // Specializations.
++  template<>
++    typename messages<char>::catalog
++    messages<char>::do_open(const basic_string<char>& __s,
++			    const locale& __l) const
++    {
++      typedef codecvt<char, char, mbstate_t> __codecvt_t;
++      const __codecvt_t& __codecvt = use_facet<__codecvt_t>(__l);
++
++      bind_textdomain_codeset(__s.c_str(),
++	  nl_langinfo_l(CODESET, __codecvt._M_c_locale_codecvt));
++      return get_catalogs()._M_add(__s.c_str(), __l);
++    }
++
++  template<>
++    void
++    messages<char>::do_close(catalog __c) const
++    { get_catalogs()._M_erase(__c); }
++
++  template<>
++    string
++    messages<char>::do_get(catalog __c, int, int,
++			   const string& __dfault) const
++    {
++      if (__c < 0 || __dfault.empty())
++	return __dfault;
++
++      const Catalog_info* __cat_info = get_catalogs()._M_get(__c);
++
++      if (!__cat_info)
++	return __dfault;
++
++      return get_glibc_msg(_M_c_locale_messages, _M_name_messages,
++			   __cat_info->_M_domain,
++			   __dfault.c_str());
++    }
++
++#ifdef _GLIBCXX_USE_WCHAR_T
++  template<>
++    typename messages<wchar_t>::catalog
++    messages<wchar_t>::do_open(const basic_string<char>& __s,
++			       const locale& __l) const
++    {
++      typedef codecvt<wchar_t, char, mbstate_t> __codecvt_t;
++      const __codecvt_t& __codecvt = use_facet<__codecvt_t>(__l);
++
++      bind_textdomain_codeset(__s.c_str(),
++	  nl_langinfo_l(CODESET, __codecvt._M_c_locale_codecvt));
++
++      return get_catalogs()._M_add(__s.c_str(), __l);
++    }
++
++  template<>
++    void
++    messages<wchar_t>::do_close(catalog __c) const
++    { get_catalogs()._M_erase(__c); }
++
++  template<>
++    wstring
++    messages<wchar_t>::do_get(catalog __c, int, int,
++			      const wstring& __wdfault) const
++    {
++      if (__c < 0 || __wdfault.empty())
++	return __wdfault;
++
++      const Catalog_info* __cat_info = get_catalogs()._M_get(__c);
++
++      if (!__cat_info)
++	return __wdfault;
++
++      typedef codecvt<wchar_t, char, mbstate_t> __codecvt_t;
++      const __codecvt_t& __conv =
++	use_facet<__codecvt_t>(__cat_info->_M_locale);
++
++      const char* __translation;
++      mbstate_t __state;
++      __builtin_memset(&__state, 0, sizeof(mbstate_t));
++      {
++	const wchar_t* __wdfault_next;
++	size_t __mb_size = __wdfault.size() * __conv.max_length();
++	char* __dfault =
++	  static_cast<char*>(__builtin_alloca(sizeof(char) * (__mb_size + 1)));
++	char* __dfault_next;
++	__conv.out(__state,
++		   __wdfault.data(), __wdfault.data() + __wdfault.size(),
++		   __wdfault_next,
++		   __dfault, __dfault + __mb_size, __dfault_next);
++
++	// Make sure string passed to dgettext is \0 terminated.
++	*__dfault_next = '\0';
++	__translation = get_glibc_msg(_M_c_locale_messages, _M_name_messages,
++				      __cat_info->_M_domain, __dfault);
++
++	// If we end up getting default value back we can simply return original
++	// default value.
++	if (__translation == __dfault)
++	  return __wdfault;
++      }
++
++      __builtin_memset(&__state, 0, sizeof(mbstate_t));
++      size_t __size = __builtin_strlen(__translation);
++      const char* __translation_next;
++      wchar_t* __wtranslation =
++	static_cast<wchar_t*>(__builtin_alloca(sizeof(wchar_t) * (__size + 1)));
++      wchar_t* __wtranslation_next;
++      __conv.in(__state, __translation, __translation + __size,
++		__translation_next,
++		__wtranslation, __wtranslation + __size,
++		__wtranslation_next);
++      return wstring(__wtranslation, __wtranslation_next);
++    }
++#endif
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
+diff --git a/libstdc++-v3/config/locale/newlib/messages_members.h b/libstdc++-v3/config/locale/newlib/messages_members.h
+new file mode 100644
+index 00000000000..64b66d9a7fb
+--- /dev/null
++++ b/libstdc++-v3/config/locale/newlib/messages_members.h
+@@ -0,0 +1,148 @@
++// std::messages implementation details, newlib version -*- C++ -*-
++
++// Copyright (C) 2001-2023 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 3, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// Under Section 7 of GPL version 3, you are granted additional
++// permissions described in the GCC Runtime Library Exception, version
++// 3.1, as published by the Free Software Foundation.
++
++// You should have received a copy of the GNU General Public License and
++// a copy of the GCC Runtime Library Exception along with this program;
++// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
++// <http://www.gnu.org/licenses/>.
++
++/** @file bits/messages_members.h
++ *  This is an internal header file, included by other library headers.
++ *  Do not attempt to use it directly. @headername{locale}
++ */
++
++//
++// ISO C++ 14882: 22.2.7.1.2  messages functions
++//
++
++// Written by Benjamin Kosnik <bkoz@redhat.com>
++// Modified by Takashi Yano <takashi.yano@nifty.ne.jp>
++
++#include <libintl.h>
++#include <cassert>
++
++namespace std _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++  // Non-virtual member functions.
++  template<typename _CharT>
++    messages<_CharT>::messages(size_t __refs)
++    : facet(__refs), _M_c_locale_messages(_S_get_c_locale()),
++      _M_name_messages(_S_get_c_name())
++    { }
++
++  template<typename _CharT>
++    messages<_CharT>::messages(__c_locale __cloc, const char* __s,
++			       size_t __refs)
++    : facet(__refs), _M_c_locale_messages(0), _M_name_messages(0)
++    {
++      if (__builtin_strcmp(__s, _S_get_c_name()) != 0)
++	{
++	  const size_t __len = __builtin_strlen(__s) + 1;
++	  char* __tmp = new char[__len];
++	  __builtin_memcpy(__tmp, __s, __len);
++	  _M_name_messages = __tmp;
++	}
++      else
++	_M_name_messages = _S_get_c_name();
++
++      // Last to avoid leaking memory if new throws.
++      _M_c_locale_messages = _S_clone_c_locale(__cloc);
++    }
++
++  template<typename _CharT>
++    typename messages<_CharT>::catalog
++    messages<_CharT>::open(const basic_string<char>& __s, const locale& __loc,
++			   const char* __dir) const
++    {
++      bindtextdomain(__s.c_str(), __dir);
++      return this->do_open(__s, __loc);
++    }
++
++  // Virtual member functions.
++  template<typename _CharT>
++    messages<_CharT>::~messages()
++    {
++      if (_M_name_messages != _S_get_c_name())
++	delete [] _M_name_messages;
++      _S_destroy_c_locale(_M_c_locale_messages);
++    }
++
++  template<typename _CharT>
++    typename messages<_CharT>::catalog
++    messages<_CharT>::do_open(const basic_string<char>& __s,
++			      const locale&) const
++    {
++      // No error checking is done, assume the catalog exists and can
++      // be used.
++      textdomain(__s.c_str());
++      return 0;
++    }
++
++  template<typename _CharT>
++    void
++    messages<_CharT>::do_close(catalog) const
++    { }
++
++  // messages_byname
++  template<typename _CharT>
++    messages_byname<_CharT>::messages_byname(const char* __s, size_t __refs)
++    : messages<_CharT>(__refs)
++    {
++      assert(this->_M_name_messages == locale::facet::_S_get_c_name());
++      if (__builtin_strcmp(__s, this->_M_name_messages) != 0)
++	{
++	  const size_t __len = __builtin_strlen(__s) + 1;
++	  char* __tmp = new char[__len];
++	  __builtin_memcpy(__tmp, __s, __len);
++	  this->_M_name_messages = __tmp;
++	}
++
++      if (__builtin_strcmp(__s, "C") != 0
++	  && __builtin_strcmp(__s, "POSIX") != 0)
++	{
++	  this->_S_destroy_c_locale(this->_M_c_locale_messages);
++	  this->_S_create_c_locale(this->_M_c_locale_messages, __s);
++	}
++    }
++
++   //Specializations.
++  template<>
++    typename messages<char>::catalog
++    messages<char>::do_open(const basic_string<char>&,
++			    const locale&) const;
++
++  template<>
++    void
++    messages<char>::do_close(catalog) const;
++
++#ifdef _GLIBCXX_USE_WCHAR_T
++  template<>
++    typename messages<wchar_t>::catalog
++    messages<wchar_t>::do_open(const basic_string<char>&,
++			       const locale&) const;
++
++  template<>
++    void
++    messages<wchar_t>::do_close(catalog) const;
++#endif
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
+diff --git a/libstdc++-v3/config/locale/newlib/monetary_members.cc b/libstdc++-v3/config/locale/newlib/monetary_members.cc
+new file mode 100644
+index 00000000000..9acd1a39f24
+--- /dev/null
++++ b/libstdc++-v3/config/locale/newlib/monetary_members.cc
+@@ -0,0 +1,942 @@
++// std::moneypunct implementation details, newlib version -*- C++ -*-
++
++// Copyright (C) 2001-2023 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 3, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// Under Section 7 of GPL version 3, you are granted additional
++// permissions described in the GCC Runtime Library Exception, version
++// 3.1, as published by the Free Software Foundation.
++
++// You should have received a copy of the GNU General Public License and
++// a copy of the GCC Runtime Library Exception along with this program;
++// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
++// <http://www.gnu.org/licenses/>.
++
++//
++// ISO C++ 14882: 22.2.6.3.2  moneypunct virtual functions
++//
++
++// Written by Benjamin Kosnik <bkoz@redhat.com>
++// Modified by Takashi Yano <takashi.yano@nifty.ne.jp>
++
++#include <locale>
++#include <bits/c++locale_internal.h>
++
++namespace std _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++// This file might be compiled twice, but we only want to define the members
++// of money_base once.
++#if ! _GLIBCXX_USE_CXX11_ABI
++
++  // Construct and return valid pattern consisting of some combination of:
++  // space none symbol sign value
++  money_base::pattern
++  money_base::_S_construct_pattern(char __precedes, char __space,
++				   char __posn) throw()
++  {
++    pattern __ret;
++
++    // This insanely complicated routine attempts to construct a valid
++    // pattern for use with monyepunct. A couple of invariants:
++
++    // if (__precedes) symbol -> value
++    // else value -> symbol
++
++    // if (__space) space
++    // else none
++
++    // none == never first
++    // space never first or last
++
++    // Any elegant implementations of this are welcome.
++    switch (__posn)
++      {
++      case 0:
++      case 1:
++	// 1 The sign precedes the value and symbol.
++	__ret.field[0] = sign;
++	if (__space)
++	  {
++	    // Pattern starts with sign.
++	    if (__precedes)
++	      {
++		__ret.field[1] = symbol;
++		__ret.field[3] = value;
++	      }
++	    else
++	      {
++		__ret.field[1] = value;
++		__ret.field[3] = symbol;
++	      }
++	    __ret.field[2] = space;
++	  }
++	else
++	  {
++	    // Pattern starts with sign and ends with none.
++	    if (__precedes)
++	      {
++		__ret.field[1] = symbol;
++		__ret.field[2] = value;
++	      }
++	    else
++	      {
++		__ret.field[1] = value;
++		__ret.field[2] = symbol;
++	      }
++	    __ret.field[3] = none;
++	  }
++	break;
++      case 2:
++	// 2 The sign follows the value and symbol.
++	if (__space)
++	  {
++	    // Pattern either ends with sign.
++	    if (__precedes)
++	      {
++		__ret.field[0] = symbol;
++		__ret.field[2] = value;
++	      }
++	    else
++	      {
++		__ret.field[0] = value;
++		__ret.field[2] = symbol;
++	      }
++	    __ret.field[1] = space;
++	    __ret.field[3] = sign;
++	  }
++	else
++	  {
++	    // Pattern ends with sign then none.
++	    if (__precedes)
++	      {
++		__ret.field[0] = symbol;
++		__ret.field[1] = value;
++	      }
++	    else
++	      {
++		__ret.field[0] = value;
++		__ret.field[1] = symbol;
++	      }
++	    __ret.field[2] = sign;
++	    __ret.field[3] = none;
++	  }
++	break;
++      case 3:
++	// 3 The sign immediately precedes the symbol.
++	if (__precedes)
++	  {
++	    __ret.field[0] = sign;
++	    __ret.field[1] = symbol;
++	    if (__space)
++	      {
++		__ret.field[2] = space;
++		__ret.field[3] = value;
++	      }
++	    else
++	      {
++		__ret.field[2] = value;
++		__ret.field[3] = none;
++	      }
++	  }
++	else
++	  {
++	    __ret.field[0] = value;
++	    if (__space)
++	      {
++		__ret.field[1] = space;
++		__ret.field[2] = sign;
++		__ret.field[3] = symbol;
++	      }
++	    else
++	      {
++		__ret.field[1] = sign;
++		__ret.field[2] = symbol;
++		__ret.field[3] = none;
++	      }
++	  }
++	break;
++      case 4:
++	// 4 The sign immediately follows the symbol.
++	if (__precedes)
++	  {
++	    __ret.field[0] = symbol;
++	    __ret.field[1] = sign;
++	    if (__space)
++	      {
++		__ret.field[2] = space;
++		__ret.field[3] = value;
++	      }
++	    else
++	      {
++		__ret.field[2] = value;
++		__ret.field[3] = none;
++	      }
++	  }
++	else
++	  {
++	    __ret.field[0] = value;
++	    if (__space)
++	      {
++		__ret.field[1] = space;
++		__ret.field[2] = symbol;
++		__ret.field[3] = sign;
++	      }
++	    else
++	      {
++		__ret.field[1] = symbol;
++		__ret.field[2] = sign;
++		__ret.field[3] = none;
++	      }
++	  }
++	break;
++      default:
++	__ret = pattern();
++      }
++    return __ret;
++  }
++#endif
++
++  extern char __narrow_multibyte_chars(const char* s, locale_t cloc);
++
++  template<>
++    void
++    moneypunct<char, true>::_M_initialize_moneypunct(__c_locale __cloc,
++						     const char*)
++    {
++      if (!_M_data)
++	_M_data = new __moneypunct_cache<char, true>;
++
++      if (!__cloc)
++	{
++	  // "C" locale
++	  _M_data->_M_decimal_point = '.';
++	  _M_data->_M_thousands_sep = ',';
++	  _M_data->_M_grouping = "";
++	  _M_data->_M_grouping_size = 0;
++	  _M_data->_M_use_grouping = false;
++	  _M_data->_M_curr_symbol = "";
++	  _M_data->_M_curr_symbol_size = 0;
++	  _M_data->_M_positive_sign = "";
++	  _M_data->_M_positive_sign_size = 0;
++	  _M_data->_M_negative_sign = "";
++	  _M_data->_M_negative_sign_size = 0;
++	  _M_data->_M_frac_digits = 0;
++	  _M_data->_M_pos_format = money_base::_S_default_pattern;
++	  _M_data->_M_neg_format = money_base::_S_default_pattern;
++
++	  for (size_t __i = 0; __i < money_base::_S_end; ++__i)
++	    _M_data->_M_atoms[__i] = money_base::_S_atoms[__i];
++	}
++      else
++	{
++	  // Named locale.
++	  _M_data->_M_decimal_point =
++	    *(nl_langinfo_l(_NL_MONETARY_MON_DECIMAL_POINT, __cloc));
++	  const char* thousands_sep =
++	    nl_langinfo_l(_NL_MONETARY_MON_THOUSANDS_SEP, __cloc);
++	  if (thousands_sep[0] != '\0' && thousands_sep[1] != '\0')
++	    _M_data->_M_thousands_sep = __narrow_multibyte_chars(thousands_sep,
++								 __cloc);
++	  else
++	    _M_data->_M_thousands_sep = *thousands_sep;
++
++	  // Check for NULL, which implies no fractional digits.
++	  if (_M_data->_M_decimal_point == '\0')
++	    {
++	      // Like in "C" locale.
++	      _M_data->_M_frac_digits = 0;
++	      _M_data->_M_decimal_point = '.';
++	    }
++	  else
++	    _M_data->_M_frac_digits =
++	      *(nl_langinfo_l(_NL_MONETARY_INT_FRAC_DIGITS, __cloc));
++
++	  const char* __cgroup =
++	    nl_langinfo_l(_NL_MONETARY_MON_GROUPING, __cloc);
++	  const char* __cpossign =
++	    nl_langinfo_l(_NL_MONETARY_POSITIVE_SIGN, __cloc);
++	  const char* __cnegsign =
++	    nl_langinfo_l(_NL_MONETARY_NEGATIVE_SIGN, __cloc);
++	  // _Intl == true
++	  const char* __ccurr =
++	    nl_langinfo_l(_NL_MONETARY_INT_CURR_SYMBOL, __cloc);
++
++	  char* __group = 0;
++	  char* __ps = 0;
++	  char* __ns = 0;
++	  const char __nposn = 0;
++	    /* *(nl_langinfo_l(_NL_MONETARY_INT_N_SIGN_POSN, __cloc)); */
++	  __try
++	    {
++	      size_t __len;
++
++	      // Check for NULL, which implies no grouping.
++	      if (_M_data->_M_thousands_sep == '\0')
++		{
++		  // Like in "C" locale.
++		  _M_data->_M_grouping = "";
++		  _M_data->_M_grouping_size = 0;
++		  _M_data->_M_use_grouping = false;
++		  _M_data->_M_thousands_sep = ',';
++		}
++	      else
++		{
++		  __len = strlen(__cgroup);
++		  if (__len)
++		    {
++		      __group = new char[__len + 1];
++		      memcpy(__group, __cgroup, __len + 1);
++		      _M_data->_M_grouping = __group;
++		    }
++		  else
++		    {
++		      _M_data->_M_grouping = "";
++		      _M_data->_M_use_grouping = false;
++		    }
++		  _M_data->_M_grouping_size = __len;
++		}
++
++	      __len = strlen(__cpossign);
++	      if (__len)
++		{
++		  __ps = new char[__len + 1];
++		  memcpy(__ps, __cpossign, __len + 1);
++		  _M_data->_M_positive_sign = __ps;
++		}
++	      else
++		_M_data->_M_positive_sign = "";
++	      _M_data->_M_positive_sign_size = __len;
++
++	      if (!__nposn)
++		{
++		  _M_data->_M_negative_sign = "()";
++		  _M_data->_M_negative_sign_size = 2;
++		}
++	      else
++		{
++		  __len = strlen(__cnegsign);
++		  if (__len)
++		    {
++		      __ns = new char[__len + 1];
++		      memcpy(__ns, __cnegsign, __len + 1);
++		      _M_data->_M_negative_sign = __ns;
++		    }
++		  else
++		    _M_data->_M_negative_sign = "";
++		  _M_data->_M_negative_sign_size = __len;
++		}
++
++	      __len = strlen(__ccurr);
++	      if (__len)
++		{
++		  char* __curr = new char[__len + 1];
++		  memcpy(__curr, __ccurr, __len + 1);
++		  _M_data->_M_curr_symbol = __curr;
++		}
++	      else
++		_M_data->_M_curr_symbol = "";
++	      _M_data->_M_curr_symbol_size = __len;
++	    }
++	  __catch(...)
++	    {
++	      delete _M_data;
++	      _M_data = 0;
++	      delete [] __group;
++	      delete [] __ps;
++	      delete [] __ns;
++	      __throw_exception_again;
++	    }
++
++	  char __pprecedes =
++	    *(nl_langinfo_l(_NL_MONETARY_INT_P_CS_PRECEDES, __cloc));
++	  char __pspace =
++	    *(nl_langinfo_l(_NL_MONETARY_INT_P_SEP_BY_SPACE, __cloc));
++	  char __pposn =
++	    *(nl_langinfo_l(_NL_MONETARY_INT_P_SIGN_POSN, __cloc));
++	  _M_data->_M_pos_format = _S_construct_pattern(__pprecedes, __pspace,
++							__pposn);
++	  char __nprecedes =
++	    *(nl_langinfo_l(_NL_MONETARY_INT_N_CS_PRECEDES, __cloc));
++	  char __nspace =
++	    *(nl_langinfo_l(_NL_MONETARY_INT_N_SEP_BY_SPACE, __cloc));
++	  _M_data->_M_neg_format = _S_construct_pattern(__nprecedes, __nspace,
++							__nposn);
++	}
++    }
++
++  template<>
++    void
++    moneypunct<char, false>::_M_initialize_moneypunct(__c_locale __cloc,
++						      const char*)
++    {
++      if (!_M_data)
++	_M_data = new __moneypunct_cache<char, false>;
++
++      if (!__cloc)
++	{
++	  // "C" locale
++	  _M_data->_M_decimal_point = '.';
++	  _M_data->_M_thousands_sep = ',';
++	  _M_data->_M_grouping = "";
++	  _M_data->_M_grouping_size = 0;
++	  _M_data->_M_use_grouping = false;
++	  _M_data->_M_curr_symbol = "";
++	  _M_data->_M_curr_symbol_size = 0;
++	  _M_data->_M_positive_sign = "";
++	  _M_data->_M_positive_sign_size = 0;
++	  _M_data->_M_negative_sign = "";
++	  _M_data->_M_negative_sign_size = 0;
++	  _M_data->_M_frac_digits = 0;
++	  _M_data->_M_pos_format = money_base::_S_default_pattern;
++	  _M_data->_M_neg_format = money_base::_S_default_pattern;
++
++	  for (size_t __i = 0; __i < money_base::_S_end; ++__i)
++	    _M_data->_M_atoms[__i] = money_base::_S_atoms[__i];
++	}
++      else
++	{
++	  // Named locale.
++	  _M_data->_M_decimal_point =
++	    *(nl_langinfo_l(_NL_MONETARY_MON_DECIMAL_POINT, __cloc));
++	  _M_data->_M_thousands_sep =
++	    *(nl_langinfo_l(_NL_MONETARY_MON_THOUSANDS_SEP, __cloc));
++
++	  // Check for NULL, which implies no fractional digits.
++	  if (_M_data->_M_decimal_point == '\0')
++	    {
++	      // Like in "C" locale.
++	      _M_data->_M_frac_digits = 0;
++	      _M_data->_M_decimal_point = '.';
++	    }
++	  else
++	    _M_data->_M_frac_digits =
++	      *(nl_langinfo_l(_NL_MONETARY_FRAC_DIGITS, __cloc));
++
++	  const char* __cgroup =
++	    nl_langinfo_l(_NL_MONETARY_MON_GROUPING, __cloc);
++	  const char* __cpossign =
++	    nl_langinfo_l(_NL_MONETARY_POSITIVE_SIGN, __cloc);
++	  const char* __cnegsign =
++	    nl_langinfo_l(_NL_MONETARY_NEGATIVE_SIGN, __cloc);
++	  // _Intl == false
++	  const char* __ccurr =
++	    nl_langinfo_l(_NL_MONETARY_CURRENCY_SYMBOL, __cloc);
++
++	  char* __group = 0;
++	  char* __ps = 0;
++	  char* __ns = 0;
++	  const char __nposn = 1;
++	    /* *(nl_langinfo_l(_NL_MONETARY_N_SIGN_POSN, __cloc)); */
++	  __try
++	    {
++	      size_t __len;
++
++	      // Check for NULL, which implies no grouping.
++	      if (_M_data->_M_thousands_sep == '\0')
++		{
++		  // Like in "C" locale.
++		  _M_data->_M_grouping = "";
++		  _M_data->_M_grouping_size = 0;
++		  _M_data->_M_use_grouping = false;
++		  _M_data->_M_thousands_sep = ',';
++		}
++	      else
++		{
++		  __len = strlen(__cgroup);
++		  if (__len)
++		    {
++		      __group = new char[__len + 1];
++		      memcpy(__group, __cgroup, __len + 1);
++		      _M_data->_M_grouping = __group;
++		    }
++		  else
++		    {
++		      _M_data->_M_grouping = "";
++		      _M_data->_M_use_grouping = false;
++		    }
++		  _M_data->_M_grouping_size = __len;
++		}
++
++	      __len = strlen(__cpossign);
++	      if (__len)
++		{
++		  __ps = new char[__len + 1];
++		  memcpy(__ps, __cpossign, __len + 1);
++		  _M_data->_M_positive_sign = __ps;
++		}
++	      else
++		_M_data->_M_positive_sign = "";
++	      _M_data->_M_positive_sign_size = __len;
++
++	      if (!__nposn)
++		{
++		  _M_data->_M_negative_sign = "()";
++		  _M_data->_M_negative_sign_size = 2;
++		}
++	      else
++		{
++		  __len = strlen(__cnegsign);
++		  if (__len)
++		    {
++		      __ns = new char[__len + 1];
++		      memcpy(__ns, __cnegsign, __len + 1);
++		      _M_data->_M_negative_sign = __ns;
++		    }
++		  else
++		    _M_data->_M_negative_sign = "";
++		  _M_data->_M_negative_sign_size = __len;
++		}
++
++	      __len = strlen(__ccurr);
++	      if (__len)
++		{
++		  char* __curr = new char[__len + 1];
++		  memcpy(__curr, __ccurr, __len + 1);
++		  _M_data->_M_curr_symbol = __curr;
++		}
++	      else
++		_M_data->_M_curr_symbol = "";
++	      _M_data->_M_curr_symbol_size = __len;
++	    }
++	  __catch(...)
++	    {
++	      delete _M_data;
++	      _M_data = 0;
++	      delete [] __group;
++	      delete [] __ps;
++	      delete [] __ns;
++	      __throw_exception_again;
++	    }
++
++	  char __pprecedes =
++	    *(nl_langinfo_l(_NL_MONETARY_P_CS_PRECEDES, __cloc));
++	  char __pspace =
++	    *(nl_langinfo_l(_NL_MONETARY_P_SEP_BY_SPACE, __cloc));
++	  char __pposn = *(nl_langinfo_l(_NL_MONETARY_P_SIGN_POSN, __cloc));
++	  _M_data->_M_pos_format = _S_construct_pattern(__pprecedes, __pspace,
++							__pposn);
++	  char __nprecedes =
++	    *(nl_langinfo_l(_NL_MONETARY_N_CS_PRECEDES, __cloc));
++	  char __nspace =
++	    *(nl_langinfo_l(_NL_MONETARY_N_SEP_BY_SPACE, __cloc));
++	  _M_data->_M_neg_format = _S_construct_pattern(__nprecedes, __nspace,
++							__nposn);
++	}
++    }
++
++  template<>
++    moneypunct<char, true>::~moneypunct()
++    {
++      if (_M_data->_M_grouping_size)
++	delete [] _M_data->_M_grouping;
++      if (_M_data->_M_positive_sign_size)
++	delete [] _M_data->_M_positive_sign;
++      if (_M_data->_M_negative_sign_size
++	  && strcmp(_M_data->_M_negative_sign, "()") != 0)
++	delete [] _M_data->_M_negative_sign;
++      if (_M_data->_M_curr_symbol_size)
++	delete [] _M_data->_M_curr_symbol;
++      delete _M_data;
++    }
++
++  template<>
++    moneypunct<char, false>::~moneypunct()
++    {
++      if (_M_data->_M_grouping_size)
++	delete [] _M_data->_M_grouping;
++      if (_M_data->_M_positive_sign_size)
++	delete [] _M_data->_M_positive_sign;
++      if (_M_data->_M_negative_sign_size
++	  && strcmp(_M_data->_M_negative_sign, "()") != 0)
++	delete [] _M_data->_M_negative_sign;
++      if (_M_data->_M_curr_symbol_size)
++	delete [] _M_data->_M_curr_symbol;
++      delete _M_data;
++    }
++
++#ifdef _GLIBCXX_USE_WCHAR_T
++  template<>
++    void
++    moneypunct<wchar_t, true>::_M_initialize_moneypunct(__c_locale __cloc,
++							const char*)
++    {
++      if (!_M_data)
++	_M_data = new __moneypunct_cache<wchar_t, true>;
++
++      if (!__cloc)
++	{
++	  // "C" locale
++	  _M_data->_M_decimal_point = L'.';
++	  _M_data->_M_thousands_sep = L',';
++	  _M_data->_M_grouping = "";
++	  _M_data->_M_grouping_size = 0;
++	  _M_data->_M_use_grouping = false;
++	  _M_data->_M_curr_symbol = L"";
++	  _M_data->_M_curr_symbol_size = 0;
++	  _M_data->_M_positive_sign = L"";
++	  _M_data->_M_positive_sign_size = 0;
++	  _M_data->_M_negative_sign = L"";
++	  _M_data->_M_negative_sign_size = 0;
++	  _M_data->_M_frac_digits = 0;
++	  _M_data->_M_pos_format = money_base::_S_default_pattern;
++	  _M_data->_M_neg_format = money_base::_S_default_pattern;
++
++	  // Use ctype::widen code without the facet...
++	  for (size_t __i = 0; __i < money_base::_S_end; ++__i)
++	    _M_data->_M_atoms[__i] =
++	      static_cast<wchar_t>(money_base::_S_atoms[__i]);
++	}
++      else
++	{
++	  // Named locale.
++	  __c_locale __old = uselocale(__cloc);
++
++	  union { char *__s; wchar_t *__w; } __u;
++	  __u.__s = nl_langinfo_l(_NL_MONETARY_WMON_DECIMAL_POINT, __cloc);
++	  _M_data->_M_decimal_point = *__u.__w;
++
++	  __u.__s = nl_langinfo_l(_NL_MONETARY_WMON_THOUSANDS_SEP, __cloc);
++	  _M_data->_M_thousands_sep = *__u.__w;
++
++	  // Check for NULL, which implies no fractional digits.
++	  if (_M_data->_M_decimal_point == L'\0')
++	    {
++	      // Like in "C" locale.
++	      _M_data->_M_frac_digits = 0;
++	      _M_data->_M_decimal_point = L'.';
++	    }
++	  else
++	    _M_data->_M_frac_digits =
++	      *(nl_langinfo_l(_NL_MONETARY_INT_FRAC_DIGITS, __cloc));
++
++	  const char* __cgroup =
++	    nl_langinfo_l(_NL_MONETARY_MON_GROUPING, __cloc);
++	  const char* __cpossign =
++	    nl_langinfo_l(_NL_MONETARY_POSITIVE_SIGN, __cloc);
++	  const char* __cnegsign =
++	    nl_langinfo_l(_NL_MONETARY_NEGATIVE_SIGN, __cloc);
++	  const char* __ccurr =
++	    nl_langinfo_l(_NL_MONETARY_INT_CURR_SYMBOL, __cloc);
++
++	  char* __group = 0;
++	  wchar_t* __wcs_ps = 0;
++	  wchar_t* __wcs_ns = 0;
++	  const char __nposn = 0;
++	    /* *(nl_langinfo_l(_NL_MONETARY_INT_N_SIGN_POSN, __cloc)); */
++	  __try
++	    {
++	      size_t __len;
++
++	      // Check for NULL, which implies no grouping.
++	      if (_M_data->_M_thousands_sep == L'\0')
++		{
++		  // Like in "C" locale.
++		  _M_data->_M_grouping = "";
++		  _M_data->_M_grouping_size = 0;
++		  _M_data->_M_use_grouping = false;
++		  _M_data->_M_thousands_sep = L',';
++		}
++	      else
++		{
++		  __len = strlen(__cgroup);
++		  if (__len)
++		    {
++		      __group = new char[__len + 1];
++		      memcpy(__group, __cgroup, __len + 1);
++		      _M_data->_M_grouping = __group;
++		    }
++		  else
++		    {
++		      _M_data->_M_grouping = "";
++		      _M_data->_M_use_grouping = false;
++		    }
++		  _M_data->_M_grouping_size = __len;
++		}
++
++	      mbstate_t __state;
++	      __len = strlen(__cpossign);
++	      if (__len)
++		{
++		  memset(&__state, 0, sizeof(mbstate_t));
++		  __wcs_ps = new wchar_t[__len + 1];
++		  mbsrtowcs(__wcs_ps, &__cpossign, __len + 1, &__state);
++		  _M_data->_M_positive_sign = __wcs_ps;
++		}
++	      else
++		_M_data->_M_positive_sign = L"";
++	      _M_data->_M_positive_sign_size =
++		wcslen(_M_data->_M_positive_sign);
++
++	      __len = strlen(__cnegsign);
++	      if (!__nposn)
++		_M_data->_M_negative_sign = L"()";
++	      else if (__len)
++		{
++		  memset(&__state, 0, sizeof(mbstate_t));
++		  __wcs_ns = new wchar_t[__len + 1];
++		  mbsrtowcs(__wcs_ns, &__cnegsign, __len + 1, &__state);
++		  _M_data->_M_negative_sign = __wcs_ns;
++		}
++	      else
++		_M_data->_M_negative_sign = L"";
++	      _M_data->_M_negative_sign_size =
++		wcslen(_M_data->_M_negative_sign);
++
++	      // _Intl == true.
++	      __len = strlen(__ccurr);
++	      if (__len)
++		{
++		  memset(&__state, 0, sizeof(mbstate_t));
++		  wchar_t* __wcs = new wchar_t[__len + 1];
++		  mbsrtowcs(__wcs, &__ccurr, __len + 1, &__state);
++		  _M_data->_M_curr_symbol = __wcs;
++		}
++	      else
++		_M_data->_M_curr_symbol = L"";
++	      _M_data->_M_curr_symbol_size = wcslen(_M_data->_M_curr_symbol);
++	    }
++	  __catch(...)
++	    {
++	      delete _M_data;
++	      _M_data = 0;
++	      delete [] __group;
++	      delete [] __wcs_ps;
++	      delete [] __wcs_ns;
++	      uselocale(__old);
++	      __throw_exception_again;
++	    }
++
++	  char __pprecedes =
++	    *(nl_langinfo_l(_NL_MONETARY_INT_P_CS_PRECEDES, __cloc));
++	  char __pspace =
++	    *(nl_langinfo_l(_NL_MONETARY_INT_P_SEP_BY_SPACE, __cloc));
++	  char __pposn =
++	    *(nl_langinfo_l(_NL_MONETARY_INT_P_SIGN_POSN, __cloc));
++	  _M_data->_M_pos_format = _S_construct_pattern(__pprecedes, __pspace,
++							__pposn);
++	  char __nprecedes =
++	    *(nl_langinfo_l(_NL_MONETARY_INT_N_CS_PRECEDES, __cloc));
++	  char __nspace =
++	    *(nl_langinfo_l(_NL_MONETARY_INT_N_SEP_BY_SPACE, __cloc));
++	  _M_data->_M_neg_format = _S_construct_pattern(__nprecedes, __nspace,
++							__nposn);
++
++	  uselocale(__old);
++	}
++    }
++
++  template<>
++  void
++  moneypunct<wchar_t, false>::_M_initialize_moneypunct(__c_locale __cloc,
++						       const char*)
++  {
++    if (!_M_data)
++      _M_data = new __moneypunct_cache<wchar_t, false>;
++
++    if (!__cloc)
++	{
++	  // "C" locale
++	  _M_data->_M_decimal_point = L'.';
++	  _M_data->_M_thousands_sep = L',';
++	  _M_data->_M_grouping = "";
++	  _M_data->_M_grouping_size = 0;
++	  _M_data->_M_use_grouping = false;
++	  _M_data->_M_curr_symbol = L"";
++	  _M_data->_M_curr_symbol_size = 0;
++	  _M_data->_M_positive_sign = L"";
++	  _M_data->_M_positive_sign_size = 0;
++	  _M_data->_M_negative_sign = L"";
++	  _M_data->_M_negative_sign_size = 0;
++	  _M_data->_M_frac_digits = 0;
++	  _M_data->_M_pos_format = money_base::_S_default_pattern;
++	  _M_data->_M_neg_format = money_base::_S_default_pattern;
++
++	  // Use ctype::widen code without the facet...
++	  for (size_t __i = 0; __i < money_base::_S_end; ++__i)
++	    _M_data->_M_atoms[__i] =
++	      static_cast<wchar_t>(money_base::_S_atoms[__i]);
++	}
++      else
++	{
++	  // Named locale.
++	  __c_locale __old = uselocale(__cloc);
++
++	  union { char *__s; wchar_t *__w; } __u;
++	  __u.__s = nl_langinfo_l(_NL_MONETARY_WMON_DECIMAL_POINT, __cloc);
++	  _M_data->_M_decimal_point = *__u.__w;
++
++	  __u.__s = nl_langinfo_l(_NL_MONETARY_WMON_THOUSANDS_SEP, __cloc);
++	  _M_data->_M_thousands_sep = *__u.__w;
++
++	  // Check for NULL, which implies no fractional digits.
++	  if (_M_data->_M_decimal_point == L'\0')
++	    {
++	      // Like in "C" locale.
++	      _M_data->_M_frac_digits = 0;
++	      _M_data->_M_decimal_point = L'.';
++	    }
++	  else
++	    _M_data->_M_frac_digits =
++	      *(nl_langinfo_l(_NL_MONETARY_FRAC_DIGITS, __cloc));
++
++	  const char* __cgroup =
++	    nl_langinfo_l(_NL_MONETARY_MON_GROUPING, __cloc);
++	  const char* __cpossign =
++	    nl_langinfo_l(_NL_MONETARY_POSITIVE_SIGN, __cloc);
++	  const char* __cnegsign =
++	    nl_langinfo_l(_NL_MONETARY_NEGATIVE_SIGN, __cloc);
++	  const char* __ccurr =
++	    nl_langinfo_l(_NL_MONETARY_CURRENCY_SYMBOL, __cloc);
++
++	  char* __group = 0;
++	  wchar_t* __wcs_ps = 0;
++	  wchar_t* __wcs_ns = 0;
++	  const char __nposn = 1;
++	    /* *(nl_langinfo_l(_NL_MONETARY_N_SIGN_POSN, __cloc)); */
++	  __try
++	    {
++	      size_t __len;
++
++	      // Check for NULL, which implies no grouping.
++	      if (_M_data->_M_thousands_sep == L'\0')
++		{
++		  // Like in "C" locale.
++		  _M_data->_M_grouping = "";
++		  _M_data->_M_grouping_size = 0;
++		  _M_data->_M_use_grouping = false;
++		  _M_data->_M_thousands_sep = L',';
++		}
++	      else
++		{
++		  __len = strlen(__cgroup);
++		  if (__len)
++		    {
++		      __group = new char[__len + 1];
++		      memcpy(__group, __cgroup, __len + 1);
++		      _M_data->_M_grouping = __group;
++		    }
++		  else
++		    {
++		      _M_data->_M_grouping = "";
++		      _M_data->_M_use_grouping = false;
++		    }
++		  _M_data->_M_grouping_size = __len;
++		}
++
++	      mbstate_t __state;
++	      __len = strlen(__cpossign);
++	      if (__len)
++		{
++		  memset(&__state, 0, sizeof(mbstate_t));
++		  __wcs_ps = new wchar_t[__len + 1];
++		  mbsrtowcs(__wcs_ps, &__cpossign, __len + 1, &__state);
++		  _M_data->_M_positive_sign = __wcs_ps;
++		}
++	      else
++		_M_data->_M_positive_sign = L"";
++	      _M_data->_M_positive_sign_size =
++		wcslen(_M_data->_M_positive_sign);
++
++	      __len = strlen(__cnegsign);
++	      if (!__nposn)
++		_M_data->_M_negative_sign = L"()";
++	      else if (__len)
++		{
++		  memset(&__state, 0, sizeof(mbstate_t));
++		  __wcs_ns = new wchar_t[__len + 1];
++		  mbsrtowcs(__wcs_ns, &__cnegsign, __len + 1, &__state);
++		  _M_data->_M_negative_sign = __wcs_ns;
++		}
++	      else
++		_M_data->_M_negative_sign = L"";
++	      _M_data->_M_negative_sign_size =
++		wcslen(_M_data->_M_negative_sign);
++
++	      // _Intl == true.
++	      __len = strlen(__ccurr);
++	      if (__len)
++		{
++		  memset(&__state, 0, sizeof(mbstate_t));
++		  wchar_t* __wcs = new wchar_t[__len + 1];
++		  mbsrtowcs(__wcs, &__ccurr, __len + 1, &__state);
++		  _M_data->_M_curr_symbol = __wcs;
++		}
++	      else
++		_M_data->_M_curr_symbol = L"";
++	      _M_data->_M_curr_symbol_size = wcslen(_M_data->_M_curr_symbol);
++	    }
++	  __catch(...)
++	    {
++	      delete _M_data;
++	      _M_data = 0;
++	      delete [] __group;
++	      delete [] __wcs_ps;
++	      delete [] __wcs_ns;
++	      uselocale(__old);
++	      __throw_exception_again;
++	    }
++
++	  char __pprecedes =
++	    *(nl_langinfo_l(_NL_MONETARY_P_CS_PRECEDES, __cloc));
++	  char __pspace =
++	    *(nl_langinfo_l(_NL_MONETARY_P_SEP_BY_SPACE, __cloc));
++	  char __pposn =
++	    *(nl_langinfo_l(_NL_MONETARY_P_SIGN_POSN, __cloc));
++	  _M_data->_M_pos_format = _S_construct_pattern(__pprecedes, __pspace,
++							__pposn);
++	  char __nprecedes =
++	    *(nl_langinfo_l(_NL_MONETARY_N_CS_PRECEDES, __cloc));
++	  char __nspace =
++	    *(nl_langinfo_l(_NL_MONETARY_N_SEP_BY_SPACE, __cloc));
++	  _M_data->_M_neg_format = _S_construct_pattern(__nprecedes, __nspace,
++							__nposn);
++
++	  uselocale(__old);
++	}
++    }
++
++  template<>
++    moneypunct<wchar_t, true>::~moneypunct()
++    {
++      if (_M_data->_M_grouping_size)
++	delete [] _M_data->_M_grouping;
++      if (_M_data->_M_positive_sign_size)
++	delete [] _M_data->_M_positive_sign;
++      if (_M_data->_M_negative_sign_size
++	  && wcscmp(_M_data->_M_negative_sign, L"()") != 0)
++	delete [] _M_data->_M_negative_sign;
++      if (_M_data->_M_curr_symbol_size)
++	delete [] _M_data->_M_curr_symbol;
++      delete _M_data;
++    }
++
++  template<>
++    moneypunct<wchar_t, false>::~moneypunct()
++    {
++      if (_M_data->_M_grouping_size)
++	delete [] _M_data->_M_grouping;
++      if (_M_data->_M_positive_sign_size)
++	delete [] _M_data->_M_positive_sign;
++      if (_M_data->_M_negative_sign_size
++	  && wcscmp(_M_data->_M_negative_sign, L"()") != 0)
++	delete [] _M_data->_M_negative_sign;
++      if (_M_data->_M_curr_symbol_size)
++	delete [] _M_data->_M_curr_symbol;
++      delete _M_data;
++    }
++#endif
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
+diff --git a/libstdc++-v3/config/locale/newlib/numeric_members.cc b/libstdc++-v3/config/locale/newlib/numeric_members.cc
+new file mode 100644
+index 00000000000..cbd3c3b9f73
+--- /dev/null
++++ b/libstdc++-v3/config/locale/newlib/numeric_members.cc
+@@ -0,0 +1,273 @@
++// std::numpunct implementation details, newlib version -*- C++ -*-
++
++// Copyright (C) 2001-2023 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 3, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// Under Section 7 of GPL version 3, you are granted additional
++// permissions described in the GCC Runtime Library Exception, version
++// 3.1, as published by the Free Software Foundation.
++
++// You should have received a copy of the GNU General Public License and
++// a copy of the GCC Runtime Library Exception along with this program;
++// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
++// <http://www.gnu.org/licenses/>.
++
++//
++// ISO C++ 14882: 22.2.3.1.2  numpunct virtual functions
++//
++
++// Written by Benjamin Kosnik <bkoz@redhat.com>
++// Modified by Takashi Yano <takashi.yano@nifty.ne.jp>
++
++#include <locale>
++#include <bits/c++locale_internal.h>
++#include <iconv.h>
++
++namespace std _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++  extern char __narrow_multibyte_chars(const char* s, locale_t cloc);
++
++// This file might be compiled twice, but we only want to define this once.
++#if ! _GLIBCXX_USE_CXX11_ABI
++  char
++  __narrow_multibyte_chars(const char* s, locale_t cloc)
++  {
++    const char* codeset = nl_langinfo_l(CODESET, cloc);
++    if (!strcmp(codeset, "UTF-8"))
++      {
++	// optimize for some known cases
++	if (!strcmp(s, "\u202F")) // NARROW NO-BREAK SPACE
++	  return ' ';
++	if (!strcmp(s, "\u2019")) // RIGHT SINGLE QUOTATION MARK
++	  return '\'';
++	if (!strcmp(s, "\u066C")) // ARABIC THOUSANDS SEPARATOR
++	  return '\'';
++      }
++
++    iconv_t cd = iconv_open("ASCII//TRANSLIT", codeset);
++    if (cd != (iconv_t)-1)
++      {
++	char c1;
++	size_t inbytesleft = strlen(s);
++	size_t outbytesleft = 1;
++	char* inbuf = const_cast<char*>(s);
++	char* outbuf = &c1;
++	size_t n = iconv(cd, &inbuf, &inbytesleft, &outbuf, &outbytesleft);
++	iconv_close(cd);
++	if (n != (size_t)-1)
++	  {
++	    cd = iconv_open(codeset, "ASCII");
++	    if (cd != (iconv_t)-1)
++	      {
++		char c2;
++		inbuf = &c1;
++		inbytesleft = 1;
++		outbuf = &c2;
++		outbytesleft = 1;
++		n = iconv(cd, &inbuf, &inbytesleft, &outbuf, &outbytesleft);
++		iconv_close(cd);
++		if (n != (size_t)-1)
++		  return c2;
++	      }
++	  }
++      }
++    return '\0';
++  }
++#endif
++
++  template<>
++    void
++    numpunct<char>::_M_initialize_numpunct(__c_locale __cloc)
++    {
++      if (!_M_data)
++	_M_data = new __numpunct_cache<char>;
++
++      if (!__cloc)
++	{
++	  // "C" locale
++	  _M_data->_M_grouping = "";
++	  _M_data->_M_grouping_size = 0;
++	  _M_data->_M_use_grouping = false;
++
++	  _M_data->_M_decimal_point = '.';
++	  _M_data->_M_thousands_sep = ',';
++
++	  for (size_t __i = 0; __i < __num_base::_S_oend; ++__i)
++	    _M_data->_M_atoms_out[__i] = __num_base::_S_atoms_out[__i];
++
++	  for (size_t __j = 0; __j < __num_base::_S_iend; ++__j)
++	    _M_data->_M_atoms_in[__j] = __num_base::_S_atoms_in[__j];
++	}
++      else
++	{
++	  // Named locale.
++	  __c_locale __old = uselocale(__cloc);
++	  union { char *__s; wchar_t *__w; } __u;
++	  __u.__s = nl_langinfo_l(_NL_NUMERIC_DECIMAL_POINT_WC, __cloc);
++	  _M_data->_M_decimal_point = wctob(*__u.__w);
++
++	  __u.__s = nl_langinfo_l(_NL_NUMERIC_THOUSANDS_SEP_WC, __cloc);
++	  _M_data->_M_thousands_sep = wctob(*__u.__w);
++	  uselocale(__old);
++
++	  // Check for NULL, which implies no grouping.
++	  if (_M_data->_M_thousands_sep == '\0')
++	    {
++	      // Like in "C" locale.
++	      _M_data->_M_grouping = "";
++	      _M_data->_M_grouping_size = 0;
++	      _M_data->_M_use_grouping = false;
++	      _M_data->_M_thousands_sep = ',';
++	    }
++	  else
++	    {
++	      const char* __src = nl_langinfo_l(_NL_NUMERIC_GROUPING, __cloc);
++	      const size_t __len = strlen(__src);
++	      if (__len)
++		{
++		  __try
++		    {
++		      char* __dst = new char[__len + 1];
++		      memcpy(__dst, __src, __len + 1);
++		      _M_data->_M_grouping = __dst;
++		    }
++		  __catch(...)
++		    {
++		      delete _M_data;
++		      _M_data = 0;
++		      __throw_exception_again;
++		    }
++		}
++	      else
++		{
++		  _M_data->_M_grouping = "";
++		  _M_data->_M_use_grouping = false;
++		}
++	      _M_data->_M_grouping_size = __len;
++	    }
++	}
++
++      // NB: There is no way to extact this info from posix locales.
++      // _M_truename = nl_langinfo_l(YESSTR, __cloc);
++      _M_data->_M_truename = "true";
++      _M_data->_M_truename_size = 4;
++      // _M_falsename = nl_langinfo_l(NOSTR, __cloc);
++      _M_data->_M_falsename = "false";
++      _M_data->_M_falsename_size = 5;
++    }
++
++  template<>
++    numpunct<char>::~numpunct()
++    {
++      if (_M_data->_M_grouping_size)
++	delete [] _M_data->_M_grouping;
++      delete _M_data;
++    }
++
++#ifdef _GLIBCXX_USE_WCHAR_T
++  template<>
++    void
++    numpunct<wchar_t>::_M_initialize_numpunct(__c_locale __cloc)
++    {
++      if (!_M_data)
++	_M_data = new __numpunct_cache<wchar_t>;
++
++      if (!__cloc)
++	{
++	  // "C" locale
++	  _M_data->_M_grouping = "";
++	  _M_data->_M_grouping_size = 0;
++	  _M_data->_M_use_grouping = false;
++
++	  _M_data->_M_decimal_point = L'.';
++	  _M_data->_M_thousands_sep = L',';
++
++	  // Use ctype::widen code without the facet...
++	  for (size_t __i = 0; __i < __num_base::_S_oend; ++__i)
++	    _M_data->_M_atoms_out[__i] =
++	      static_cast<wchar_t>(__num_base::_S_atoms_out[__i]);
++
++	  for (size_t __j = 0; __j < __num_base::_S_iend; ++__j)
++	    _M_data->_M_atoms_in[__j] =
++	      static_cast<wchar_t>(__num_base::_S_atoms_in[__j]);
++	}
++      else
++	{
++	  // Named locale.
++	  // NB: In the GNU model wchar_t is always 32 bit wide.
++	  union { char *__s; wchar_t *__w; } __u;
++	  __u.__s = nl_langinfo_l(_NL_NUMERIC_DECIMAL_POINT_WC, __cloc);
++	  _M_data->_M_decimal_point = *__u.__w;
++
++	  __u.__s = nl_langinfo_l(_NL_NUMERIC_THOUSANDS_SEP_WC, __cloc);
++	  _M_data->_M_thousands_sep = *__u.__w;
++
++	  // Check for NULL, which implies no grouping.
++	  if (_M_data->_M_thousands_sep == L'\0')
++	    {
++	      // Like in "C" locale.
++	      _M_data->_M_grouping = "";
++	      _M_data->_M_grouping_size = 0;
++	      _M_data->_M_use_grouping = false;
++	      _M_data->_M_thousands_sep = L',';
++	    }
++	  else
++	    {
++	      const char* __src = nl_langinfo_l(_NL_NUMERIC_GROUPING, __cloc);
++	      const size_t __len = strlen(__src);
++	      if (__len)
++		{
++		  __try
++		    {
++		      char* __dst = new char[__len + 1];
++		      memcpy(__dst, __src, __len + 1);
++		      _M_data->_M_grouping = __dst;
++		    }
++		  __catch(...)
++		    {
++		      delete _M_data;
++		      _M_data = 0;
++		      __throw_exception_again;
++		    }
++		}
++	      else
++		{
++		  _M_data->_M_grouping = "";
++		  _M_data->_M_use_grouping = false;
++		}
++	      _M_data->_M_grouping_size = __len;
++	    }
++	}
++
++      // NB: There is no way to extact this info from posix locales.
++      // _M_truename = nl_langinfo_l(YESSTR, __cloc);
++      _M_data->_M_truename = L"true";
++      _M_data->_M_truename_size = 4;
++      // _M_falsename = nl_langinfo_l(NOSTR, __cloc);
++      _M_data->_M_falsename = L"false";
++      _M_data->_M_falsename_size = 5;
++    }
++
++  template<>
++    numpunct<wchar_t>::~numpunct()
++    {
++      if (_M_data->_M_grouping_size)
++	delete [] _M_data->_M_grouping;
++      delete _M_data;
++    }
++#endif
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
+diff --git a/libstdc++-v3/config/locale/newlib/time_members.cc b/libstdc++-v3/config/locale/newlib/time_members.cc
+new file mode 100644
+index 00000000000..190ef480e29
+--- /dev/null
++++ b/libstdc++-v3/config/locale/newlib/time_members.cc
+@@ -0,0 +1,381 @@
++// std::time_get, std::time_put implementation, newlib version -*- C++ -*-
++
++// Copyright (C) 2001-2023 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 3, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// Under Section 7 of GPL version 3, you are granted additional
++// permissions described in the GCC Runtime Library Exception, version
++// 3.1, as published by the Free Software Foundation.
++
++// You should have received a copy of the GNU General Public License and
++// a copy of the GCC Runtime Library Exception along with this program;
++// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
++// <http://www.gnu.org/licenses/>.
++
++//
++// ISO C++ 14882: 22.2.5.1.2 - time_get virtual functions
++// ISO C++ 14882: 22.2.5.3.2 - time_put virtual functions
++//
++
++// Written by Benjamin Kosnik <bkoz@redhat.com>
++// Modified by Takashi Yano <takashi.yano@nifty.ne.jp>
++
++#define _GNU_SOURCE 1
++#include <locale>
++#include <bits/c++locale_internal.h>
++
++namespace std _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++  template<>
++    void
++    __timepunct<char>::
++    _M_put(char* __s, size_t __maxlen, const char* __format,
++	   const tm* __tm) const throw()
++    {
++      const size_t __len = strftime_l(__s, __maxlen, __format, __tm,
++					_M_c_locale_timepunct);
++      // Make sure __s is null terminated.
++      if (__len == 0)
++	__s[0] = '\0';
++    }
++
++  template<>
++    void
++    __timepunct<char>::_M_initialize_timepunct(__c_locale __cloc)
++    {
++      if (!_M_data)
++	_M_data = new __timepunct_cache<char>;
++
++      if (!__cloc)
++	{
++	  // "C" locale
++	  _M_c_locale_timepunct = _S_get_c_locale();
++
++	  _M_data->_M_date_format = "%m/%d/%y";
++	  _M_data->_M_date_era_format = "%m/%d/%y";
++	  _M_data->_M_time_format = "%H:%M:%S";
++	  _M_data->_M_time_era_format = "%H:%M:%S";
++	  _M_data->_M_date_time_format = "";
++	  _M_data->_M_date_time_era_format = "";
++	  _M_data->_M_am = "AM";
++	  _M_data->_M_pm = "PM";
++	  _M_data->_M_am_pm_format = "%I:%M:%S %p";
++
++	  // Day names, starting with "C"'s Sunday.
++	  _M_data->_M_day1 = "Sunday";
++	  _M_data->_M_day2 = "Monday";
++	  _M_data->_M_day3 = "Tuesday";
++	  _M_data->_M_day4 = "Wednesday";
++	  _M_data->_M_day5 = "Thursday";
++	  _M_data->_M_day6 = "Friday";
++	  _M_data->_M_day7 = "Saturday";
++
++	  // Abbreviated day names, starting with "C"'s Sun.
++	  _M_data->_M_aday1 = "Sun";
++	  _M_data->_M_aday2 = "Mon";
++	  _M_data->_M_aday3 = "Tue";
++	  _M_data->_M_aday4 = "Wed";
++	  _M_data->_M_aday5 = "Thu";
++	  _M_data->_M_aday6 = "Fri";
++	  _M_data->_M_aday7 = "Sat";
++
++	  // Month names, starting with "C"'s January.
++	  _M_data->_M_month01 = "January";
++	  _M_data->_M_month02 = "February";
++	  _M_data->_M_month03 = "March";
++	  _M_data->_M_month04 = "April";
++	  _M_data->_M_month05 = "May";
++	  _M_data->_M_month06 = "June";
++	  _M_data->_M_month07 = "July";
++	  _M_data->_M_month08 = "August";
++	  _M_data->_M_month09 = "September";
++	  _M_data->_M_month10 = "October";
++	  _M_data->_M_month11 = "November";
++	  _M_data->_M_month12 = "December";
++
++	  // Abbreviated month names, starting with "C"'s Jan.
++	  _M_data->_M_amonth01 = "Jan";
++	  _M_data->_M_amonth02 = "Feb";
++	  _M_data->_M_amonth03 = "Mar";
++	  _M_data->_M_amonth04 = "Apr";
++	  _M_data->_M_amonth05 = "May";
++	  _M_data->_M_amonth06 = "Jun";
++	  _M_data->_M_amonth07 = "Jul";
++	  _M_data->_M_amonth08 = "Aug";
++	  _M_data->_M_amonth09 = "Sep";
++	  _M_data->_M_amonth10 = "Oct";
++	  _M_data->_M_amonth11 = "Nov";
++	  _M_data->_M_amonth12 = "Dec";
++	}
++      else
++	{
++	  _M_c_locale_timepunct = _S_clone_c_locale(__cloc);
++	  __cloc = _M_c_locale_timepunct;
++
++	  _M_data->_M_date_format = nl_langinfo_l(D_FMT, __cloc);
++	  _M_data->_M_date_era_format = nl_langinfo_l(ERA_D_FMT, __cloc);
++	  _M_data->_M_time_format = nl_langinfo_l(T_FMT, __cloc);
++	  _M_data->_M_time_era_format = nl_langinfo_l(ERA_T_FMT, __cloc);
++	  _M_data->_M_date_time_format = nl_langinfo_l(D_T_FMT, __cloc);
++	  _M_data->_M_date_time_era_format = nl_langinfo_l(ERA_D_T_FMT, __cloc);
++	  _M_data->_M_am = nl_langinfo_l(AM_STR, __cloc);
++	  _M_data->_M_pm = nl_langinfo_l(PM_STR, __cloc);
++	  _M_data->_M_am_pm_format = nl_langinfo_l(T_FMT_AMPM, __cloc);
++
++	  // Day names, starting with "C"'s Sunday.
++	  _M_data->_M_day1 = nl_langinfo_l(DAY_1, __cloc);
++	  _M_data->_M_day2 = nl_langinfo_l(DAY_2, __cloc);
++	  _M_data->_M_day3 = nl_langinfo_l(DAY_3, __cloc);
++	  _M_data->_M_day4 = nl_langinfo_l(DAY_4, __cloc);
++	  _M_data->_M_day5 = nl_langinfo_l(DAY_5, __cloc);
++	  _M_data->_M_day6 = nl_langinfo_l(DAY_6, __cloc);
++	  _M_data->_M_day7 = nl_langinfo_l(DAY_7, __cloc);
++
++	  // Abbreviated day names, starting with "C"'s Sun.
++	  _M_data->_M_aday1 = nl_langinfo_l(ABDAY_1, __cloc);
++	  _M_data->_M_aday2 = nl_langinfo_l(ABDAY_2, __cloc);
++	  _M_data->_M_aday3 = nl_langinfo_l(ABDAY_3, __cloc);
++	  _M_data->_M_aday4 = nl_langinfo_l(ABDAY_4, __cloc);
++	  _M_data->_M_aday5 = nl_langinfo_l(ABDAY_5, __cloc);
++	  _M_data->_M_aday6 = nl_langinfo_l(ABDAY_6, __cloc);
++	  _M_data->_M_aday7 = nl_langinfo_l(ABDAY_7, __cloc);
++
++	  // Month names, starting with "C"'s January.
++	  _M_data->_M_month01 = nl_langinfo_l(MON_1, __cloc);
++	  _M_data->_M_month02 = nl_langinfo_l(MON_2, __cloc);
++	  _M_data->_M_month03 = nl_langinfo_l(MON_3, __cloc);
++	  _M_data->_M_month04 = nl_langinfo_l(MON_4, __cloc);
++	  _M_data->_M_month05 = nl_langinfo_l(MON_5, __cloc);
++	  _M_data->_M_month06 = nl_langinfo_l(MON_6, __cloc);
++	  _M_data->_M_month07 = nl_langinfo_l(MON_7, __cloc);
++	  _M_data->_M_month08 = nl_langinfo_l(MON_8, __cloc);
++	  _M_data->_M_month09 = nl_langinfo_l(MON_9, __cloc);
++	  _M_data->_M_month10 = nl_langinfo_l(MON_10, __cloc);
++	  _M_data->_M_month11 = nl_langinfo_l(MON_11, __cloc);
++	  _M_data->_M_month12 = nl_langinfo_l(MON_12, __cloc);
++
++	  // Abbreviated month names, starting with "C"'s Jan.
++	  _M_data->_M_amonth01 = nl_langinfo_l(ABMON_1, __cloc);
++	  _M_data->_M_amonth02 = nl_langinfo_l(ABMON_2, __cloc);
++	  _M_data->_M_amonth03 = nl_langinfo_l(ABMON_3, __cloc);
++	  _M_data->_M_amonth04 = nl_langinfo_l(ABMON_4, __cloc);
++	  _M_data->_M_amonth05 = nl_langinfo_l(ABMON_5, __cloc);
++	  _M_data->_M_amonth06 = nl_langinfo_l(ABMON_6, __cloc);
++	  _M_data->_M_amonth07 = nl_langinfo_l(ABMON_7, __cloc);
++	  _M_data->_M_amonth08 = nl_langinfo_l(ABMON_8, __cloc);
++	  _M_data->_M_amonth09 = nl_langinfo_l(ABMON_9, __cloc);
++	  _M_data->_M_amonth10 = nl_langinfo_l(ABMON_10, __cloc);
++	  _M_data->_M_amonth11 = nl_langinfo_l(ABMON_11, __cloc);
++	  _M_data->_M_amonth12 = nl_langinfo_l(ABMON_12, __cloc);
++	}
++    }
++
++#ifdef _GLIBCXX_USE_WCHAR_T
++  template<>
++    void
++    __timepunct<wchar_t>::
++    _M_put(wchar_t* __s, size_t __maxlen, const wchar_t* __format,
++	   const tm* __tm) const throw()
++    {
++      const size_t __len = wcsftime_l(__s, __maxlen, __format, __tm,
++					_M_c_locale_timepunct);
++      // Make sure __s is null terminated.
++      if (__len == 0)
++	__s[0] = L'\0';
++    }
++
++  template<>
++    void
++    __timepunct<wchar_t>::_M_initialize_timepunct(__c_locale __cloc)
++    {
++      if (!_M_data)
++	_M_data = new __timepunct_cache<wchar_t>;
++
++      if (!__cloc)
++	{
++	  // "C" locale
++	  _M_c_locale_timepunct = _S_get_c_locale();
++
++	  _M_data->_M_date_format = L"%m/%d/%y";
++	  _M_data->_M_date_era_format = L"%m/%d/%y";
++	  _M_data->_M_time_format = L"%H:%M:%S";
++	  _M_data->_M_time_era_format = L"%H:%M:%S";
++	  _M_data->_M_date_time_format = L"";
++	  _M_data->_M_date_time_era_format = L"";
++	  _M_data->_M_am = L"AM";
++	  _M_data->_M_pm = L"PM";
++	  _M_data->_M_am_pm_format = L"%I:%M:%S %p";
++
++	  // Day names, starting with "C"'s Sunday.
++	  _M_data->_M_day1 = L"Sunday";
++	  _M_data->_M_day2 = L"Monday";
++	  _M_data->_M_day3 = L"Tuesday";
++	  _M_data->_M_day4 = L"Wednesday";
++	  _M_data->_M_day5 = L"Thursday";
++	  _M_data->_M_day6 = L"Friday";
++	  _M_data->_M_day7 = L"Saturday";
++
++	  // Abbreviated day names, starting with "C"'s Sun.
++	  _M_data->_M_aday1 = L"Sun";
++	  _M_data->_M_aday2 = L"Mon";
++	  _M_data->_M_aday3 = L"Tue";
++	  _M_data->_M_aday4 = L"Wed";
++	  _M_data->_M_aday5 = L"Thu";
++	  _M_data->_M_aday6 = L"Fri";
++	  _M_data->_M_aday7 = L"Sat";
++
++	  // Month names, starting with "C"'s January.
++	  _M_data->_M_month01 = L"January";
++	  _M_data->_M_month02 = L"February";
++	  _M_data->_M_month03 = L"March";
++	  _M_data->_M_month04 = L"April";
++	  _M_data->_M_month05 = L"May";
++	  _M_data->_M_month06 = L"June";
++	  _M_data->_M_month07 = L"July";
++	  _M_data->_M_month08 = L"August";
++	  _M_data->_M_month09 = L"September";
++	  _M_data->_M_month10 = L"October";
++	  _M_data->_M_month11 = L"November";
++	  _M_data->_M_month12 = L"December";
++
++	  // Abbreviated month names, starting with "C"'s Jan.
++	  _M_data->_M_amonth01 = L"Jan";
++	  _M_data->_M_amonth02 = L"Feb";
++	  _M_data->_M_amonth03 = L"Mar";
++	  _M_data->_M_amonth04 = L"Apr";
++	  _M_data->_M_amonth05 = L"May";
++	  _M_data->_M_amonth06 = L"Jun";
++	  _M_data->_M_amonth07 = L"Jul";
++	  _M_data->_M_amonth08 = L"Aug";
++	  _M_data->_M_amonth09 = L"Sep";
++	  _M_data->_M_amonth10 = L"Oct";
++	  _M_data->_M_amonth11 = L"Nov";
++	  _M_data->_M_amonth12 = L"Dec";
++	}
++      else
++	{
++	  _M_c_locale_timepunct = _S_clone_c_locale(__cloc);
++	  __cloc = _M_c_locale_timepunct;
++
++	  union { char *__s; wchar_t *__w; } __u;
++
++	  __u.__s = nl_langinfo_l(_NL_TIME_WD_FMT, __cloc);
++	  _M_data->_M_date_format = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WERA_D_FMT, __cloc);
++	  _M_data->_M_date_era_format = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WT_FMT, __cloc);
++	  _M_data->_M_time_format = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WERA_T_FMT, __cloc);
++	  _M_data->_M_time_era_format = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WD_T_FMT, __cloc);
++	  _M_data->_M_date_time_format = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WERA_D_T_FMT, __cloc);
++	  _M_data->_M_date_time_era_format = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WAM_STR, __cloc);
++	  _M_data->_M_am = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WPM_STR, __cloc);
++	  _M_data->_M_pm = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WT_FMT_AMPM, __cloc);
++	  _M_data->_M_am_pm_format = __u.__w;
++
++	  // Day names, starting with "C"'s Sunday.
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWEEKDAY_1, __cloc);
++	  _M_data->_M_day1 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWEEKDAY_2, __cloc);
++	  _M_data->_M_day2 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWEEKDAY_3, __cloc);
++	  _M_data->_M_day3 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWEEKDAY_4, __cloc);
++	  _M_data->_M_day4 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWEEKDAY_5, __cloc);
++	  _M_data->_M_day5 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWEEKDAY_6, __cloc);
++	  _M_data->_M_day6 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWEEKDAY_7, __cloc);
++	  _M_data->_M_day7 = __u.__w;
++
++	  // Abbreviated day names, starting with "C"'s Sun.
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWDAY_1, __cloc);
++	  _M_data->_M_aday1 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWDAY_2, __cloc);
++	  _M_data->_M_aday2 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWDAY_3, __cloc);
++	  _M_data->_M_aday3 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWDAY_4, __cloc);
++	  _M_data->_M_aday4 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWDAY_5, __cloc);
++	  _M_data->_M_aday5 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWDAY_6, __cloc);
++	  _M_data->_M_aday6 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WWDAY_7, __cloc);
++	  _M_data->_M_aday7 = __u.__w;
++
++	  // Month names, starting with "C"'s January.
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMONTH_1, __cloc);
++	  _M_data->_M_month01 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMONTH_2, __cloc);
++	  _M_data->_M_month02 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMONTH_3, __cloc);
++	  _M_data->_M_month03 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMONTH_4, __cloc);
++	  _M_data->_M_month04 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMONTH_5, __cloc);
++	  _M_data->_M_month05 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMONTH_6, __cloc);
++	  _M_data->_M_month06 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMONTH_7, __cloc);
++	  _M_data->_M_month07 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMONTH_8, __cloc);
++	  _M_data->_M_month08 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMONTH_9, __cloc);
++	  _M_data->_M_month09 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMONTH_10, __cloc);
++	  _M_data->_M_month10 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMONTH_11, __cloc);
++	  _M_data->_M_month11 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMONTH_12, __cloc);
++	  _M_data->_M_month12 = __u.__w;
++
++	  // Abbreviated month names, starting with "C"'s Jan.
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMON_1, __cloc);
++	  _M_data->_M_amonth01 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMON_2, __cloc);
++	  _M_data->_M_amonth02 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMON_3, __cloc);
++	  _M_data->_M_amonth03 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMON_4, __cloc);
++	  _M_data->_M_amonth04 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMON_5, __cloc);
++	  _M_data->_M_amonth05 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMON_6, __cloc);
++	  _M_data->_M_amonth06 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMON_7, __cloc);
++	  _M_data->_M_amonth07 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMON_8, __cloc);
++	  _M_data->_M_amonth08 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMON_9, __cloc);
++	  _M_data->_M_amonth09 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMON_10, __cloc);
++	  _M_data->_M_amonth10 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMON_11, __cloc);
++	  _M_data->_M_amonth11 = __u.__w;
++	  __u.__s = nl_langinfo_l(_NL_TIME_WMON_12, __cloc);
++	  _M_data->_M_amonth12 = __u.__w;
++	}
++    }
++#endif
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
+diff --git a/libstdc++-v3/config/locale/newlib/time_members.h b/libstdc++-v3/config/locale/newlib/time_members.h
+new file mode 100644
+index 00000000000..b0c7c29bfde
+--- /dev/null
++++ b/libstdc++-v3/config/locale/newlib/time_members.h
+@@ -0,0 +1,90 @@
++// std::time_get, std::time_put implementation, newlib version -*- C++ -*-
++
++// Copyright (C) 2001-2023 Free Software Foundation, Inc.
++//
++// This file is part of the GNU ISO C++ Library.  This library is free
++// software; you can redistribute it and/or modify it under the
++// terms of the GNU General Public License as published by the
++// Free Software Foundation; either version 3, or (at your option)
++// any later version.
++
++// This library is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++
++// Under Section 7 of GPL version 3, you are granted additional
++// permissions described in the GCC Runtime Library Exception, version
++// 3.1, as published by the Free Software Foundation.
++
++// You should have received a copy of the GNU General Public License and
++// a copy of the GCC Runtime Library Exception along with this program;
++// see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
++// <http://www.gnu.org/licenses/>.
++
++/** @file bits/time_members.h
++ *  This is an internal header file, included by other library headers.
++ *  Do not attempt to use it directly. @headername{locale}
++ */
++
++//
++// ISO C++ 14882: 22.2.5.1.2 - time_get functions
++// ISO C++ 14882: 22.2.5.3.2 - time_put functions
++//
++
++// Written by Benjamin Kosnik <bkoz@redhat.com>
++// Modified by Takashi Yano <takashi.yano@nifty.ne.jp>
++
++namespace std _GLIBCXX_VISIBILITY(default)
++{
++_GLIBCXX_BEGIN_NAMESPACE_VERSION
++
++  template<typename _CharT>
++    __timepunct<_CharT>::__timepunct(size_t __refs)
++    : facet(__refs), _M_data(0), _M_c_locale_timepunct(0),
++      _M_name_timepunct(_S_get_c_name())
++    { _M_initialize_timepunct(); }
++
++  template<typename _CharT>
++    __timepunct<_CharT>::__timepunct(__cache_type* __cache, size_t __refs)
++    : facet(__refs), _M_data(__cache), _M_c_locale_timepunct(0),
++      _M_name_timepunct(_S_get_c_name())
++    { _M_initialize_timepunct(); }
++
++  template<typename _CharT>
++    __timepunct<_CharT>::__timepunct(__c_locale __cloc, const char* __s,
++				     size_t __refs)
++    : facet(__refs), _M_data(0), _M_c_locale_timepunct(0),
++      _M_name_timepunct(0)
++    {
++      if (__builtin_strcmp(__s, _S_get_c_name()) != 0)
++	{
++	  const size_t __len = __builtin_strlen(__s) + 1;
++	  char* __tmp = new char[__len];
++	  __builtin_memcpy(__tmp, __s, __len);
++	  _M_name_timepunct = __tmp;
++	}
++      else
++	_M_name_timepunct = _S_get_c_name();
++
++      __try
++	{ _M_initialize_timepunct(__cloc); }
++      __catch(...)
++	{
++	  if (_M_name_timepunct != _S_get_c_name())
++	    delete [] _M_name_timepunct;
++	  __throw_exception_again;
++	}
++    }
++
++  template<typename _CharT>
++    __timepunct<_CharT>::~__timepunct()
++    {
++      if (_M_name_timepunct != _S_get_c_name())
++	delete [] _M_name_timepunct;
++      delete _M_data;
++      _S_destroy_c_locale(_M_c_locale_timepunct);
++    }
++
++_GLIBCXX_END_NAMESPACE_VERSION
++} // namespace
+diff --git a/libstdc++-v3/config/os/newlib/ctype_configure_char.cc b/libstdc++-v3/config/os/newlib/ctype_configure_char.cc
+index 3cb16386e53..f316f5da57f 100644
+--- a/libstdc++-v3/config/os/newlib/ctype_configure_char.cc
++++ b/libstdc++-v3/config/os/newlib/ctype_configure_char.cc
+@@ -42,42 +42,39 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+   ctype<char>::classic_table() throw()
+   { return _ctype_ + 1; }
+ 
+-  ctype<char>::ctype(__c_locale, const mask* __table, bool __del,
++  ctype<char>::ctype(__c_locale __cloc, const mask* __table, bool __del,
+ 		     size_t __refs)
+-  : facet(__refs), _M_del(__table != 0 && __del),
++  : facet(__refs), _M_c_locale_ctype(_S_clone_c_locale(__cloc)),
++  _M_del(__table != 0 && __del),
+   _M_toupper(NULL), _M_tolower(NULL),
+-  _M_table(__table ? __table : classic_table())
++  _M_table(__table ? __table : classic_table()),
++  _M_widen_ok(0), _M_narrow_ok(0)
+   {
+     memset(_M_widen, 0, sizeof(_M_widen));
+-    _M_widen_ok = 0;
+     memset(_M_narrow, 0, sizeof(_M_narrow));
+-    _M_narrow_ok = 0;
+   }
+ 
+   ctype<char>::ctype(const mask* __table, bool __del, size_t __refs)
+-  : facet(__refs), _M_del(__table != 0 && __del),
++  : facet(__refs), _M_c_locale_ctype(_S_get_c_locale()),
++  _M_del(__table != 0 && __del),
+   _M_toupper(NULL), _M_tolower(NULL),
+-  _M_table(__table ? __table : classic_table())
++  _M_table(__table ? __table : classic_table()),
++  _M_widen_ok(0), _M_narrow_ok(0)
+   {
+     memset(_M_widen, 0, sizeof(_M_widen));
+-    _M_widen_ok = 0;
+     memset(_M_narrow, 0, sizeof(_M_narrow));
+-    _M_narrow_ok = 0;
+   }
+ 
+   char
+   ctype<char>::do_toupper(char __c) const
+-  {
+-    int __x = __c;
+-    return (this->is(ctype_base::lower, __c) ? (__x - 'a' + 'A') : __x);
+-  }
++  { return ::toupper((int) __c); }
+ 
+   const char*
+   ctype<char>::do_toupper(char* __low, const char* __high) const
+   {
+     while (__low < __high)
+       {
+-	*__low = this->do_toupper(*__low);
++	*__low = ::toupper((int) *__low);
+ 	++__low;
+       }
+     return __high;
+@@ -85,17 +82,14 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+ 
+   char
+   ctype<char>::do_tolower(char __c) const
+-  {
+-    int __x = __c;
+-    return (this->is(ctype_base::upper, __c) ? (__x - 'A' + 'a') : __x);
+-  }
++  { return ::tolower((int) __c); }
+ 
+   const char*
+   ctype<char>::do_tolower(char* __low, const char* __high) const
+   {
+     while (__low < __high)
+       {
+-	*__low = this->do_tolower(*__low);
++	*__low = ::tolower((int) *__low);
+ 	++__low;
+       }
+     return __high;
+diff --git a/libstdc++-v3/configure b/libstdc++-v3/configure
+index 3f65e8e3600..1b4f930ba2f 100755
+--- a/libstdc++-v3/configure
++++ b/libstdc++-v3/configure
+@@ -723,6 +723,7 @@ CXXFILT
+ LTLIBICONV
+ LIBICONV
+ OPT_LDFLAGS
++EXTRA_LIBS
+ SECTION_LDFLAGS
+ GLIBCXX_LIBS
+ ENABLE_VTABLE_VERIFY_FALSE
+@@ -16680,7 +16681,7 @@ fi
+       dragonfly* | freebsd*)
+ 	enable_clocale_flag=dragonfly
+ 	;;
+-      openbsd*)
++      openbsd* | cygwin*)
+ 	enable_clocale_flag=newlib
+ 	;;
+       *)
+@@ -16692,6 +16693,10 @@ fi
+ 	;;
+     esac
+   fi
++  case ${target_os} in cygwin*)
++    EXTRA_LIBS="-lintl"
++    ;;
++  esac
+ 
+   # Sanity check model, and test for special functionality.
+   if test $enable_clocale_flag = gnu; then
+@@ -16951,19 +16956,56 @@ $as_echo "IEEE 1003.1" >&6; }
+     newlib)
+       { $as_echo "$as_me:${as_lineno-$LINENO}: result: newlib" >&5
+ $as_echo "newlib" >&6; }
++      for ac_header in libintl.h
++do :
++  ac_fn_c_check_header_mongrel "$LINENO" "libintl.h" "ac_cv_header_libintl_h" "$ac_includes_default"
++if test "x$ac_cv_header_libintl_h" = xyes; then :
++  cat >>confdefs.h <<_ACEOF
++#define HAVE_LIBINTL_H 1
++_ACEOF
++ ac_has_libintl_h=yes
++else
++  ac_has_libintl_h=no
++fi
+ 
+-      CLOCALE_H=config/locale/generic/c_locale.h
+-      CLOCALE_CC=config/locale/generic/c_locale.cc
+-      CCODECVT_CC=config/locale/generic/codecvt_members.cc
+-      CCOLLATE_CC=config/locale/generic/collate_members.cc
++done
++
++      for ac_header in iconv.h
++do :
++  ac_fn_c_check_header_mongrel "$LINENO" "iconv.h" "ac_cv_header_iconv_h" "$ac_includes_default"
++if test "x$ac_cv_header_iconv_h" = xyes; then :
++  cat >>confdefs.h <<_ACEOF
++#define HAVE_ICONV_H 1
++_ACEOF
++ ac_has_iconv_h=yes
++else
++  ac_has_iconv_h=no
++fi
++
++done
++
++
++      CLOCALE_H=config/locale/newlib/c_locale.h
++      CLOCALE_CC=config/locale/newlib/c_locale.cc
++      CCODECVT_CC=config/locale/newlib/codecvt_members.cc
++      CCOLLATE_CC=config/locale/newlib/collate_members.cc
+       CCTYPE_CC=config/locale/newlib/ctype_members.cc
+-      CMESSAGES_H=config/locale/generic/messages_members.h
+-      CMESSAGES_CC=config/locale/generic/messages_members.cc
+-      CMONEY_CC=config/locale/generic/monetary_members.cc
+-      CNUMERIC_CC=config/locale/generic/numeric_members.cc
+-      CTIME_H=config/locale/generic/time_members.h
+-      CTIME_CC=config/locale/generic/time_members.cc
+-      CLOCALE_INTERNAL_H=config/locale/generic/c++locale_internal.h
++      if test $ac_has_libintl_h = yes; then
++	CMESSAGES_H=config/locale/newlib/messages_members.h
++	CMESSAGES_CC=config/locale/newlib/messages_members.cc
++      else
++	CMESSAGES_H=config/locale/generic/messages_members.h
++	CMESSAGES_CC=config/locale/generic/messages_members.cc
++      fi
++      CMONEY_CC=config/locale/newlib/monetary_members.cc
++      if test $ac_has_iconv_h = yes; then
++	CNUMERIC_CC=config/locale/newlib/numeric_members.cc
++      else
++	CNUMERIC_CC=config/locale/generic/numeric_members.cc
++      fi
++      CTIME_H=config/locale/newlib/time_members.h
++      CTIME_CC=config/locale/newlib/time_members.cc
++      CLOCALE_INTERNAL_H=config/locale/newlib/c++locale_internal.h
+       ;;
+   esac
+ 
+diff --git a/libstdc++-v3/include/bits/locale_facets_nonio.tcc b/libstdc++-v3/include/bits/locale_facets_nonio.tcc
+index 27b7273877a..77c44b3f7d0 100644
+--- a/libstdc++-v3/include/bits/locale_facets_nonio.tcc
++++ b/libstdc++-v3/include/bits/locale_facets_nonio.tcc
+@@ -803,6 +803,7 @@ _GLIBCXX_END_NAMESPACE_LDBL_OR_CXX11
+ 		    }
+ 		  break;
+ 		case 'I':
++		case 'l': // for newlib
+ 		  // Hour [01, 12]. [tm_hour]
+ 		  __beg = _M_extract_num(__beg, __end, __mem, 1, 12, 2,
+ 					 __io, __tmperr);
+diff --git a/libstdc++-v3/src/Makefile.in b/libstdc++-v3/src/Makefile.in
+index 106b96995aa..2ad07544d21 100644
+--- a/libstdc++-v3/src/Makefile.in
++++ b/libstdc++-v3/src/Makefile.in
+@@ -307,6 +307,7 @@ ERROR_CONSTANTS_SRCDIR = @ERROR_CONSTANTS_SRCDIR@
+ EXEEXT = @EXEEXT@
+ EXTRA_CFLAGS = @EXTRA_CFLAGS@
+ EXTRA_CXX_FLAGS = @EXTRA_CXX_FLAGS@
++EXTRA_LIBS = @EXTRA_LIBS@
+ FGREP = @FGREP@
+ FORMAT_FILE = @FORMAT_FILE@
+ FREESTANDING_FLAGS = @FREESTANDING_FLAGS@
+@@ -566,7 +567,7 @@ libstdc___la_DEPENDENCIES = \
+ @ENABLE_DARWIN_AT_RPATH_TRUE@	-Wc,-nodefaultrpaths \
+ @ENABLE_DARWIN_AT_RPATH_TRUE@	-Wl,-rpath,@loader_path
+ libstdc___la_LDFLAGS = \
+-	-version-info $(libtool_VERSION) ${version_arg} -lm $(libstdc___darwin_rpath)
++	-version-info $(libtool_VERSION) ${version_arg} -lm $(EXTRA_LIBS) $(libstdc___darwin_rpath)
+ 
+ libstdc___la_LINK = $(CXXLINK) $(libstdc___la_LDFLAGS) $(lt_host_flags)
+ @GLIBCXX_LDBL_ALT128_COMPAT_FALSE@@GLIBCXX_LDBL_COMPAT_TRUE@LTCXXCOMPILE64 = $(LTCXXCOMPILE)
+diff --git a/libstdc++-v3/src/c++11/locale_init.cc b/libstdc++-v3/src/c++11/locale_init.cc
+index cab4f845681..f727ce25ba9 100644
+--- a/libstdc++-v3/src/c++11/locale_init.cc
++++ b/libstdc++-v3/src/c++11/locale_init.cc
+@@ -300,8 +300,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
+ 	__other._M_impl->_M_add_reference();
+       _S_global = __other._M_impl;
+       const string __other_name = __other.name();
++      extern const __typeof(setlocale) *__setlocale;
+       if (__other_name != "*")
+-	setlocale(LC_ALL, __other_name.c_str());
++	__setlocale(LC_ALL, __other_name.c_str());
+     }
+ 
+     // Reference count sanity check: one reference removed for the
+-- 
+2.45.1
+
