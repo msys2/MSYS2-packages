@@ -1,0 +1,60 @@
+From c633e9c8451ab2324f0c8ee6b70638a005f7f14b Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Mon, 5 May 2025 14:11:44 -0700
+Subject: [PATCH] [Clang][CMake] respect LLVMConfig.cmake's LLVM_DEFINITIONS
+
+In #138329, _GNU_SOURCE was added for Cygwin, but when building Clang
+standalone against an installed LLVM this definition was not picked up,
+resulting in undefined strnlen.  Follow the documentation in
+https://llvm.org/docs/CMake.html#developing-llvm-passes-out-of-source
+and add the LLVM_DEFINITIONS in Clang's CMakeLists.txt.
+
+Get rid of the list(REMOVE CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+later, as list(REMOVE) is documented to remove *all* occurences of the
+item, not just the one that was just added.  Instead, make use of
+cmake_push_check_state() and cmake_pop_check_state(), which is already
+used in other cmake files.
+---
+ clang/CMakeLists.txt | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/clang/CMakeLists.txt b/clang/CMakeLists.txt
+index 24e656eced..ac7feb6078 100644
+--- a/clang/CMakeLists.txt
++++ b/clang/CMakeLists.txt
+@@ -68,6 +68,10 @@ if(CLANG_BUILT_STANDALONE)
+   option(CLANG_ENABLE_BOOTSTRAP "Generate the clang bootstrap target" OFF)
+   option(LLVM_ENABLE_LIBXML2 "Use libxml2 if available." ON)
+ 
++  separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
++  add_definitions(${LLVM_DEFINITIONS_LIST})
++  list(APPEND CMAKE_REQUIRED_DEFINITIONS ${LLVM_DEFINITIONS_LIST})
++
+   include(AddLLVM)
+   include(TableGen)
+   include(HandleLLVMOptions)
+@@ -183,18 +187,17 @@ check_include_file(sys/resource.h CLANG_HAVE_RLIMITS)
+ # This check requires _GNU_SOURCE on linux
+ check_include_file(dlfcn.h CLANG_HAVE_DLFCN_H)
+ if( CLANG_HAVE_DLFCN_H )
++  include(CMakePushCheckState)
+   include(CheckLibraryExists)
+   include(CheckSymbolExists)
+   check_library_exists(dl dlopen "" HAVE_LIBDL)
++  cmake_push_check_state()
+   if( HAVE_LIBDL )
+     list(APPEND CMAKE_REQUIRED_LIBRARIES dl)
+   endif()
+   list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+   check_symbol_exists(dladdr dlfcn.h CLANG_HAVE_DLADDR)
+-  list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+-  if( HAVE_LIBDL )
+-    list(REMOVE_ITEM CMAKE_REQUIRED_LIBRARIES dl)
+-  endif()
++  cmake_pop_check_state()
+ endif()
+ 
+ set(CLANG_RESOURCE_DIR "" CACHE STRING
+-- 
+2.49.0.windows.1
+
