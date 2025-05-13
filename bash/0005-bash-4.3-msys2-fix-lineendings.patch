@@ -81,7 +81,7 @@ index c1135ec..b388af6 100644
      *niflp = invfl;
    if  (vlp)
 diff --git a/parse.y b/parse.y
-index 0ae3458..c6e9520 100644
+index 8fd24a1c..232a33dc 100644
 --- a/parse.y
 +++ b/parse.y
 @@ -1459,7 +1459,13 @@ yy_input_name ()
@@ -99,6 +99,23 @@ index 0ae3458..c6e9520 100644
  }
  
  /* Call this to unget C.  That is, to make C the next character
+@@ -1684,7 +1690,15 @@ rewind_input_string ()
+      into account, e.g., $(...\n) */
+   xchars = shell_input_line_len - shell_input_line_index;
+   if (bash_input.location.string[-1] == '\n')
+-    xchars++;
++    {
++      xchars++;
++#ifdef __MSYS__
++      {
++	if (bash_input.location.string[-2] == '\r')
++	  xchars++;
++      }
++#endif
++    }
+ 
+   /* XXX - how to reflect bash_input.location.string back to string passed to
+      parse_and_execute or xparse_dolparen? xparse_dolparen needs to know how
 diff --git a/shell.c b/shell.c
 index ee9d445..8f25726 100644
 --- a/shell.c
@@ -156,6 +173,63 @@ index 2001b4e..3ba2029 100644
  	    }
  	  else
  	    break;
+diff --git a/tests/crlf.right b/tests/crlf.right
+new file mode 100644
+index 0000000..d7fd195
+--- /dev/null
++++ b/tests/crlf.right
+@@ -0,0 +1,8 @@
++Line with LF
++Line with CR
++Line with CRLF
++Line with
++ LF
++Line with CR
++Line with
++ CRLF
+diff --git a/tests/crlf.tests b/tests/crlf.tests
+new file mode 100644
+index 0000000..b2c4da7
+--- /dev/null
++++ b/tests/crlf.tests
+@@ -0,0 +1,6 @@
++echo $(echo -e "Line with\n LF")
++echo $(echo -e "Line with\r CR")
++echo $(echo -e "Line with\r\n CRLF")
++echo "$(echo -e "Line with\n LF")"
++echo "$(echo -e "Line with\r CR")"
++echo "$(echo -e "Line with\r\n CRLF")"
+diff --git a/tests/ps1lf.right b/tests/ps1lf.right
+new file mode 100644
+index 0000000..ee83131
+--- /dev/null
++++ b/tests/ps1lf.right
+@@ -0,0 +1,2 @@
++foo
++$ exit
+diff --git a/tests/ps1lf.tests b/tests/ps1lf.tests
+new file mode 100644
+index 0000000..01a2265
+--- /dev/null
++++ b/tests/ps1lf.tests
+@@ -0,0 +1 @@
++PS1='$(echo foo)\n\$ '
+diff --git a/tests/run-crlf b/tests/run-crlf
+new file mode 100644
+index 0000000..3f6037c
+--- /dev/null
++++ b/tests/run-crlf
+@@ -0,0 +1,2 @@
++${THIS_SH} ./crlf.tests > ${BASH_TSTOUT}
++diff ${BASH_TSTOUT} crlf.right && rm -f ${BASH_TSTOUT}
+diff --git a/tests/run-ps1lf b/tests/run-ps1lf
+new file mode 100644
+index 0000000..1617108
+--- /dev/null
++++ b/tests/run-ps1lf
+@@ -0,0 +1,2 @@
++${THIS_SH} --rcfile ./ps1lf.tests -i < /dev/null 2>&1 | tr -d '\r' > ${BASH_TSTOUT}
++diff ${BASH_TSTOUT} ps1lf.right && rm -f ${BASH_TSTOUT}
 diff --git a/variables.c b/variables.c
 index 028667c..a10594d 100644
 --- a/variables.c
@@ -181,33 +255,3 @@ index 028667c..a10594d 100644
    if (shell_variables == 0)
      create_variable_tables ();
  
-diff --git a/y.tab.c b/y.tab.c
-index 32b4c7c..ac70820 100644
---- a/y.tab.c
-+++ b/y.tab.c
-@@ -3770,7 +3770,13 @@ yy_input_name ()
- static int
- yy_getc ()
- {
--  return (*(bash_input.getter)) ();
-+#ifdef __MSYS__
-+  int c;
-+  while ((c = (*(bash_input.getter)) ()) == '\r');
-+  return c;
-+#else
-+   return (*(bash_input.getter)) ();
-+#endif
- }
- 
- /* Call this to unget C.  That is, to make C the next character
-@@ -4746,6 +4752,10 @@ shell_getc (remove_quoted_newline)
- 	  else
- 	    RESIZE_MALLOCED_BUFFER (shell_input_line, i, 2, shell_input_line_size, 256);
- 
-+#ifdef __MSYS__
-+	  if (c == '\r')
-+	    continue;
-+#endif
- 	  if (c == EOF)
- 	    {
- 	      if (bash_input.type == st_stream)
