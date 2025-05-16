@@ -1,0 +1,75 @@
+From 6f68d60d92072581c0393735e40c9e4fde4c2ffd Mon Sep 17 00:00:00 2001
+From: Tomohiro Kashiwada <kikairoya@gmail.com>
+Date: Wed, 7 May 2025 05:38:18 +0900
+Subject: [PATCH] [Cygwin] Enable TLS on Cygwin target (#138618)
+
+Cygwin environment and toolchain supports EMUTLS.
+
+From
+https://cygwin.com/git/?p=newlib-cygwin.git;a=blob;f=config/tls.m4;hb=HEAD#l118,
+
+```
+$ LANG=C gcc -v
+Using built-in specs.
+COLLECT_GCC=gcc
+COLLECT_LTO_WRAPPER=/usr/lib/gcc/x86_64-pc-cygwin/15/lto-wrapper.exe Target: x86_64-pc-cygwin
+Configured with: (snip)
+Thread model: posix
+Supported LTO compression algorithms: zlib zstd
+gcc version 15.0.1 20250406 (experimental) (GCC)
+
+$ echo '__thread int a; int b; int main() { return a = b; }' | gcc -S -xc -o- - | grep __emutls_get_address
+        call    __emutls_get_address
+        .def    __emutls_get_address;   .scl    2;      .type   32;     .endef
+```
+---
+ clang/lib/Basic/Targets/X86.h      | 1 -
+ clang/test/Driver/emulated-tls.cpp | 6 ++++++
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/clang/lib/Basic/Targets/X86.h b/clang/lib/Basic/Targets/X86.h
+index 8bd54e3625..05c40d0014 100644
+--- a/clang/lib/Basic/Targets/X86.h
++++ b/clang/lib/Basic/Targets/X86.h
+@@ -948,7 +948,6 @@ public:
+   CygwinX86_64TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
+       : X86_64TargetInfo(Triple, Opts) {
+     this->WCharType = TargetInfo::UnsignedShort;
+-    TLSSupported = false;
+   }
+ 
+   void getTargetDefines(const LangOptions &Opts,
+diff --git a/clang/test/Driver/emulated-tls.cpp b/clang/test/Driver/emulated-tls.cpp
+index 3ee901a835..431105bdfd 100644
+--- a/clang/test/Driver/emulated-tls.cpp
++++ b/clang/test/Driver/emulated-tls.cpp
+@@ -8,6 +8,8 @@
+ // RUN:   | FileCheck -check-prefix=NOEMU %s
+ // RUN: %clang -### --target=i686-pc-cygwin %s 2>&1 \
+ // RUN:   | FileCheck -check-prefix=EMU %s
++// RUN: %clang -### --target=x86_64-pc-cygwin %s 2>&1 \
++// RUN:   | FileCheck -check-prefix=EMU %s
+ // RUN: %clang -### --target=i686-pc-openbsd %s 2>&1 \
+ // RUN:   | FileCheck -check-prefix=EMU %s
+ 
+@@ -17,6 +19,8 @@
+ // RUN: | FileCheck -check-prefix=EMU %s
+ // RUN: %clang -### -target i686-pc-cygwin %s -fno-emulated-tls -femulated-tls 2>&1 \
+ // RUN: | FileCheck -check-prefix=EMU %s
++// RUN: %clang -### -target x86_64-pc-cygwin %s -fno-emulated-tls -femulated-tls 2>&1 \
++// RUN: | FileCheck -check-prefix=EMU %s
+ // RUN: %clang -### -target i686-pc-openbsd %s -fno-emulated-tls -femulated-tls 2>&1 \
+ // RUN: | FileCheck -check-prefix=EMU %s
+ 
+@@ -26,6 +30,8 @@
+ // RUN: | FileCheck -check-prefix=NOEMU %s
+ // RUN: %clang -### -target i686-pc-cygwin %s -femulated-tls -fno-emulated-tls 2>&1 \
+ // RUN: | FileCheck -check-prefix=NOEMU %s
++// RUN: %clang -### -target x86_64-pc-cygwin %s -femulated-tls -fno-emulated-tls 2>&1 \
++// RUN: | FileCheck -check-prefix=NOEMU %s
+ // RUN: %clang -### -target i686-pc-openbsd %s -femulated-tls -fno-emulated-tls 2>&1 \
+ // RUN: | FileCheck -check-prefix=NOEMU %s
+ 
+-- 
+2.49.0.windows.1
+

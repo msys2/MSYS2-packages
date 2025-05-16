@@ -1,0 +1,38 @@
+From 431f844235e174bd0357cae586e249a6f84a13d7 Mon Sep 17 00:00:00 2001
+From: kikairoya <kikairoya@gmail.com>
+Date: Mon, 21 Apr 2025 23:30:13 +0900
+Subject: [PATCH] [Cygwin] Internal class in
+ explicitly-instantiation-declarated template should be instantiated
+
+In-code comment says "explicit instantiation decl of the outer class
+doesn't affect the inner class" but this behavior seems MSVC
+specific, mingw-gcc and cygwin-gcc does not.
+Clang should honor gcc's behavior.
+
+This change fixes std::string compatibilty and resolves strange link
+error (statically linked), strange crash (dynamically linked) using
+libstdc++ on Cygwin.
+
+HACK! only change behavior for Cygwin, not MinGW, because linking to
+libc++ relies on the old behavior, even though it differs from GCC.
+
+Co-authored-by: Jeremy Drake <github@jdrake.com>
+---
+ clang/lib/Sema/SemaTemplateInstantiate.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/clang/lib/Sema/SemaTemplateInstantiate.cpp b/clang/lib/Sema/SemaTemplateInstantiate.cpp
+index 73567f3be8..fbfe5de991 100644
+--- a/clang/lib/Sema/SemaTemplateInstantiate.cpp
++++ b/clang/lib/Sema/SemaTemplateInstantiate.cpp
+@@ -4361,6 +4361,7 @@ Sema::InstantiateClassMembers(SourceLocation PointOfInstantiation,
+         continue;
+ 
+       if (Context.getTargetInfo().getTriple().isOSWindows() &&
++          !Context.getTargetInfo().getTriple().isWindowsCygwinEnvironment() &&
+           TSK == TSK_ExplicitInstantiationDeclaration) {
+         // On Windows, explicit instantiation decl of the outer class doesn't
+         // affect the inner class. Typically extern template declarations are
+-- 
+2.49.0.windows.1
+
