@@ -2,7 +2,7 @@
 # Contributor: Ray Donnelly <mingw.android@gmail.com>
 
 pkgname=doxygen
-pkgver=1.13.2
+pkgver=1.14.0
 pkgrel=1
 pkgdesc="A documentation system for C++, C, Java, IDL and PHP"
 arch=('i686' 'x86_64')
@@ -11,11 +11,18 @@ msys2_repository_url="https://github.com/doxygen/doxygen"
 msys2_references=(
   "cpe: cpe:/a:doxygen:doxygen"
 )
-license=('GPL')
+license=('spdx:GPL-2.0-only')
 depends=("gcc-libs" "libsqlite" "libiconv")
 makedepends=("cmake" "ninja" "flex" "python" "libsqlite-devel" "libiconv-devel" 'gcc')
-source=(${pkgname}-${pkgver}.tar.gz::https://github.com/doxygen/doxygen/archive/Release_${pkgver//./_}.tar.gz)
-sha256sums=('4c9d9c8e95c2af4163ee92bcb0f3af03b2a4089402a353e4715771e8d3701c48')
+source=(https://www.doxygen.nl/files/${pkgname}-${pkgver}.src.tar.gz
+        001-fix-linking.patch)
+sha256sums=('d4536d11ab13037327d8d026b75f5a86b7ccb2093e2f546235faf61fd86e6b5d'
+            '0efe17145002fc2abd349e051762faf45c89a2db8e8eb83f99660942a9116319')
+
+prepare() {
+  cd ${pkgname}-${pkgver}
+  patch -p1 -i "${srcdir}"/001-fix-linking.patch
+}
 
 build() {
   local extra_config=Release
@@ -23,7 +30,7 @@ build() {
     extra_config=Debug
   fi
 
-  mkdir -p build-${CHOST} && cd build-${CHOST}
+  mkdir -p build-${MSYSTEM} && cd build-${MSYSTEM}
 
   /usr/bin/cmake \
     -GNinja \
@@ -31,14 +38,18 @@ build() {
     -DCMAKE_BUILD_TYPE=${extra_config} \
     -Dbuild_wizard=OFF \
     -Dbuild_search=OFF \
-    -Duse_sqlite3=ON \
+    -Duse_sys_sqlite3=ON \
     -Duse_libclang=OFF \
-    ../${pkgname}-Release_${pkgver//./_}
+    ../${pkgname}-${pkgver}
 
   /usr/bin/cmake --build .
 }
 
 package() {
-  cd ${srcdir}/build-${CHOST}
+  cd ${srcdir}/build-${MSYSTEM}
+
   DESTDIR="${pkgdir}" /usr/bin/cmake --install .
+
+  install -Dm644 "${srcdir}"/${pkgname}-${pkgver}/LICENSE \
+    "${pkgdir}"/usr/share/licenses/${pkgname}/LICENSE
 }
