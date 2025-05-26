@@ -1,0 +1,47 @@
+From 6866766da4fdc1a6b9aedececcea659189f2adcd Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Sat, 10 May 2025 07:07:32 +0900
+Subject: [PATCH 44/N] Cygwin: console: Fix the console mode for background
+ non-cygwin app
+
+In the commit 0bfd91d57863, the behaviour of the tty::restore was
+changed so that the console mode is set to the previouslly stored
+console mode. Therefore, the console mode for the background non-
+cygwin app should not be set to tty::restore anymore in setup_for_
+non_cygwin_app(). This should have been fixed in that commit.
+This patch belatedly fixes it.
+
+Fixes: 0bfd91d57863 ("Cygwin: console: tty::restore really restores the previous mode")
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+(cherry picked from commit 854150fda3106955762c8b6b915f91e3ba7a29ae)
+(cherry picked from commit 249b8e8fb0fd6d8d8a50c2f20c1cc864696efc79)
+---
+ winsup/cygwin/fhandler/console.cc | 15 ++++++++-------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler/console.cc b/winsup/cygwin/fhandler/console.cc
+index 2a224fe..08ac045 100644
+--- a/winsup/cygwin/fhandler/console.cc
++++ b/winsup/cygwin/fhandler/console.cc
+@@ -905,13 +905,14 @@ fhandler_console::setup_for_non_cygwin_app ()
+   /* Setting-up console mode for non-cygwin app. */
+   /* If conmode is set to tty::native for non-cygwin apps
+      in background, tty settings of the shell is reflected
+-     to the console mode of the app. So, use tty::restore
+-     for background process instead. */
+-  tty::cons_mode conmode =
+-    (get_ttyp ()->getpgid ()== myself->pgid) ? tty::native : tty::restore;
+-  set_input_mode (conmode, &tc ()->ti, get_handle_set ());
+-  set_output_mode (conmode, &tc ()->ti, get_handle_set ());
+-  set_disable_master_thread (true, this);
++     to the console mode of the app. So, do not change the
++     console mode. */
++  if (get_ttyp ()->getpgid () == myself->pgid)
++    {
++      set_input_mode (tty::native, &tc ()->ti, get_handle_set ());
++      set_output_mode (tty::native, &tc ()->ti, get_handle_set ());
++      set_disable_master_thread (true, this);
++    }
+ }
+ 
+ void

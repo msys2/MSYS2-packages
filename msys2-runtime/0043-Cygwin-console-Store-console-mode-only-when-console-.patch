@@ -1,0 +1,107 @@
+From a86d33ef296849d7ef2e954e1f296236d2c2a5c3 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Wed, 7 May 2025 15:40:22 +0900
+Subject: [PATCH 43/N] Cygwin: console: Store console mode only when console
+ is opened
+
+... and restore it when app exits. The commit 0bfd91d57863 has a bug
+that the console mode is stored into the shared memory when both:
+  (1) cygwin process is started from non-cygwin process.
+  (2) cygwin process started from non-cygwin process exits.
+(1) is intended, but (2) is not. Due to (2), the stored console mode
+is unexpectedly broken when the cygwin process exits. Then the mode
+restored will be not as expected. This causes undesired console mode
+in the use case that cygwin and non-cygwin apps are mixed.
+
+With this patch, the console mode will stored only in the case (1).
+This is done by putting the code, which stores the console mode, into
+fhandler_console::open() rather than fhandler_console::set_input_mode()
+and fhandler_console::set_output_mode().
+
+Fixes: 0bfd91d57863 ("Cygwin: console: tty::restore really restores the previous mode")
+Reported-by: Johannes Schindelin <Johannes.Schindelin@gmx.de>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+(cherry picked from commit 09ae9f6ee99e2b58dcb17af563f15e8026b773ae)
+---
+ winsup/cygwin/fhandler/console.cc | 33 ++++++++++++++++++++-----------
+ 1 file changed, 22 insertions(+), 11 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler/console.cc b/winsup/cygwin/fhandler/console.cc
+index f33e354..2a224fe 100644
+--- a/winsup/cygwin/fhandler/console.cc
++++ b/winsup/cygwin/fhandler/console.cc
+@@ -771,6 +771,8 @@ fhandler_console::setup ()
+       con.disable_master_thread = true;
+       con.master_thread_suspended = false;
+       con.num_processed = 0;
++      con.curr_input_mode = tty::restore;
++      con.curr_output_mode = tty::restore;
+     }
+ }
+ 
+@@ -849,11 +851,6 @@ fhandler_console::set_input_mode (tty::cons_mode m, const termios *t,
+ 	flags |= ENABLE_PROCESSED_INPUT;
+       break;
+     }
+-  if (con.curr_input_mode != tty::cygwin && m == tty::cygwin)
+-    {
+-      prev_input_mode_backup = con.prev_input_mode;
+-      con.prev_input_mode = oflags;
+-    }
+   con.curr_input_mode = m;
+   SetConsoleMode (p->input_handle, flags);
+   if (!(oflags & ENABLE_VIRTUAL_TERMINAL_INPUT)
+@@ -893,11 +890,6 @@ fhandler_console::set_output_mode (tty::cons_mode m, const termios *t,
+ 	flags |= DISABLE_NEWLINE_AUTO_RETURN;
+       break;
+     }
+-  if (con.curr_output_mode != tty::cygwin && m == tty::cygwin)
+-    {
+-      prev_output_mode_backup = con.prev_output_mode;
+-      GetConsoleMode (p->output_handle, &con.prev_output_mode);
+-    }
+   con.curr_output_mode = m;
+   acquire_attach_mutex (mutex_timeout);
+   DWORD resume_pid = attach_console (con.owner);
+@@ -1836,6 +1828,12 @@ fhandler_console::open (int flags, mode_t)
+   handle_set.output_handle = h;
+   release_output_mutex ();
+ 
++  if (con.owner == GetCurrentProcessId ())
++    {
++      GetConsoleMode (get_handle (), &con.prev_input_mode);
++      GetConsoleMode (get_output_handle (), &con.prev_output_mode);
++    }
++
+   wpbuf.init ();
+ 
+   handle_set.input_mutex = input_mutex;
+@@ -1881,6 +1879,19 @@ fhandler_console::open (int flags, mode_t)
+ 	setenv ("TERM", "cygwin", 1);
+     }
+ 
++  if (con.curr_input_mode != tty::cygwin)
++    {
++      prev_input_mode_backup = con.prev_input_mode;
++      GetConsoleMode (get_handle (), &con.prev_input_mode);
++      set_input_mode (tty::cygwin, &get_ttyp ()->ti, &handle_set);
++    }
++  if (con.curr_output_mode != tty::cygwin)
++    {
++      prev_output_mode_backup = con.prev_output_mode;
++      GetConsoleMode (get_output_handle (), &con.prev_output_mode);
++      set_output_mode (tty::cygwin, &get_ttyp ()->ti, &handle_set);
++    }
++
+   debug_printf ("opened conin$ %p, conout$ %p", get_handle (),
+ 		get_output_handle ());
+ 
+@@ -4720,7 +4731,7 @@ fhandler_console::cons_mode_on_close (handle_set_t *p)
+   NTSTATUS status =
+     NtQueryInformationProcess (GetCurrentProcess (), ProcessBasicInformation,
+ 			       &pbi, sizeof (pbi), NULL);
+-  if (NT_SUCCESS (status)
++  if (NT_SUCCESS (status) && cygwin_pid (con.owner)
+       && !process_alive ((DWORD) pbi.InheritedFromUniqueProcessId))
+     /* Execed from normal cygwin process and the parent has been exited. */
+     return tty::cygwin;
