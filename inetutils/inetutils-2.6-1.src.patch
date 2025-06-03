@@ -1,0 +1,2070 @@
+--- origsrc/inetutils-2.6/Makefile.in	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/Makefile.in	2025-03-12 15:41:59.393352400 +0900
+@@ -2130,6 +2130,7 @@ top_builddir = @top_builddir@
+ top_srcdir = @top_srcdir@
+ traceroute_BUILD = @traceroute_BUILD@
+ traceroute_INSTALL_HOOK = @traceroute_INSTALL_HOOK@
++traceroute_EXTRALIBS = @traceroute_EXTRALIBS@
+ traceroute_PROPS = @traceroute_PROPS@
+ uucpd_BUILD = @uucpd_BUILD@
+ uucpd_INSTALL_HOOK = @uucpd_INSTALL_HOOK@
+--- origsrc/inetutils-2.6/configure	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/configure	2025-03-12 15:41:59.413351700 +0900
+@@ -2542,6 +2542,7 @@ enable_traceroute
+ traceroute_PROPS
+ traceroute_INSTALL_HOOK
+ traceroute_BUILD
++traceroute_EXTRALIBS
+ ENABLE_ifconfig_FALSE
+ ENABLE_ifconfig_TRUE
+ enable_ifconfig
+@@ -6804,6 +6805,11 @@ fi
+ if test "$enable_traceroute" = yes; then
+    traceroute_BUILD=traceroute$EXEEXT
+    traceroute_INSTALL_HOOK="install-traceroute-hook"
++   case "$host_os" in
++   cygwin*)
++     traceroute_EXTRALIBS="-liphlpapi"
++     ;;
++   esac
+ else
+    traceroute_BUILD=''
+    traceroute_INSTALL_HOOK=''
+--- origsrc/inetutils-2.6/ftp/cmds.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ftp/cmds.c	2025-03-12 15:41:59.433356800 +0900
+@@ -100,6 +100,10 @@
+ # endif
+ #endif /* !DEFPORT */
+ 
++#ifdef __CYGWIN__
++typedef _sig_func_ptr sig_t;
++#endif
++
+ /* Returns true if STR is entirely lower case.  */
+ static int
+ all_lower (char *str)
+@@ -309,6 +313,13 @@ setpeer (int argc, char **argv)
+       if (autologin)
+ 	login (host);
+ 
++#ifdef __CYGWIN__
++# ifndef unix
++#  define unix
++# endif
++# define NBBY 8
++#endif /* __CYGWIN__ */
++
+ #if (defined unix || defined __unix || defined __unix__) && NBBY == 8
+ /*
+  * this ifdef is to keep someone form "porting" this to an incompatible
+@@ -1914,7 +1925,7 @@ quote1 (char *initial, int argc, char **
+ 	  len += strlen (strcpy (&buf[len], argv[i]));
+ 	}
+     }
+-  if (command (buf) == PRELIM)
++  if (command ("%s", buf) == PRELIM)
+     {
+       while (getreply (0) == PRELIM)
+ 	continue;
+--- origsrc/inetutils-2.6/ftp/ftp.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ftp/ftp.c	2025-03-12 16:35:36.882213600 +0900
+@@ -94,6 +94,10 @@
+ #include "ftp_var.h"
+ #include "attribute.h"
+ 
++#ifdef __CYGWIN__
++#include <io.h>
++#endif
++
+ int data = -1;
+ int abrtflag = 0;
+ jmp_buf ptabort;
+@@ -666,7 +670,15 @@ sendrequest (char *cmd, char *local, cha
+     }
+   else
+     {
++#ifdef __CYGWIN__
++      if (curtype != TYPE_A) {
++        fin = fopen (local, "rb");
++      } else {
++        fin = fopen (local, "r");
++      }
++#else
+       fin = fopen (local, "r");
++#endif
+       if (fin == NULL)
+ 	{
+ 	  error (0, errno, "local: %s", local);
+@@ -710,6 +722,7 @@ sendrequest (char *cmd, char *local, cha
+ 	  break;
+ 	case TYPE_I:
+ 	case TYPE_L:
++	  setmode (fileno (fin), O_BINARY);
+ 	  rc = lseek (fileno (fin), restart_point, SEEK_SET);
+ 	  break;
+ 	}
+@@ -778,6 +791,8 @@ sendrequest (char *cmd, char *local, cha
+ 
+     case TYPE_I:
+     case TYPE_L:
++      setmode (fileno (fin), O_BINARY);
++      setmode (fileno (dout), O_BINARY);
+       errno = d = 0;
+       while ((c = read (fileno (fin), buf, bufsize)) > 0)
+ 	{
+@@ -1013,7 +1028,17 @@ recvrequest (char *cmd, char *local, cha
+     {
+       struct stat st;
+ 
++#ifdef __CYGWIN__
++      {
++        char nmode[8];
++        strcpy (nmode, lmode);
++        if (curtype != TYPE_A)
++          strcat (nmode, "b");
++        fout = fopen (local, nmode);
++      }
++#else
+       fout = fopen (local, lmode);
++#endif
+       if (fout == NULL || fstat (fileno (fout), &st) < 0)
+ 	{
+ 	  error (0, errno, "local: %s", local);
+@@ -1042,6 +1067,8 @@ recvrequest (char *cmd, char *local, cha
+ 
+     case TYPE_I:
+     case TYPE_L:
++      setmode (fileno (fout), O_BINARY);
++      setmode (fileno (din), O_BINARY);
+       if (restart_point && lseek (fileno (fout), restart_point, SEEK_SET) < 0)
+ 	{
+ 	  error (0, errno, "local: %s", local);
+@@ -1520,10 +1547,15 @@ noport:
+       result = ERROR;		/* For success detection.  */
+       if (data_addr.ss_family != AF_INET || doepsv4)
+ 	{
++	  char *p;
+ 	  /* Use EPRT mode.  */
+ 	  getnameinfo ((struct sockaddr *) &data_addr, ctladdrlen,
+ 		       ia, sizeof (ia), portstr, sizeof (portstr),
+ 		       NI_NUMERICHOST | NI_NUMERICSERV);
++	  /* Remove IPv6 link local address postfix */
++	  p = strchr (ia, '%');
++	  if (p)
++	    *p = '\0';
+ 	  result = command ("EPRT |%d|%s|%s|",
+ 			    (data_addr.ss_family == AF_INET) ? 1 : 2,
+ 			    ia, portstr);
+--- origsrc/inetutils-2.6/ftpd/auth.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ftpd/auth.c	2025-03-12 15:41:59.453353200 +0900
+@@ -18,6 +18,17 @@
+ 
+ #include <config.h>
+ 
++#ifdef __CYGWIN__
++# undef ERROR
++# include <windows.h>
++# include <pwd.h>
++# include <sys/cygwin.h>
++# include <io.h>
++# define is_winnt      (GetVersion() < 0x80000000)
++#else
++# define is_winnt      (0)
++#endif
++
+ #include <sys/types.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -43,6 +54,9 @@
+    shell as returned by getusershell().  Disallow anyone mentioned in the file
+    PATH_FTPUSERS to allow people such as root and uucp to be avoided.  */
+ 
++static int
++do_cygwin_auth (const char* passwd, struct credentials *pcred);
++
+ int
+ auth_user (const char *name, struct credentials *pcred)
+ {
+@@ -92,8 +106,8 @@ auth_user (const char *name, struct cred
+ 	 */
+ 	if (strcmp (name, "ftp") == 0 || strcmp (name, "anonymous") == 0)
+ 	  {
+-	    if (checkuser (PATH_FTPUSERS, "ftp")
+-		|| checkuser (PATH_FTPUSERS, "anonymous"))
++	    if (checkuser (PATH_FTPUSERS, "ftp", NULL)
++		|| checkuser (PATH_FTPUSERS, "anonymous", NULL))
+ 	      {
+ 		snprintf (pcred->message, len, "User %s access denied.",
+ 			  name);
+@@ -110,6 +124,8 @@ auth_user (const char *name, struct cred
+ 		snprintf (pcred->message, len, "User %s unknown.", name);
+ 		err = 1;
+ 	      }
++	    if (err == 0)
++	      checkuser (PATH_FTPCHROOT, pcred->name, &pcred->rootdir);
+ 	    return err;
+ 	  }
+ 
+@@ -128,7 +144,7 @@ auth_user (const char *name, struct cred
+ 		break;
+ 	    endusershell ();
+ 
+-	    if (cp == NULL || checkuser (PATH_FTPUSERS, name))
++	    if (cp == NULL || checkuser (PATH_FTPUSERS, name, NULL))
+ 	      {
+ 		sprintf (pcred->message, "User %s access denied.", name);
+ 		return 1;
+@@ -148,7 +164,8 @@ auth_user (const char *name, struct cred
+ 
+   if (err == 0)
+     {
+-      pcred->dochroot = checkuser (PATH_FTPCHROOT, pcred->name);
++      pcred->dochroot =
++	checkuser (PATH_FTPCHROOT, pcred->name, &pcred->rootdir);
+ 
+ #if defined WITH_PAM && !defined WITH_LINUX_PAM
+       if (pcred->auth_type == AUTH_TYPE_PAM)
+@@ -183,18 +200,49 @@ auth_pass (const char *passwd, struct cr
+     case AUTH_TYPE_PASSWD:
+     default:
+       {
++#ifdef __CYGWIN__
++	if (!is_winnt)
++	{
++#endif /* __CYGWIN__ */
+ 	char *xpasswd;
+ 	char *salt = pcred->passwd;
+ 	/* Try to authenticate the user.  */
+ 	if (pcred->passwd == NULL || *pcred->passwd == '\0')
+ 	  return 1;		/* Failed. */
+-	xpasswd = crypt (passwd, salt);
++	xpasswd = (char*) crypt (passwd, salt);
+ 	return (!xpasswd || strcmp (xpasswd, pcred->passwd) != 0);
++#ifdef __CYGWIN__
++	} else {
++	  return  do_cygwin_auth (passwd, pcred);
++	}
++#endif /* __CYGWIN__ */
+       }
+     }				/* switch (auth_type) */
+   return -1;
+ }
+ 
++#ifdef __CYGWIN__
++static int
++do_cygwin_auth (const char* passwd, struct credentials *pcred)
++{
++  struct passwd *p;
++  if ((pcred == NULL) || (pcred->name == NULL) || (pcred->name[0] == '\0'))
++    return 1;
++
++  /* can't "recreate" p from contents of pcred, because
++     struct passwd might contain extension elements
++     unknown to us
++  */
++  p = getpwnam (pcred->name);
++  if (p == NULL)
++    return 1;
++
++  HANDLE hToken = (HANDLE) cygwin_logon_user (p, passwd);
++  cygwin_set_impersonation_token (hToken);
++  return (hToken == INVALID_HANDLE_VALUE); // non-zero on error
++}
++#endif /* __CYGWIN__ */
++
+ int
+ sgetcred (const char *name, struct credentials *pcred)
+ {
+--- origsrc/inetutils-2.6/ftpd/conf.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ftpd/conf.c	2025-03-12 15:41:59.463355100 +0900
+@@ -58,11 +58,11 @@ display_file (const char *name, int code
+  * Return 1 if yes, 0 otherwise.
+  */
+ int
+-checkuser (const char *filename, const char *name)
++checkuser (const char *filename, const char *name, char **path)
+ {
+   FILE *fp;
+   int found = 0, ngroups = 0;
+-  char *p, line[BUFSIZ];
++  char *p = NULL, line[BUFSIZ];
+   gid_t *groups = NULL;
+   struct passwd *pwd = NULL;
+ 
+@@ -88,6 +88,7 @@ checkuser (const char *filename, const c
+ 	  /* Wildcard entry, a single '@'.  */
+ 	  if (p[0] == '@' && (p[1] == 0 || isblank (p[1])))
+ 	    {
++	      p++;
+ 	      found = 1;
+ 	      break;
+ 	    }
+@@ -116,7 +117,8 @@ checkuser (const char *filename, const c
+ 		  while (*p && (isalnum (*p) || *p == '_' || *p == '-'))
+ 		    p++;
+ 
+-		  *p = '\0';	/* Group name ends here.  */
++		  if (*p)
++		    *p++ = '\0';	/* Group name ends here.  */
+ 
+ 		  grp = getgrnam (gname);
+ 		  if (grp)
+@@ -135,13 +137,46 @@ checkuser (const char *filename, const c
+ 	    }
+ 
+ 	  /* User name ends at the first blank character.  */
+-	  if (strncmp (p, name, strlen (name)) == 0
++	  if (strncasecmp (p, name, strlen (name)) == 0
+ 	      && (p[strlen (name)] == 0 || isblank (p[strlen (name)])))
+ 	    {
++	      p += strlen (name);
+ 	      found = 1;
+ 	      break;
+ 	    }
+ 	}
++
++      /* Extract the second field and set to *path */
++      if (found && path && p)
++	{
++	  char *pend;
++	  while (*p && isblank (*p))
++	    p++;
++	  pend = p;
++	  while (*pend && !isblank (*pend))
++	    pend++;
++	  *pend = '\0';
++	  if (*p)
++	    {
++	      char *buf = malloc (strlen (*path) + strlen (p) + 2);
++	      if (buf)
++		{
++		  if (*p != '/')
++		    sprintf(buf, "%s/%s", *path, p);
++		  else
++		    sprintf(buf, "%s", p);
++		  free (*path);
++		  *path = sgetsave (buf);
++		  free(buf);
++		}
++	      else
++		{
++		  perror_reply (421, "Local resource failure: malloc");
++		  dologout (1);
++		}
++	    }
++	}
++
+       free (groups);
+       fclose (fp);
+     }
+--- origsrc/inetutils-2.6/ftpd/extern.h	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ftpd/extern.h	2025-03-12 15:41:59.473357100 +0900
+@@ -54,7 +54,7 @@
+ #include <netinet/in.h>
+ 
+ extern void cwd (const char *);
+-extern int checkuser (const char *filename, const char *name);
++extern int checkuser (const char *filename, const char *name, char **path);
+ extern void delete (const char *);
+ extern int display_file (const char *name, int code);
+ extern void dologout (int);
+--- origsrc/inetutils-2.6/ftpd/ftpcmd.y	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ftpd/ftpcmd.y	2025-03-12 15:41:59.483351500 +0900
+@@ -593,7 +593,7 @@ cmd
+ # endif /* BSD */
+ #endif /* !HAVE_UNAME */
+ 
+-#if defined unix || defined __unix || defined __unix__
++#if defined unix || defined __unix || defined __unix__ || defined __CYGWIN__
+ 			sys_type = "UNIX";
+ #else
+ 			sys_type = "UNKNOWN";
+--- origsrc/inetutils-2.6/ftpd/ftpd.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ftpd/ftpd.c	2025-03-12 15:45:04.762992200 +0900
+@@ -111,6 +111,10 @@
+ # define LOG_FTP LOG_DAEMON	/* Use generic facility.  */
+ #endif
+ 
++#ifndef LARGE_TRANSFER_BLOCKSIZE
++# define LARGE_TRANSFER_BLOCKSIZE 4096
++#endif
++
+ #ifndef MAP_FAILED
+ # define MAP_FAILED (void*)-1
+ #endif
+@@ -441,11 +445,21 @@ static struct argp argp = {
+   NULL
+ };
+ 
++#if defined(WITH_WRAP) && defined(__CYGWIN__)
++extern int allow_severity; /* set value in main() */
++extern int deny_severity;  /* set value in main() */
++#endif
++
+ int
+ main (int argc, char *argv[], char **envp)
+ {
+   int index;
+ 
++#if defined(WITH_WRAP) && defined(__CYGWIN__)
++  allow_severity = LOG_INFO;
++  deny_severity = LOG_NOTICE;
++#endif
++
+   set_program_name (argv[0]);
+ 
+ #ifdef HAVE_TZSET
+@@ -556,7 +570,7 @@ main (int argc, char *argv[], char **env
+   }
+ #endif
+ 
+-#ifdef	F_SETOWN
++#if defined(F_SETOWN) && !defined(__CYGWIN__)
+   if (fcntl (STDIN_FILENO, F_SETOWN, getpid ()) == -1)
+     syslog (LOG_ERR, "fcntl F_SETOWN: %m");
+ #endif
+@@ -680,19 +694,55 @@ complete_login (struct credentials *pcre
+       /* We MUST do a chdir () after the chroot. Otherwise
+          the old current directory will be accessible as "."
+          outside the new root!  */
+-      if (chroot (pcred->rootdir) < 0 || chdir (pcred->homedir) < 0)
++      char *subdir = strstr(pcred->rootdir, "/./");
++      if (subdir)
++      	*subdir++ = '\0';
++      if (chroot (pcred->rootdir) < 0)
+ 	{
+ 	  reply (550, "Can't set guest privileges.");
+ 	  goto bad;
+ 	}
++      if (seteuid ((uid_t)pcred->uid) < 0)
++	{
++	  reply(550, "Can't set uid.");
++	  goto bad;
++	}
++      if (chdir (pcred->homedir) < 0)
++	{
++	  reply(550, "Can't access home directory.");
++	  goto bad;
++	}
++      if (subdir && chdir (subdir) < 0)
++	{
++	  reply(550, "Can't change directory to %s.", subdir);
++	  goto bad;
++	}
+     }
+   else if (pcred->dochroot)
+     {
+-      if (chroot (pcred->rootdir) < 0 || chdir (pcred->homedir) < 0)
++      char *subdir = strstr(pcred->rootdir, "/./");
++      if (subdir)
++      	*subdir++ = '\0';
++      if (chroot (pcred->rootdir) < 0)
+ 	{
+ 	  reply (550, "Can't change root.");
+ 	  goto bad;
+ 	}
++      if (seteuid ((uid_t)pcred->uid) < 0)
++	{
++	  reply(550, "Can't set uid.");
++	  goto bad;
++	}
++      if (chdir (pcred->homedir) < 0)
++	{
++	  reply(550, "Can't access home directory.");
++	  goto bad;
++	}
++      if (subdir && chdir (subdir) < 0)
++	{
++	  reply(550, "Can't change directory to %s.", subdir);
++	  goto bad;
++	}
+     }
+ 
+   if (seteuid ((uid_t) pcred->uid) < 0)
+@@ -703,6 +753,11 @@ complete_login (struct credentials *pcre
+ 
+   if (!pcred->guest && !pcred->dochroot)	/* Remaining case.  */
+     {
++      if (seteuid ((uid_t)pcred->uid) < 0)
++ 	{
++	  reply(550, "Can't set uid.");
++ 	  goto bad;
++ 	}
+       if (chdir (pcred->rootdir) < 0)
+ 	{
+ 	  if (chdir ("/") < 0)
+@@ -858,7 +913,7 @@ end_login (struct credentials *pcred)
+   char *remotehost = pcred->remotehost;
+   int atype = pcred->auth_type;
+ 
+-  if (seteuid ((uid_t) 0) == -1)
++  if (seteuid (getuid ()) == -1)
+     _exit (EXIT_FAILURE);
+ 
+   if (pcred->logged_in)
+@@ -970,6 +1025,11 @@ retrieve (const char *cmd, const char *n
+ 
+   if (cmd == 0)
+     {
++#ifdef __CYGWIN__
++      if (type != TYPE_A)
++	fin = fopen (name, "rb"), closefunc = fclose;
++      else
++#endif
+       fin = fopen (name, "r"), closefunc = fclose;
+       st.st_size = 0;
+     }
+@@ -1057,6 +1117,13 @@ store (const char *name, const char *mod
+   FILE *fout, *din;
+   struct stat st;
+   int (*closefunc) (FILE *);
++  char nmode[8];
++
++  strcpy (nmode, mode);
++#ifdef __CYGWIN__
++  if (type != TYPE_A)
++    strcat (nmode, "b");
++#endif
+ 
+   if (unique && stat (name, &st) == 0)
+     {
+@@ -1072,8 +1139,16 @@ store (const char *name, const char *mod
+     }
+ 
+   if (restart_point)
+-    mode = "r+";
+-  fout = fopen (name, mode);
++    {
++#ifdef __CYGWIN__
++      if (type != TYPE_A)
++	mode = "rb+";
++      else
++#endif
++	mode = "r+";
++      strcpy (nmode, mode);
++    }
++  fout = fopen (name, nmode);
+   closefunc = fclose;
+   if (fout == NULL || fstat (fileno (fout), &st) < 0)
+     {
+@@ -1149,7 +1224,7 @@ getdatasock (const char *mode)
+ 
+   if (data >= 0)
+     return fdopen (data, mode);
+-  if (seteuid ((uid_t) 0) == -1)
++  if (seteuid (getuid ()) == -1)
+     _exit (EXIT_FAILURE);
+   s = socket (ctrl_addr.ss_family, SOCK_STREAM, 0);
+   if (s < 0)
+@@ -1316,9 +1391,12 @@ static void
+ send_data (FILE *instr, FILE *outstr, off_t blksize)
+ {
+   int c, cnt, filefd, netfd;
+-  char *buf = MAP_FAILED, *bp;
++  char *buf = MAP_FAILED;
+   off_t curpos;
++#ifdef HAVE_MMAP
++  char *bp;
+   off_t len, filesize;
++#endif
+ 
+   transflag++;
+   if (setjmp (urgcatch))
+@@ -1411,7 +1489,14 @@ send_data (FILE *instr, FILE *outstr, of
+ 	  len = filesize;
+ 	  do
+ 	    {
++#ifdef __CYGWIN__
++	      cnt = write (netfd, bp,
++		(len < LARGE_TRANSFER_BLOCKSIZE ?
++		 len : LARGE_TRANSFER_BLOCKSIZE));
++#else
+ 	      cnt = write (netfd, bp, len);
++#endif /* __CYGWIN__ */
++
+ 	      len -= cnt;
+ 	      bp += cnt;
+ 	      if (cnt > 0)
+@@ -1436,6 +1521,9 @@ send_data (FILE *instr, FILE *outstr, of
+ 	    syslog (LOG_DEBUG, "Starting at position %jd.", curpos);
+ 	}
+ 
++      if (blksize <= 0)
++	blksize = LARGE_TRANSFER_BLOCKSIZE;
++
+       buf = malloc ((unsigned int) blksize);
+       if (buf == NULL)
+ 	{
+@@ -1975,7 +2063,7 @@ passive (int epsv, int af)
+   else				/* !AF_INET6 */
+     ((struct sockaddr_in *) &pasv_addr)->sin_port = 0;
+ 
+-  if (seteuid ((uid_t) 0) == -1)
++  if (seteuid (getuid ()) == -1)
+     _exit (EXIT_FAILURE);
+   if (bind (pdata, (struct sockaddr *) &pasv_addr, pasv_addrlen) < 0)
+     {
+--- origsrc/inetutils-2.6/ftpd/server_mode.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ftpd/server_mode.c	2025-03-12 15:41:59.503353600 +0900
+@@ -57,8 +57,14 @@ static void reapchild (int);
+ extern int hosts_ctl (char *, char *, char *, char *);
+ # endif
+ 
++#ifdef __CYGWIN__
++/* provided by library (e.g. extern, here) on cygwin */
++extern int allow_severity; /* set value in main() */
++extern int deny_severity;  /* set value in main() */
++#else
+ int allow_severity = LOG_INFO;
+ int deny_severity = LOG_NOTICE;
++#endif
+ 
+ static int
+ check_host (struct sockaddr *sa, socklen_t len)
+--- origsrc/inetutils-2.6/headers/protocols/talkd.h	2025-03-12 15:41:05.064209400 +0900
++++ src/inetutils-2.6/headers/protocols/talkd.h	2025-03-12 15:41:59.513351800 +0900
+@@ -61,6 +61,12 @@
+ extern "C" {
+ #endif
+ 
++/* 4.3BSD sockaddr structure (used by talk protocol).  */
++struct osockaddr {
++	u_short	sa_family;		/* address family */
++	char	sa_data[14];		/* up to 14 bytes of direct address */
++};
++
+ /*
+  * Client->server request message format.
+  */
+--- origsrc/inetutils-2.6/ifconfig/ifconfig.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ifconfig/ifconfig.c	2025-03-12 15:41:59.523355600 +0900
+@@ -46,6 +46,11 @@
+ #include <progname.h>
+ #include "ifconfig.h"
+ 
++#ifdef __CYGWIN__
++#define if_nametoindex(x) cygwin_if_nametoindex(x)
++extern unsigned cygwin_if_nametoindex(const char *name);
++#endif
++
+ int
+ main (int argc, char *argv[])
+ {
+--- origsrc/inetutils-2.6/ifconfig/options.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ifconfig/options.c	2025-03-12 15:41:59.523355600 +0900
+@@ -79,6 +79,9 @@ struct format formats[] = {
+    "${format}{check-existence}"
+    "${ifdisplay?}{"
+    "${name} (${index}):${\\n}"
++#ifdef __CYGWIN__
++   "${frndlyname?}{  frndlyname ${tab}{16}${frndlyname}${\\n}}"
++#endif
+    "${addr?}{  inet address ${tab}{16}${addr}${\\n}}"
+    "${netmask?}{  netmask ${tab}{16}${netmask}${\\n}}"
+    "${brdaddr?}{  broadcast ${tab}{16}${brdaddr}${\\n}}"
+--- origsrc/inetutils-2.6/ifconfig/printif.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ifconfig/printif.c	2025-03-12 15:41:59.533353400 +0900
+@@ -48,6 +48,11 @@
+ #include "xalloc.h"
+ #include <attribute.h>
+ 
++#ifdef __CYGWIN__
++#define if_nametoindex(x) cygwin_if_nametoindex(x)
++extern unsigned cygwin_if_nametoindex(const char *name);
++#endif
++
+ FILE *ostream;			/* Either stdout or stderror.  */
+ int column_stdout;		/* The column position of the cursor on stdout.  */
+ int column_stderr;		/* The column position of the cursor on stderr.  */
+@@ -112,6 +117,10 @@ struct format_handle format_handles[] =
+   {"dma?", fh_dma_query},
+   {"dma", fh_dma},
+ #endif /* HAVE_STRUCT_IFREQ_IFR_MAP */
++#ifdef __CYGWIN__
++  {"frndlyname?", fh_frndlyname_query},
++  {"frndlyname", fh_frndlyname},
++#endif
+   {NULL, NULL}
+ };
+ 
+@@ -484,7 +493,11 @@ fh_ifdisplay_query (format_data_t form,
+     {
+       /* Otherwise, only interfaces in state `UP' are displayed.  */
+       int rev = 0;
++#ifdef __CYGWIN__
++      int f = if_nameztoflag ("RUNNING", &rev);
++#else
+       int f = if_nameztoflag ("UP", &rev);
++#endif
+ 
+       n = f && ioctl (form->sfd, SIOCGIFFLAGS, form->ifr) == 0;
+       if (n)
+@@ -1045,6 +1058,37 @@ fh_dma (format_data_t form, int argc, ch
+ 
+ #endif /* HAVE_STRUCT_IFREQ_IFR_MAP */
+ 
++#ifdef __CYGWIN__
++#include <cygwin/if.h>
++void
++fh_frndlyname_query (format_data_t form, int argc, char *argv[])
++{
++#ifdef SIOCGIFFRNDLYNAM
++  struct ifreq_frndlyname fname;
++  form->ifr->ifr_frndlyname = &fname;
++  if (ioctl (form->sfd, SIOCGIFFRNDLYNAM, form->ifr) >= 0)
++    select_arg (form, argc, argv, 0);
++  else
++#endif
++    select_arg (form, argc, argv, 1);
++}
++
++void
++fh_frndlyname (format_data_t form, int argc, char *argv[])
++{
++#ifdef SIOCGIFFRNDLYNAM
++  if (ioctl (form->sfd, SIOCGIFFRNDLYNAM, form->ifr) < 0)
++    error (EXIT_FAILURE, errno,
++	   "SIOCGIFFRNDLYNAM failed for interface `%s'", form->ifr->ifr_name);
++  else
++    put_string (form, ((struct ifreq_frndlyname *)form->ifr->ifr_frndlyname)->ifrf_friendlyname);
++#else
++  *column += printf ("(not available)");
++  had_output = 1;
++#endif
++}
++#endif
++
+ void
+ print_interfaceX (format_data_t form, int quiet)
+ {
+--- origsrc/inetutils-2.6/ifconfig/printif.h	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ifconfig/printif.h	2025-03-12 15:41:59.543352500 +0900
+@@ -124,6 +124,10 @@ void fh_media_query (format_data_t form,
+ void fh_media (format_data_t form, int argc, char *argv[]);
+ void fh_status_query (format_data_t form, int argc, char *argv[]);
+ void fh_status (format_data_t form, int argc, char *argv[]);
++#ifdef __CYGWIN__
++void fh_frndlyname_query (format_data_t form, int argc, char *argv[]);
++void fh_frndlyname (format_data_t form, int argc, char *argv[]);
++#endif
+ 
+ /* Used for recursion by format handlers.  */
+ void print_interfaceX (format_data_t form, int quiet);
+--- origsrc/inetutils-2.6/ifconfig/system/generic.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ifconfig/system/generic.c	2025-03-12 15:41:59.554022000 +0900
+@@ -64,4 +64,60 @@ system_configure (int sfd MAYBE_UNUSED,
+   return 0;
+ }
+ 
++#ifdef __CYGWIN__
++#include <unistd.h>
++#include <string.h>
++#include <stdlib.h>
++#define MAXIFS 256
++unsigned
++cygwin_if_nametoindex(const char *name)
++{
++  FILE *f;
++  static char if_name[MAXIFS][IFNAMSIZ];
++  static unsigned if_index[MAXIFS];
++  static int num_entry = 0;
++
++  if (num_entry == 0) {
++    f = fopen ("/proc/net/if_inet6", "r");
++    do {
++      if (2 != fscanf (f, "%*s%02x%*x%*x%*x%s\n", &if_index[num_entry], if_name[num_entry])) break;
++      if (num_entry < MAXIFS) num_entry++;
++    } while (1);
++    fclose (f);
++  }
++
++  for (int i = 0; i < num_entry; i++) {
++    if (!strcmp (if_name[i], name)) return if_index[i];
++  }
++  return 0;
++}
++
++static struct if_nameindex *
++cygwin_if_nameindex (void)
++{
++  struct if_nameindex *idx;
++  struct if_nameindex *idx_tmp;
++  int num = 0;
++  idx = if_nameindex();
++  if (!idx) return NULL;
++  idx_tmp = malloc (MAXIFS * sizeof (*idx_tmp));
++  if (!idx_tmp) return NULL;
++  for (int i = 0; idx[i].if_name; i++) {
++    unsigned index = cygwin_if_nametoindex (idx[i].if_name);
++    if (index) {
++      idx_tmp[num].if_name = idx[i].if_name;
++      idx_tmp[num].if_index = index;
++      if (num < MAXIFS) num++;
++    }
++  }
++  idx_tmp[num].if_name = NULL;
++  idx_tmp[num].if_index = 0;
++  memcpy(idx, idx_tmp, (num + 1) * sizeof (*idx));
++  free(idx_tmp);
++  return idx;
++}
++
++struct if_nameindex *(*system_if_nameindex) (void) = cygwin_if_nameindex;
++#else
+ struct if_nameindex *(*system_if_nameindex) (void) = if_nameindex;
++#endif
+--- origsrc/inetutils-2.6/lib/sys_select.in.h	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/lib/sys_select.in.h	2025-03-12 15:41:59.563354600 +0900
+@@ -42,7 +42,7 @@
+ # @INCLUDE_NEXT@ @NEXT_SYS_SELECT_H@
+ 
+ #elif (@HAVE_SYS_SELECT_H@                                              \
+-       && (defined _CYGWIN_SYS_TIME_H                                   \
++       && (defined __CYGWIN__                                           \
+            || (!defined _GL_SYS_SELECT_H_REDIRECT_FROM_SYS_TIME_H       \
+                && ((defined __osf__ && defined _SYS_TIME_H_             \
+                     && defined _OSF_SOURCE)                             \
+--- origsrc/inetutils-2.6/libinetutils/daemon.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/libinetutils/daemon.c	2025-03-12 15:41:59.573352100 +0900
+@@ -49,11 +49,13 @@
+ #include <fcntl.h>
+ #include <unistd.h>
+ #include <signal.h>
++#include <syslog.h>
+ #include <error.h>
+ #include <stdlib.h>
+ #include <sys/types.h>
+ #include <sys/wait.h>
+ #include <attribute.h>
++#include <string.h>
+ 
+ /*
+   According to Unix-FAQ maintained by Andrew Gierth:
+@@ -101,13 +103,87 @@
+ 
+ #define MAXFD 64
+ 
++/* copy signal stuff from inetd.c -- POSIX says that the various
++   signal interfaces should not be mixed in the same program.
++   Because inetd uses 'most recent signal interface' it can find,
++   we should too.
++*/
++
++#define SIGBLOCK        (sigmask(SIGCHLD)|sigmask(SIGHUP)|sigmask(SIGALRM))
++#if defined(HAVE_SIGACTION)
++# define SIGSTATUS sigset_t
++# define sigstatus_empty(s) sigemptyset(&s)
++#else
++# define SIGSTATUS long
++# define sigstatus_empty(s) s = 0
++#endif
++
++static void
++signal_set_handler (int signo, void (*handler) ())
++{
++#if defined(HAVE_SIGACTION)
++  struct sigaction sa;
++  memset ((char *)&sa, 0, sizeof(sa));
++  sigemptyset (&sa.sa_mask);
++  sigaddset (&sa.sa_mask, signo);
++#ifdef SA_RESTART
++  sa.sa_flags = SA_RESTART;
++#endif
++  sa.sa_handler = handler;
++  sigaction (signo, &sa, NULL);
++#elif defined(HAVE_SIGVEC)
++  struct sigvec sv;
++  memset (&sv, 0, sizeof(sv));
++  sv.sv_mask = SIGBLOCK;
++  sv.sv_handler = handler;
++  sigvec (signo, &sv, NULL);
++#else /* !HAVE_SIGVEC */
++  signal (signo, handler);
++#endif /* HAVE_SIGACTION */
++}
++
++static void
++signal_block (SIGSTATUS *old_status)
++{
++#ifdef HAVE_SIGACTION
++  sigset_t sigs;
++
++  sigemptyset (&sigs);
++  sigaddset (&sigs, SIGCHLD);
++  sigaddset (&sigs, SIGHUP);
++  sigaddset (&sigs, SIGALRM);
++  sigprocmask (SIG_BLOCK, &sigs, old_status);
++#else
++  long omask = sigblock (SIGBLOCK);
++  if (old_status)
++    *old_status = omask;
++#endif
++}
++
++static void
++signal_unblock (SIGSTATUS *status)
++{
++#ifdef HAVE_SIGACTION
++  if (status)
++    sigprocmask (SIG_SETMASK, status, 0);
++  else
++    {
++      sigset_t empty;
++      sigemptyset (&empty);
++      sigprocmask (SIG_SETMASK, &empty, 0);
++    }
++#else
++  sigsetmask (status ? *status : 0);
++#endif
++}
++
+ void
+ waitdaemon_timeout (int signo MAYBE_UNUSED)
+ {
+   int left;
+ 
+   left = alarm (0);
+-  signal (SIGALRM, SIG_DFL);
++  signal_set_handler (SIGALRM, SIG_DFL);
+   if (left == 0)
+     error (EXIT_FAILURE, 0, "timed out waiting for child");
+ }
+@@ -136,9 +212,29 @@ waitdaemon (int nochdir, int noclose, in
+     default:			/* In the parent.  */
+       if (maxwait > 0)
+ 	{
+-	  signal (SIGALRM, waitdaemon_timeout);
++          int status;
++          pid_t wpid;
++
++          signal_unblock(NULL);
++          signal_set_handler (SIGALRM, waitdaemon_timeout);
+ 	  alarm (maxwait);
+-	  pause ();
++          do
++            {
++              wpid = waitpid(childpid, &status, WUNTRACED
++#ifdef WCONTINUED      /* Not all implementations support this */
++                                                | WCONTINUED
++#endif
++              );
++              if (wpid == -1)
++                {
++                  /* should't happen for timeouts, because the
++                     SIGALRM handler will error (and exit). However,
++                     we may recieve some OTHER signal...
++                  */
++                  error (1, 0, "interrupted while waiting for child");
++                }
++            }
++          while (!WIFEXITED(status) && !WIFSIGNALED(status));
+ 	}
+       _exit (EXIT_SUCCESS);
+     }
+@@ -150,7 +246,7 @@ waitdaemon (int nochdir, int noclose, in
+      then SIGHUP is sent to all process belonging to the same session,
+      i.e., also to the second child.
+    */
+-  signal (SIGHUP, SIG_IGN);
++  signal_set_handler (SIGHUP, SIG_IGN);
+ 
+   switch (fork ())
+     {
+@@ -200,5 +296,9 @@ waitdaemon (int nochdir, int noclose, in
+ int
+ daemon (int nochdir, int noclose)
+ {
++#ifdef __CYGWIN__
++  return (waitdaemon (nochdir, noclose, 5) == -1) ? -1 : 0;
++#else
+   return (waitdaemon (nochdir, noclose, 0) == -1) ? -1 : 0;
++#endif
+ }
+--- origsrc/inetutils-2.6/libinetutils/logwtmp.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/libinetutils/logwtmp.c	2025-03-12 15:41:59.573352100 +0900
+@@ -44,6 +44,10 @@
+ #endif
+ #include <string.h>
+ 
++#ifndef O_BINARY
++#define O_BINARY 0
++#endif
++
+ #ifdef HAVE_UTMPX_H
+ static void
+ _logwtmp (struct utmpx *ut)
+@@ -56,9 +60,9 @@ _logwtmp (struct utmp *ut)
+   static int fd = -1;
+ 
+   if (fd < 0)
+-    fd = open (OUR_WTMP, O_WRONLY | O_APPEND, 0);
++    fd = open (OUR_WTMP, O_WRONLY | O_APPEND | O_BINARY, 0);
+ #else
+-  int fd = open (OUR_WTMP, O_WRONLY | O_APPEND, 0);
++  int fd = open (OUR_WTMP, O_WRONLY | O_APPEND | O_BINARY, 0);
+ #endif
+ 
+   if (fd >= 0)
+--- origsrc/inetutils-2.6/libinetutils/setsig.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/libinetutils/setsig.c	2025-03-12 15:41:59.593352600 +0900
+@@ -24,6 +24,10 @@
+ 
+ #include <signal.h>
+ 
++#ifdef __CYGWIN__
++typedef _sig_func_ptr sig_t;
++#endif
++
+ /* This is exactly like the traditional signal function, but turns on the
+    SA_RESTART bit where possible.  */
+ sighandler_t
+--- origsrc/inetutils-2.6/ping/ping.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ping/ping.c	2025-03-12 15:41:59.603353200 +0900
+@@ -277,8 +277,12 @@ main (int argc, char **argv)
+   setlocale (LC_ALL, "");
+ #endif
+ 
++#ifdef __CYGWIN__
++  is_root = true;
++#else
+   if (getuid () == 0)
+     is_root = true;
++#endif
+ 
+   /* Parse command line */
+   iu_argp_init ("ping", program_authors);
+--- origsrc/inetutils-2.6/ping/ping6.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/ping/ping6.c	2025-03-12 15:41:59.613354200 +0900
+@@ -143,6 +143,7 @@ parse_opt (int key, char *arg, struct ar
+ {
+   char *endptr;
+   static unsigned char pattern[MAXPATTERN];
++  double v;
+ 
+   switch (key)
+     {
+@@ -170,9 +171,11 @@ parse_opt (int key, char *arg, struct ar
+ #endif
+ 
+     case 'i':
++      v = strtod (arg, &endptr);
++      if (*endptr)
++	argp_error (state, "invalid value (`%s' near `%s')", arg, endptr);
+       options |= OPT_INTERVAL;
+-      interval = ping_cvt_number (arg, 0, 0);
+-      interval *= PING_PRECISION;
++      interval = v * PING_PRECISION;
+       if (!is_root && interval < PING_MIN_USER_INTERVAL)
+ 	error (EXIT_FAILURE, 0, "option value too small: %s", arg);
+       break;
+@@ -253,8 +256,12 @@ main (int argc, char **argv)
+   setlocale (LC_ALL, "");
+ #endif
+ 
++#ifdef __CYGWIN__
++  is_root = true;
++#else
+   if (getuid () == 0)
+     is_root = true;
++#endif
+ 
+   /* Parse command line */
+   iu_argp_init ("ping6", program_authors);
+@@ -834,6 +841,7 @@ ping_init (int type MAYBE_UNUSED, int id
+       return NULL;
+     }
+ 
++#if defined(ICMP6_FILTER) & !defined(__CYGWIN__)
+   /* Tell which ICMPs we are interested in.  */
+   ICMP6_FILTER_SETBLOCKALL (&filter);
+   ICMP6_FILTER_SETPASS (ICMP6_ECHO_REPLY, &filter);
+@@ -849,13 +857,16 @@ ping_init (int type MAYBE_UNUSED, int id
+       close (fd);
+       return NULL;
+     }
++#endif
+ 
++#ifdef IPV6_RECVHOPLIMIT
+   err = setsockopt (fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &on, sizeof (on));
+   if (err)
+     {
+       close (fd);
+       return NULL;
+     }
++#endif
+ 
+   /* Allocate PING structure and initialize it to default values */
+   p = malloc (sizeof (*p));
+--- origsrc/inetutils-2.6/src/Makefile.in	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/src/Makefile.in	2025-03-12 15:46:38.523535800 +0900
+@@ -2166,6 +2166,7 @@ top_srcdir = @top_srcdir@
+ traceroute_BUILD = @traceroute_BUILD@
+ traceroute_INSTALL_HOOK = @traceroute_INSTALL_HOOK@
+ traceroute_PROPS = @traceroute_PROPS@
++traceroute_EXTRALIBS = @traceroute_EXTRALIBS@
+ uucpd_BUILD = @uucpd_BUILD@
+ uucpd_INSTALL_HOOK = @uucpd_INSTALL_HOOK@
+ uucpd_PROPS = @uucpd_PROPS@
+@@ -2210,7 +2211,7 @@ tftp_SOURCES = tftp.c
+ tftp_LDADD = $(LDADD) $(LIBIDN)
+ traceroute_SOURCES = traceroute.c
+ traceroute_LDADD = $(top_builddir)/libicmp/libicmp.a $(LDADD) $(LIBIDN) \
+-	$(CLOCK_TIME_LIB) $(PTHREAD_SIGMASK_LIB) $(SELECT_LIB)
++	$(CLOCK_TIME_LIB) $(PTHREAD_SIGMASK_LIB) $(SELECT_LIB) $(traceroute_EXTRALIBS)
+ 
+ inetd_SOURCES = inetd.c
+ rexecd_SOURCES = rexecd.c
+--- origsrc/inetutils-2.6/src/inetd.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/src/inetd.c	2025-03-12 15:41:59.643354600 +0900
+@@ -136,6 +136,12 @@
+ #include "version-etc.h"
+ #include "attribute.h"
+ 
++#ifdef __CYGWIN__
++#include <windows.h>
++#include <sys/cygwin.h>
++#endif /* __CYGWIN__ */
++
++
+ #ifndef EAI_ADDRFAMILY
+ # define EAI_ADDRFAMILY 1
+ #endif
+@@ -149,7 +155,14 @@
+ #endif
+ #define SIGBLOCK	(sigmask(SIGCHLD)|sigmask(SIGHUP)|sigmask(SIGALRM))
+ 
++enum {
++  NO_DAEMON = 0,
++  UNIX_DAEMON
++};
++
+ bool debug = false;
++static int daemonize = UNIX_DAEMON;
++
+ int nsock, maxsock;
+ fd_set allsock;
+ int options;
+@@ -197,6 +210,13 @@ static struct argp_option argp_options[]
+   {"resolve", OPT_RESOLVE, NULL, 0,
+    "resolve IP addresses when setting environment variables "
+    "(see --environment)", GRP + 1},
++#ifdef __CYGWIN__
++  {0,0,0,0,"Cygwin-specific options:",GRP + 2},
++  {"no-daemonize", 'D', NULL, 0,
++   "Do not run as a daemon", GRP + 2},
++  {"traditional-daemon", 'T', NULL, 0,
++   "This option is present for backwards compatibility.", GRP + 2},
++#endif /* __CYGWIN__ */
+ #undef GRP
+   {NULL, 0, NULL, 0, NULL, 0}
+ };
+@@ -237,6 +257,16 @@ parse_opt (int key, char *arg, struct ar
+       resolve_option = true;
+       break;
+ 
++#ifdef __CYGWIN__
++    case 'D': /* don't become a daemon */
++      daemonize = NO_DAEMON;
++      break;
++
++    case 'T': /* act like a normal unix daemon */
++      daemonize = UNIX_DAEMON;
++      break;
++#endif /* __CYGWIN__ */
++
+     default:
+       return ARGP_ERR_UNKNOWN;
+     }
+@@ -411,6 +441,44 @@ signal_unblock (SIGSTATUS *status)
+ #endif
+ }
+ 
++#ifdef __CYGWIN__
++void
++hide_console ()
++{
++  HMODULE lib;
++  HWND WINAPI (*GetConsoleWindow) (void) = NULL;
++  HWND console = NULL;
++
++  AllocConsole ();
++  if (lib = LoadLibrary ("kernel32.dll"))
++    GetConsoleWindow = (HWND WINAPI (*) (void))
++                               GetProcAddress (lib, "GetConsoleWindow");
++
++  if (GetConsoleWindow)
++    /* If GetConsoleWindow exists (W2K and newer), use it. */
++    console = GetConsoleWindow ();
++  if (!console)
++    {
++      /* Get console window handle as described in KB article Q124103 */
++      char title[32];
++      snprintf (title, 32, "inetd.%d", getpid ());
++      SetConsoleTitle (title);
++      Sleep (40);
++      console = FindWindow (NULL, title);
++      if (console)
++       {
++         char ctitle[256];
++         if (!GetWindowText (console, ctitle, 256) || strcmp (title, ctitle))
++           console = NULL;
++       }
++    }
++  if (console)
++    ShowWindow (console, SW_HIDE);
++}
++#endif /* __CYGWIN__ */
++
++
++
+ void
+ run_service (int ctrl, struct servtab *sep)
+ {
+@@ -430,6 +498,10 @@ run_service (int ctrl, struct servtab *s
+       close (ctrl);
+       dup2 (0, 1);
+       dup2 (0, 2);
++#ifdef __CYGWIN__
++      if (strcmp (sep->se_user, "root"))
++	{
++#endif
+       pwd = getpwnam (sep->se_user);
+       if (pwd == NULL)
+ 	{
+@@ -451,6 +523,13 @@ run_service (int ctrl, struct servtab *s
+ 	      _exit (EXIT_FAILURE);
+ 	    }
+ 	}
++#ifdef __CYGWIN__
++	}
++      else
++	{
++	  pwd = getpwuid (getuid ());
++	}
++#endif
+       if (pwd->pw_uid)
+ 	{
+ 	  if (grp && grp->gr_gid)
+@@ -464,8 +543,8 @@ run_service (int ctrl, struct servtab *s
+ 	    }
+ 	  else if (setgid (pwd->pw_gid) < 0)
+ 	    {
+-	      syslog (LOG_ERR, "%s: can't set gid %d: %m",
+-		      sep->se_service, pwd->pw_gid);
++	      syslog (LOG_ERR, "%s: can't set gid %d uid(%d): %m",
++		      sep->se_service, pwd->pw_gid, pwd->pw_uid);
+ 	      _exit (EXIT_FAILURE);
+ 	    }
+ #ifdef HAVE_INITGROUPS
+@@ -1271,6 +1350,10 @@ nextconfig (const char *file)
+     }
+   while ((sep = getconfigent (fconfig, file, &line)))
+     {
++#ifdef __CYGWIN__
++      if (strcmp (sep->se_user, "root"))
++	{
++#endif
+       pwd = getpwnam (sep->se_user);
+       if (pwd == NULL)
+ 	{
+@@ -1288,6 +1371,9 @@ nextconfig (const char *file)
+ 	      continue;
+ 	    }
+ 	}
++#ifdef __CYGWIN__
++	}
++#endif
+       if (ISMUX (sep))
+ 	{
+ 	  sep->se_fd = -1;
+@@ -1491,10 +1577,48 @@ set_proc_title (char *a, int s)
+     }
+   else
+     snprintf (buf, sizeof buf, "-%s", a);
+-  strncpy (cp, buf, LastArg - cp);
+-  cp += strlen (cp);
+-  while (cp < LastArg)
+-    *cp++ = ' ';
++
++  /* the non-portable code in the #else block relies on 
++     the system allocating all of the strings in argv[]
++     contiguously. On cygwin this is not necessarily so,
++     and to assume otherwise will lead to segfaults.
++     The downside here is we get supposed ps entries for
++     internal services like:
++        '-echo'   instead of '-echo [remoteIP]'    (okay?)
++        '-char'   instead of '-chargen [remoteIP]' (awful)
++        '-disc'   instead of '-discard [remoteIP]' (awful)
++     because the original argv[0] might be 'inetd' unless
++     it was specifically invoked with a full path.  However,
++     this is mostly moot:
++       (1) cygwin's ps uses its own internal version of the
++           exe name (or GetModuleName) and then calls
++           cygwin_conv_xxx() for display.
++       (2) procps DOES use the modified argv[0] value
++  */
++  {
++#ifdef __CYGWIN__
++    char* LastNullChar = cp + strlen(cp);
++    char** scan;
++#else
++    char* LastNullChar = LastArg;
++#endif
++
++    strncpy (cp, buf, LastNullChar - cp);
++    cp += strlen (cp);
++    while (cp < LastNullChar)
++      *cp++ = ' ';
++
++#ifdef __CYGWIN__
++    /* individually blank out the rest of the args */
++    for (scan = Argv + 1; *scan != NULL; scan++)
++      {
++	char* nullChar = *scan + strlen(*scan);
++	cp = *scan;
++	while (cp < nullChar)
++	  *cp++ = ' ';
++      }
++#endif
++  }
+ }
+ 
+ /*
+@@ -1933,6 +2057,16 @@ main (int argc, char *argv[], char *envp
+     envp++;
+   LastArg = envp[-1] + strlen (envp[-1]);
+ 
++#ifdef __CYGWIN__
++  /* on cygwin, open the log early -- because even
++     help and cmdline processing messages go directly
++     to syslog. This is because inetd is often run 
++     under the SYSTEM account (which is not quite like
++     the *nix 'root')
++  */
++  openlog("inetd", LOG_PID | LOG_NOWAIT, LOG_DAEMON);
++#endif
++
+   /* Parse command line */
+   iu_argp_init ("inetd", program_authors);
+   argp_parse (&argp, argc, argv, 0, &index, NULL);
+@@ -1956,7 +2090,7 @@ main (int argc, char *argv[], char *envp
+       config_files[1] = newstr (PATH_INETDDIR);
+     }
+ 
+-  if (!debug)
++  if ((debug == 0) && daemonize)
+     {
+       if (daemon (0, 0) < 0)
+ 	{
+@@ -1966,6 +2100,12 @@ main (int argc, char *argv[], char *envp
+ 	};
+     }
+ 
++#ifndef __CYGWIN__
++  exception_list except_list;
++  cygwin_internal (CW_INIT_EXCEPTIONS, &except_list);
++  hide_console ();
++#endif /* __CYGWIN__ */
++
+   openlog ("inetd", LOG_PID | LOG_NOWAIT, LOG_DAEMON);
+ 
+   if (pidfile_option)
+@@ -1988,6 +2128,7 @@ main (int argc, char *argv[], char *envp
+   signal_set_handler (SIGCHLD, reapchild);
+   signal_set_handler (SIGPIPE, SIG_IGN);
+ 
++#ifndef __CYGWIN__
+   {
+     /* space for daemons to overwrite environment for ps */
+ #define DUMMYSIZE	100
+@@ -1997,6 +2138,7 @@ main (int argc, char *argv[], char *envp
+     dummy[DUMMYSIZE - 1] = '\0';
+     setenv ("inetd_dummy", dummy, 1);
+   }
++#endif /* __CYGWIN__ */
+ 
+   for (;;)
+     {
+--- origsrc/inetutils-2.6/src/rexecd.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/src/rexecd.c	2025-03-12 15:41:59.653352800 +0900
+@@ -106,6 +106,11 @@
+ # include <xalloc.h>
+ #endif
+ 
++#ifdef __CYGWIN__
++#include <windows.h>
++#include <sys/cygwin.h>
++#endif
++
+ #include <progname.h>
+ #include <argp.h>
+ #include <error.h>
+@@ -219,6 +224,27 @@ char *envinit[] = { homedir, shell, path
+ 
+ char *getstr (const char *);
+ 
++#ifdef __CYGWIN__
++static int
++do_cygwin_auth (const char* user, const char* passwd)
++{
++  struct passwd *p;
++  if ((user == NULL) || (user[0] == '\0'))
++    return 1;
++
++  /* can't "recreate" p from contents of pcred, because
++     struct passwd might contain extension elements
++     unknown to us
++  */
++  p = getpwnam (user);
++  if (p == NULL)
++    return 1;
++
++  HANDLE hToken = (HANDLE) cygwin_logon_user (p, passwd);
++  cygwin_set_impersonation_token (hToken);
++  return (hToken == INVALID_HANDLE_VALUE); // non-zero on error
++}
++#else /* __CYGWIN__ */
+ #ifndef WITH_PAM
+ static char *
+ get_user_password (struct passwd *pwd)
+@@ -232,6 +258,7 @@ get_user_password (struct passwd *pwd)
+   return pw_text;
+ }
+ #endif /* !WITH_PAM */
++#endif /* __CYGWIN__ */
+ 
+ int
+ doit (int f, struct sockaddr *fromp, socklen_t fromlen)
+@@ -239,7 +266,9 @@ doit (int f, struct sockaddr *fromp, soc
+   char *cmdbuf, *cp;
+   char *user, *pass;
+ #ifndef WITH_PAM
++#ifndef __CYGWIN__
+   char *namep, *pw_password;
++#endif /* __CYGWIN__ */
+ #endif
+ #ifdef HAVE_GETPWNAM_R
+   char *pwbuf;
+@@ -368,6 +397,14 @@ doit (int f, struct sockaddr *fromp, soc
+ 
+   endpwent ();
+ 
++#ifdef __CYGWIN__
++  if (do_cygwin_auth (user, pass))
++    {
++      if (logging)
++	syslog (LOG_WARNING | LOG_AUTH, "Authentication failure. \"%s\"", user);
++      die (EXIT_FAILURE, "Login incorrect.");
++    }
++#else /* __CYGWIN__ */
+ #ifndef WITH_PAM
+   /* Last need of elevated privilege.  */
+   pw_password = get_user_password (pwd);
+@@ -437,6 +474,7 @@ doit (int f, struct sockaddr *fromp, soc
+ 	}
+     }
+ #endif /* WITH_PAM */
++#endif /* __CYGWIN__ */
+ 
+ #ifdef HAVE_SETLOGIN
+   if (setlogin (pwd->pw_name) < 0)
+--- origsrc/inetutils-2.6/src/rlogind.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/src/rlogind.c	2025-03-12 15:41:59.663353000 +0900
+@@ -851,6 +851,27 @@ rlogind_auth (int fd, struct auth_data *
+   confirmed = 0;
+ 
+   /* Check the remote host name */
++#ifdef __CYGWIN__
++  int is_localhost = 0;
++  struct in_addr adr = ((struct sockaddr_in *)&ap->from)->sin_addr;
++  struct in6_addr adr6 = ((struct sockaddr_in6 *)&ap->from)->sin6_addr;
++  switch (((struct sockaddr *)&ap->from)->sa_family)
++    {
++    case AF_INET:
++      if (IN_LOOPBACK (ntohl (adr.s_addr)))
++	is_localhost = 1;
++      break;
++    case AF_INET6:
++      if (IN6_IS_ADDR_LOOPBACK (&adr6))
++	is_localhost = 1;
++    }
++  if (is_localhost)
++    {
++      rc = 0;
++      strncpy (hoststr, "localhost", sizeof (hoststr));
++    }
++  else
++#endif /* __CYGWIN__ */
+   rc = getnameinfo ((struct sockaddr *) &ap->from, ap->fromlen,
+ 		    hoststr, sizeof (hoststr), NULL, 0, NI_NAMEREQD);
+   if (!rc)
+--- origsrc/inetutils-2.6/src/rshd.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/src/rshd.c	2025-03-12 15:41:59.673352200 +0900
+@@ -708,6 +708,27 @@ doit (int sockfd, struct sockaddr *fromp
+    */
+   errorstr = NULL;
+ #if HAVE_DECL_GETNAMEINFO
++#ifdef __CYGWIN__
++  int is_localhost = 0;
++  struct in_addr adr = ((struct sockaddr_in *)fromp)->sin_addr;
++  struct in6_addr adr6 = ((struct sockaddr_in6 *)fromp)->sin6_addr;
++  switch (fromp->sa_family)
++    {
++    case AF_INET:
++      if (IN_LOOPBACK (ntohl (adr.s_addr)))
++	is_localhost = 1;
++      break;
++    case AF_INET6:
++      if (IN6_IS_ADDR_LOOPBACK (&adr6))
++	is_localhost = 1;
++    }
++  if (is_localhost)
++    {
++      rc = 0;
++      strncpy (addrname, "localhost", sizeof (addrname));
++    }
++  else
++#endif /* __CYGWIN__ */
+   rc = getnameinfo (fromp, fromlen, addrname, sizeof (addrname),
+ 		    NULL, 0, NI_NAMEREQD);
+   if (rc == 0)
+--- origsrc/inetutils-2.6/src/syslogd.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/src/syslogd.c	2025-03-12 15:41:59.681371300 +0900
+@@ -337,7 +337,8 @@ enum
+   OPT_NO_FORWARD = 256,
+   OPT_NO_KLOG,
+   OPT_NO_UNIXAF,
+-  OPT_IPANY
++  OPT_IPANY,
++  OPT_RCDIR
+ };
+ 
+ static struct argp_option argp_options[] = {
+@@ -364,6 +365,7 @@ static struct argp_option argp_options[]
+   {"mark", 'm', "INTVL", 0, "specify timestamp interval in minutes"
+    " (0 for no timestamping)", GRP + 1},
+   {"no-detach", 'n', NULL, 0, "do not enter daemon mode", GRP + 1},
++  {"no-daemonize", 'D', NULL, 0, "Synonym for -n", GRP + 1},
+   {"no-forward", OPT_NO_FORWARD, NULL, 0, "do not forward any messages "
+    "(overrides --hop)", GRP + 1},
+ #ifdef PATH_KLOG
+@@ -377,7 +379,7 @@ static struct argp_option argp_options[]
+   {"rcfile", 'f', "FILE", 0, "override configuration file (default: "
+    PATH_LOGCONF ")",
+    GRP + 1},
+-  {"rcdir", 'D', "DIR", 0, "override configuration directory (default: "
++  {"rcdir", OPT_RCDIR, "DIR", 0, "override configuration directory (default: "
+    PATH_LOGCONFD ")", GRP + 1},
+   {"socket", 'p', "FILE", 0, "override default unix domain socket " PATH_LOG,
+    GRP + 1},
+@@ -449,6 +451,7 @@ parse_opt (int key, char *arg, struct ar
+       break;
+ 
+     case 'n':
++    case 'D':
+       NoDetach = 1;
+       break;
+ 
+@@ -472,7 +475,7 @@ parse_opt (int key, char *arg, struct ar
+       ConfFile = arg;
+       break;
+ 
+-    case 'D':
++    case OPT_RCDIR:
+       ConfDir = arg;
+       break;
+ 
+@@ -1127,7 +1130,11 @@ printsys (const char *msg)
+   char *lp, *q, line[MAXLINE + 1];
+   const char *p;
+ 
++#ifdef __CYGWIN__
++  strcpy (line, "kernel: ");
++#else
+   strcpy (line, "vmunix: ");
++#endif
+   lp = line + strlen (line);
+   for (p = msg; *p != '\0';)
+     {
+--- origsrc/inetutils-2.6/src/tftpd.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/src/tftpd.c	2025-03-12 15:41:59.691394100 +0900
+@@ -875,6 +875,27 @@ verifyhost (struct sockaddr_storage *fro
+   int rc;
+   static char host[NI_MAXHOST];
+ 
++#ifdef __CYGWIN__
++  int is_localhost = 0;
++  struct in_addr adr = ((struct sockaddr_in *)fromp)->sin_addr;
++  struct in6_addr adr6 = ((struct sockaddr_in6 *)fromp)->sin6_addr;
++  switch (((struct sockaddr *)fromp)->sa_family)
++    {
++    case AF_INET:
++      if (IN_LOOPBACK (ntohl (adr.s_addr)))
++	is_localhost = 1;
++      break;
++    case AF_INET6:
++      if (IN6_IS_ADDR_LOOPBACK (&adr6))
++	is_localhost = 1;
++    }
++  if (is_localhost)
++    {
++      rc = 0;
++      strncpy (host, "localhost", sizeof (host));
++    }
++  else
++#endif /* __CYGWIN__ */
+   rc = getnameinfo ((struct sockaddr *) fromp, frlen,
+ 		    host, sizeof (host), NULL, 0, 0);
+   if (rc == 0)
+--- origsrc/inetutils-2.6/src/traceroute.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/src/traceroute.c	2025-03-12 16:31:14.332186800 +0900
+@@ -63,6 +63,12 @@
+ #include "xalloc.h"
+ #include "libinetutils.h"
+ 
++#ifdef __CYGWIN__
++#include <windows.h>
++#include <ipexport.h>
++#include <icmpapi.h>
++#endif
++
+ #define TRACE_UDP_PORT 33434
+ #define TRACE_TTL 1
+ 
+@@ -81,6 +87,9 @@ typedef struct trace
+   struct sockaddr_in to, from;
+   int ttl;
+   struct timespec tsent;
++#ifdef __CYGWIN__
++  HANDLE hIcmp;
++#endif
+ } trace_t;
+ 
+ void trace_init (trace_t * t, const struct sockaddr_in to,
+@@ -147,20 +156,28 @@ static struct argp_option argp_options[]
+ #define GRP 0
+   {"first-hop", 'f', "NUM", 0, "set initial hop distance, i.e., time-to-live",
+    GRP + 1},
++#ifndef __CYGWIN__
+ #ifdef IP_OPTIONS
+   {"gateways", 'g', "GATES", 0, "list of gateways for loose source routing",
+    GRP + 1},
+ #endif
+   {"icmp", 'I', NULL, 0, "use ICMP ECHO as probe", GRP + 1},
++#endif
+   {"max-hop", 'm', "NUM", 0, "set maximal hop count (default: 64)", GRP + 1},
++#ifndef __CYGWIN__
+   {"port", 'p', "PORT", 0, "use destination PORT port (default: 33434)",
+    GRP + 1},
++#endif
+   {"resolve-hostnames", OPT_RESOLVE, NULL, 0, "resolve hostnames", GRP + 1},
++#ifndef __CYGWIN__
+   {"tos", 't', "NUM", 0, "set type of service (TOS) to NUM", GRP + 1},
++#endif
+   {"tries", 'q', "NUM", 0, "send NUM probe packets per hop (default: 3)",
+    GRP + 1},
++#ifndef __CYGWIN__
+   {"type", 'M', "METHOD", 0, "use METHOD (`icmp' or `udp') for traceroute "
+    "operations, defaulting to `udp'", GRP + 1},
++#endif
+   {"wait", 'w', "NUM", 0, "wait NUM seconds for response (default: 3)",
+    GRP + 1},
+ #undef GRP
+@@ -367,6 +384,52 @@ do_try (trace_t *trace, const int hop,
+ 
+   for (tries = 0; tries < max_tries; tries++)
+     {
++#ifdef __CYGWIN__
++      char data[] = "";
++      char buf[sizeof (ICMP_ECHO_REPLY) + sizeof (data) + 8];
++      IP_OPTION_INFORMATION ip_opt = {trace->ttl, 0, 0, 0, NULL};
++      ICMP_ECHO_REPLY *reply = (ICMP_ECHO_REPLY *) buf;
++      DWORD ret;
++
++      trace->tsent = current_timespec ();
++
++      ret = IcmpSendEcho2 (trace->hIcmp, NULL, NULL, NULL,
++			   trace->to.sin_addr.s_addr, data, sizeof (data),
++			   &ip_opt, buf, sizeof (buf), opt_wait * 1000);
++      usleep(0); /* Make signals such as SIGINT, SIGKILL, etc. work. */
++
++      diff = timespec_sub (current_timespec (), trace->tsent);
++
++      if (ret == 0)
++	{
++	  if (reply->Status == IP_REQ_TIMED_OUT)
++	    printf (" * ");
++	  else
++	    error (EXIT_FAILURE, errno, "IcmpSendEcho2 faild");
++	}
++      else if (ret == 1)
++	{
++	  trace->from.sin_addr.s_addr = reply->Address;
++
++	  if (tries == 0 || prev_addr != trace->from.sin_addr.s_addr)
++	    {
++	      printf (" %s ", inet_ntoa (trace->from.sin_addr));
++	      if (opt_resolve_hostnames)
++		printf ("(%s) ",
++			get_hostname (&trace->from.sin_addr));
++	    }
++	  if (reply->Address == dest.sin_addr.s_addr
++	      || reply->Status == IP_DEST_HOST_UNREACHABLE)
++	    /* FIXME: Ugly hack. */
++	    stop = 1;
++
++	  triptime = timespectod (diff) * 1000.0;
++	  printf (" %.3fms ", triptime);
++	  prev_addr = trace->from.sin_addr.s_addr;
++	}
++      fflush (stdout);
++    }
++#else
+       int save_errno;
+       int fd = trace_icmp_sock (trace);
+ 
+@@ -443,6 +506,7 @@ do_try (trace_t *trace, const int hop,
+       readonly = 0;
+       fflush (stdout);
+     }
++#endif
+   printf ("\n");
+ }
+ 
+@@ -472,6 +536,9 @@ trace_init (trace_t *t, const struct soc
+   t->ttl = opt_ttl;
+   t->no_ident = 0;
+ 
++#ifdef __CYGWIN__
++  t->hIcmp = IcmpCreateFile ();
++#else
+   if (t->type == TRACE_UDP)
+     {
+       t->udpfd = socket (PF_INET, SOCK_DGRAM, 0);
+@@ -535,6 +602,7 @@ trace_init (trace_t *t, const struct soc
+     if (setsockopt (fd, IPPROTO_IP, IP_OPTIONS, &ip_opts, len_ip_opts) < 0)
+       error (0, errno, "setsockopt(IPOPT_LSRR)");
+ #endif /* IP_OPTIONS */
++#endif /* __CYGWIN__ */
+ }
+ 
+ void
+@@ -756,9 +824,11 @@ trace_inc_ttl (trace_t *t)
+ 
+   ttlp = &t->ttl;
+   t->ttl++;
++#ifndef __CYGWIN__
+   fd = (t->type == TRACE_UDP ? t->udpfd : t->icmpfd);
+   if (setsockopt (fd, IPPROTO_IP, IP_TTL, ttlp, sizeof (*ttlp)) < 0)
+     error (EXIT_FAILURE, errno, "setsockopt");
++#endif
+ }
+ 
+ void
+--- origsrc/inetutils-2.6/src/uucpd.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/src/uucpd.c	2025-03-12 15:41:59.711392400 +0900
+@@ -88,6 +88,12 @@
+ #include <attribute.h>
+ #include <libinetutils.h>
+ 
++#ifdef __CYGWIN__
++#include <windows.h>
++#include <sys/cygwin.h>
++#define is_winnt (GetVersion() < 0x80000000)
++#endif
++
+ void dologin (struct passwd *pw, struct sockaddr *sap, socklen_t salen);
+ void dologout (void);
+ void doit (struct sockaddr *sap, socklen_t salen);
+@@ -178,6 +184,8 @@ readline (char *p, int n)
+       if (c == '\n' || c == '\r')
+ 	{
+ 	  *p = '\0';
++	  if (c == '\r')
++	    continue;
+ 	  return (0);
+ 	}
+       *p++ = c;
+@@ -227,12 +235,29 @@ doit (struct sockaddr *sap, socklen_t sa
+ 	  fprintf (stderr, "passwd read\n");
+ 	  return;
+ 	}
++#ifdef __CYGWIN__
++      if (!is_winnt)
++	{
++#endif
+       xpasswd = crypt (passwd, pw->pw_passwd);
+       if (strcmp (xpasswd, pw->pw_passwd))
+ 	{
+ 	  fprintf (stderr, "Login incorrect.");
+ 	  return;
+ 	}
++#ifdef __CYGWIN__
++	}
++      else
++	{
++	  HANDLE hToken = cygwin_logon_user (pw, passwd);
++	  if (hToken == INVALID_HANDLE_VALUE)
++	    {
++	      fprintf (stderr, "Login incorrect.");
++	      return;
++	    }
++	  cygwin_set_impersonation_token (hToken);
++	}
++#endif
+     }
+ 
+   /* XXX: Compare only shell base name to "uucico"?
+--- origsrc/inetutils-2.6/talk/ctl.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/talk/ctl.c	2025-03-12 15:41:59.721391000 +0900
+@@ -85,7 +85,7 @@ open_sockt (void)
+ #ifdef HAVE_STRUCT_SOCKADDR_IN_SIN_LEN
+   my_addr.sin_len = sizeof (my_addr);
+ #endif
+-  my_addr.sin_addr = my_machine_addr;
++  my_addr.sin_addr.s_addr = INADDR_ANY;
+   my_addr.sin_port = 0;
+   sockt = socket (AF_INET, SOCK_STREAM, 0);
+   if (sockt <= 0)
+@@ -95,6 +95,7 @@ open_sockt (void)
+   length = sizeof (my_addr);
+   if (getsockname (sockt, (struct sockaddr *) &my_addr, &length) == -1)
+     p_error ("Bad address for socket");
++  my_addr.sin_addr = my_machine_addr;
+ 
+   return 0;
+ }
+@@ -110,7 +111,7 @@ open_ctl (void)
+   ctl_addr.sin_len = sizeof (ctl_addr);
+ #endif
+   ctl_addr.sin_port = 0;
+-  ctl_addr.sin_addr = my_machine_addr;
++  ctl_addr.sin_addr.s_addr = INADDR_ANY;
+   ctl_sockt = socket (AF_INET, SOCK_DGRAM, 0);
+   if (ctl_sockt <= 0)
+     p_error ("Bad socket");
+@@ -119,6 +120,7 @@ open_ctl (void)
+   length = sizeof (ctl_addr);
+   if (getsockname (ctl_sockt, (struct sockaddr *) &ctl_addr, &length) == -1)
+     p_error ("Bad address for ctl socket");
++  ctl_addr.sin_addr = my_machine_addr;
+ 
+   return 0;
+ }
+--- origsrc/inetutils-2.6/talk/ctl_transact.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/talk/ctl_transact.c	2025-03-12 15:41:59.731395400 +0900
+@@ -88,11 +88,11 @@ ctl_transact (struct in_addr target, CTL
+    */
+   do
+     {
+-      wait.tv_sec = CTL_WAIT;
+-      wait.tv_usec = 0;
+       /* resend message until a response is obtained */
+       do
+ 	{
++	  wait.tv_sec = CTL_WAIT;
++	  wait.tv_usec = 0;
+ 	  cc = sendto (ctl_sockt, (char *) &msg, sizeof (msg), 0,
+ 		       (struct sockaddr *) &daemon_addr,
+ 		       sizeof (daemon_addr));
+--- origsrc/inetutils-2.6/talk/get_addrs.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/talk/get_addrs.c	2025-03-12 15:41:59.741393800 +0900
+@@ -71,7 +71,11 @@ get_addrs (char *my_machine_name, char *
+ #if HAVE_DECL_GETADDRINFO || defined HAVE_IDN || defined HAVE_IDN2
+   int err;
+ #endif
++#ifdef HAVE_IDN
+   char *lhost, *rhost;
++#else
++  char *rhost;
++#endif
+ #if HAVE_DECL_GETADDRINFO
+   struct addrinfo hints, *res, *ai;
+ #else /* !HAVE_DECL_GETADDRINFO */
+@@ -96,7 +100,6 @@ get_addrs (char *my_machine_name, char *
+       exit (-1);
+     }
+ #else /* !HAVE_IDN && !HAVE_IDN2 */
+-  lhost = my_machine_name;
+   rhost = his_machine_name;
+ #endif
+ 
+@@ -114,16 +117,14 @@ get_addrs (char *my_machine_name, char *
+   hints.ai_flags |= AI_IDN;
+ # endif
+ 
+-  err = getaddrinfo (lhost, NULL, &hints, &res);
++  err = getaddrinfo (rhost, NULL, &hints, &res);
+   if (err)
+     {
+-      fprintf (stderr, "talk: %s: %s\n", lhost, gai_strerror (err));
++      fprintf (stderr, "talk: %s: %s\n", rhost, gai_strerror (err));
+       exit (-1);
+     }
+ 
+-  /* Perform all sanity checks available.
+-   * Reduction of tests?
+-   */
++  /* Perform all sanity checks available.  */
+   for (ai = res; ai; ai = ai->ai_next)
+     {
+       int f;
+@@ -135,98 +136,33 @@ get_addrs (char *my_machine_name, char *
+       if (f < 0)
+ 	continue;
+ 
+-      /* Attempt binding to this local address.  */
+-      if (bind (f, ai->ai_addr, ai->ai_addrlen))
+-	{
+-	  close (f);
+-	  f = -1;
+-	  continue;
+-	}
+-
+-      /* We have a usable address.  */
++      /* We have a usable address family!  */
+       close (f);
+       break;
+     }
+ 
+   if (ai)
+-    memcpy (&my_machine_addr,
++    memcpy (&his_machine_addr,
+ 	    &((struct sockaddr_in *) ai->ai_addr)->sin_addr,
+-	    sizeof (my_machine_addr));
++	    sizeof (his_machine_addr));
+ 
+   freeaddrinfo (res);
+   if (!ai)
+     {
+-      fprintf (stderr, "talk: %s: %s\n", lhost, "address not found");
++      fprintf (stderr, "talk: %s: %s\n", rhost, "address not found");
+       exit (-1);
+     }
+ 
+ #else /* !HAVE_DECL_GETADDRINFO */
+-  hp = gethostbyname (lhost);
++  hp = gethostbyname (rhost);
+   if (hp == NULL)
+     {
+-      fprintf (stderr, "talk: %s(%s): ", lhost, my_machine_name);
++      fprintf (stderr, "talk: %s(%s): ", rhost, his_machine_name);
+       herror ((char *) NULL);
+       exit (-1);
+     }
+-  memmove (&my_machine_addr, hp->h_addr, hp->h_length);
+-#endif /* !HAVE_DECL_GETADDRINFO */
+-
+-  /*
+-   * If the callee is on-machine, just copy the
+-   * network address, otherwise do a lookup...
+-   */
+-  if (strcmp (rhost, lhost))
+-    {
+-#if HAVE_DECL_GETADDRINFO
+-      err = getaddrinfo (rhost, NULL, &hints, &res);
+-      if (err)
+-	{
+-	  fprintf (stderr, "talk: %s: %s\n", rhost, gai_strerror (err));
+-	  exit (-1);
+-	}
+-
+-      /* Perform all sanity checks available.  */
+-      for (ai = res; ai; ai = ai->ai_next)
+-	{
+-	  int f;
+-
+-	  if (ai->ai_family != AF_INET)
+-	    continue;
+-
+-	  f = socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+-	  if (f < 0)
+-	    continue;
+-
+-	  /* We have a usable address family!  */
+-	  close (f);
+-	  break;
+-	}
+-
+-      if (ai)
+-	memcpy (&his_machine_addr,
+-		&((struct sockaddr_in *) ai->ai_addr)->sin_addr,
+-		sizeof (his_machine_addr));
+-
+-      freeaddrinfo (res);
+-      if (!ai)
+-	{
+-	  fprintf (stderr, "talk: %s: %s\n", rhost, "address not found");
+-	  exit (-1);
+-	}
+-
+-#else /* !HAVE_DECL_GETADDRINFO */
+-      hp = gethostbyname (rhost);
+-      if (hp == NULL)
+-	{
+-	  fprintf (stderr, "talk: %s(%s): ", rhost, his_machine_name);
+-	  herror ((char *) NULL);
+-	  exit (-1);
+-	}
+-      memmove (&his_machine_addr, hp->h_addr, hp->h_length);
++  memmove (&his_machine_addr, hp->h_addr, hp->h_length);
+ #endif /* !HAVE_DECL_GETADDRINFO */
+-    }
+-  else
+-    his_machine_addr = my_machine_addr;
+ 
+   /* Find the server's port.  */
+   sp = getservbyname ("ntalk", "udp");
+@@ -238,6 +174,41 @@ get_addrs (char *my_machine_name, char *
+     }
+   daemon_port = ntohs (sp->s_port);
+ 
++  /* look up the address of the local host 
++     which can communicate with remote host */
++  {
++    int f;
++    struct sockaddr_in addr;
++    socklen_t length;
++
++    f = socket (AF_INET, SOCK_DGRAM, 0);
++    if (f < 0)
++      {
++	fprintf (stderr, "talk: Bad socket: ");
++	herror ((char *) NULL);
++	exit (-1);
++      }
++    memset (&addr, 0, sizeof(addr));
++    addr.sin_family = AF_INET;
++    addr.sin_port = htons (daemon_port);
++    addr.sin_addr = his_machine_addr;
++    if (connect (f, (struct sockaddr *)&addr, sizeof(addr)) < 0)
++      {
++	fprintf (stderr, "talk: Coundn't connect to control socket: ");
++	herror ((char *) NULL);
++	exit (-1);
++      }
++    length = sizeof (addr);
++    if (getsockname (f, (struct sockaddr *)&addr, &length) < 0)
++      {
++	fprintf (stderr, "talk: Bad address for ctl socket: ");
++	herror ((char *) NULL);
++	exit (-1);
++      }
++    close (f);
++    my_machine_addr = addr.sin_addr;
++  }
++
+ #if defined HAVE_IDN || defined HAVE_IDN2
+   free (lhost);
+   free (rhost);
+--- origsrc/inetutils-2.6/talk/io.c	2025-02-21 20:06:21.000000000 +0900
++++ src/inetutils-2.6/talk/io.c	2025-03-12 15:41:59.751391900 +0900
+@@ -67,6 +67,8 @@
+ #include <sys/select.h>
+ #include "talk.h"
+ 
++#include <sys/socket.h>
++
+ #define A_LONG_TIME 10000000
+ 
+ /*
