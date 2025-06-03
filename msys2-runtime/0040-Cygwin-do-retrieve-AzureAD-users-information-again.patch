@@ -1,0 +1,73 @@
+From a9cfe9f52b91f0a6a3b14477b0c35f8f2ab8db3a Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 3 Jun 2025 08:53:57 +0200
+Subject: [PATCH 40/N] Cygwin: do retrieve AzureAD users' information again
+
+In 48e7d63268 (Cygwin: fetch_account_from_windows: skip LookupAccountSid
+for SIDs known to fail, 2025-04-10), several SIDs acquired a shortcut
+where a potentially expensive `LookupAccountSid()` call is avoided for
+SIDs that "cannot be resolved".
+
+However, as reported by Robert Fensterman (and independently discovered
+by myself), some of the SIDs that received this special shortcut _do_
+get resolved by `LookupAccountSid()` calls: AzureAD users' SIDs.
+
+With those SIDs, that newly-introduced shortcut actually does more harm
+than good because there is no other way to retrieve the desired
+information, resulting in permission problems.
+
+One symptom of this is that `mintty` can no longer access `/dev/ptmx`
+and simply errors out with "Error: Could not fork child process: There
+are no available terminals (-1)".
+
+Another symptom is that `tmux` is no longer able to create new sessions.
+Yet another symptom is new files are unintentionally written with
+restricted permissions (copying an `.exe` file, for example, disallows
+the copied version to be executed).
+
+The most likely reason why AzureAD SIDs were included in above-mentioned
+commit is that special AzureAD _group_ SIDs are not recognized by
+`LookupAccountSid()`, as per the code comment for the `azure_grp_sid`
+variable. It is plausible that this fact was mistaken to extend to all
+AzureAD SIDs, a notion disproved by the counter example of my personal
+experience with my own AzureAD user account. Unfortunately, the only way
+to find out whether `LookupAccountSid()` works with a given AzureAD SID
+or not is to call that function.
+
+To make regular AzureAD user accounts work again, let's just drop the
+AzureAD part from that special shortcut.
+
+My understanding of the other SIDs handled by that shortcut (Capability
+SIDs, IIS APPPOOL and Samba user/group SIDs) is insufficient to
+determine whether they, too, can be resolved by `LookupAccountSid()` in
+some cases (and would therefore equally need to be excluded from that
+shortcut). At least as far as the Capability SIDs go, I am rather
+confident from reading the context (the commit's message, as well as the
+report that led to that commit) that the shortcut is safe, and I could
+imagine that the same is true for IIS APPPOOL and Samba SIDs. Absent any
+further insight, I therefore decided to leave the rest of 48e7d63268
+(Cygwin: fetch_account_from_windows: skip LookupAccountSid for SIDs
+known to fail, 2025-04-10) intact.
+
+Reported-by: Robert Fensterman <minnmass@gmail.com>
+Fixes: 48e7d63268 (Cygwin: fetch_account_from_windows: skip LookupAccountSid for SIDs known to fail, 2025-04-10)
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/uinfo.cc | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/winsup/cygwin/uinfo.cc b/winsup/cygwin/uinfo.cc
+index 7c2581d..4323cb1 100644
+--- a/winsup/cygwin/uinfo.cc
++++ b/winsup/cygwin/uinfo.cc
+@@ -1996,10 +1996,6 @@ pwdgrp::fetch_account_from_windows (fetch_user_arg_t &arg, cyg_ldap *pldap)
+       if (sid_id_auth (sid) == 5 /* SECURITY_NT_AUTHORITY */
+ 	  && sid_sub_auth (sid, 0) == SECURITY_APPPOOL_ID_BASE_RID)
+ 	break;
+-      /* AzureAD SIDs */
+-      if (sid_id_auth (sid) == 12 /* AzureAD ID */
+-	  && sid_sub_auth (sid, 0) == 1 /* Azure ID base RID */)
+-	break;
+       /* Samba user/group SIDs */
+       if (sid_id_auth (sid) == 22)
+ 	break;
