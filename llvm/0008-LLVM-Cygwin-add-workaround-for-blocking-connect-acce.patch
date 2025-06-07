@@ -1,0 +1,60 @@
+From ea0972013811bb0a0e926f99f56c744e4d45a063 Mon Sep 17 00:00:00 2001
+From: jeremyd2019 <github@jdrake.com>
+Date: Wed, 21 May 2025 22:15:21 -0700
+Subject: [PATCH] [LLVM][Cygwin] add workaround for blocking connect/accept in
+ AF_UNIX sockets (#140353)
+
+On Cygwin, UNIX sockets involve a handshake between connect and accept
+to enable SO_PEERCRED/getpeereid handling. This necessitates accept
+being called before connect can return, but at least the tests in
+llvm/unittests/Support/raw_socket_stream_test do both on the same thread
+(first connect and then accept), resulting in a deadlock. Add a call to
+both places sockets are created that turns off the handshake (and
+SO_PEERCRED/getpeereid support).
+
+References:
+* https://github.com/cygwin/cygwin/blob/cec8a6680ea1fe38f38001b06c34ae355a785209/winsup/cygwin/fhandler/socket_local.cc#L1462-L1471
+* https://inbox.sourceware.org/cygwin/Z_UERXFI1g-1v3p2@calimero.vinschen.de/T/#u
+---
+ llvm/lib/Support/raw_socket_stream.cpp | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/llvm/lib/Support/raw_socket_stream.cpp b/llvm/lib/Support/raw_socket_stream.cpp
+index 7a4be5759f..fd1c681672 100644
+--- a/llvm/lib/Support/raw_socket_stream.cpp
++++ b/llvm/lib/Support/raw_socket_stream.cpp
+@@ -81,6 +81,15 @@ static Expected<int> getSocketFD(StringRef SocketPath) {
+                                          "Create socket failed");
+   }
+ 
++#ifdef __CYGWIN__
++  // On Cygwin, UNIX sockets involve a handshake between connect and accept
++  // to enable SO_PEERCRED/getpeereid handling.  This necessitates accept being
++  // called before connect can return, but at least the tests in
++  // llvm/unittests/Support/raw_socket_stream_test do both on the same thread
++  // (first connect and then accept), resulting in a deadlock.  This call turns
++  // off the handshake (and SO_PEERCRED/getpeereid support).
++  setsockopt(Socket, SOL_SOCKET, SO_PEERCRED, NULL, 0);
++#endif
+   struct sockaddr_un Addr = setSocketAddr(SocketPath);
+   if (::connect(Socket, (struct sockaddr *)&Addr, sizeof(Addr)) == -1)
+     return llvm::make_error<StringError>(getLastSocketErrorCode(),
+@@ -147,6 +156,15 @@ Expected<ListeningSocket> ListeningSocket::createUnix(StringRef SocketPath,
+     return llvm::make_error<StringError>(getLastSocketErrorCode(),
+                                          "socket create failed");
+ 
++#ifdef __CYGWIN__
++  // On Cygwin, UNIX sockets involve a handshake between connect and accept
++  // to enable SO_PEERCRED/getpeereid handling.  This necessitates accept being
++  // called before connect can return, but at least the tests in
++  // llvm/unittests/Support/raw_socket_stream_test do both on the same thread
++  // (first connect and then accept), resulting in a deadlock.  This call turns
++  // off the handshake (and SO_PEERCRED/getpeereid support).
++  setsockopt(Socket, SOL_SOCKET, SO_PEERCRED, NULL, 0);
++#endif
+   struct sockaddr_un Addr = setSocketAddr(SocketPath);
+   if (::bind(Socket, (struct sockaddr *)&Addr, sizeof(Addr)) == -1) {
+     // Grab error code from call to ::bind before calling ::close
+-- 
+2.49.0.windows.1
+
