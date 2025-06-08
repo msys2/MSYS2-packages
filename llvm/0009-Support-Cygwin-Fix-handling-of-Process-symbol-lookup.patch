@@ -1,0 +1,100 @@
+From 9d36bd81da7d14d788115b31dd4b1def1575fcd4 Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <github@jdrake.com>
+Date: Thu, 5 Jun 2025 23:01:09 -0700
+Subject: [PATCH] [Support][Cygwin] Fix handling of Process symbol lookup.
+
+In Unix/DynamicLibrary.inc, it was already known that Cygwin required
+use of RTLD_DEFAULT as the "Handle" parameter to DLSym to search all
+modules for a symbol.  Unfortunately, RTLD_DEFAULT is defined as NULL, so
+the existing checks of the "Process" handle meant DLSym would never be
+called on Cygwin.  Use the existing &Invalid sentinal instead of nullptr
+for the Process handle.
+---
+ llvm/lib/Support/DynamicLibrary.cpp         | 8 ++++----
+ llvm/lib/Support/Unix/DynamicLibrary.inc    | 2 +-
+ llvm/lib/Support/Windows/DynamicLibrary.inc | 6 +++---
+ 3 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/llvm/lib/Support/DynamicLibrary.cpp b/llvm/lib/Support/DynamicLibrary.cpp
+index 531c035ab9..f1c15c00ce 100644
+--- a/llvm/lib/Support/DynamicLibrary.cpp
++++ b/llvm/lib/Support/DynamicLibrary.cpp
+@@ -25,7 +25,7 @@ using namespace llvm::sys;
+ class DynamicLibrary::HandleSet {
+   typedef std::vector<void *> HandleList;
+   HandleList Handles;
+-  void *Process = nullptr;
++  void *Process = &Invalid;
+ 
+ public:
+   static void *DLOpen(const char *Filename, std::string *Err);
+@@ -58,7 +58,7 @@ public:
+       Handles.push_back(Handle);
+     } else {
+ #ifndef _WIN32
+-      if (Process) {
++      if (Process != &Invalid) {
+         if (CanClose)
+           DLClose(Process);
+         if (Process == Handle)
+@@ -97,11 +97,11 @@ public:
+     assert(!((Order & SO_LoadedFirst) && (Order & SO_LoadedLast)) &&
+            "Invalid Ordering");
+ 
+-    if (!Process || (Order & SO_LoadedFirst)) {
++    if (Process == &Invalid || (Order & SO_LoadedFirst)) {
+       if (void *Ptr = LibLookup(Symbol, Order))
+         return Ptr;
+     }
+-    if (Process) {
++    if (Process != &Invalid) {
+       // Use OS facilities to search the current binary and all loaded libs.
+       if (void *Ptr = DLSym(Process, Symbol))
+         return Ptr;
+diff --git a/llvm/lib/Support/Unix/DynamicLibrary.inc b/llvm/lib/Support/Unix/DynamicLibrary.inc
+index 7452913049..b6f8e38a66 100644
+--- a/llvm/lib/Support/Unix/DynamicLibrary.inc
++++ b/llvm/lib/Support/Unix/DynamicLibrary.inc
+@@ -17,7 +17,7 @@ DynamicLibrary::HandleSet::~HandleSet() {
+   // Close the libraries in reverse order.
+   for (void *Handle : llvm::reverse(Handles))
+     ::dlclose(Handle);
+-  if (Process)
++  if (Process != &Invalid)
+     ::dlclose(Process);
+ 
+   // llvm_shutdown called, Return to default
+diff --git a/llvm/lib/Support/Windows/DynamicLibrary.inc b/llvm/lib/Support/Windows/DynamicLibrary.inc
+index c434bd62f0..4f8c96e78f 100644
+--- a/llvm/lib/Support/Windows/DynamicLibrary.inc
++++ b/llvm/lib/Support/Windows/DynamicLibrary.inc
+@@ -26,7 +26,7 @@ DynamicLibrary::HandleSet::~HandleSet() {
+     FreeLibrary(HMODULE(Handle));
+ 
+   // 'Process' should not be released on Windows.
+-  assert((!Process || Process == this) && "Bad Handle");
++  assert((Process == &Invalid || Process == this) && "Bad Handle");
+   // llvm_shutdown called, Return to default
+   DynamicLibrary::SearchOrder = DynamicLibrary::SO_Linker;
+ }
+@@ -60,7 +60,7 @@ static DynamicLibrary::HandleSet *IsOpenedHandlesInstance(void *Handle) {
+ 
+ void DynamicLibrary::HandleSet::DLClose(void *Handle) {
+   if (HandleSet *HS = IsOpenedHandlesInstance(Handle))
+-    HS->Process = nullptr; // Just drop the *Process* handle.
++    HS->Process = &Invalid; // Just drop the *Process* handle.
+   else
+     FreeLibrary((HMODULE)Handle);
+ }
+@@ -89,7 +89,7 @@ void *DynamicLibrary::HandleSet::DLSym(void *Handle, const char *Symbol) {
+     return (void *)uintptr_t(GetProcAddress((HMODULE)Handle, Symbol));
+ 
+   // Could have done a dlclose on the *Process* handle
+-  if (!HS->Process)
++  if (HS->Process == &Invalid)
+     return nullptr;
+ 
+   // Trials indicate EnumProcessModulesEx is consistantly faster than using
+-- 
+2.49.0.windows.1
+
