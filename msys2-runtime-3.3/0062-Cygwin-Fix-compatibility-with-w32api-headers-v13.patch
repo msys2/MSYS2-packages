@@ -1,0 +1,86 @@
+From a4f5b8dacccacb33f24501505439140edde3142c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Radek=20Barto=C5=88?= <radek.barton@microsoft.com>
+Date: Mon, 9 Jun 2025 18:14:14 +0200
+Subject: [PATCH 62/N] Cygwin: Fix compatibility with w32api headers v13
+
+(cherry picked from commit 2029784e05d9805aa074dcadb99c31311790b7ac)
+---
+ winsup/cygwin/fhandler_socket_inet.cc  | 5 +++++
+ winsup/cygwin/fhandler_socket_local.cc | 5 +++++
+ winsup/cygwin/net.cc                   | 5 +++++
+ winsup/cygwin/ntdll.h                  | 4 ++++
+ 4 files changed, 19 insertions(+)
+
+diff --git a/winsup/cygwin/fhandler_socket_inet.cc b/winsup/cygwin/fhandler_socket_inet.cc
+index 30eab40..2d14926 100644
+--- a/winsup/cygwin/fhandler_socket_inet.cc
++++ b/winsup/cygwin/fhandler_socket_inet.cc
+@@ -22,7 +22,12 @@
+ #define u_long __ms_u_long
+ #endif
+ #include <w32api/ws2tcpip.h>
++/* 2025-06-09: win32api headers v13 now define a cmsghdr type which clashes with
++   our socket.h. Arrange not to see it here. */
++#undef cmsghdr
++#define cmsghdr __ms_cmsghdr
+ #include <w32api/mswsock.h>
++#undef cmsghdr
+ #include <w32api/mstcpip.h>
+ #include <netinet/tcp.h>
+ #include <unistd.h>
+diff --git a/winsup/cygwin/fhandler_socket_local.cc b/winsup/cygwin/fhandler_socket_local.cc
+index bd40816..ec03b24 100644
+--- a/winsup/cygwin/fhandler_socket_local.cc
++++ b/winsup/cygwin/fhandler_socket_local.cc
+@@ -23,7 +23,12 @@
+ #endif
+ #include "ntsecapi.h"
+ #include <w32api/ws2tcpip.h>
++/* 2025-06-09: win32api headers v13 now define a cmsghdr type which clashes with
++   our socket.h. Arrange not to see it here. */
++#undef cmsghdr
++#define cmsghdr __ms_cmsghdr
+ #include <w32api/mswsock.h>
++#undef cmsghdr
+ #include <unistd.h>
+ #include <asm/byteorder.h>
+ #include <sys/socket.h>
+diff --git a/winsup/cygwin/net.cc b/winsup/cygwin/net.cc
+index 9ff155c..b08d366 100644
+--- a/winsup/cygwin/net.cc
++++ b/winsup/cygwin/net.cc
+@@ -20,7 +20,12 @@ details. */
+ #define u_long __ms_u_long
+ #endif
+ #include <w32api/ws2tcpip.h>
++/* 2025-06-09: win32api headers v13 now define a cmsghdr type which clashes with
++   our socket.h. Arrange not to see it here. */
++#undef cmsghdr
++#define cmsghdr __ms_cmsghdr
+ #include <w32api/mswsock.h>
++#undef cmsghdr
+ #include <w32api/iphlpapi.h>
+ #define gethostname cygwin_gethostname
+ #include <unistd.h>
+diff --git a/winsup/cygwin/ntdll.h b/winsup/cygwin/ntdll.h
+index 9358fc0..43f6d2c 100644
+--- a/winsup/cygwin/ntdll.h
++++ b/winsup/cygwin/ntdll.h
+@@ -462,6 +462,8 @@ typedef struct _FILE_DISPOSITION_INFORMATION_EX	// 64
+   ULONG Flags;
+ } FILE_DISPOSITION_INFORMATION_EX, *PFILE_DISPOSITION_INFORMATION_EX;
+ 
++#if __MINGW64_VERSION_MAJOR < 13
++
+ typedef struct _FILE_STAT_INFORMATION		// 68
+ {
+   LARGE_INTEGER FileId;
+@@ -482,6 +484,8 @@ typedef struct _FILE_CASE_SENSITIVE_INFORMATION	// 71
+   ULONG Flags;
+ } FILE_CASE_SENSITIVE_INFORMATION, *PFILE_CASE_SENSITIVE_INFORMATION;
+ 
++#endif
++
+ enum {
+   FILE_LINK_REPLACE_IF_EXISTS				= 0x01,
+   FILE_LINK_POSIX_SEMANTICS				= 0x02,
