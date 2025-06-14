@@ -51,5 +51,5 @@ switch $MSYSTEM
   case '*'
     set -x MSYSTEM_PREFIX '/usr'
     set -x MSYSTEM_CARCH (/usr/bin/uname -m)
-    set -x MSYSTEM_CHOST (/usr/bin/uname -m)"-pc-msys"
+    set -x MSYSTEM_CHOST (/usr/bin/uname -m)"-pc-cygwin"
 end
