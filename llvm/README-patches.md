@@ -18,7 +18,11 @@ Legend:
 - `"0006-LLVM-Cygwin-Define-_GNU_SOURCE-on-Cygwin-as-well.-13.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/9633f87e34dddce49619e7fc2d75c659c61a9db1
 - `"0007-Cygwin-Emit-COMDAT-name-correctly-for-Cygwin-138621.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/7157228667396f1c113a96e9e9ecb9f0ca82a645
 - `"0008-LLVM-Cygwin-add-workaround-for-blocking-connect-acce.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/7857543a6350f49f12d17af0bcf2c0f42db0311e
-- `"0009-Support-Cygwin-Fix-handling-of-Process-symbol-lookup.patch"` :grey_question: https://github.com/llvm/llvm-project/pull/143072
+- `"0009-Support-Cygwin-Fix-handling-of-Process-symbol-lookup.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/d659364295f6f0c41535a0c98c958cb4c896cc62
+- `"0010-Cygwin-Define-LLVM_ABI-for-Cygwin-143222.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/60d000496b5485c89c51e64b2b339210d48263be
+- `"0011-Cygwin-CYGWIN-is-not-WIN32-in-current-CMake-143130.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/bd319d9071fb0c6e1bda9db500d039d32a49c28a
+- `"0012-Cygwin-Don-t-use-version-script-for-Cygwin-target-14.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/0bd614a8ee11cfc5cee8719b3209f40b163d5a62
+- `"0013-LLVM-Tests-remove-exeext-from-lli-child-target-param.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/d34b392dade4f9f0ef981767a9a47504ba85d0af
 - `"0101-Cygwin-Global-symbols-should-be-external-by-default-.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/76d866f7935b746e5e50e7d760344c14502bd8e7
 - `"0102-Clang-Cygwin-Enable-few-conditions-that-are-shared-w.patch"` :x:
 - `"0103-Cygwin-Enable-TLS-on-Cygwin-target-138618.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/eb6d51a2fdddcc305b51f7d412d0e5144cbd444d
@@ -34,10 +38,12 @@ Legend:
 - `"0113-CMake-respect-LLVMConfig.cmake-s-LLVM_DEFINITIONS.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/ba4bd3f46e97b5637b16a0fa74b064fb3e6db8ff
 - `"0114-Cygwin-Internal-class-in-explicitly-instantiation-de.patch"` :grey_exclamation:
 - `"0115-Cygwin-Template-instantiations-should-be-exported-by.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/cb53ece2cab0096539e6a5c9d53da4e5db5cc270
-- `"0116-Cygwin-va_list-must-be-treated-like-normal-Windows.patch"` :grey_question: https://github.com/llvm/llvm-project/pull/143115
-- `"0117-Cygwin-wint_t-is-unsigned-int.patch"` :grey_question: https://github.com/llvm/llvm-project/pull/143117
-- `"0201-LLD-MinGW-Implement-dll-search-prefix-option.patch"` :x:
+- `"0116-Cygwin-va_list-must-be-treated-like-normal-Windows.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/830a74092adafa425db05e1c5120d3294f874777
+- `"0117-Cygwin-wint_t-is-unsigned-int.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/e7739eb6ccb775a2cfc2f68c3d2356ceeabdf94a
+- `"0118-scan-build-Windows-Fix-driver-name-transformation-in.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/b07a6da7cbe9326d5cc64b55a7cfd582bd51b325
+- `"0201-LLD-Cygwin-Implement-dll-search-prefix-143263.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/9e23e85d6597bd59ff316a3ce93bb8ec41919b19
 - `"0203-LLD-COFF-add-__-data-bss-_-start-end-__-symbols-for-.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/f66f2fe0e5be6dc6eb3ef4d42af8692f9adcdc80
 - `"0204-LLD-MinGW-Fall-back-to-using-default-target-if-no-m-.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/e4a79b7122cbe6470c1a42e7b3549c37a1a6408d
 - `"0205-LLD-COFF-Ensure-.bss-is-merged-at-the-end-of-a-secti.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/bb2f7596a8b963af06e9dde821dcea1252ba4892
 - `"0206-LLD-CMake-fix-testing-standalone-build-without-insta.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/16107c88fb6cc474e1e5691025eb295df094a6c2
+- `"0207-LLD-Cygwin-Add-libcygwin-and-libmsys-2.0-to-exclude-.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/89aef7e0608d927eb7613834d817b723feef4f83
