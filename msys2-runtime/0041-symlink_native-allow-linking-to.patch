@@ -1,0 +1,62 @@
+From bc3e285ac0a2c91080ac68279f0c9fd697a2d9b6 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Thu, 19 Jun 2025 20:46:03 +0200
+Subject: [PATCH 41/N] symlink_native: allow linking to `..`
+
+When running
+
+	CYGWIN=winsymlinks:nativestrict ln -s .. abc
+
+the counter-intuitive result is _not_ a symbolic link to `..`, but
+instead to `../../$(basename "$PWD")`.
+
+The reason for this is that the search for the longest common prefix
+assumes that the link target is not a strict prefix of the parent
+directory of the link itself.
+
+Let's fix that.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/path.cc | 21 ++++++++++++++++-----
+ 1 file changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 6f04658..ead7d16 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -2030,9 +2030,18 @@ symlink_native (const char *oldpath, path_conv &win32_newpath)
+       while (towupper (*++c_old) == towupper (*++c_new))
+ 	;
+       /* The last component could share a common prefix, so make sure we end
+-         up on the first char after the last common backslash. */
+-      while (c_old[-1] != L'\\')
+-	--c_old, --c_new;
++         up on the first char after the last common backslash.
++
++	 However, if c_old is a strict prefix of c_new (at a component
++	 boundary), or vice versa, then do not try to find the last common
++	 backslash. */
++      if ((!*c_old || *c_old == L'\\') && (!*c_new || *c_new == L'\\'))
++	c_old += !!*c_old, c_new += !!*c_new;
++      else
++	{
++	  while (c_old[-1] != L'\\')
++	    --c_old, --c_new;
++	}
+ 
+       /* 2. Check if prefix is long enough.  The prefix must at least points to
+             a complete device:  \\?\X:\ or \\?\UNC\server\share\ are the minimum
+@@ -2057,8 +2066,10 @@ symlink_native (const char *oldpath, path_conv &win32_newpath)
+ 	  final_oldpath = &final_oldpath_buf;
+ 	  final_oldpath->Buffer = tp.w_get ();
+ 	  PWCHAR e_old = final_oldpath->Buffer;
+-	  while (num-- > 0)
+-	    e_old = wcpcpy (e_old, L"..\\");
++	  while (num > 1 || (num == 1 && *c_old))
++	    e_old = wcpcpy (e_old, L"..\\"), num--;
++	  if (num > 0)
++	    e_old = wcpcpy (e_old, L"..");
+ 	  wcpcpy (e_old, c_old);
+ 	}
+     }
