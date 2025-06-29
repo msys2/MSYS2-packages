@@ -1,0 +1,72 @@
+# Contributor: Christoph Reiter <reiter.christoph@gmail.com>
+
+pkgbase=nghttp3
+pkgname=("libnghttp3" "libnghttp3-devel")
+pkgver=1.10.1
+pkgrel=1
+pkgdesc="HTTP/3 library written in C"
+arch=(i686 x86_64)
+url='https://nghttp2.org/nghttp3'
+msys2_repository_url='https://github.com/ngtcp2/nghttp3'
+license=('spdx:MIT')
+makedepends=(
+  "gcc"
+  "cmake"
+  "ninja"
+)
+source=("https://github.com/ngtcp2/nghttp3/releases/download/v${pkgver}/nghttp3-${pkgver}.tar.xz"{,.asc})
+sha256sums=('e6b8ebaadf8e57cba77a3e34ee8de465fe952481fbf77c4f98d48737bdf50e03'
+            'SKIP')
+validpgpkeys=(
+'F4F3B91474D1EB29889BD0EF7E8403D5D673C366' # Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+)
+
+build() {
+  mkdir -p "${srcdir}/build-${CARCH}" && cd "${srcdir}/build-${CARCH}"
+
+  declare -a extra_config
+  if check_option "debug" "n"; then
+    extra_config+=("-DCMAKE_BUILD_TYPE=Release")
+  else
+    extra_config+=("-DCMAKE_BUILD_TYPE=Debug")
+  fi
+
+  cmake \
+    -GNinja \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    "${extra_config[@]}" \
+    -DENABLE_LIB_ONLY=ON \
+    -DENABLE_SHARED_LIB=ON \
+    -DENABLE_STATIC_LIB=ON \
+    "../${pkgbase}-${pkgver}"
+
+  cmake --build .
+}
+
+package_libnghttp3() {
+  pkgdesc+=" - runtime libraries"
+  depends=(
+    "gcc-libs"
+  )
+
+  cd "${srcdir}/build-${CARCH}"
+
+  DESTDIR="${pkgdir}" cmake --install .
+
+  rm -rf "${pkgdir}/usr/include"
+  rm -rf "${pkgdir}/usr/lib"
+  rm -rf "${pkgdir}/usr/share"
+
+  install -Dm644 "${srcdir}/${pkgbase}-${pkgver}/COPYING" "${pkgdir}/usr/share/licenses/${pkgname}/COPYING"
+}
+
+package_libnghttp3-devel() {
+  pkgdesc+=" - development files"
+  depends=("libnghttp3")
+
+  cd "${srcdir}/build-${CARCH}"
+
+  DESTDIR="${pkgdir}" cmake --install .
+
+  rm -rf "${pkgdir}"/usr/bin
+}
