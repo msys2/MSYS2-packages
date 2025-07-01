@@ -1,0 +1,47 @@
+From ab81aae6d3dd729bda9fde8e3ada9538f7cfbc08 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Tue, 1 Jul 2025 17:10:34 +0900
+Subject: [PATCH 45/N] Cygwin: console: Set ENABLE_PROCESSED_INPUT when
+ disable_master_thread
+
+Currently, ENABLE_PROCESSED_INPUT is set in set_input_mode() if
+master_thread_suspended is true. This enables Ctrl-C handling when
+cons_master_thread is suspended, since Ctrl-C is normally handled
+by cons_master_thread.
+However, when disable_master_thread is true, ENABLE_PROCESSED_INPUT
+is not set, even though this also disables Ctrl-C handling in
+cons_master_thread. Due to this bug, the command
+  C:\cygwin64\bin\sleep 10 < NUL
+in the Command Prompt cannot be terminated with Ctrl-C.
+
+This patch addresses the issue by setting ENABLE_PROCESSED_INPUT
+when either disable_master_thread or master_thread_suspended is true.
+
+This bug also affects cases where non-Cygwin Git (Git for Windows)
+launches Cygwin SSH. In such cases, SSH also cannot be terminated
+with Ctrl-C.
+
+Addresses: https://github.com/git-for-windows/git/issues/5682#issuecomment-2995983695
+Fixes: 746c8116dd4f ("Cygwin: console: Allow pasting very long text input.")
+Reported-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+(cherry picked from commit 476135a24506dd624eb46b50fd634fcd740008ba)
+Cherry-picked-from: 61cc419b2b (Cygwin: console: Set ENABLE_PROCESSED_INPUT when disable_master_thread, 2025-07-01))
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/fhandler/console.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/fhandler/console.cc b/winsup/cygwin/fhandler/console.cc
+index 08ac045..48c9326 100644
+--- a/winsup/cygwin/fhandler/console.cc
++++ b/winsup/cygwin/fhandler/console.cc
+@@ -831,7 +831,7 @@ fhandler_console::set_input_mode (tty::cons_mode m, const termios *t,
+       break;
+     case tty::cygwin:
+       flags |= ENABLE_WINDOW_INPUT;
+-      if (con.master_thread_suspended)
++      if (con.master_thread_suspended || con.disable_master_thread)
+ 	flags |= ENABLE_PROCESSED_INPUT;
+       if (wincap.has_con_24bit_colors () && !con_is_legacy)
+ 	flags |= ENABLE_VIRTUAL_TERMINAL_INPUT;
