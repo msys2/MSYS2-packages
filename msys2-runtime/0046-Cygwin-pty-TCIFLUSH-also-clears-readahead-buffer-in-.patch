@@ -1,0 +1,137 @@
+From 1ed91ca016bace8fb865d33cd720b5b980530a2d Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Mon, 14 Jul 2025 10:40:08 +0900
+Subject: [PATCH 46/N] Cygwin: pty: TCIFLUSH also clears readahead buffer in
+ the master
+
+Previously, TCIFLUSH flushed the pipe to_slave which transfers
+input from master to slave. However, this was not sufficiant.
+The master side holds input data before accept_input() in the
+read-ahead buffer. So, if input data before 'enter' key can be
+leaked into slave input after TCIFLUSH.
+
+With this patch, TCIFLUSH requests master to flush read-ahead
+buffer via master control pipe. To realize this, add cmd filed
+to pipe_request structure so that the flush request can be
+distinguished from existing pipe handle request.
+
+Addresses: https://cygwin.com/pipermail/cygwin/2025-July/258442.html
+Fixes: 41946df6111b (" (fhandler_tty_slave::tcflush): Implement input queue flushing by calling read with NULL buffer.")
+Reported-by: Christoph Reiter <reiter.christoph@gmail.com>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+(cherry picked from commit 2aa41b516055ea9383508342706288deb3baf1f6)
+---
+ winsup/cygwin/fhandler/pty.cc           | 31 +++++++++++++++++++++----
+ winsup/cygwin/local_includes/fhandler.h |  1 +
+ 2 files changed, 27 insertions(+), 5 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler/pty.cc b/winsup/cygwin/fhandler/pty.cc
+index 0969b2f..d5e8864 100644
+--- a/winsup/cygwin/fhandler/pty.cc
++++ b/winsup/cygwin/fhandler/pty.cc
+@@ -42,7 +42,14 @@ extern "C" int sscanf (const char *, const char *, ...);
+   } while (0)
+ 
+ /* pty master control pipe messages */
++enum pipe_request_cmd {
++  GET_HANDLES,
++  FLUSH_INPUT,
++  QUIT
++};
++
+ struct pipe_request {
++  pipe_request_cmd cmd;
+   DWORD pid;
+ };
+ 
+@@ -871,7 +878,7 @@ fhandler_pty_slave::open (int flags, mode_t)
+     }
+   else
+     {
+-      pipe_request req = { GetCurrentProcessId () };
++      pipe_request req = { GET_HANDLES, GetCurrentProcessId () };
+       pipe_reply repl;
+       DWORD len;
+ 
+@@ -1147,7 +1154,7 @@ fhandler_pty_slave::reset_switch_to_nat_pipe (void)
+ 			       "\\\\.\\pipe\\cygwin-%S-pty%d-master-ctl",
+ #endif
+ 			       &cygheap->installation_key, get_minor ());
+-		      pipe_request req = { GetCurrentProcessId () };
++		      pipe_request req = { GET_HANDLES, GetCurrentProcessId () };
+ 		      pipe_reply repl;
+ 		      DWORD len;
+ 		      if (!CallNamedPipe (pipe, &req, sizeof req,
+@@ -1605,6 +1612,14 @@ fhandler_pty_slave::tcflush (int queue)
+ 
+   if (queue == TCIFLUSH || queue == TCIOFLUSH)
+     {
++      char pipe[MAX_PATH];
++      __small_sprintf (pipe,
++		       "\\\\.\\pipe\\cygwin-%S-pty%d-master-ctl",
++		       &cygheap->installation_key, get_minor ());
++      pipe_request req = { FLUSH_INPUT, GetCurrentProcessId () };
++      pipe_reply repl;
++      DWORD n;
++      CallNamedPipe (pipe, &req, sizeof req, &repl, sizeof repl, &n, 500);
+       size_t len = UINT_MAX;
+       read (NULL, len);
+       ret = ((int) len) >= 0 ? 0 : -1;
+@@ -2028,7 +2043,7 @@ fhandler_pty_master::close (int flag)
+       if (master_ctl && get_ttyp ()->master_pid == myself->pid)
+ 	{
+ 	  char buf[MAX_PATH];
+-	  pipe_request req = { (DWORD) -1 };
++	  pipe_request req = { QUIT, GetCurrentProcessId () };
+ 	  pipe_reply repl;
+ 	  DWORD len;
+ 
+@@ -2533,13 +2548,18 @@ fhandler_pty_master::pty_master_thread (const master_thread_param_t *p)
+ 	  termios_printf ("RevertToSelf, %E");
+ 	  goto reply;
+ 	}
+-      if (req.pid == (DWORD) -1)	/* Request to finish thread. */
++      if (req.cmd == QUIT) /* Request to finish thread. */
+ 	{
+ 	  /* Check if the requesting process is the master process itself. */
+ 	  if (pid == GetCurrentProcessId ())
+ 	    exit = true;
+ 	  goto reply;
+ 	}
++      if (req.cmd == FLUSH_INPUT)
++	{
++	  p->master->eat_readahead (-1);
++	  goto reply;
++	}
+       if (NT_SUCCESS (allow))
+ 	{
+ 	  client = OpenProcess (PROCESS_DUP_HANDLE, FALSE, pid);
+@@ -3796,6 +3816,7 @@ fhandler_pty_master::get_master_thread_param (master_thread_param_t *p)
+   p->to_slave = get_output_handle ();
+   p->master_ctl = master_ctl;
+   p->input_available_event = input_available_event;
++  p->master = this;
+   SetEvent (thread_param_copied_event);
+ }
+ 
+@@ -3841,7 +3862,7 @@ fhandler_pty_slave::transfer_input (tty::xfer_dir dir, HANDLE from, tty *ttyp,
+ 		       "\\\\.\\pipe\\cygwin-%S-pty%d-master-ctl",
+ #endif
+ 		       &cygheap->installation_key, ttyp->get_minor ());
+-      pipe_request req = { GetCurrentProcessId () };
++      pipe_request req = { GET_HANDLES, GetCurrentProcessId () };
+       pipe_reply repl;
+       DWORD len;
+       if (!CallNamedPipe (pipe, &req, sizeof req,
+diff --git a/winsup/cygwin/local_includes/fhandler.h b/winsup/cygwin/local_includes/fhandler.h
+index 4c013dd..6e8a190 100644
+--- a/winsup/cygwin/local_includes/fhandler.h
++++ b/winsup/cygwin/local_includes/fhandler.h
+@@ -2536,6 +2536,7 @@ public:
+     HANDLE to_slave;
+     HANDLE master_ctl;
+     HANDLE input_available_event;
++    fhandler_pty_master *master;
+   };
+   /* Parameter set for the static function pty_master_fwd_thread() */
+   struct master_fwd_thread_param_t {
