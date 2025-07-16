@@ -1,0 +1,67 @@
+From 23a25d49e3b8c18f12ce588869d4cb24de9f2454 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Mon, 22 May 2023 13:36:27 +0200
+Subject: [PATCH 38/N] Cygwin: Adjust CWD magic to accommodate for the latest
+ Windows previews
+
+Reportedly a very recent internal build of Windows 11 once again changed
+the current working directory logic a bit, and Cygwin's "magic" (or:
+"technologically sufficiently advanced") code needs to be adjusted
+accordingly.
+
+In particular, the following assembly code can be seen:
+
+ntdll!RtlpReferenceCurrentDirectory
+
+  598 00000001`800c6925 488d0db4cd0f00  lea     rcx,[ntdll!FastPebLock (00000001`801c36e0)]
+  583 00000001`800c692c 4c897810        mov     qword ptr [rax+10h],r15
+  588 00000001`800c6930 0f1140c8        movups  xmmword ptr [rax-38h],xmm0
+  598 00000001`800c6934 e82774f4ff      call    ntdll!RtlEnterCriticalSection
+
+The change necessarily looks a bit different than 4840a56325 (Cygwin:
+Adjust CWD magic to accommodate for the latest Windows previews,
+2023-05-22): The needle `\x48\x8d\x0d` is already present, as the first
+version of the hack after Windows 8.1 was released. In that code,
+though, the `call` to `RtlEnterCriticalSection` followed the `lea`
+instruction immediately, but now there are two more instructions
+separating them.
+
+Note: In the long run, we may very well want to follow the insightful
+suggestion by a helpful Windows kernel engineer who pointed out that it
+may be less fragile to implement kind of a disassembler that has a
+better chance to adapt to the ever-changing code of
+`ntdll!RtlpReferenceCurrentDirectory` by skipping uninteresting
+instructions such as `mov %rsp,%rax`, `mov %rbx,0x20(%rax)`, `push %rsi`
+`sub $0x70,%rsp`, etc, and focuses on finding the `lea`, `call
+ntdll!RtlEnterCriticalSection` and `mov ..., rbx` instructions, much
+like it was prototyped out for ARM64 at
+https://gist.github.com/jeremyd2019/aa167df0a0ae422fa6ebaea5b60c80c9
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/path.cc | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/winsup/cygwin/path.cc b/winsup/cygwin/path.cc
+index 8ddc201..ead7d16 100644
+--- a/winsup/cygwin/path.cc
++++ b/winsup/cygwin/path.cc
+@@ -4896,6 +4896,18 @@ find_fast_cwd_pointer ()
+          %rcx for the subsequent RtlEnterCriticalSection call. */
+       lock = (const uint8_t *) memmem ((const char *) use_cwd, 80,
+                                        "\x48\x8d\x0d", 3);
++      if (lock)
++	{
++	  /* A recent Windows 11 Preview calls `lea rel(rip),%rcx' then
++	     a `mov` and a `movups` instruction, and only then
++	     `callq RtlEnterCriticalSection'.
++	     */
++	  if (memmem (lock + 7, 8, "\x4c\x89\x78\x10\x0f\x11\x40\xc8", 8))
++	    {
++	      call_rtl_offset = 15;
++	    }
++	}
++
+       if (!lock)
+ 	{
+ 	  /* Windows 8.1 Preview calls `lea rel(rip),%r12' then some unrelated
