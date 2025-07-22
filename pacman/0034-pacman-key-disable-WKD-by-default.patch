@@ -1,0 +1,58 @@
+From 612777d1e6f196517c1db62454e952ddad14b260 Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Wed, 16 Jul 2025 11:07:34 +0200
+Subject: [PATCH 34/N] pacman-key: disable WKD by default
+
+We don't use WKD and it leads to unavoidable error messages
+when --refresh-keys is used, for example on the first startup,
+which can be confusing.
+
+While it's only annoying for --refresh-keys, also disable it
+for --recv-keys for consistency.
+
+Fixes #27
+---
+ scripts/pacman-key.sh.in | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/scripts/pacman-key.sh.in b/scripts/pacman-key.sh.in
+index 85ceda9..1d14e7b 100644
+--- a/scripts/pacman-key.sh.in
++++ b/scripts/pacman-key.sh.in
+@@ -53,6 +53,9 @@ USE_COLOR='y'
+ VERIFY=0
+ VERBOSE=0
+ 
++# MSYS2: we don't use WKD, disable it to avoid unnecessary lookup error messages
++_USE_WKD=0
++
+ usage() {
+ 	printf "pacman-key (pacman) %s\n" ${myver}
+ 	echo
+@@ -529,11 +532,16 @@ receive_keys() {
+ 
+ 	(( ${#keyids[*]}+${#emails[*]} > 0 )) || exit 1
+ 
+-	if (( ${#emails[*]} > 0 )) && \
++	if (( _USE_WKD )) && (( ${#emails[*]} > 0 )) && \
+ 	   ! "${GPG_PACMAN[@]}" --auto-key-locate clear,nodefault,wkd,keyserver \
+ 	                        --locate-key "${emails[@]}" ; then
+ 		error "$(gettext "Remote key not fetched correctly from WKD or keyserver.")"
+ 		ret=1
++	elif (( ${#emails[*]} > 0 )) && \
++	   ! "${GPG_PACMAN[@]}" --auto-key-locate clear,nodefault,keyserver \
++	                        --locate-key "${emails[@]}" ; then
++		error "$(gettext "Remote key not fetched correctly from keyserver.")"
++		ret=1
+ 	fi
+ 
+ 	if (( ${#keyids[*]} > 0 )) && ! "${GPG_PACMAN[@]}" --recv-keys "${keyids[@]}" ; then
+@@ -564,7 +572,7 @@ refresh_keys() {
+ 
+ 		# first try looking up the key in a WKD (only works by email address)
+ 		for email in "${emails[@]}"; do
+-			"${GPG_PACMAN[@]}" --locate-external-keys "$email" && break
++			(( _USE_WKD )) && "${GPG_PACMAN[@]}" --locate-external-keys "$email" && break
+ 		done
+ 
+ 		# if no key was found, fall back to using the keyservers (with the key fingerprint instead)
