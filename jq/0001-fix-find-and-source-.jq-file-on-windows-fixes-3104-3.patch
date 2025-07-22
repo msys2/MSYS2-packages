@@ -1,0 +1,90 @@
+From 6322b992528498632d620f29c6153be443dca6da Mon Sep 17 00:00:00 2001
+From: Kirk McKelvey <kirkoman@gmail.com>
+Date: Fri, 23 Aug 2024 19:44:08 -0400
+Subject: [PATCH] fix: find and source ~/.jq file on windows (fixes #3104)
+ (#3114)
+
+---
+ docs/content/manual/dev/manual.yml |  3 ++-
+ jq.1.prebuilt                      |  2 +-
+ src/linker.c                       | 10 ++++++----
+ tests/shtest                       | 11 +++++++++++
+ 4 files changed, 20 insertions(+), 6 deletions(-)
+
+diff --git a/docs/content/manual/dev/manual.yml b/docs/content/manual/dev/manual.yml
+index 90bd033..0e036a9 100644
+--- a/docs/content/manual/dev/manual.yml
++++ b/docs/content/manual/dev/manual.yml
+@@ -3691,7 +3691,8 @@ sections:
+       For example, with `-L$HOME/.jq` a module `foo` can be found in
+       `$HOME/.jq/foo.jq` and `$HOME/.jq/foo/foo.jq`.
+ 
+-      If `$HOME/.jq` is a file, it is sourced into the main program.
++      If `.jq` exists in the user's home directory, and is a file (not a
++      directory), it is automatically sourced into the main program.
+ 
+     entries:
+       - title: "`import RelativePathString as NAME [<metadata>];`"
+diff --git a/jq.1.prebuilt b/jq.1.prebuilt
+index 553b63f..bf3b217 100644
+--- a/jq.1.prebuilt
++++ b/jq.1.prebuilt
+@@ -4109,7 +4109,7 @@ Consecutive components with the same name are not allowed to avoid ambiguities (
+ For example, with \fB\-L$HOME/\.jq\fR a module \fBfoo\fR can be found in \fB$HOME/\.jq/foo\.jq\fR and \fB$HOME/\.jq/foo/foo\.jq\fR\.
+ .
+ .P
+-If \fB$HOME/\.jq\fR is a file, it is sourced into the main program\.
++If \fB\.jq\fR exists in the user\'s home directory, and is a file (not a directory), it is automatically sourced into the main program\.
+ .
+ .SS "import RelativePathString as NAME [<metadata>];"
+ Imports a module found at the given path relative to a directory in a search path\. A \fB\.jq\fR suffix will be added to the relative path string\. The module\'s symbols are prefixed with \fBNAME::\fR\.
+diff --git a/src/linker.c b/src/linker.c
+index e7d1024..a4006b2 100644
+--- a/src/linker.c
++++ b/src/linker.c
+@@ -420,14 +420,16 @@ int load_program(jq_state *jq, struct locfile* src, block *out_block) {
+     return 1;
+   }
+ 
+-  char* home = getenv("HOME");
+-  if (home) {    // silently ignore no $HOME
+-    /* Import ~/.jq as a library named "" found in $HOME */
++  jv home = get_home();
++  if (jv_is_valid(home)) {
++    /* Import ~/.jq as a library named "" found in $HOME or %USERPROFILE% */
+     block import = gen_import_meta(gen_import("", NULL, 0),
+         gen_const(JV_OBJECT(
+             jv_string("optional"), jv_true(),
+-            jv_string("search"), jv_string(home))));
++            jv_string("search"), home)));
+     program = BLOCK(import, program);
++  } else {    // silently ignore if home dir not determined
++    jv_free(home);
+   }
+ 
+   nerrors = process_dependencies(jq, jq_get_jq_origin(jq), jq_get_prog_origin(jq), &program, &lib_state);
+diff --git a/tests/shtest b/tests/shtest
+index 03fbf66..4aa2782 100755
+--- a/tests/shtest
++++ b/tests/shtest
+@@ -359,6 +359,17 @@ if [ "$(HOME="$mods/home1" $VALGRIND $Q $JQ -nr fg)" != foobar ]; then
+     exit 1
+ fi
+ 
++if $msys || $mingw; then
++    HOME_BAK=$HOME
++    unset HOME
++    if [ "$(USERPROFILE="$mods/home1" $VALGRIND $Q $JQ -nr foo)" != baz ]; then
++        echo "Bug #3104 regressed (sourcing %USERPROFILE%/.jq on Windows)" 1>&2
++        exit 1
++    fi
++    export HOME=$HOME_BAK
++    unset HOME_BAK
++fi
++
+ if [ $(HOME="$mods/home1" $VALGRIND $Q $JQ --debug-dump-disasm -n fg | grep '^[a-z]' | wc -l) -ne 3 ]; then
+     echo "Binding too many defs into program" 1>&2
+     exit 1
+-- 
+2.49.0.windows.1
+
