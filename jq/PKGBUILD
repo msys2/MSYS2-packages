@@ -1,0 +1,49 @@
+_realname=jq
+pkgname=${_realname}
+pkgver=1.8.1
+pkgrel=1
+pkgdesc="Command-line JSON processor"
+arch=('x86_64')
+url='https://jqlang.github.io/jq/'
+msys2_repository_url="https://github.com/jqlang/jq"
+license=('MIT')
+depends=('gcc-libs' 'oniguruma')
+makedepends=("autotools" "gcc")
+source=(
+  "https://github.com/jqlang/${_realname}/releases/download/${_realname}-${pkgver}/${_realname}-${pkgver}.tar.gz"
+  "0001-fix-find-and-source-.jq-file-on-windows-fixes-3104-3.patch"
+)
+sha512sums=('b09d48dbeaac7b552397b75692ed7833afa72186de80d977fb1b887a14ac66c02f677acdd79f9a2736db1fd738b7ce57a39725e34846bfa21ed3728cd7adc187'
+            'e9a1699cc05b7efa388bde506f34517da24d91cb94194acdd9d0c392c3c8053825b4c6240d318540e9c69f72e2bd27562919d9eb0a219eece2b93fa72261364c')
+
+prepare() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  # This only works on __WIN32__
+  patch -Rp1  -i ${srcdir}/0001-fix-find-and-source-.jq-file-on-windows-fixes-3104-3.patch
+
+  # avoid it asking git for the version
+  echo "echo ${pkgver}" > scripts/version
+  autoreconf -fiv
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
+  CFLAGS='-UHAVE_SCALB -UHAVE_SIGNIFICAND' \
+  ./configure \
+    --prefix=/usr \
+    --disable-docs
+
+  make
+}
+
+check() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make check
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make install DESTDIR="${pkgdir}"
+}
