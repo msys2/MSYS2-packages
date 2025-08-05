@@ -15,17 +15,17 @@ jobs:
       fail-fast: false
       matrix:
         include: [
-          { msystem: MSYS, runner: windows-2025 },
+          { msystem: MSYS, runner: windows-2022 },
         ]
     name: ${{ matrix.msystem }}
     runs-on: ${{ matrix.runner }}
-
     steps:
       - name: Gather Facts
         id: facts
         run : |
           Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize -Wrap
           Get-CIMInstance -Class Win32_Processor | Select-Object -Property Name
+          Get-CIMInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum | Format-Table @{n="TotalPhysicalMemory";e={$_.Sum}}
           $BUILD_DRIVE = Split-Path $env:GITHUB_WORKSPACE -Qualifier
           echo "drive=$BUILD_DRIVE" >> $env:GITHUB_OUTPUT
 
@@ -52,11 +52,13 @@ jobs:
           msystem: ${{ matrix.msystem }}
           install: git python base-devel
           update: true
+          location: '${{ steps.facts.outputs.drive }}\M'
 
       - name: Add staging repo
         shell: msys2 {0}
         run: |
-          sed -i '1s|^|[staging]\nServer = https://repo.msys2.org/staging/\nSigLevel = Never\n|' /etc/pacman.conf
+          cp /etc/pacman.conf /etc/pacman.conf.bak
+          grep -qFx '[staging]' /etc/pacman.conf || sed -i '/^# \[staging\]/,/^$/ s|^# ||g' /etc/pacman.conf
 
       - name: Update using staging
         run: |
@@ -71,6 +73,7 @@ jobs:
 
       - name: CI-Build
         shell: msys2 {0}
+        id: build
         run: |
           cd "$(cygpath '${{ steps.facts.outputs.drive }}/_')"
           ./.ci/ci-build.sh
@@ -81,21 +84,29 @@ jobs:
         with:
           name: ${{ matrix.msystem }}-packages
           path: ${{ steps.facts.outputs.drive }}/_/artifacts/*.pkg.tar.*
+          if-no-files-found: ignore
 
   package-grokker:
     runs-on: ubuntu-latest
     needs: build
+    name: package-grokker-${{ matrix.msystem }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - msystem: MSYS
+            repo: msys
 
     steps:
       - uses: actions/download-artifact@v4
         id: artifacts
         continue-on-error: true
         with:
-          name: MSYS-packages
+          name: ${{ matrix.msystem }}-packages
           path: artifacts
       - name: Grok packages
         uses: jeremyd2019/package-grokker/grok-artifacts@main
         if: steps.artifacts.outcome == 'success'
         with:
-          repo: msys
+          repo: ${{ matrix.repo }}
           path: artifacts
