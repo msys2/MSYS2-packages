@@ -1,0 +1,40 @@
+From f1e8e698f26d9e7732bed466cc38e5fcdf62c459 Mon Sep 17 00:00:00 2001
+From: jeremyd2019 <github@jdrake.com>
+Date: Fri, 1 Aug 2025 18:16:07 -0700
+Subject: [PATCH] [lli] Fix crash with --no-process-syms on MinGW (#151386)
+
+In this case, `J->getProcessSymbolsJITDylib()` returns a NULL pointer.
+In order to make sure `__main` is still defined, add the symbol to
+`J->getMainJITDylib()` instead in that case. This returns a reference
+and thus cannot be NULL.
+
+Fixes #143080
+---
+ llvm/tools/lli/lli.cpp | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/llvm/tools/lli/lli.cpp b/llvm/tools/lli/lli.cpp
+index 19246f0394..ad10206e5f 100644
+--- a/llvm/tools/lli/lli.cpp
++++ b/llvm/tools/lli/lli.cpp
+@@ -1084,11 +1084,15 @@ int runOrcJIT(const char *ProgName) {
+ 
+   // If this is a Mingw or Cygwin executor then we need to alias __main to
+   // orc_rt_int_void_return_0.
+-  if (J->getTargetTriple().isOSCygMing())
+-    ExitOnErr(J->getProcessSymbolsJITDylib()->define(
++  if (J->getTargetTriple().isOSCygMing()) {
++    auto &WorkaroundJD = J->getProcessSymbolsJITDylib()
++                             ? *J->getProcessSymbolsJITDylib()
++                             : J->getMainJITDylib();
++    ExitOnErr(WorkaroundJD.define(
+         orc::absoluteSymbols({{J->mangleAndIntern("__main"),
+                                {orc::ExecutorAddr::fromPtr(mingw_noop_main),
+                                 JITSymbolFlags::Exported}}})));
++  }
+ 
+   // Regular modules are greedy: They materialize as a whole and trigger
+   // materialization for all required symbols recursively. Lazy modules go
+-- 
+2.50.1.windows.1
+

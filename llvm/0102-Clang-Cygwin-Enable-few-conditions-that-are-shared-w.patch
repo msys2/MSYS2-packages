@@ -1,15 +1,27 @@
-From 9c15d2341d898517efd130ca600c8134497154ef Mon Sep 17 00:00:00 2001
-From: =?UTF-8?q?Mateusz=20Miku=C5=82a?= <oss@mateuszmikula.dev>
-Date: Sat, 8 Feb 2025 01:13:06 +0100
+From 8081536966b78c7da1430ede163f52c5f25a4280 Mon Sep 17 00:00:00 2001
+From: jeremyd2019 <github@jdrake.com>
+Date: Tue, 29 Jul 2025 10:01:43 -0700
 Subject: [PATCH] [Clang][Cygwin] Enable few conditions that are shared with
- MinGW
+ MinGW (#149637)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
+The Cygwin target is generally very similar to the MinGW target. The
+default auto-import behavior, the default calling convention, the
+`.dll.a` import library extension, the `__GXX_TYPEINFO_EQUALITY_INLINE`
+pre-define by `g++`, and the long double configuration.
+
+Co-authored-by: Mateusz Mikuła <oss@mateuszmikula.dev>
 ---
- clang/lib/AST/RecordLayoutBuilder.cpp | 2 +-
- clang/lib/CodeGen/Targets/X86.cpp     | 2 +-
- clang/lib/Driver/ToolChain.cpp        | 2 +-
- clang/lib/Sema/SemaDecl.cpp           | 2 +-
- 4 files changed, 4 insertions(+), 4 deletions(-)
+ clang/lib/AST/RecordLayoutBuilder.cpp         |  2 +-
+ clang/lib/Driver/ToolChain.cpp                |  2 +-
+ clang/lib/Driver/ToolChains/Clang.cpp         |  2 +-
+ clang/lib/Frontend/InitPreprocessor.cpp       |  4 ++--
+ clang/lib/Sema/SemaDecl.cpp                   |  4 ++--
+ clang/test/CodeGen/ms_struct-long-double.c    |  1 +
+ clang/test/Preprocessor/Inputs/llvm-windres.h | 14 ++++++++------
+ 7 files changed, 16 insertions(+), 13 deletions(-)
 
 diff --git a/clang/lib/AST/RecordLayoutBuilder.cpp b/clang/lib/AST/RecordLayoutBuilder.cpp
 index ae6d299024..b0a19ea55d 100644
@@ -24,19 +36,6 @@ index ae6d299024..b0a19ea55d 100644
              Diag(D->getLocation(), diag::warn_npot_ms_struct);
          }
          if (TypeSize > FieldAlign &&
-diff --git a/clang/lib/CodeGen/Targets/X86.cpp b/clang/lib/CodeGen/Targets/X86.cpp
-index 5ee5179dd0..c446add081 100644
---- a/clang/lib/CodeGen/Targets/X86.cpp
-+++ b/clang/lib/CodeGen/Targets/X86.cpp
-@@ -1374,7 +1374,7 @@ class WinX86_64ABIInfo : public ABIInfo {
- public:
-   WinX86_64ABIInfo(CodeGen::CodeGenTypes &CGT, X86AVXABILevel AVXLevel)
-       : ABIInfo(CGT), AVXLevel(AVXLevel),
--        IsMingw64(getTarget().getTriple().isWindowsGNUEnvironment()) {}
-+        IsMingw64(getTarget().getTriple().isOSCygMing()) {}
- 
-   void computeInfo(CGFunctionInfo &FI) const override;
- 
 diff --git a/clang/lib/Driver/ToolChain.cpp b/clang/lib/Driver/ToolChain.cpp
 index acf9d264d6..e9d1d3534e 100644
 --- a/clang/lib/Driver/ToolChain.cpp
@@ -50,19 +49,83 @@ index acf9d264d6..e9d1d3534e 100644
                   : ".so";
      break;
    }
+diff --git a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
+index 57b7d2bd46..c69b4fc6b5 100644
+--- a/clang/lib/Driver/ToolChains/Clang.cpp
++++ b/clang/lib/Driver/ToolChains/Clang.cpp
+@@ -6121,7 +6121,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
+     CmdArgs.push_back("-mms-bitfields");
+   }
+ 
+-  if (Triple.isWindowsGNUEnvironment()) {
++  if (Triple.isOSCygMing()) {
+     Args.addOptOutFlag(CmdArgs, options::OPT_fauto_import,
+                        options::OPT_fno_auto_import);
+   }
+diff --git a/clang/lib/Frontend/InitPreprocessor.cpp b/clang/lib/Frontend/InitPreprocessor.cpp
+index 17f624e964..16eed19851 100644
+--- a/clang/lib/Frontend/InitPreprocessor.cpp
++++ b/clang/lib/Frontend/InitPreprocessor.cpp
+@@ -945,8 +945,8 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
+   if (LangOpts.GNUCVersion && LangOpts.CPlusPlus11)
+     Builder.defineMacro("__GXX_EXPERIMENTAL_CXX0X__");
+ 
+-  if (TI.getTriple().isWindowsGNUEnvironment()) {
+-    // Set ABI defining macros for libstdc++ for MinGW, where the
++  if (TI.getTriple().isOSCygMing()) {
++    // Set ABI defining macros for libstdc++ for MinGW and Cygwin, where the
+     // default in libstdc++ differs from the defaults for this target.
+     Builder.defineMacro("__GXX_TYPEINFO_EQUALITY_INLINE", "0");
+   }
 diff --git a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
-index 41d5f9f2f3..8ee89e1feb 100644
+index 41d5f9f2f3..b70470f7db 100644
 --- a/clang/lib/Sema/SemaDecl.cpp
 +++ b/clang/lib/Sema/SemaDecl.cpp
-@@ -12516,7 +12516,7 @@ static bool isDefaultStdCall(FunctionDecl *FD, Sema &S) {
+@@ -12514,9 +12514,9 @@ static bool isDefaultStdCall(FunctionDecl *FD, Sema &S) {
+   if (FD->getName() == "main" || FD->getName() == "wmain")
+     return false;
  
-   // Default calling convention for MinGW is __cdecl
+-  // Default calling convention for MinGW is __cdecl
++  // Default calling convention for MinGW and Cygwin is __cdecl
    const llvm::Triple &T = S.Context.getTargetInfo().getTriple();
 -  if (T.isWindowsGNUEnvironment())
 +  if (T.isOSCygMing())
      return false;
  
    // Default calling convention for WinMain, wWinMain and DllMain
+diff --git a/clang/test/CodeGen/ms_struct-long-double.c b/clang/test/CodeGen/ms_struct-long-double.c
+index 9b3ea7947a..eaab217f7c 100644
+--- a/clang/test/CodeGen/ms_struct-long-double.c
++++ b/clang/test/CodeGen/ms_struct-long-double.c
+@@ -1,4 +1,5 @@
+ // RUN: %clang_cc1 -emit-llvm-only -triple i686-windows-gnu -fdump-record-layouts %s | FileCheck %s
++// RUN: %clang_cc1 -emit-llvm-only -triple i686-windows-cygnus -fdump-record-layouts %s | FileCheck %s
+ // RUN: %clang_cc1 -emit-llvm-only -triple i686-linux -fdump-record-layouts -Wno-incompatible-ms-struct %s | FileCheck %s
+ // RUN: not %clang_cc1 -emit-llvm-only -triple i686-linux -fdump-record-layouts %s 2>&1 | FileCheck %s -check-prefix=ERROR
+ 
+diff --git a/clang/test/Preprocessor/Inputs/llvm-windres.h b/clang/test/Preprocessor/Inputs/llvm-windres.h
+index 411ec48a8a..ef6bc47885 100644
+--- a/clang/test/Preprocessor/Inputs/llvm-windres.h
++++ b/clang/test/Preprocessor/Inputs/llvm-windres.h
+@@ -1,10 +1,12 @@
+ #ifndef RC_INVOKED
+-#error RC_INVOKED not defined
++#  error RC_INVOKED not defined
+ #endif
+-#ifndef _WIN32
+-#error _WIN32 not defined
+-#endif
+-#ifndef __MINGW32__
+-#error __MINGW32__ not defined
++#ifndef __CYGWIN__
++#  ifndef _WIN32
++#    error _WIN32 not defined
++#  endif
++#  ifndef __MINGW32__
++#    error __MINGW32__ not defined
++#  endif
+ #endif
+ #define MY_ID 42
 -- 
 2.50.1.windows.1
 
