@@ -60,6 +60,7 @@ source=("${_url}/llvm-${pkgver}.src.tar.xz"{,.sig}
         "0020-LLVM-adjust-lit.cfg.py-for-Cygwin-151416.patch"
         "0021-LLVM-Support-Fix-tests-on-Cygwin-151417.patch"
         "0022-LLVM-lit-add-system-cygwin-feature-152780.patch"
+        "0023-hack-tablegentest.patch"
         "0101-Cygwin-Global-symbols-should-be-external-by-default-.patch"
         "0102-Clang-Cygwin-Enable-few-conditions-that-are-shared-w.patch"
         "0103-Cygwin-Enable-TLS-on-Cygwin-target-138618.patch"
@@ -127,6 +128,7 @@ sha256sums=('e1363888216b455184dbb8a74a347bf5612f56a3f982369e1cba6c7e0726cde1'
             'd382b9f7012df9702e9c52c04d63620a0febb607b8656bef06f8bb98e59e73b9'
             'a7a17329a247e4bdc4d9b27f860c757ae153a754b0e0ce018a8a72ff06a803a8'
             '5431019c3a6fae561b675c60545d80278d914b78e12f9ae5c59ab0ce7dc6508d'
+            '7cb70e14a5c6e87ef28427356ad3d366d58c367b2039d2a3bf92fa7dee33d79d'
             'c1e29c6aa62c075975b76c38fe0d60fe765f2527611f4336d60152afd1d0be98'
             '13e4b046406ffde1af3567e204a38fd7955d09ee4c493b2f3ec6bb48b0112dcd'
             '0db6ad5d5709f8f9031f57a9d33fa7c92ab95461c82e7b0eff72eec026f5169b'
@@ -219,6 +221,7 @@ prepare() {
   apply_git_patch_with_msg 0020-LLVM-adjust-lit.cfg.py-for-Cygwin-151416.patch
   apply_git_patch_with_msg 0021-LLVM-Support-Fix-tests-on-Cygwin-151417.patch
   apply_git_patch_with_msg 0022-LLVM-lit-add-system-cygwin-feature-152780.patch
+  apply_git_patch_with_msg 0023-hack-tablegentest.patch
 
   # Patch clang
   cd "${srcdir}"/clang
@@ -273,11 +276,13 @@ build() {
     -DCMAKE_INSTALL_PREFIX=/usr
     -DCOMPILER_RT_BUILD_ORC=OFF
     -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON
+    -DCOMPILER_RT_INCLUDE_TESTS=OFF
+    -DCOMPILER_RT_OS_DIR=cygwin
     -DLLVM_DEFAULT_TARGET_TRIPLE=${CARCH}-pc-windows-cygnus
     -DLLVM_ENABLE_THREADS=ON
     -DLLVM_HOST_TRIPLE=${CARCH}-pc-windows-cygnus
     -DLLVM_INCLUDE_BENCHMARKS=OFF
-    -DLLVM_INCLUDE_TESTS=OFF
+    -DLLVM_INCLUDE_TESTS=ON
     -DLLVM_USE_SYMLINKS=OFF
     -DPython3_EXECUTABLE=/usr/bin/python.exe
   )
@@ -315,6 +320,12 @@ build() {
     llvm
 
   cmake --build build
+}
+
+check() {
+  cd "${srcdir}/build"
+  MSYS=winsymlinks:sys ln -sf msys-clang-20.1.dll bin/libclang.so
+  MSYS=winsymlinks:sys PATH="${srcdir}/build/bin:$PATH" ninja -k0 check-all || true
 }
 
 package_clang() {

@@ -32,6 +32,7 @@ Legend:
 - `"0020-LLVM-adjust-lit.cfg.py-for-Cygwin-151416.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/dfbf13cded64983e0a7512bcdcab577732671ec6
 - `"0021-LLVM-Support-Fix-tests-on-Cygwin-151417.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/46f6e62eb9ea01e43ec45961e68c22f9c00b0a27
 - `"0022-LLVM-lit-add-system-cygwin-feature-152780.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/37bcd937766d0bb151d4ee54d72d9cc289fee97b
+- `"0023-hack-tablegentest.patch"` :grey_exclamation:
 - `"0101-Cygwin-Global-symbols-should-be-external-by-default-.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/76d866f7935b746e5e50e7d760344c14502bd8e7
 - `"0102-Clang-Cygwin-Enable-few-conditions-that-are-shared-w.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/a3228b6bf98c3efce3722700cf71f8b093e7870c
 - `"0103-Cygwin-Enable-TLS-on-Cygwin-target-138618.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/eb6d51a2fdddcc305b51f7d412d0e5144cbd444d
