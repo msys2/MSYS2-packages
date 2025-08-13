@@ -1,0 +1,95 @@
+From 3e0be59693a974c703426fb7b2213f4b5e4b9db2 Mon Sep 17 00:00:00 2001
+From: jeremyd2019 <github@jdrake.com>
+Date: Tue, 29 Jul 2025 10:01:04 -0700
+Subject: [PATCH] [LLVM][Cygwin] Enable conditions that are shared with MinGW
+ (#149638)
+
+Cygwin and MinGW share the auto import behavior that could result in
+__stack_check_guard being non-dso-local. Allow windres to assume a
+Cygwin target as well as a MinGW one, so defines like _WIN32 would not
+be present on Cygwin.
+---
+ llvm/lib/CodeGen/TargetLoweringBase.cpp      | 2 +-
+ llvm/test/CodeGen/X86/stack-protector.ll     | 1 +
+ llvm/test/CodeGen/X86/win32-ssp.ll           | 2 ++
+ llvm/test/tools/llvm-rc/windres-preproc.test | 4 ++--
+ llvm/tools/llvm-rc/llvm-rc.cpp               | 2 +-
+ 5 files changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/llvm/lib/CodeGen/TargetLoweringBase.cpp b/llvm/lib/CodeGen/TargetLoweringBase.cpp
+index 411f59e714..87a6bf58d9 100644
+--- a/llvm/lib/CodeGen/TargetLoweringBase.cpp
++++ b/llvm/lib/CodeGen/TargetLoweringBase.cpp
+@@ -1975,7 +1975,7 @@ void TargetLoweringBase::insertSSPDeclarations(Module &M) const {
+ 
+     // FreeBSD has "__stack_chk_guard" defined externally on libc.so
+     if (M.getDirectAccessExternalData() &&
+-        !TM.getTargetTriple().isWindowsGNUEnvironment() &&
++        !TM.getTargetTriple().isOSCygMing() &&
+         !(TM.getTargetTriple().isPPC64() &&
+           TM.getTargetTriple().isOSFreeBSD()) &&
+         (!TM.getTargetTriple().isOSDarwin() ||
+diff --git a/llvm/test/CodeGen/X86/stack-protector.ll b/llvm/test/CodeGen/X86/stack-protector.ll
+index f4f3ae4f55..772e7761fa 100644
+--- a/llvm/test/CodeGen/X86/stack-protector.ll
++++ b/llvm/test/CodeGen/X86/stack-protector.ll
+@@ -6,6 +6,7 @@
+ ; RUN: llc -mtriple=amd64-pc-openbsd < %s -o - | FileCheck --check-prefix=OPENBSD-AMD64 %s
+ ; RUN: llc -mtriple=i386-pc-windows-msvc < %s -o - | FileCheck -check-prefix=MSVC-I386 %s
+ ; RUN: llc -mtriple=x86_64-w64-mingw32 < %s -o - | FileCheck --check-prefix=MINGW-X64 %s
++; RUN: llc -mtriple=x86_64-pc-cygwin < %s -o - | FileCheck --check-prefix=MINGW-X64 %s
+ ; RUN: llc -mtriple=x86_64-pc-linux-gnu < %s -o - | FileCheck --check-prefix=IGNORE_INTRIN %s
+ 
+ %struct.foo = type { [16 x i8] }
+diff --git a/llvm/test/CodeGen/X86/win32-ssp.ll b/llvm/test/CodeGen/X86/win32-ssp.ll
+index 536a6d50be..259f0391cf 100644
+--- a/llvm/test/CodeGen/X86/win32-ssp.ll
++++ b/llvm/test/CodeGen/X86/win32-ssp.ll
+@@ -1,7 +1,9 @@
+ ; RUN: llc -mtriple=x86_64-w64-mingw32        < %s -o - | FileCheck --check-prefix=MINGW %s
++; RUN: llc -mtriple=x86_64-pc-cygwin          < %s -o - | FileCheck --check-prefix=MINGW %s
+ ; RUN: llc -mtriple=x86_64-pc-windows-itanium < %s -o - | FileCheck --check-prefix=MSVC  %s
+ ; RUN: llc -mtriple=x86_64-pc-windows-msvc    < %s -o - | FileCheck --check-prefix=MSVC  %s
+ ; RUN: llc -mtriple=i686-w64-mingw32          < %s -o - | FileCheck --check-prefix=MINGW %s
++; RUN: llc -mtriple=i686-pc-cygwin            < %s -o - | FileCheck --check-prefix=MINGW %s
+ 
+ declare void @llvm.lifetime.start.p0(i64, ptr nocapture)
+ declare dso_local void @other(ptr)
+diff --git a/llvm/test/tools/llvm-rc/windres-preproc.test b/llvm/test/tools/llvm-rc/windres-preproc.test
+index 52427862e7..1ab2b5e578 100644
+--- a/llvm/test/tools/llvm-rc/windres-preproc.test
++++ b/llvm/test/tools/llvm-rc/windres-preproc.test
+@@ -4,7 +4,7 @@
+ 
+ ; RUN: llvm-windres -### --include-dir %p/incdir1 --include %p/incdir2 "-DFOO1=\\\"foo bar\\\"" -UFOO2 -D FOO3 --preprocessor-arg "-DFOO4=\\\"baz baz\\\"" -DFOO5=\"bar\" %p/Inputs/empty.rc %t.res | FileCheck %s --check-prefix=CHECK1
+ ; RUN: llvm-windres -### --include-dir %p/incdir1 --include %p/incdir2 "-DFOO1=\"foo bar\"" -UFOO2 -D FOO3 --preprocessor-arg "-DFOO4=\"baz baz\"" "-DFOO5=bar" %p/Inputs/empty.rc %t.res --use-temp-file | FileCheck %s --check-prefix=CHECK1
+-; CHECK1: {{^}} "clang" "--driver-mode=gcc" "-target" "{{.*}}-{{.*}}{{mingw32|windows-gnu}}" "-E" "-xc" "-DRC_INVOKED" "-I" "{{.*}}incdir1" "-I" "{{.*}}incdir2" "-D" "FOO1=\"foo bar\"" "-U" "FOO2" "-D" "FOO3" "-DFOO4=\"baz baz\"" "-D" "FOO5=bar" "{{.*}}empty.rc" "-o" "{{.*}}preproc-{{.*}}.rc"{{$}}
++; CHECK1: {{^}} "clang" "--driver-mode=gcc" "-target" "{{.*}}-{{.*}}{{mingw32|cygwin|windows-gnu|windows-cygnus}}" "-E" "-xc" "-DRC_INVOKED" "-I" "{{.*}}incdir1" "-I" "{{.*}}incdir2" "-D" "FOO1=\"foo bar\"" "-U" "FOO2" "-D" "FOO3" "-DFOO4=\"baz baz\"" "-D" "FOO5=bar" "{{.*}}empty.rc" "-o" "{{.*}}preproc-{{.*}}.rc"{{$}}
+ ; RUN: llvm-windres -### --preprocessor "i686-w64-mingw32-gcc" --preprocessor-arg -E "-DFOO=\\\"foo bar\\\"" %p/Inputs/empty.rc %t.res | FileCheck %s --check-prefix=CHECK2
+ ; CHECK2: {{^}} "{{.*}}i686-w64-mingw32-gcc" "-E" "-D" "FOO=\"foo bar\"" "{{.*}}empty.rc" "-o" "{{.*}}preproc-{{.*}}.rc"{{$}}
+ 
+@@ -13,7 +13,7 @@
+ ; RUN: rm -rf %t-bin/testbin
+ ; RUN: mkdir -p %t-bin/testbin
+ ; RUN: ln -s llvm-windres %t-bin/testbin/i686-w64-mingw32-gcc
+-; RUN: env PATH=%t-bin/testbin llvm-windres -### --preprocessor i686-w64-mingw32-gcc --preprocessor-arg -E --preprocessor-arg -xc -DRC_INVOKED %p/Inputs/empty.rc %t.res | FileCheck %s --check-prefix=CHECK3
++; RUN: env PATH="%t-bin/testbin:$PATH" llvm-windres -### --preprocessor i686-w64-mingw32-gcc --preprocessor-arg -E --preprocessor-arg -xc -DRC_INVOKED %p/Inputs/empty.rc %t.res | FileCheck %s --check-prefix=CHECK3
+ ; CHECK3: {{^}} "{{.*}}/testbin/i686-w64-mingw32-gcc" "-E" "-xc" "-D" "RC_INVOKED" "{{.*}}empty.rc" "-o" "{{.*}}preproc-{{.*}}.rc"{{$}}
+ 
+ 
+diff --git a/llvm/tools/llvm-rc/llvm-rc.cpp b/llvm/tools/llvm-rc/llvm-rc.cpp
+index a77188c462..1805379a51 100644
+--- a/llvm/tools/llvm-rc/llvm-rc.cpp
++++ b/llvm/tools/llvm-rc/llvm-rc.cpp
+@@ -201,7 +201,7 @@ std::string getMingwTriple() {
+   Triple T(sys::getDefaultTargetTriple());
+   if (!isUsableArch(T.getArch()))
+     T.setArch(getDefaultFallbackArch());
+-  if (T.isWindowsGNUEnvironment())
++  if (T.isOSCygMing())
+     return T.str();
+   // Write out the literal form of the vendor/env here, instead of
+   // constructing them with enum values (which end up with them in
+-- 
+2.50.1.windows.1
+

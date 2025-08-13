@@ -25,8 +25,16 @@ Legend:
 - `"0013-LLVM-Tests-remove-exeext-from-lli-child-target-param.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/d34b392dade4f9f0ef981767a9a47504ba85d0af
 - `"0014-LLVM-Support-Cygwin-Add-threading-support-for-Cygwin.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/bd96918f01cfd7642a20a4a5bb0e7d10ad7f2360
 - `"0015-LLVM-Cygwin-Enable-dynamic-linking-of-libLLVM-146440.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/2723a6d9928c7ba5d27125e03dff8eaba8661d7f
+- `"0016-LLVM-Cygwin-Enable-conditions-that-are-shared-with-M.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/28b319005371afa1392fb405c53139c4ae2b3066
+- `"0017-llvm-objcopy-COFF-Ignore-associative-sections-in-exe.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/fcbbcffd2e6ea30097809ba0cd1e3b6003fa862f
+- `"0018-lli-Fix-crash-with-no-process-syms-on-MinGW-151386.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/65990d61486c44186daec8e3c0831a32780b3e1d
+- `"0019-llvm-Enable-building-Analysis-plugins-on-Cygwin-1513.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/e5402c977f5a2eeae037103d2fd68df10d5c6650
+- `"0020-LLVM-adjust-lit.cfg.py-for-Cygwin-151416.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/dfbf13cded64983e0a7512bcdcab577732671ec6
+- `"0021-LLVM-Support-Fix-tests-on-Cygwin-151417.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/46f6e62eb9ea01e43ec45961e68c22f9c00b0a27
+- `"0022-LLVM-lit-add-system-cygwin-feature-152780.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/37bcd937766d0bb151d4ee54d72d9cc289fee97b
+- `"0023-hack-tablegentest.patch"` :grey_exclamation:
 - `"0101-Cygwin-Global-symbols-should-be-external-by-default-.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/76d866f7935b746e5e50e7d760344c14502bd8e7
-- `"0102-Clang-Cygwin-Enable-few-conditions-that-are-shared-w.patch"` :x:
+- `"0102-Clang-Cygwin-Enable-few-conditions-that-are-shared-w.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/a3228b6bf98c3efce3722700cf71f8b093e7870c
 - `"0103-Cygwin-Enable-TLS-on-Cygwin-target-138618.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/eb6d51a2fdddcc305b51f7d412d0e5144cbd444d
 - `"0104-Clang-Cygwin-Fix-symbol-visibility-definition-138118.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/592243c1cb3ea53b34033132a87b0d14af9d1079
 - `"0105-Cygwin-RTTI-and-VTable-should-be-dllexport-ed-139798.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/a3d52ea99e1438d6cd39de2eb27e43ac27700bf7
@@ -46,6 +54,7 @@ Legend:
 - `"0119-libclang-Add-missing-dllexport-annotation-147108.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/968410ffd1bacbf540595e0b6d2628ed559098e9
 - `"0120-libclang-Cygwin-Use-__declspec-dllexport-for-libclan.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/122afae10ed28564b64530de571ce8e4ce584b2c
 - `"0121-libclang-Cygwin-Use-LLVM_EXPORTED_SYMBOL_FILE-.def-f.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/9c4e2dcb56eeb82619762ecfe4ae69ec479de4b3
+- `"0122-Tests-Add-system-cygwin-feature-and-use-it.-152611.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/ff616b4806ed6c9b9698290a9c807626aa3844f7
 - `"0201-LLD-Cygwin-Implement-dll-search-prefix-143263.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/9e23e85d6597bd59ff316a3ce93bb8ec41919b19
 - `"0202-LLD-COFF-Ensure-.bss-is-merged-at-the-end-of-a-secti.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/bb2f7596a8b963af06e9dde821dcea1252ba4892
 - `"0203-LLD-COFF-add-__-data-bss-_-start-end-__-symbols-for-.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/f66f2fe0e5be6dc6eb3ef4d42af8692f9adcdc80

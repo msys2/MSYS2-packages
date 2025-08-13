@@ -1,0 +1,74 @@
+From 44f99e00a97a299a7fefe96d22c9f67eb70c0170 Mon Sep 17 00:00:00 2001
+From: jeremyd2019 <github@jdrake.com>
+Date: Sat, 2 Aug 2025 10:31:46 -0700
+Subject: [PATCH] [LLVM] adjust lit.cfg.py for Cygwin (#151416)
+
+Cygwin is like Windows in that it uses COFF, and doesn't emit
+.debug_frame on 64-bit architectures.
+
+However, if -elf is appended to the target triple on Cygwin MCJIT remote
+tests fail due to `__register_frame` not being defined. Only one test
+fails without -elf that succeeds with it, so mark just that test as
+XFAIL on Cygwin.
+---
+ llvm/test/ExecutionEngine/MCJIT/stubs-sm-pic.ll |  4 +++-
+ llvm/test/lit.cfg.py                            | 14 ++++++++++----
+ 2 files changed, 13 insertions(+), 5 deletions(-)
+
+diff --git a/llvm/test/ExecutionEngine/MCJIT/stubs-sm-pic.ll b/llvm/test/ExecutionEngine/MCJIT/stubs-sm-pic.ll
+index 513e252a98..9522bfa42a 100644
+--- a/llvm/test/ExecutionEngine/MCJIT/stubs-sm-pic.ll
++++ b/llvm/test/ExecutionEngine/MCJIT/stubs-sm-pic.ll
+@@ -1,5 +1,7 @@
+ ; RUN: %lli -jit-kind=mcjit -disable-lazy-compilation=false -relocation-model=pic -code-model=small %s
+-; XFAIL: target={{(mips|mipsel)-.*}}, target={{(i686|i386).*}}, target={{(aarch64|arm).*}}
++; XFAIL: target={{(mips|mipsel)-.*}}, target={{(i686|i386).*}}, target={{(aarch64|arm).*}}, target={{.*-(cygwin|windows-cygnus)}}
++; This test segfaults on cygwin, but succeeds with cygwin-elf.  Unfortunately,
++; cygwin-elf breaks the remote tests due to lack of __register_frame.
+ 
+ define i32 @main() nounwind {
+ entry:
+diff --git a/llvm/test/lit.cfg.py b/llvm/test/lit.cfg.py
+index aad7a08855..a0afbf836b 100644
+--- a/llvm/test/lit.cfg.py
++++ b/llvm/test/lit.cfg.py
+@@ -99,7 +99,12 @@ lli_args = []
+ # we don't support COFF in MCJIT well enough for the tests, force ELF format on
+ # Windows.  FIXME: the process target triple should be used here, but this is
+ # difficult to obtain on Windows.
+-if re.search(r"cygwin|windows-gnu|windows-msvc", config.host_triple):
++# Cygwin is excluded from this workaround, even though it is COFF, because this
++# breaks remote tests due to not having a __register_frame function.  The only
++# test that succeeds with cygwin-elf but fails with cygwin is
++# test/ExecutionEngine/MCJIT/stubs-sm-pic.ll so this test is marked as XFAIL
++# for cygwin targets.
++if re.search(r"windows-gnu|windows-msvc", config.host_triple):
+     lli_args = ["-mtriple=" + config.host_triple + "-elf"]
+ 
+ llc_args = []
+@@ -376,10 +381,11 @@ if config.target_triple:
+     else:
+         config.available_features.add("target-byteorder-little-endian")
+ 
+-if sys.platform in ["win32"]:
++if sys.platform in ["win32", "cygwin"]:
+     # ExecutionEngine, no weak symbols in COFF.
+     config.available_features.add("uses_COFF")
+-else:
++
++if sys.platform not in ["win32"]:
+     # Others/can-execute.txt
+     config.available_features.add("can-execute")
+ 
+@@ -643,7 +649,7 @@ if not hasattr(sys, "getwindowsversion") or sys.getwindowsversion().build >= 170
+ 
+ # .debug_frame is not emitted for targeting Windows x64, aarch64/arm64, AIX, or Apple Silicon Mac.
+ if not re.match(
+-    r"^(x86_64|aarch64|arm64|powerpc|powerpc64).*-(windows-gnu|windows-msvc|aix)",
++    r"^(x86_64|aarch64|arm64|powerpc|powerpc64).*-(windows-cygnus|windows-gnu|windows-msvc|aix)",
+     config.target_triple,
+ ) and not re.match(r"^arm64(e)?-apple-(macos|darwin)", config.target_triple):
+     config.available_features.add("debug_frame")
+-- 
+2.50.1.windows.1
+
