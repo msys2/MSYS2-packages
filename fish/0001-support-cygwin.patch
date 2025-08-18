@@ -1,0 +1,207 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index d592a1aaf2d9..c942fcaee91b 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -71,6 +71,9 @@ serial_test = { version = "3", default-features = false }
+ cc = "1.0.94"
+ rsconf = "0.2.2"
+ 
++[target.'cfg(windows)'.build-dependencies]
++unix_path = "1.0.1"
++
+ [lib]
+ crate-type = ["rlib"]
+ path = "src/lib.rs"
+diff --git a/build.rs b/build.rs
+index c633905e28b5..8f87702322ec 100644
+--- a/build.rs
++++ b/build.rs
+@@ -227,6 +232,11 @@ fn has_small_stack(_: &Target) -> Result<bool, Box<dyn Error>> {
+ }
+ 
+ fn setup_paths() {
++    #[cfg(unix)]
++    use std::path::PathBuf;
++    #[cfg(windows)]
++    use unix_path::{Path, PathBuf};
++
+     fn get_path(name: &str, default: &str, onvar: PathBuf) -> PathBuf {
+         let mut var = PathBuf::from(env::var(name).unwrap_or(default.to_string()));
+         if var.is_relative() {
+diff --git a/src/common.rs b/src/common.rs
+index d4a8a32daeb5..f4af57cd98e7 100644
+--- a/src/common.rs
++++ b/src/common.rs
+@@ -1070,7 +1070,7 @@ pub fn get_obfuscation_read_char() -> char {
+ /// In this case, we assume no external program has written to the terminal behind our back, making
+ /// the multiline prompt usable. See #2859 and https://github.com/Microsoft/BashOnWindows/issues/545
+ pub fn has_working_tty_timestamps() -> bool {
+-    if cfg!(target_os = "windows") {
++    if cfg!(any(target_os = "windows", target_os = "cygwin")) {
+         false
+     } else if cfg!(target_os = "linux") {
+         !is_windows_subsystem_for_linux(WSL::V1)
+@@ -1124,11 +1124,10 @@ pub fn str2wcstring(inp: &[u8]) -> WString {
+             // TODO This check used to be conditionally compiled only on affected platforms.
+             true
+         } else {
+-            const _: () = assert!(mem::size_of::<libc::wchar_t>() == mem::size_of::<char>());
+             let mut codepoint = u32::from(c);
+             ret = unsafe {
+                 mbrtowc(
+-                    std::ptr::addr_of_mut!(codepoint).cast(),
++                    std::ptr::addr_of_mut!(codepoint),
+                     std::ptr::addr_of!(inp[pos]).cast(),
+                     inp.len() - pos,
+                     &mut state,
+@@ -1331,9 +1330,7 @@ pub fn fish_setlocale() {
+ fn can_be_encoded(wc: char) -> bool {
+     let mut converted = [0 as libc::c_char; AT_LEAST_MB_LEN_MAX];
+     let mut state = zero_mbstate();
+-    unsafe {
+-        wcrtomb(converted.as_mut_ptr(), wc as libc::wchar_t, &mut state) != 0_usize.wrapping_sub(1)
+-    }
++    unsafe { wcrtomb(converted.as_mut_ptr(), wc as u32, &mut state) != 0_usize.wrapping_sub(1) }
+ }
+ 
+ /// Call read, blocking and repeating on EINTR. Exits on EAGAIN.
+diff --git a/src/env_dispatch.rs b/src/env_dispatch.rs
+index 2f2950718e41..030988a79159 100644
+--- a/src/env_dispatch.rs
++++ b/src/env_dispatch.rs
+@@ -199,7 +199,10 @@ fn guess_emoji_width(vars: &EnvStack) {
+     } else {
+         // Default to whatever the system's wcwidth gives for U+1F603, but only if it's at least
+         // 1 and at most 2.
++        #[cfg(not(target_os = "cygwin"))]
+         let width = crate::fallback::wcwidth('😃').clamp(1, 2);
++        #[cfg(target_os = "cygwin")]
++        let width = 2isize;
+         FISH_EMOJI_WIDTH.store(width, Ordering::Relaxed);
+         FLOG!(term_support, "default emoji width:", width);
+     }
+diff --git a/src/fallback.rs b/src/fallback.rs
+index 3e1334479819..c5f1caa60530 100644
+--- a/src/fallback.rs
++++ b/src/fallback.rs
+@@ -3,15 +3,15 @@
+ //!
+ //! Many of these functions are more or less broken and incomplete.
+ 
++use crate::wchar::prelude::*;
+ use crate::widecharwidth::{WcLookupTable, WcWidth};
+-use crate::{common::is_console_session, wchar::prelude::*};
+ use errno::{errno, Errno};
+ use once_cell::sync::Lazy;
+ use std::cmp;
++use std::ffi::CString;
+ use std::fs::File;
+ use std::os::fd::FromRawFd;
+ use std::sync::atomic::{AtomicIsize, Ordering};
+-use std::{ffi::CString, mem};
+ 
+ /// Width of ambiguous East Asian characters and, as of TR11, all private-use characters.
+ /// 1 is the typical default, but we accept any non-negative override via `$fish_ambiguous_width`.
+@@ -32,12 +32,13 @@ pub static FISH_EMOJI_WIDTH: AtomicIsize = AtomicIsize::new(1);
+ static WC_LOOKUP_TABLE: Lazy<WcLookupTable> = Lazy::new(WcLookupTable::new);
+ 
+ /// A safe wrapper around the system `wcwidth()` function
++#[cfg(not(target_os = "cygwin"))]
+ pub fn wcwidth(c: char) -> isize {
+     extern "C" {
+         pub fn wcwidth(c: libc::wchar_t) -> libc::c_int;
+     }
+ 
+-    const _: () = assert!(mem::size_of::<libc::wchar_t>() >= mem::size_of::<char>());
++    const _: () = assert!(std::mem::size_of::<libc::wchar_t>() >= std::mem::size_of::<char>());
+     let width = unsafe { wcwidth(c as libc::wchar_t) };
+     isize::try_from(width).unwrap()
+ }
+@@ -48,7 +49,8 @@ pub fn fish_wcwidth(c: char) -> isize {
+     // The system version of wcwidth should accurately reflect the ability to represent characters
+     // in the console session, but knows nothing about the capabilities of other terminal emulators
+     // or ttys. Use it from the start only if we are logged in to the physical console.
+-    if is_console_session() {
++    #[cfg(not(target_os = "cygwin"))]
++    if crate::common::is_console_session() {
+         return wcwidth(c);
+     }
+ 
+@@ -73,8 +75,16 @@ pub fn fish_wcwidth(c: char) -> isize {
+     let width = WC_LOOKUP_TABLE.classify(c);
+     match width {
+         WcWidth::NonCharacter | WcWidth::NonPrint | WcWidth::Combining | WcWidth::Unassigned => {
+-            // Fall back to system wcwidth in this case.
+-            wcwidth(c)
++            #[cfg(not(target_os = "cygwin"))]
++            {
++                // Fall back to system wcwidth in this case.
++                wcwidth(c)
++            }
++            #[cfg(target_os = "cygwin")]
++            {
++                // No system wcwidth for UTF-32 on cygwin.
++                0
++            }
+         }
+         WcWidth::Ambiguous | WcWidth::PrivateUse => {
+             // TR11: "All private-use characters are by default classified as Ambiguous".
+diff --git a/src/input_common.rs b/src/input_common.rs
+index 3cdf5b6edc68..d49b718ed667 100644
+--- a/src/input_common.rs
++++ b/src/input_common.rs
+@@ -1288,7 +1288,7 @@ pub(crate) fn decode_input_byte(
+     let mut codepoint = u32::from(res);
+     match unsafe {
+         mbrtowc(
+-            std::ptr::addr_of_mut!(codepoint).cast(),
++            std::ptr::addr_of_mut!(codepoint),
+             std::ptr::addr_of!(read_byte).cast(),
+             1,
+             state,
+diff --git a/src/tests/string_escape.rs b/src/tests/string_escape.rs
+index ba8ee7534ebf..3cce5fbc8286 100644
+--- a/src/tests/string_escape.rs
++++ b/src/tests/string_escape.rs
+@@ -244,7 +244,7 @@ fn test_convert_private_use() {
+         let len = unsafe {
+             wcrtomb(
+                 std::ptr::addr_of_mut!(converted[0]).cast(),
+-                c as libc::wchar_t,
++                c as u32,
+                 &mut state,
+             )
+         };
+diff --git a/src/wcstringutil.rs b/src/wcstringutil.rs
+index cbb415bde3a1..41f0ee834ee5 100644
+--- a/src/wcstringutil.rs
++++ b/src/wcstringutil.rs
+@@ -331,7 +331,7 @@ pub fn wcs2string_callback(input: &wstr, mut func: impl FnMut(&[u8]) -> bool) ->
+             let len = unsafe {
+                 wcrtomb(
+                     std::ptr::addr_of_mut!(converted[0]).cast(),
+-                    c as libc::wchar_t,
++                    c as u32,
+                     &mut state,
+                 )
+             };
+diff --git a/src/wutil/encoding.rs b/src/wutil/encoding.rs
+index a3661661e600..66384ae12d73 100644
+--- a/src/wutil/encoding.rs
++++ b/src/wutil/encoding.rs
+@@ -1,11 +1,8 @@
+ extern "C" {
+-    pub fn wcrtomb(s: *mut libc::c_char, wc: libc::wchar_t, ps: *mut mbstate_t) -> usize;
+-    pub fn mbrtowc(
+-        pwc: *mut libc::wchar_t,
+-        s: *const libc::c_char,
+-        n: usize,
+-        p: *mut mbstate_t,
+-    ) -> usize;
++    #[cfg_attr(target_os = "cygwin", link_name = "c32rtomb")]
++    pub fn wcrtomb(s: *mut libc::c_char, wc: u32, ps: *mut mbstate_t) -> usize;
++    #[cfg_attr(target_os = "cygwin", link_name = "mbrtoc32")]
++    pub fn mbrtowc(pwc: *mut u32, s: *const libc::c_char, n: usize, p: *mut mbstate_t) -> usize;
+ }
+ 
+ // HACK This should be mbstate_t from libc but that's not exposed.  Since it's only written by

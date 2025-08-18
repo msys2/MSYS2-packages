@@ -1,69 +1,73 @@
-
+# Contributor: 王宇逸 <Strawberry_Str@hotmail.com>
 
 pkgname=fish
-pkgver=3.7.1
-pkgrel=6
-epoch=
+pkgver=4.0.2
+pkgrel=1
 pkgdesc='Smart and user friendly shell intended mostly for interactive use'
-arch=('i686' 'x86_64')
+arch=('x86_64')
 url="https://fishshell.com/"
 msys2_repository_url="https://github.com/fish-shell/fish-shell"
 msys2_references=(
   "cpe: cpe:/a:fishshell:fish"
 )
 license=('spdx:GPL-2.0-only')
-depends=('gcc-libs' 'gettext' 'libpcre2_16' 'man-db' 'ncurses')
-makedepends=('gcc' 'gettext-devel' 'intltool' 'ncurses-devel' 'pcre2-devel' 'cmake')
+depends=('gcc-libs' 'gettext' 'libpcre2_32' 'libpcre2_8' 'man-db')
+makedepends=('gcc' 'gettext-devel' 'intltool' 'pcre2-devel' 'cmake' 'pkgconf' 'rust' 'ninja')
 optdepends=('python: for manual page completion parser and web configuration tool')
 install=fish.install
 backup=('etc/fish/config.fish' 'etc/fish/msys2.fish' 'etc/fish/perlbin.fish')
 source=("https://github.com/fish-shell/fish-shell/releases/download/${pkgver}/${pkgname}-${pkgver}.tar.xz"{,.asc}
-        "https://raw.githubusercontent.com/fish-shell/fish-shell/4868166f86e2f6c7c54082c36c9c7a5d67dc1092/share/completions/rustc.fish"
+        0001-support-cygwin.patch
+        0002-patch-dep.patch
         config.fish
         msys2.fish
         msystem.fish
-        perlbin.fish
-        0001-cmake-4-backport.patch)
-sha256sums=('614c9f5643cd0799df391395fa6bbc3649427bb839722ce3b114d3bbc1a3b250'
+        perlbin.fish)
+sha256sums=('6e1ecdb164285fc057b2f35acbdc20815c1623099e7bb47bbfc011120adf7e83'
             'SKIP'
-            '97a6fc8746dbb7117de79446c4b85f412624f8f797bb10f12e07361c4995bc23'
+            '8b94656c9f6118c19efa2bcb960b447863ff8b9b1f6ee957e00d6d87d8ef79f0'
+            'b2739eee8f030f468eaf435982ac50056738f5a7bfefe5288cd13430f57498bc'
             '983c3273e0249957ed6c40785e005739da30f31d4f029383f257f9990d38811a'
             '8bb0d28df47b66e6785f7db00a2c4316bc15960e67bdec0daca7f811f5bf3895'
             '71c6990b39caf5d50c10f10074283adfc6a36aafff30fd54f7eb451d4e007496'
-            'b136a9fa94abf53e302f7a1cc28def03b58dd2326990c5f02ceb4988341a5ac6'
-            '5b6168131d30cf0f4a5b39b1e8728eb882414586792101e571879d92efcaac5c')
+            'b136a9fa94abf53e302f7a1cc28def03b58dd2326990c5f02ceb4988341a5ac6')
 validpgpkeys=('003837986104878835FA516D7A67D962D88A709A') # David Adam <zanchey@gmail.com>
 
 prepare() {
   cd "${pkgname}-${pkgver}"
+  patch -Np1 -i ../0001-support-cygwin.patch
+  patch -Np1 -i ../0002-patch-dep.patch
 
-  # https://github.com/fish-shell/fish-shell/issues/11116
-  patch -p1 < "${srcdir}/0001-cmake-4-backport.patch"
+  cargo add unix-path@1.0.1
+  cargo update -p errno@0.3.9 --precise 0.3.11
+  cargo fetch --locked --target 'x86_64-pc-cygwin'
 }
 
 build() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
-
   export CXXFLAGS+=" ${CPPFLAGS}"
+  export FISH_BUILD_VERSION="${pkgver}-${pkgrel} (Built by MSYS2 project)"
   cmake \
-    -B build \
+    -GNinja \
     -DCMAKE_INSTALL_PREFIX=/usr \
     -DCMAKE_INSTALL_SYSCONFDIR=/etc \
-    -DCMAKE_BUILD_TYPE=None \
-    -Wno-dev
+    -DCMAKE_BUILD_TYPE=Release \
+    -Wno-dev \
+    -DRust_COMPILER=/usr/bin/rustc \
+    -DRust_CARGO=/usr/bin/cargo \
+    -DRust_CARGO_TARGET=x86_64-pc-cygwin \
+    -DRust_CARGO_HOST_TARGET=x86_64-pc-cygwin \
+    -DRust_RESOLVE_RUSTUP_TOOLCHAINS=OFF \
+    -S "${pkgname}-${pkgver}" \
+    -B build
 
   cmake --build build
 }
 
 package() {
-  cd "${srcdir}/${pkgname}-${pkgver}/build"
+  DESTDIR="${pkgdir}" cmake --install build
 
-  DESTDIR="${pkgdir}" cmake --install .
-
-  install -D -m644 "${srcdir}/config.fish" "${pkgdir}/etc/fish/config.fish"
-  install -D -m644 "${srcdir}/msys2.fish" "${pkgdir}/etc/fish/msys2.fish"
-  install -D -m644 "${srcdir}/msystem.fish" "${pkgdir}/etc/fish/msystem.fish"
-  install -D -m644 "${srcdir}/perlbin.fish" "${pkgdir}/etc/fish/perlbin.fish"
-  # install more fresh rustc completions because it was buggy
-  install -D -m644 "${srcdir}/rustc.fish" "${pkgdir}/usr/share/fish/completions/rustc.fish"
+  install -D -m644 "config.fish" "${pkgdir}/etc/fish/config.fish"
+  install -D -m644 "msys2.fish" "${pkgdir}/etc/fish/msys2.fish"
+  install -D -m644 "msystem.fish" "${pkgdir}/etc/fish/msystem.fish"
+  install -D -m644 "perlbin.fish" "${pkgdir}/etc/fish/perlbin.fish"
 }
