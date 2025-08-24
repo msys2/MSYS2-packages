@@ -20,42 +20,48 @@ options=('!strip')
 source=("https://pypi.org/packages/source/${pkgbase::1}/${pkgbase}/${pkgbase}-${pkgver}.tar.gz"
         "tar-0.4.43.tar.gz::https://crates.io/api/v1/crates/tar/0.4.43/download"
         "target-lexicon-0.13.1.tar.gz::https://crates.io/api/v1/crates/target-lexicon/0.13.1/download"
+        "getrandom-0.2.15.tar.gz::https://crates.io/api/v1/crates/getrandom/0.2.15/download"
         "maturin-update-deps.patch"
         "tar-rs-update-deps.patch"
+        "getrandom-support-cygwin.patch"
         "https://patch-diff.githubusercontent.com/raw/bytecodealliance/target-lexicon/pull/121.patch")
 sha256sums=('267ac8d0471d1ee2320b8b2ee36f400a32cd2492d7becbd0d976bd3503c2f69b'
             'c65998313f8e17d0d553d28f91a0df93e4dbbbf770279c7bc21ca0f09ea1a1f6'
             'dc12939a1c9b9d391e0b7135f72fd30508b73450753e28341fed159317582a77'
+            'c4567c8db10ae91089c99af84c68c38da3ec2f087c3f82960bcdbf3656b6f4d7'
             '36bb5955216d19aed9a8fb2ec9440e7e3133de2e7d5ed1da2ad2204d449a2095'
             '2422ed08564445528695499757258aecde785bb6e95cde2d88f4b2cefe8417d8'
+            'acac76aa379bc45285f067524d7c5adceb3100698d72ae150a6b626a137e947d'
             'e0b46bbfb946b0231469e9ae1112e766430113cbeae33edb72eb314a32466cac')
 
 prepare() {
   cp -r "${pkgbase}-${pkgver}" "python-build" && cd "python-build"
 
-  # support cygwin in target-lexicon
+  # support cygwin in some deps
   patch -d ../target-lexicon-0.13.1 -p1 -i ../121.patch
+  patch -d ../getrandom-0.2.15 -p1 -i ../getrandom-support-cygwin.patch
   # update deps to add cygwin support
   patch -Np1 -i ../maturin-update-deps.patch
   patch -d ../tar-0.4.43 -p1 -i ../tar-rs-update-deps.patch
   cat >> Cargo.toml <<END
 
 [patch.crates-io]
+getrandom = { path = "../getrandom-0.2.15" }
 tar = { path = "../tar-0.4.43" }
 target-lexicon = { path = "../target-lexicon-0.13.1" }
 END
 
-  cargo update -p rand@0.8.5 --precise 0.9.0
   cargo update -p tempfile@3.11.0 --precise 3.18.0
   cargo update -p which@7.0.0 --precise 7.0.3
   cargo update -p clap@4.5.7 --precise 4.5.19
+  cargo update -p psm@0.1.21 --precise 0.1.26
   cargo fetch --locked --target 'x86_64-pc-cygwin'
 }
 
 build() {
   cd "python-build"
 
-  export MATURIN_SETUP_ARGS="--features full,rustls"
+  export MATURIN_SETUP_ARGS="--features full,native-tls"
   python -m build --wheel --skip-dependency-check --no-isolation
 }
 
