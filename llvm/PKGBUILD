@@ -4,6 +4,7 @@ _compiler=clang
 
 pkgbase=llvm
 pkgname=("llvm"
+         "llvm-libs"
          "clang"
          "clang-analyzer"
          "compiler-rt"
@@ -223,8 +224,9 @@ check() {
 package_clang() {
   pkgdesc="C language family frontend for LLVM"
   url="https://clang.llvm.org/"
-  depends=("gcc" "llvm=${pkgver}")
-  optdepends=("compiler-rt: for -rtlib=compiler-rt")
+  depends=("gcc" "llvm-libs=${pkgver}")
+  optdepends=("compiler-rt: for -rtlib=compiler-rt"
+              "llvm=${pkgver}")
 
   # Disable automatic installation of components that go into subpackages
   # -i.orig to check what has been removed in-case it starts dropping more than it should
@@ -270,7 +272,7 @@ package_compiler-rt() {
 package_lld() {
   pkgdesc="Linker tools for LLVM"
   url="https://lld.llvm.org/"
-  depends=("gcc-libs" "llvm=${pkgver}")
+  depends=("gcc-libs" "llvm-libs=${pkgver}")
 
   DESTDIR="${pkgdir}" cmake --install "${srcdir}"/build/tools/lld
 
@@ -279,13 +281,18 @@ package_lld() {
 
 package_llvm() {
   pkgdesc="Low Level Virtual Machine"
-  depends=("gcc-libs" "libzstd" "zlib")
+  depends=("llvm-libs=${pkgver}")
 
   # Disable automatic installation of components that go into subpackages
   # -i.orig to check what has been removed in-case it starts dropping more than it should
   sed -i.orig '/\(clang\|lld\)\/cmake_install.cmake/d' "${srcdir}"/build/tools/cmake_install.cmake
   sed -i.orig '/\(builtins\|runtimes\)-bins\/\+cmake_install.cmake/d' "${srcdir}"/build/runtimes/cmake_install.cmake
   DESTDIR="${pkgdir}" cmake --install "${srcdir}"/build
+
+  # Runtime libraries
+  rm -rf "${srcdir}"/llvm-libs
+  mkdir -p "${srcdir}"/llvm-libs/usr/bin
+  mv -f "${pkgdir}"/usr/bin/msys-*.dll "${srcdir}"/llvm-libs/usr/bin
 
   install -Dm644 "${srcdir}"/llvm/LICENSE.TXT "${pkgdir}"/usr/share/licenses/llvm/LICENSE
 
@@ -296,4 +303,14 @@ package_llvm() {
 
   # fix cmake files.
   sed -e "s|${srcdir}/build|/usr|g" -i ${pkgdir}/usr/lib/cmake/llvm/LLVMConfig.cmake
+}
+
+package_llvm-libs() {
+  pkgdesc="Low Level Virtual Machine Runtime Libraries"
+  depends=("gcc-libs" "libzstd" "zlib")
+  conflicts=("llvm<21.1.0")
+
+  cp -r "${srcdir}"/llvm-libs/usr "${pkgdir}"/usr
+
+  install -Dm644 "${srcdir}"/llvm/LICENSE.TXT "${pkgdir}"/usr/share/licenses/llvm-libs/LICENSE
 }
