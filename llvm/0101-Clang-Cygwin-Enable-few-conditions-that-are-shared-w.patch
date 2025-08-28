@@ -1,4 +1,4 @@
-From 8081536966b78c7da1430ede163f52c5f25a4280 Mon Sep 17 00:00:00 2001
+From 318cb3dc5fd90c4b74fb4cd527dd12c4dee7dd66 Mon Sep 17 00:00:00 2001
 From: jeremyd2019 <github@jdrake.com>
 Date: Tue, 29 Jul 2025 10:01:43 -0700
 Subject: [PATCH] [Clang][Cygwin] Enable few conditions that are shared with
@@ -14,20 +14,22 @@ pre-define by `g++`, and the long double configuration.
 
 Co-authored-by: Mateusz Mikuła <oss@mateuszmikula.dev>
 ---
- clang/lib/AST/RecordLayoutBuilder.cpp         |  2 +-
- clang/lib/Driver/ToolChain.cpp                |  2 +-
- clang/lib/Driver/ToolChains/Clang.cpp         |  2 +-
- clang/lib/Frontend/InitPreprocessor.cpp       |  4 ++--
- clang/lib/Sema/SemaDecl.cpp                   |  4 ++--
- clang/test/CodeGen/ms_struct-long-double.c    |  1 +
+ clang/lib/AST/RecordLayoutBuilder.cpp      | 2 +-
+ clang/lib/CIR/CodeGen/CIRGenModule.cpp     | 8 ++++----
+ clang/lib/Driver/ToolChain.cpp             | 2 +-
+ clang/lib/Driver/ToolChains/Clang.cpp      | 2 +-
+ clang/lib/Frontend/InitPreprocessor.cpp    | 4 ++--
+ clang/lib/Sema/SemaDecl.cpp                | 4 ++--
+ clang/test/CodeGen/ms_struct-long-double.c | 1 +
  clang/test/Preprocessor/Inputs/llvm-windres.h | 14 ++++++++------
- 7 files changed, 16 insertions(+), 13 deletions(-)
+ clang/test/Preprocessor/init-x86.c         | 2 ++
+ 8 files changed, 14 insertions(+), 11 deletions(-)
 
 diff --git a/clang/lib/AST/RecordLayoutBuilder.cpp b/clang/lib/AST/RecordLayoutBuilder.cpp
-index ae6d299024..b0a19ea55d 100644
+index 6a74e98dd9..760b2fcdc0 100644
 --- a/clang/lib/AST/RecordLayoutBuilder.cpp
 +++ b/clang/lib/AST/RecordLayoutBuilder.cpp
-@@ -1946,7 +1946,7 @@ void ItaniumRecordLayoutBuilder::LayoutField(const FieldDecl *D,
+@@ -1953,7 +1953,7 @@ void ItaniumRecordLayoutBuilder::LayoutField(const FieldDecl *D,
            // silently there. For other targets that have ms_struct enabled
            // (most probably via a pragma or attribute), trigger a diagnostic
            // that defaults to an error.
@@ -36,24 +38,43 @@ index ae6d299024..b0a19ea55d 100644
              Diag(D->getLocation(), diag::warn_npot_ms_struct);
          }
          if (TypeSize > FieldAlign &&
+diff --git a/clang/lib/CIR/CodeGen/CIRGenModule.cpp b/clang/lib/CIR/CodeGen/CIRGenModule.cpp
+index 3502705181..5bc29b81c2 100644
+--- a/clang/lib/CIR/CodeGen/CIRGenModule.cpp
++++ b/clang/lib/CIR/CodeGen/CIRGenModule.cpp
+@@ -1530,10 +1530,10 @@ static bool shouldAssumeDSOLocal(const CIRGenModule &cgm,
+ 
+   const llvm::Triple &tt = cgm.getTriple();
+   const CodeGenOptions &cgOpts = cgm.getCodeGenOpts();
+-  if (tt.isWindowsGNUEnvironment()) {
+-    // In MinGW, variables without DLLImport can still be automatically
+-    // imported from a DLL by the linker; don't mark variables that
+-    // potentially could come from another DLL as DSO local.
++  if (tt.isOSCygMing()) {
++    // In MinGW and Cygwin, variables without DLLImport can still be
++    // automatically imported from a DLL by the linker; don't mark variables
++    // that potentially could come from another DLL as DSO local.
+ 
+     // With EmulatedTLS, TLS variables can be autoimported from other DLLs
+     // (and this actually happens in the public interface of libstdc++), so
 diff --git a/clang/lib/Driver/ToolChain.cpp b/clang/lib/Driver/ToolChain.cpp
-index acf9d264d6..e9d1d3534e 100644
+index 07a3ae925f..a47f0c3f3f 100644
 --- a/clang/lib/Driver/ToolChain.cpp
 +++ b/clang/lib/Driver/ToolChain.cpp
-@@ -749,7 +749,7 @@ std::string ToolChain::buildCompilerRTBasename(const llvm::opt::ArgList &Args,
+@@ -743,7 +743,7 @@ std::string ToolChain::buildCompilerRTBasename(const llvm::opt::ArgList &Args,
      break;
    case ToolChain::FT_Shared:
-     Suffix = TT.isOSWindows()
--                 ? (TT.isWindowsGNUEnvironment() ? ".dll.a" : ".lib")
-+                 ? (TT.isOSCygMing() ? ".dll.a" : ".lib")
-                  : ".so";
-     break;
-   }
+     if (TT.isOSWindows())
+-      Suffix = TT.isWindowsGNUEnvironment() ? ".dll.a" : ".lib";
++      Suffix = TT.isOSCygMing() ? ".dll.a" : ".lib";
+     else if (TT.isOSAIX())
+       Suffix = ".a";
+     else
 diff --git a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
-index 57b7d2bd46..c69b4fc6b5 100644
+index 6261332232..e171b2a752 100644
 --- a/clang/lib/Driver/ToolChains/Clang.cpp
 +++ b/clang/lib/Driver/ToolChains/Clang.cpp
-@@ -6121,7 +6121,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
+@@ -5963,7 +5963,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
      CmdArgs.push_back("-mms-bitfields");
    }
  
@@ -63,10 +84,10 @@ index 57b7d2bd46..c69b4fc6b5 100644
                         options::OPT_fno_auto_import);
    }
 diff --git a/clang/lib/Frontend/InitPreprocessor.cpp b/clang/lib/Frontend/InitPreprocessor.cpp
-index 17f624e964..16eed19851 100644
+index cce8392950..1e24c9428c 100644
 --- a/clang/lib/Frontend/InitPreprocessor.cpp
 +++ b/clang/lib/Frontend/InitPreprocessor.cpp
-@@ -945,8 +945,8 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
+@@ -952,8 +952,8 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
    if (LangOpts.GNUCVersion && LangOpts.CPlusPlus11)
      Builder.defineMacro("__GXX_EXPERIMENTAL_CXX0X__");
  
@@ -78,10 +99,10 @@ index 17f624e964..16eed19851 100644
      Builder.defineMacro("__GXX_TYPEINFO_EQUALITY_INLINE", "0");
    }
 diff --git a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
-index 41d5f9f2f3..b70470f7db 100644
+index bb412ef678..4c07eedd2e 100644
 --- a/clang/lib/Sema/SemaDecl.cpp
 +++ b/clang/lib/Sema/SemaDecl.cpp
-@@ -12514,9 +12514,9 @@ static bool isDefaultStdCall(FunctionDecl *FD, Sema &S) {
+@@ -12586,9 +12586,9 @@ static bool isDefaultStdCall(FunctionDecl *FD, Sema &S) {
    if (FD->getName() == "main" || FD->getName() == "wmain")
      return false;
  
@@ -126,6 +147,26 @@ index 411ec48a8a..ef6bc47885 100644
 +#  endif
  #endif
  #define MY_ID 42
+diff --git a/clang/test/Preprocessor/init-x86.c b/clang/test/Preprocessor/init-x86.c
+index 8ea4ce7915..f5fd976b3d 100644
+--- a/clang/test/Preprocessor/init-x86.c
++++ b/clang/test/Preprocessor/init-x86.c
+@@ -1535,6 +1535,7 @@
+ // I386-CYGWIN:#define __GCC_ATOMIC_SHORT_LOCK_FREE 2
+ // I386-CYGWIN:#define __GCC_ATOMIC_TEST_AND_SET_TRUEVAL 1
+ // I386-CYGWIN:#define __GCC_ATOMIC_WCHAR_T_LOCK_FREE 2
++// I386-CYGWIN:#define __GXX_TYPEINFO_EQUALITY_INLINE 0
+ // I386-CYGWIN:#define __ILP32__ 1
+ // I386-CYGWIN:#define __INT16_C(c) c
+ // I386-CYGWIN:#define __INT16_C_SUFFIX__
+@@ -1746,6 +1747,7 @@
+ // X86_64-CYGWIN:#define __GCC_ATOMIC_SHORT_LOCK_FREE 2
+ // X86_64-CYGWIN:#define __GCC_ATOMIC_TEST_AND_SET_TRUEVAL 1
+ // X86_64-CYGWIN:#define __GCC_ATOMIC_WCHAR_T_LOCK_FREE 2
++// X86_64-CYGWIN:#define __GXX_TYPEINFO_EQUALITY_INLINE 0
+ // X86_64-CYGWIN:#define __INT16_C(c) c
+ // X86_64-CYGWIN:#define __INT16_C_SUFFIX__
+ // X86_64-CYGWIN:#define __INT16_FMTd__ "hd"
 -- 
-2.50.1.windows.1
+2.51.0.windows.1
 

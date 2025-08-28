@@ -1,0 +1,88 @@
+diff -ur a/clang/lib/Driver/ToolChains/Cygwin.cpp b/clang/lib/Driver/ToolChains/Cygwin.cpp
+--- a/clang/lib/Driver/ToolChains/Cygwin.cpp	2025-08-26 16:56:22.501734100 -0700
++++ b/clang/lib/Driver/ToolChains/Cygwin.cpp	2025-08-26 16:57:41.547408900 -0700
+@@ -218,7 +218,7 @@
+   else
+     CmdArgs.push_back("-Bdynamic");
+ 
+-  CmdArgs.push_back("--dll-search-prefix=cyg");
++  CmdArgs.push_back("--dll-search-prefix=msys-");
+ 
+   CmdArgs.push_back("-o");
+   const char *OutputFile = Output.getFilename();
+@@ -238,8 +238,8 @@
+     if (Args.hasArg(options::OPT_mdll) || IsShared) {
+       CmdArgs.push_back("-e");
+       CmdArgs.push_back(ToolChain.getArch() == llvm::Triple::x86
+-                            ? "__cygwin_dll_entry@12"
+-                            : "_cygwin_dll_entry");
++                            ? "__msys_dll_entry@12"
++                            : "_msys_dll_entry");
+       CmdArgs.push_back("--enable-auto-image-base");
+     }
+ 
+@@ -373,7 +373,7 @@
+         CmdArgs.push_back("-lc");
+ 
+       // Cygwin specific
+-      CmdArgs.push_back("-lcygwin");
++      CmdArgs.push_back("-lmsys-2.0");
+       if (Args.hasArg(options::OPT_mwindows)) {
+         CmdArgs.push_back("-lgdi32");
+         CmdArgs.push_back("-lcomdlg32");
+diff -ur a/clang/test/Driver/cygwin.cpp b/clang/test/Driver/cygwin.cpp
+--- a/clang/test/Driver/cygwin.cpp	2025-08-26 16:56:25.478289600 -0700
++++ b/clang/test/Driver/cygwin.cpp	2025-08-26 16:58:43.270615700 -0700
+@@ -29,7 +29,7 @@
+ // RUN:   -shared 2>&1 | FileCheck --check-prefix=CHECK-SHARED %s
+ // CHECK-SHARED:      "{{.*}}ld{{(\.exe)?}}"
+ // CHECK-SHARED-SAME: "--shared"
+-// CHECK-SHARED-SAME: "-e" "__cygwin_dll_entry@12"
++// CHECK-SHARED-SAME: "-e" "__msys_dll_entry@12"
+ 
+ // RUN: %clang -### -o %t %s 2>&1 -no-integrated-as -fuse-ld=ld \
+ // RUN:     --gcc-toolchain=%S/Inputs/basic_cross_cygwin_tree/usr \
+@@ -70,7 +70,7 @@
+ // RUN:   -shared 2>&1 | FileCheck --check-prefix=CHECK-64-SHARED %s
+ // CHECK-64-SHARED:      "{{.*}}ld{{(\.exe)?}}"
+ // CHECK-64-SHARED-SAME: "--shared"
+-// CHECK-64-SHARED-SAME: "-e" "_cygwin_dll_entry"
++// CHECK-64-SHARED-SAME: "-e" "_msys_dll_entry"
+ 
+ // RUN: %clang -### -o %t %s 2>&1 -no-integrated-as -fuse-ld=ld \
+ // RUN:     --gcc-toolchain=%S/Inputs/basic_cross_cygwin_tree/usr \
+@@ -83,13 +83,13 @@
+ // RUN:   -mdll 2>&1 | FileCheck --check-prefix=CHECK-64-DLL %s
+ // CHECK-64-DLL:      "{{.*}}ld{{(\.exe)?}}"
+ // CHECK-64-DLL-SAME: "--dll"
+-// CHECK-64-DLL-SAME: "-e" "_cygwin_dll_entry"
++// CHECK-64-DLL-SAME: "-e" "_msys_dll_entry"
+ 
+ // RUN: %clang -### %s --target=i686-pc-cygwin --sysroot=%S/Inputs/basic_cygwin_tree \
+ // RUN:   -mdll 2>&1 | FileCheck --check-prefix=CHECK-DLL %s
+ // CHECK-DLL:      "{{.*}}ld{{(\.exe)?}}"
+ // CHECK-DLL-SAME: "--dll"
+-// CHECK-DLL-SAME: "-e" "__cygwin_dll_entry@12"
++// CHECK-DLL-SAME: "-e" "__msys_dll_entry@12"
+ 
+ // RUN: %clang -### %s --target=x86_64-pc-cygwin --sysroot=%S/Inputs/basic_cygwin_tree \
+ // RUN:   -mwindows 2>&1 | FileCheck --check-prefix=CHECK-64-WINDOWS %s
+diff -ur a/clang/lib/Basic/Targets/X86.h b/clang/lib/Basic/Targets/X86.h
+--- a/clang/lib/Basic/Targets/X86.h	2025-08-27 11:34:52.422511100 -0700
++++ b/clang/lib/Basic/Targets/X86.h	2025-08-27 11:36:40.870706300 -0700
+@@ -661,6 +661,7 @@
+     Builder.defineMacro("_X86_");
+     Builder.defineMacro("__CYGWIN__");
+     Builder.defineMacro("__CYGWIN32__");
++    Builder.defineMacro("__MSYS__");
+     addCygMingDefines(Opts, Builder);
+     DefineStd(Builder, "unix", Opts);
+     if (Opts.CPlusPlus)
+@@ -994,6 +995,7 @@
+     Builder.defineMacro("__x86_64__");
+     Builder.defineMacro("__CYGWIN__");
+     Builder.defineMacro("__CYGWIN64__");
++    Builder.defineMacro("__MSYS__");
+     addCygMingDefines(Opts, Builder);
+     DefineStd(Builder, "unix", Opts);
+     if (Opts.CPlusPlus)
