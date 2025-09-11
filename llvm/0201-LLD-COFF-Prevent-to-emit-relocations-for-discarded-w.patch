@@ -1,0 +1,200 @@
+From adbbd5bb996725d5ec328747f03aa9c958c736b4 Mon Sep 17 00:00:00 2001
+From: Tomohiro Kashiwada <kikairoya@gmail.com>
+Date: Tue, 9 Sep 2025 19:10:28 +0900
+Subject: [PATCH] [LLD][COFF] Prevent to emit relocations for discarded weak
+ wrapped symbols (#156214)
+
+When a symbol is imported from a DLL, a base relocation record is
+normally emitted.
+However, if the import is pulled in via a wrapped symbol (using
+`--wrap`) and later dropped because it is only referenced weakly, a
+dangling base relocation remains in the output.
+At runtime, this relocation changes the symbol value from null to a
+garbage pointer.
+
+This patch adds checks to avoid emitting relocation records for
+non-`Defined` symbols, and to prevent creating an auto-import entry if
+an import entry for the wrapped symbol already exists.
+
+Fixes https://github.com/llvm/llvm-project/issues/150739
+
+(cherry picked from commit e976622e2d7464b09fcf0141291003bf5fe9fd6f)
+---
+ lld/COFF/Chunks.cpp                  |  2 +-
+ lld/COFF/MinGW.cpp                   | 13 ++++---
+ lld/test/COFF/reloc-undefined-weak.s | 52 ++++++++++++++++++++++++++++
+ lld/test/COFF/wrap-dllimport.s       | 34 +++++++++++++-----
+ 4 files changed, 88 insertions(+), 13 deletions(-)
+ create mode 100644 lld/test/COFF/reloc-undefined-weak.s
+
+diff --git a/lld/COFF/Chunks.cpp b/lld/COFF/Chunks.cpp
+index 01752cdc6a..532f4d640f 100644
+--- a/lld/COFF/Chunks.cpp
++++ b/lld/COFF/Chunks.cpp
+@@ -570,7 +570,7 @@ void SectionChunk::getBaserels(std::vector<Baserel> *res) {
+     if (ty == IMAGE_REL_BASED_ABSOLUTE)
+       continue;
+     Symbol *target = file->getSymbol(rel.SymbolTableIndex);
+-    if (!target || isa<DefinedAbsolute>(target))
++    if (!isa_and_nonnull<Defined>(target) || isa<DefinedAbsolute>(target))
+       continue;
+     res->emplace_back(rva + rel.VirtualAddress, ty);
+   }
+diff --git a/lld/COFF/MinGW.cpp b/lld/COFF/MinGW.cpp
+index e7117cbea2..597c508115 100644
+--- a/lld/COFF/MinGW.cpp
++++ b/lld/COFF/MinGW.cpp
+@@ -269,10 +269,15 @@ void lld::coff::wrapSymbols(SymbolTable &symtab) {
+       // (We can't easily distinguish whether any object file actually
+       // referenced it or not, though.)
+       if (imp) {
+-        DefinedLocalImport *wrapimp = make<DefinedLocalImport>(
+-            symtab.ctx, saver().save("__imp_" + w.wrap->getName()), d);
+-        symtab.localImportChunks.push_back(wrapimp->getChunk());
+-        map[imp] = wrapimp;
++        if (Symbol *wrapimp =
++                symtab.find(("__imp_" + w.wrap->getName()).str())) {
++          map[imp] = wrapimp;
++        } else {
++          DefinedLocalImport *localwrapimp = make<DefinedLocalImport>(
++              symtab.ctx, saver().save("__imp_" + w.wrap->getName()), d);
++          symtab.localImportChunks.push_back(localwrapimp->getChunk());
++          map[imp] = localwrapimp;
++        }
+       }
+     }
+   }
+diff --git a/lld/test/COFF/reloc-undefined-weak.s b/lld/test/COFF/reloc-undefined-weak.s
+new file mode 100644
+index 0000000000..dc0a230c37
+--- /dev/null
++++ b/lld/test/COFF/reloc-undefined-weak.s
+@@ -0,0 +1,52 @@
++// REQUIRES: x86
++
++// Check that base-relocations for unresolved weak symbols will be omitted.
++
++// RUN: rm -rf %t.dir && split-file %s %t.dir && cd %t.dir
++// RUN: llvm-mc -filetype=obj -triple=x86_64-mingw main.s -o main.obj
++// RUN: llvm-mc -filetype=obj -triple=x86_64-mingw other.s -o other.obj
++
++// RUN: lld-link -lldmingw -machine:x64 -dll -out:other.dll other.obj -noentry -export:foo -implib:other.lib
++// RUN: lld-link -lldmingw -machine:x64 -out:main.exe main.obj other.lib -entry:entry -wrap:foo -debug:symtab
++// RUN: llvm-readobj --sections --symbols --coff-imports --coff-basereloc main.exe | FileCheck %s --implicit-check-not=other.dll
++
++// CHECK:      Number: 3
++// CHECK-NEXT: Name: .data
++// CHECK-NEXT: VirtualSize:
++// CHECK-NEXT: VirtualAddress: 0x[[#%x,SECTOP:0x3000]]
++// CHECK:      Name: ref_foo
++// CHECK-NEXT: Value: [[#%d,SYMVAL:]]
++// CHECK:      BaseReloc [
++// CHECK-NOT:    Address: 0x[[#%x,SECTOP+SYMVAL]]
++
++#--- main.s
++.global entry
++entry:
++  movq ref_foo(%rip), %rax
++  call *%rax
++
++.global __wrap_foo
++__wrap_foo:
++  ret
++
++.data
++.global ref_foo
++.p2align 3
++ref_foo:
++  .quad __real_foo
++
++.globl _pei386_runtime_relocator
++_pei386_runtime_relocator:
++  movl __RUNTIME_PSEUDO_RELOC_LIST__(%rip), %eax
++  movl __RUNTIME_PSEUDO_RELOC_LIST_END__(%rip), %eax
++
++.weak __real_foo
++.addrsig
++.addrsig_sym __real_foo
++.addrsig_sym ref_foo
++
++#--- other.s
++.global foo
++
++foo:
++  ret
+diff --git a/lld/test/COFF/wrap-dllimport.s b/lld/test/COFF/wrap-dllimport.s
+index d7662b29fd..a26e43b698 100644
+--- a/lld/test/COFF/wrap-dllimport.s
++++ b/lld/test/COFF/wrap-dllimport.s
+@@ -1,42 +1,60 @@
+ // REQUIRES: x86
+ 
+ // Check that we can wrap a dllimported symbol, so that references to
+-// __imp_<symbol> gets redirected to a defined local import instead.
++// __imp_<symbol> gets redirected to a symbol that already exists or a defined
++// local import instead.
+ 
+ // RUN: split-file %s %t.dir
+ // RUN: llvm-mc -filetype=obj -triple=i686-win32-gnu %t.dir/main.s -o %t.main.obj
+ // RUN: llvm-mc -filetype=obj -triple=i686-win32-gnu %t.dir/other.s -o %t.other.obj
+ 
+-// RUN: lld-link -dll -out:%t.dll %t.other.obj -noentry -safeseh:no -export:foo -implib:%t.lib
+-// RUN: lld-link -out:%t.exe %t.main.obj %t.lib -entry:entry -subsystem:console -debug:symtab -safeseh:no -wrap:foo -lldmap:%t.map
++// RUN: lld-link -dll -out:%t.dll %t.other.obj -noentry -safeseh:no -export:foo -export:bar -implib:%t.lib
++// RUN: lld-link -out:%t.exe %t.main.obj %t.lib -entry:entry -subsystem:console -debug:symtab -safeseh:no -wrap:foo -wrap:bar -lldmap:%t.map
+ // RUN: llvm-objdump -s -d --print-imm-hex %t.exe | FileCheck %s
+ 
+ // CHECK:      Contents of section .rdata:
+-// CHECK-NEXT:  402000 06104000
++// CHECK-NEXT:  402000 0c104000
+ 
+ // CHECK:      Disassembly of section .text:
+ // CHECK-EMPTY:
+ // CHECK:      00401000 <_entry>:
+ // CHECK-NEXT:   401000: ff 25 00 20 40 00             jmpl    *0x402000
++// CHECK-NEXT:   401006: ff 25 00 00 00 00             jmpl    *0x0
+ // CHECK-EMPTY:
+-// CHECK-NEXT: 00401006 <___wrap_foo>:
+-// CHECK-NEXT:   401006: c3                            retl
++// CHECK-NEXT: 0040100c <___wrap_foo>:
++// CHECK-NEXT:   40100c: c3                            retl
++// CHECK-EMPTY:
++// CHECK-NEXT: 0040100d <___wrap_bar>:
++// CHECK-NEXT:   40100d: c3                            retl
+ 
+-// The jmpl instruction in _entry points at an address in 0x402000,
++// The first jmpl instruction in _entry points at an address in 0x402000,
+ // which is the first 4 bytes of the .rdata section (above), which is a
+ // pointer that points at ___wrap_foo.
+ 
++// The second jmpl instruction in _entry points to null because the referenced
++// symbol `__imp____wrap_bar` is declared as a weak reference to prevent pull a
++// reference from an external DLL.
++
+ #--- main.s
+ .global _entry
+ _entry:
+   jmpl *__imp__foo
++  jmpl *__imp__bar
+ 
+ .global ___wrap_foo
+ ___wrap_foo:
+   ret
+ 
++.weak __imp____wrap_bar
++.global ___wrap_bar
++___wrap_bar:
++  ret
++
+ #--- other.s
+ .global _foo
+-
+ _foo:
+   ret
++
++.global _bar
++_bar:
++  ret
+-- 
+2.51.0.windows.1
+

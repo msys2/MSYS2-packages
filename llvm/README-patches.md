@@ -23,3 +23,4 @@ Legend:
 - `"0104-Clang-Cygwin-call-linker-directly.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/pull/147960
 - `"0105-Tests-Add-system-cygwin-feature-and-use-it.-152611.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/ff616b4806ed6c9b9698290a9c807626aa3844f7
 - `"0199-msysize.patch"` :grey_exclamation:
+- `"0201-LLD-COFF-Prevent-to-emit-relocations-for-discarded-w.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/e976622e2d7464b09fcf0141291003bf5fe9fd6f
