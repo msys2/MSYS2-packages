@@ -1,0 +1,47 @@
+From dea57136f66ed290ae61b3bc8fe2625764c33bfc Mon Sep 17 00:00:00 2001
+From: Jeremy Drake <cygwin@jdrake.com>
+Date: Fri, 19 Sep 2025 13:36:30 -0700
+Subject: [PATCH 41/N] Cygwin: lock cygheap during fork
+
+another thread may simultaneously be doing a cmalloc/cfree while the
+cygheap is being copied to the child.
+
+Addresses: https://cygwin.com/pipermail/cygwin/2025-September/258801.html
+Signed-off-by: Jeremy Drake <cygwin@jdrake.com>
+(cherry picked from commit 8a5d39527f9a56d1a623e86d30af6b590fd1472d)
+---
+ winsup/cygwin/fork.cc | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/fork.cc b/winsup/cygwin/fork.cc
+index f88acdb..2aa5273 100644
+--- a/winsup/cygwin/fork.cc
++++ b/winsup/cygwin/fork.cc
+@@ -329,6 +329,7 @@ frok::parent (volatile char * volatile stack_here)
+   /* NEVER, EVER, call a function which in turn calls malloc&friends while this
+      malloc lock is active! */
+   __malloc_lock ();
++  cygheap->lock ();
+   bool locked = true;
+ 
+   /* Remove impersonation */
+@@ -483,6 +484,7 @@ frok::parent (volatile char * volatile stack_here)
+ 		   impure, impure_beg, impure_end,
+ 		   NULL);
+ 
++  cygheap->unlock ();
+   __malloc_unlock ();
+   locked = false;
+   if (!rc)
+@@ -568,7 +570,10 @@ cleanup:
+   if (fix_impersonation)
+     cygheap->user.reimpersonate ();
+   if (locked)
+-    __malloc_unlock ();
++    {
++      cygheap->unlock ();
++      __malloc_unlock ();
++    }
+ 
+   /* Remember to de-allocate the fd table. */
+   if (hchild)
