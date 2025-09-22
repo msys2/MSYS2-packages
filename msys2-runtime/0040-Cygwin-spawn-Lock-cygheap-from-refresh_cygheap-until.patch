@@ -1,0 +1,96 @@
+From b1ea15e4849f1d106d34b4191a37cc0329c6df28 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Sat, 19 Jul 2025 23:39:12 +0900
+Subject: [PATCH 40/N] Cygwin: spawn: Lock cygheap from refresh_cygheap()
+ until child_copy()
+
+...completion in child process because the cygheap should not be
+changed to avoid mismatch between child_info::cygheap_max and
+::cygheap_max. Otherwise, child_copy() might copy cygheap being
+modified by other process.
+
+In addition, to avoid deadlock, move close_all_files() for non-
+Cygwin processes after unlocking cygheap, since close_all_files()
+calls cfree(), which attempts to lock cygheap even when it's already
+locked.
+
+Fixes: 977ad5434cc0 ("* spawn.cc (spawn_guts): Call refresh_cygheap before creating a new process to ensure that cygheap_max is up-to-date.")
+Reviewed-by: Corinna Vinschen <corinna@vinschen.de>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+(cherry picked from commit 9b667234bfa6220dcca1afa1233a928d9100cfde)
+---
+ winsup/cygwin/spawn.cc | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/winsup/cygwin/spawn.cc b/winsup/cygwin/spawn.cc
+index 854c25a..9ddfb5c 100644
+--- a/winsup/cygwin/spawn.cc
++++ b/winsup/cygwin/spawn.cc
+@@ -572,7 +572,6 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 	::cygheap->ctty ? ::cygheap->ctty->tc_getpgid () : 0;
+       if (!iscygwin () && ctty_pgid && ctty_pgid != myself->pgid)
+ 	c_flags |= CREATE_NEW_PROCESS_GROUP;
+-      refresh_cygheap ();
+ 
+       if (mode == _P_DETACH)
+ 	/* all set */;
+@@ -641,6 +640,8 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 
+       cygpid = (mode != _P_OVERLAY) ? create_cygwin_pid () : myself->pid;
+ 
++      cygheap->lock ();
++      refresh_cygheap ();
+       wchar_t wcmd[(size_t) cmd];
+       if (!::cygheap->user.issetuid ()
+ 	  || (::cygheap->user.saved_uid == ::cygheap->user.real_uid
+@@ -758,6 +759,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 	    ::cygheap->user.reimpersonate ();
+ 
+ 	  res = -1;
++	  cygheap->unlock ();
+ 	  __leave;
+ 	}
+ 
+@@ -794,8 +796,6 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 	  NtClose (old_winpid_hdl);
+ 	  real_path.get_wide_win32_path (myself->progname); // FIXME: race?
+ 	  sigproc_printf ("new process name %W", myself->progname);
+-	  if (!iscygwin ())
+-	    close_all_files ();
+ 	}
+       else
+ 	{
+@@ -811,6 +811,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 	      if (get_errno () != ENOMEM)
+ 		set_errno (EAGAIN);
+ 	      res = -1;
++	      cygheap->unlock ();
+ 	      __leave;
+ 	    }
+ 	  child->dwProcessId = pi.dwProcessId;
+@@ -846,6 +847,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 	      CloseHandle (pi.hProcess);
+ 	      ForceCloseHandle (pi.hThread);
+ 	      res = -1;
++	      cygheap->unlock ();
+ 	      __leave;
+ 	    }
+ 	}
+@@ -874,6 +876,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 	/* Just mark a non-cygwin process as 'synced'.  We will still eventually
+ 	   wait for it to exit in maybe_set_exit_code_from_windows(). */
+ 	synced = iscygwin () ? sync (pi.dwProcessId, pi.hProcess, INFINITE) : true;
++      cygheap->unlock ();
+ 
+       switch (mode)
+ 	{
+@@ -890,8 +893,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 	    }
+ 	  else
+ 	    {
+-	      if (iscygwin ())
+-		close_all_files (true);
++	      close_all_files (iscygwin ());
+ 	      if (!my_wr_proc_pipe
+ 		  && WaitForSingleObject (pi.hProcess, 0) == WAIT_TIMEOUT)
+ 		wait_for_myself ();
