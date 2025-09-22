@@ -1,7 +1,7 @@
 # Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
 
 pkgname=python-fastbencode
-pkgver=0.3.2
+pkgver=0.3.6
 pkgrel=1
 pkgdesc='Implementation of bencode with optional fast C extensions'
 arch=('i686' 'x86_64')
@@ -15,25 +15,31 @@ makedepends=(
   python-build
   python-installer
   python-setuptools
+  python-setuptools-rust
   python-devel
-  cython
   gcc
 )
 checkdepends=(python-pytest)
-source=(https://pypi.io/packages/source/f/fastbencode/fastbencode-$pkgver.tar.gz)
-sha256sums=('a34c32c504b0ec9de1a499346ed24932359eb46234b28b70975a50fdfaa14ab5')
+source=("https://pypi.io/packages/source/f/fastbencode/fastbencode-$pkgver.tar.gz")
+sha256sums=('114f853ebbb0a5168ac7ca4337bd9a542105e3d403b970111bfef16e0037c1c5')
 
 build() {
-  cd fastbencode-$pkgver
+  cd "fastbencode-$pkgver"
+
+  # pyo3 doesn't support cygwin yet, so pass the python lib directly
+  local link_arg=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBPYTHON'))")
+  export RUSTFLAGS="-C link-arg=$link_arg"
+
   python -m build --wheel --no-isolation
 }
 
 check() {
-  cd fastbencode-$pkgver
-  python -m pytest
+  cd "fastbencode-$pkgver"
+
+  python -m unittest discover -v
 }
 
 package() {
-  cd fastbencode-$pkgver
+  cd "fastbencode-$pkgver"
   python -m installer --destdir="$pkgdir" dist/*.whl
 }
