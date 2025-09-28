@@ -1,13 +1,13 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgbase=libxml2
-pkgname=('libxml2' 'libxml2-devel' 'libxml2-python')
+pkgname=('libxml2' 'libxml2-devel')
 pkgver=2.14.6
-pkgrel=1
+pkgrel=2
 pkgdesc="XML parsing library, version 2"
 arch=(i686 x86_64)
 license=('spdx:MIT')
-makedepends=('gcc' 'python-devel' 'libreadline-devel'
+makedepends=('gcc' 'libreadline-devel'
              'liblzma-devel' 'zlib-devel' 'autotools')
 url="https://gitlab.gnome.org/GNOME/libxml2/-/wikis/"
 msys2_repository_url="https://gitlab.gnome.org/GNOME/libxml2"
@@ -15,11 +15,9 @@ msys2_references=(
   "cpe: cpe:/a:xmlsoft:libxml2"
 )
 source=("https://download.gnome.org/sources/libxml2/${pkgver%.*}/${pkgbase}-${pkgver}.tar.xz"
-        https://www.w3.org/XML/Test/xmlts20130923.tar.gz
-        libxml2-2.9.8-python3-unicode-errors.patch)
+        https://www.w3.org/XML/Test/xmlts20130923.tar.gz)
 sha256sums=('7ce458a0affeb83f0b55f1f4f9e0e55735dbfc1a9de124ee86fb4a66b597203a'
-            '9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f'
-            '0f5d465503b24271e11752262af89c58eb0b26b4901c3b021bd843e6e5d4e95a')
+            '9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f')
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -47,10 +45,6 @@ prepare() {
   mv xmlconf -t ${pkgbase}-${pkgver}
 
   cd ${pkgbase}-${pkgver}
-  
-  # From https://src.fedoraproject.org/rpms/libxml2/tree/main
-  apply_patch_with_msg \
-    libxml2-2.9.8-python3-unicode-errors.patch
 
   autoreconf -vfi
 }
@@ -74,15 +68,12 @@ build() {
     --with-http \
     --with-lzma \
     --without-icu \
+    --without-python \
     --enable-shared \
-    --enable-static \
-    --with-python=/usr/bin/python
+    --enable-static
   make
   make DESTDIR=${srcdir}/dest install
 
-  PYTHON_SITELIB="$(python -c 'import site, sys; sys.stdout.write(site.getsitepackages()[0])')"
-  mv ${srcdir}/dest${PYTHON_SITELIB}/${pkgbase/lib/msys-}mod.dll ${srcdir}/dest${PYTHON_SITELIB}/${pkgbase}mod.dll
-  sed -i -e "s:${pkgbase/lib/msys-}mod:${PN}mod:g" ${srcdir}/dest${PYTHON_SITELIB}/${pkgbase}mod.la
 }
 
 check() {
@@ -109,27 +100,10 @@ package_libxml2-devel() {
   options=('staticlibs')
   depends=("libxml2=${pkgver}" 'libreadline-devel' 'liblzma-devel' 'zlib-devel')
 
-  PYTHON_SITELIB="$(python -c 'import site, sys; sys.stdout.write(site.getsitepackages()[0])')"
   mkdir -p ${pkgdir}/usr/{bin,share}
   cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
   cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
   cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
-  rm -rf ${pkgdir}${PYTHON_SITELIB}
   cp -rf ${srcdir}/dest/usr/share/doc ${pkgdir}/usr/share/
   cp -rf ${srcdir}/dest/usr/share/gtk-doc ${pkgdir}/usr/share/
-}
-
-package_libxml2-python(){
-  pkgdesc="Libxml2 python modules"
-  depends=('libxml2')
-  groups=('python-modules')
-  options=('staticlibs')
-
-  PYTHON_SITELIB="$(python -c 'import site, sys; sys.stdout.write(site.getsitepackages()[0])')"
-  mkdir -p ${pkgdir}/${PYTHON_SITELIB}
-  mkdir -p ${pkgdir}/usr/share/doc
-  cp -rf ${srcdir}/dest${PYTHON_SITELIB}/* ${pkgdir}${PYTHON_SITELIB}/
-
-  python -m compileall \
-    -o 0 -o 1 -q -s"${pkgdir}" -p"/" "${pkgdir}${PYTHON_SITELIB}/"
 }
