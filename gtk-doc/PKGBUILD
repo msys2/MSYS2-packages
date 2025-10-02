@@ -6,51 +6,33 @@ pkgrel=1
 pkgdesc="Documentation tool for public library API"
 arch=('i686' 'x86_64')
 url="https://gitlab.gnome.org/GNOME/gtk-doc"
-license=("GPL" "FDL")
-options=(staticlibs strip)
+license=("spdx:GFDL-1.1-or-later AND GPL-2.0-or-later")
 depends=("docbook-xsl"
+         "docbook-xml"
          "glib2"
          "python"
          "python-pygments"
-         "python-lxml"
-         "vim"
-         "yelp-tools"
-        )
+         "python-lxml")
 makedepends=("pkgconf"
              "glib2-devel"
-             'itstool'
-             'autotools'
-             'gcc'
-            )
+             "itstool"
+             "meson"
+             "ninja"
+             "gcc"
+             "yelp-tools")
 source=(https://gitlab.gnome.org/GNOME/gtk-doc/-/archive/${pkgver}/gtk-doc-${pkgver}.tar.gz)
 sha256sums=('4049cdfe80dca1db4e44dc198d43ccb7e8745a22fe77feb329900285c02e1994')
 
-prepare() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
-  libtoolize --force --copy
-  autoreconf -fi
-}
-
 build() {
-  mkdir -p "${srcdir}/build-${CHOST}"
-  cd "${srcdir}/build-${CHOST}"
-  export PYTHON=/usr/bin/python
-  ../${pkgname}-${pkgver}/configure \
+  meson setup "build-${CHOST}" "${srcdir}/${pkgname}-${pkgver}" \
     --prefix=/usr \
-    --build=${CHOST} \
-    --host=${CHOST} \
-    --enable-shared \
-    --enable-static \
-    --with-xml-catalog=/etc/xml/catalog
-  make
-}
+    --buildtype=plain \
+    --auto-features=enabled \
+    --wrap-mode=nodownload
 
-check() {
-  cd "${srcdir}/build-${CHOST}"
-  make check || true
+  meson compile -C "build-${CHOST}"
 }
 
 package() {
-  cd "${srcdir}/build-${CHOST}"
-  make DESTDIR="${pkgdir}" install
+  DESTDIR="${pkgdir}" meson install -C "build-${CHOST}"
 }
