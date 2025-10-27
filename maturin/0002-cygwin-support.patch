@@ -1,0 +1,92 @@
+--- maturin-1.9.6/src/target/mod.rs.orig	2025-10-07 14:34:28.000000000 +0200
++++ maturin-1.9.6/src/target/mod.rs	2025-10-27 18:39:27.311185000 +0100
+@@ -43,6 +43,7 @@
+     Wasi,
+     Aix,
+     Hurd,
++    Cygwin,
+ }
+ 
+ impl fmt::Display for Os {
+@@ -63,6 +64,7 @@
+             Os::Wasi => write!(f, "Wasi"),
+             Os::Aix => write!(f, "AIX"),
+             Os::Hurd => write!(f, "Hurd"),
++            Os::Cygwin => write!(f, "Cygwin"),
+         }
+     }
+ }
+@@ -209,6 +211,7 @@
+         Os::Emscripten | Os::Wasi => vec![Arch::Wasm32],
+         Os::Aix => vec![Arch::Powerpc64],
+         Os::Hurd => vec![Arch::X86, Arch::X86_64],
++        Os::Cygwin => vec![Arch::X86, Arch::X86_64],
+     }
+ }
+ 
+@@ -283,6 +286,7 @@
+             OperatingSystem::Wasi | OperatingSystem::WasiP1 | OperatingSystem::WasiP2 => Os::Wasi,
+             OperatingSystem::Aix => Os::Aix,
+             OperatingSystem::Hurd => Os::Hurd,
++            OperatingSystem::Cygwin => Os::Cygwin,
+             unsupported => bail!("The operating system {:?} is not supported", unsupported),
+         };
+ 
+@@ -463,6 +467,7 @@
+             Os::Wasi => "wasi",
+             Os::Aix => "aix",
+             Os::Hurd => "gnu",
++            Os::Cygwin => "cygwin",
+         }
+     }
+ 
+@@ -558,7 +563,8 @@
+             | Os::Emscripten
+             | Os::Wasi
+             | Os::Aix
+-            | Os::Hurd => true,
++            | Os::Hurd
++            | Os::Cygwin => true,
+         }
+     }
+ 
+--- maturin-1.9.6/src/python_interpreter/mod.rs.orig	2025-10-07 14:34:28.000000000 +0200
++++ maturin-1.9.6/src/python_interpreter/mod.rs	2025-10-27 18:57:13.775589900 +0100
+@@ -292,6 +292,7 @@
+     if bridge != &BridgeModel::Cffi
+         && target.get_python_os() != message.system
+         && !target.cross_compiling()
++        && (target.get_python_os() == "cygwin" && !message.system.to_lowercase().starts_with("cygwin"))
+     {
+         bail!(
+             "platform.system() in python, {}, and the rust target, {:?}, don't match ಠ_ಠ",
+--- maturin-1.9.6/src/target/mod.rs.orig	2025-10-07 14:34:28.000000000 +0200
++++ maturin-1.9.6/src/target/mod.rs	2025-10-27 20:03:22.265265400 +0100
+@@ -610,6 +610,12 @@
+         self.env == Environment::Msvc
+     }
+ 
++    /// Returns true if the current platform is cygwin
++    #[inline]
++    pub fn is_cygwin(&self) -> bool {
++        self.os == Os::Cygwin
++    }
++
+     /// Returns true if the current platform is illumos
+     #[inline]
+     pub fn is_illumos(&self) -> bool {
+--- maturin-1.9.6/src/module_writer.rs.orig	2025-10-07 14:34:28.000000000 +0200
++++ maturin-1.9.6/src/module_writer.rs	2025-10-27 20:04:48.501685200 +0100
+@@ -855,7 +855,11 @@
+     let ext_name = &project_layout.extension_name;
+     let so_filename = if is_abi3 {
+         if target.is_unix() {
+-            format!("{ext_name}.abi3.so")
++            if target.is_cygwin() {
++                format!("{ext_name}.abi3.dll")
++            } else {
++                format!("{ext_name}.abi3.so")
++            }
+         } else {
+             match python_interpreter {
+                 Some(python_interpreter) if python_interpreter.is_windows_debug() => {
