@@ -1,0 +1,51 @@
+# Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
+
+_realname=cryptography
+pkgname=python-cryptography
+pkgver=46.0.3
+pkgrel=1
+pkgdesc="A package designed to expose cryptographic recipes and primitives to Python developers"
+arch=('i686' 'x86_64')
+license=('spdx:Apache-2.0 OR BSD-3-Clause')
+url="https://github.com/pyca/cryptography"
+depends=(
+  'libopenssl'
+  'python'
+  'python-cffi'
+)
+makedepends=(
+  'python-build'
+  'python-installer'
+  'python-maturin'
+  'python-setuptools'
+  'rust'
+  'openssl-devel'
+  'pkgconf'
+)
+source=("https://pypi.org/packages/source/${_realname::1}/${_realname}/${_realname}-${pkgver}.tar.gz")
+sha256sums=('a8b17438104fed022ce745b362294d9ce35b4c2e45c1d958ad4a4b019285f4a1')
+
+build() {
+  cd "${_realname}-${pkgver}"
+
+  # XXX: to fix maturin OS detection
+  export MSYSTEM=CYGWIN
+
+  # XXX: to fix the maturin wheel tag
+  export _PYTHON_HOST_PLATFORM=$(python -c "import sysconfig, sys; sys.stdout.write(sysconfig.get_platform())")
+
+  # XXX: this should be handled by maturin/pyo3 somehow
+  local link_arg=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBPYTHON'))")
+  export RUSTFLAGS="-C link-arg=$link_arg"
+
+  python -m build --wheel --no-isolation
+}
+
+package() {
+  cd "${_realname}-${pkgver}"
+
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -vDm644 -t "$pkgdir/usr/share/licenses/$pkgname" LICENSE.BSD
+  install -vDm644 -t "$pkgdir/usr/share/licenses/$pkgname" LICENSE.APACHE
+  install -vDm644 -t "$pkgdir/usr/share/licenses/$pkgname" LICENSE
+}
