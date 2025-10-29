@@ -22,17 +22,31 @@ makedepends=(
   'openssl-devel'
   'pkgconf'
 )
-source=("https://pypi.org/packages/source/${_realname::1}/${_realname}/${_realname}-${pkgver}.tar.gz")
-sha256sums=('a8b17438104fed022ce745b362294d9ce35b4c2e45c1d958ad4a4b019285f4a1')
+source=("https://pypi.org/packages/source/${_realname::1}/${_realname}/${_realname}-${pkgver}.tar.gz"
+        "https://github.com/PyO3/pyo3/archive/refs/tags/v0.26.0.tar.gz"
+        "0001-Explicitely-link-with-libpython-on-Cygwin.patch"
+        "0002-Link-against-limited-API-DLL-under-Cygwin-when-abi3-.patch")
+sha256sums=('a8b17438104fed022ce745b362294d9ce35b4c2e45c1d958ad4a4b019285f4a1'
+            '8b6ed2db5038ad30cd6e408bbfa514182e9ae30c50aa34c3184a4e98df1603cf'
+            '2c2eddb7793eed07bdc389be4e853b63897475f93cc59e64b298c73919ff6337'
+            '177e197e4f54c1300d5bf29472080c0c3e2c13f5501968ae8678b83b32750485')
+
+prepare() {
+  cd "pyo3-0.26.0"
+  patch -p1 -i ../0001-Explicitely-link-with-libpython-on-Cygwin.patch
+  patch -p1 -i ../0002-Link-against-limited-API-DLL-under-Cygwin-when-abi3-.patch
+
+  cd "${srcdir}/${_realname}-${pkgver}"
+cat >> Cargo.toml <<END
+
+[patch.crates-io]
+pyo3-build-config = { path = "../pyo3-0.26.0/pyo3-build-config" }
+END
+  cargo update -p pyo3-build-config
+}
 
 build() {
   cd "${_realname}-${pkgver}"
-
-  # XXX: to fix maturin OS detection
-  export MSYSTEM=CYGWIN
-
-  # XXX: this should be handled by maturin/pyo3 somehow
-  export RUSTFLAGS="-C link-arg=-lpython3"
 
   python -m build --wheel --no-isolation
 }

@@ -1,0 +1,52 @@
+From 3fe4e71b229a0c9d01ab3df500b2ca4779e48ee5 Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Wed, 29 Oct 2025 08:28:46 +0100
+Subject: [PATCH 2/2] Link against limited API DLL under Cygwin when abi3 is
+ used
+
+Like with Windows Python, we need to link to a different
+DLL which exports the limited API when using abi3.
+
+This makes pyo3 link against python3.dll instead of
+python3.XY.dll when abi3 is enabled.
+
+Note: The limited API DLL is currently not provided in
+cygwin upstream, but only in MSYS2 for now:
+https://github.com/msys2/MSYS2-packages/pull/5751
+---
+ pyo3-build-config/src/impl_.rs | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/pyo3-build-config/src/impl_.rs b/pyo3-build-config/src/impl_.rs
+index b977ac79..90a79e35 100644
+--- a/pyo3-build-config/src/impl_.rs
++++ b/pyo3-build-config/src/impl_.rs
+@@ -263,6 +263,7 @@ print_if_set("base_prefix", base_prefix)
+ print("executable", sys.executable)
+ print("calcsize_pointer", struct.calcsize("P"))
+ print("mingw", get_platform().startswith("mingw"))
++print("cygwin", get_platform().startswith("cygwin"))
+ print("ext_suffix", get_config_var("EXT_SUFFIX"))
+ print("gil_disabled", get_config_var("Py_GIL_DISABLED"))
+ "#;
+@@ -315,6 +316,8 @@ print("gil_disabled", get_config_var("Py_GIL_DISABLED"))
+             _ => panic!("Unknown Py_GIL_DISABLED value"),
+         };
+ 
++        let cygwin = map["cygwin"].as_str() == "True";
++
+         let lib_name = if cfg!(windows) {
+             default_lib_name_windows(
+                 version,
+@@ -327,6 +330,8 @@ print("gil_disabled", get_config_var("Py_GIL_DISABLED"))
+                 map["ext_suffix"].starts_with("_d."),
+                 gil_disabled,
+             )?
++        } else if cygwin && abi3 {
++            "python3".to_string()
+         } else {
+             default_lib_name_unix(
+                 version,
+-- 
+2.51.2
+
