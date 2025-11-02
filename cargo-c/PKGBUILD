@@ -1,0 +1,85 @@
+# Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
+
+pkgname=cargo-c
+pkgver=0.10.18
+pkgrel=1
+pkgdesc='A cargo subcommand to build and install C-ABI compatibile dynamic and static libraries'
+arch=('i686' 'x86_64')
+url='https://github.com/lu-zero/cargo-c/'
+msys2_references=(
+  'archlinux: cargo-c'
+  'gentoo: dev-util/cargo-c'
+  'purl: pkg:cargo/cargo-c'
+)
+license=('spdx:MIT')
+depends=(
+  "libsqlite"
+  "libssh2"
+  "libgit2"
+  "libcurl"
+  "openssl-devel"
+)
+makedepends=(
+  "rust"
+  "pkgconf"
+  "libopenssl"
+  "libgit2-devel"
+  "libssh2-devel"
+  "libsqlite-devel"
+  "libcurl-devel"
+)
+options=('!strip')
+source=("https://github.com/lu-zero/cargo-c/archive/v${pkgver}/cargo-c-${pkgver}.tar.gz"
+        "cargo-c-${pkgver}.Cargo.lock"::"https://github.com/lu-zero/cargo-c/releases/download/v${pkgver}/Cargo.lock"
+        "0001-cygwin-support.patch"
+        "0002-msys-support.patch")
+sha256sums=('0f2b699be7ad5cac05624701065ae521c7f6b8159bdbcb8103445fc2440d1a7e'
+            '14e438039df865fbd1d4c68bc4ed61a2ee015c12f41bb47b942d4ee316d49d31'
+            '71551260ea24702e963b2de9e814f85ed0fffdb3c975c2ab3c775e27dcde2924'
+            'a446f41796e980df0c19ba876aabc2f820e2165e72d15c9d147c44a1d7b9a2ac')
+
+prepare() {
+  cp "cargo-c-${pkgver}.Cargo.lock" "cargo-c-${pkgver}/Cargo.lock"
+  cd "cargo-c-${pkgver}"
+
+  patch -p1 -i ../0001-cygwin-support.patch
+  patch -p1 -i ../0002-msys-support.patch
+
+  cargo fetch --locked --target "$(rustc --print host-tuple)"
+}
+
+_env() {
+  export LIBGIT2_NO_VENDOR=1
+  export OPENSSL_NO_VENDOR=1
+  export LIBSSH2_SYS_USE_PKG_CONFIG=1
+  export LIBSQLITE3_SYS_USE_PKG_CONFIG=1
+}
+
+build() {
+  cd "cargo-c-${pkgver}"
+
+  _env
+  cargo build --frozen --profile release-strip
+}
+
+check() {
+  cd "cargo-c-${pkgver}"
+
+  _env
+  cargo test --frozen --profile release-strip
+}
+
+package() {
+  cd "cargo-c-${pkgver}"
+
+  _env
+  cargo install \
+    --frozen \
+    --offline \
+    --no-track \
+    --path . \
+    --root "${pkgdir}/usr" \
+    --profile release-strip
+
+  install -Dm644 "LICENSE" -t "${pkgdir}/usr/share/licenses/cargo-c"
+}
