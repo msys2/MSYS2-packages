@@ -3,7 +3,7 @@
 pkgbase=maturin
 pkgname=("python-maturin" "maturin")
 pkgver=1.9.6
-pkgrel=5
+pkgrel=6
 pkgdesc='Build and publish crates with pyo3, rust-cpython and cffi bindings'
 arch=('x86_64')
 url='https://www.maturin.rs/'
@@ -21,42 +21,26 @@ makedepends=(
   "pkgconf")
 options=('!strip')
 source=("https://pypi.org/packages/source/${pkgbase::1}/${pkgbase}/${pkgbase}-${pkgver}.tar.gz"
-        "tar-0.4.43.tar.gz::https://crates.io/api/v1/crates/tar/0.4.43/download"
-        "getrandom-0.2.15.tar.gz::https://crates.io/api/v1/crates/getrandom/0.2.15/download"
-        "maturin-update-deps.patch"
-        "tar-rs-update-deps.patch"
-        "getrandom-support-cygwin.patch"
-        "0002-cygwin-support.patch")
+        "https://github.com/PyO3/maturin/commit/608963e067b905940658b5cb06d7fc04595a0536.patch"
+        "0003-allow-msys-too.patch")
 sha256sums=('2c2ae37144811d365509889ed7220b0598487f1278c2441829c3abf56cc6324a'
-            'c65998313f8e17d0d553d28f91a0df93e4dbbbf770279c7bc21ca0f09ea1a1f6'
-            'c4567c8db10ae91089c99af84c68c38da3ec2f087c3f82960bcdbf3656b6f4d7'
-            '36bb5955216d19aed9a8fb2ec9440e7e3133de2e7d5ed1da2ad2204d449a2095'
-            '2422ed08564445528695499757258aecde785bb6e95cde2d88f4b2cefe8417d8'
-            'acac76aa379bc45285f067524d7c5adceb3100698d72ae150a6b626a137e947d'
-            'ac3db306951aa32131b5f793b3cb03b7db8c3629015a5549d7c54acff64d5812')
+            '5e636be1400a660a83a4ae2b8e5948610a8a3c147be809720d00f2def87d9bfc'
+            '023b52d6eb2985608f1a7206d1950bf7e428bd4c00a7f2b69a8b3cf18c1b4c0c')
 
 prepare() {
   cp -r "${pkgbase}-${pkgver}" "python-build" && cd "python-build"
 
-  patch -Np1 -i ../0002-cygwin-support.patch
+  # https://github.com/PyO3/maturin/pull/2819
+  patch -Np1 -i ../608963e067b905940658b5cb06d7fc04595a0536.patch
+  patch -Np1 -i ../0003-allow-msys-too.patch
 
-  # support cygwin in some deps
-  patch -d ../getrandom-0.2.15 -p1 -i ../getrandom-support-cygwin.patch
-  # update deps to add cygwin support
-  patch -Np1 -i ../maturin-update-deps.patch
-  patch -d ../tar-0.4.43 -p1 -i ../tar-rs-update-deps.patch
-  cat >> Cargo.toml <<END
-
-[patch.crates-io]
-getrandom = { path = "../getrandom-0.2.15" }
-tar = { path = "../tar-0.4.43" }
-END
-
+  # All these can removed once the next release is out
+  cargo update -p xattr@1.3.1 --precise 1.5.0
   cargo update -p tempfile@3.11.0 --precise 3.18.0
   cargo update -p which@7.0.0 --precise 7.0.3
   cargo update -p clap@4.5.7 --precise 4.5.19
   cargo update -p psm@0.1.21 --precise 0.1.26
-  cargo update -p target-lexicon@0.13.1 --precise 0.13.3
+
   cargo fetch --locked --target 'x86_64-pc-cygwin'
 }
 
