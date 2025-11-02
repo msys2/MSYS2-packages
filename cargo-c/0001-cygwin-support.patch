@@ -1,0 +1,97 @@
+diff -Nur cargo-c-0.10.18/src/build_targets.rs cargo-c-0.10.18-orig/src/build_targets.rs
+--- cargo-c-0.10.18-orig/src/build_targets.rs	2025-11-02 13:58:08.000000000 +0100
++++ cargo-c-0.10.18/src/build_targets.rs	2025-11-02 19:50:12.915988900 +0100
+@@ -131,7 +131,9 @@
+     pub fn shared_output_file_name(&self) -> Option<OsString> {
+         match self.lib_type() {
+             LibType::Windows => {
+-                if self.shared_lib.is_some()
++                if self.target.os == "cygwin" {
++                    Some(format!("cyg{}.dll", self.name).into())
++                } else if self.shared_lib.is_some()
+                     && self.use_meson_naming_convention
+                     && self.target.env == "gnu"
+                 {
+@@ -174,7 +176,7 @@
+                 let pdb = Some(targetdir.join(format!("lib{lib_name}.dSYM")));
+                 (shared_lib, static_lib, None, pdb, None)
+             }
+-            "windows" => {
++            "windows" | "cygwin" => {
+                 let shared_lib = targetdir.join(format!("{lib_name}.dll"));
+                 let def = targetdir.join(format!("{lib_name}.def"));
+ 
+@@ -190,7 +192,7 @@
+                     (shared_lib, static_lib, Some(impl_lib), pdb, Some(def))
+                 } else {
+                     let static_lib = targetdir.join(format!("lib{lib_name}.a"));
+-                    let impl_lib = if use_meson_naming_convention {
++                    let impl_lib = if use_meson_naming_convention || target.os == "cygwin" {
+                         targetdir.join(format!("lib{lib_name}.dll.a"))
+                     } else {
+                         targetdir.join(format!("{lib_name}.dll.a"))
+@@ -322,6 +324,29 @@
+             impl_lib: Some(PathBuf::from("/foo/bar/ferris.dll.a")),
+             debug_info: None,
+             def: Some(PathBuf::from("/foo/bar/ferris.def")),
++        };
++
++        assert_eq!(file_names.unwrap(), expected);
++    }
++
++    #[test]
++    fn cygwin() {
++        let target = Target {
++            is_target_overridden: false,
++            arch: String::from(""),
++            os: String::from("cygwin"),
++            env: String::from(""),
++            cfg: Vec::new(),
++            target: None,
++        };
++        let file_names = FileNames::from_target(&target, "ferris", Path::new("/foo/bar"), false);
++
++        let expected = FileNames {
++            static_lib: PathBuf::from("/foo/bar/libferris.a"),
++            shared_lib: PathBuf::from("/foo/bar/ferris.dll"),
++            impl_lib: Some(PathBuf::from("/foo/bar/libferris.dll.a")),
++            debug_info: None,
++            def: Some(PathBuf::from("/foo/bar/ferris.def")),
+         };
+ 
+         assert_eq!(file_names.unwrap(), expected);
+diff -Nur cargo-c-0.10.18/src/install.rs cargo-c-0.10.18-orig/src/install.rs
+--- cargo-c-0.10.18-orig/src/install.rs	2025-11-02 13:58:08.000000000 +0100
++++ cargo-c-0.10.18/src/install.rs	2025-11-02 18:58:18.683001800 +0100
+@@ -107,7 +107,7 @@
+             | ("emscripten", _)
+             | ("hurd", _) => LibType::So,
+             ("macos", _) | ("ios", _) | ("tvos", _) | ("visionos", _) => LibType::Dylib,
+-            ("windows", _) => LibType::Windows,
++            ("windows", _) | ("cygwin", _) => LibType::Windows,
+             _ => unimplemented!("The target {}-{} is not supported yet", os, env),
+         }
+     }
+diff -Nur cargo-c-0.10.18/src/target.rs cargo-c-0.10.18-orig/src/target.rs
+--- cargo-c-0.10.18-orig/src/target.rs	2025-11-02 13:58:08.000000000 +0100
++++ cargo-c-0.10.18/src/target.rs	2025-11-02 19:46:04.437112800 +0100
+@@ -133,7 +133,7 @@
+             lines.push(line);
+             // Enable larger LC_RPATH and install_name entries
+             lines.push("-Wl,-headerpad_max_install_names".to_string());
+-        } else if os == "windows" && env == "gnu" {
++        } else if (os == "windows" && env == "gnu") || (os == "cygwin") {
+             // This is only set up to work on GNU toolchain versions of Rust
+             lines.push(format!(
+                 "-Wl,--output-def,{}",
+--- cargo-c-0.10.18/src/build.rs.orig	2025-11-02 20:11:15.235007000 +0100
++++ cargo-c-0.10.18/src/build.rs	2025-11-02 20:11:23.359780100 +0100
+@@ -182,7 +182,7 @@
+     target: &target::Target,
+     targetdir: &Path,
+ ) -> anyhow::Result<()> {
+-    if target.os == "windows" {
++    if target.os == "windows" || target.os == "cygwin" {
+         ws.gctx().shell().status("Building", "implib")?;
+ 
+         let def_path = targetdir.join(format!("{name}.def"));
