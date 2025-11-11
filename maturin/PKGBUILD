@@ -2,8 +2,8 @@
 
 pkgbase=maturin
 pkgname=("python-maturin" "maturin")
-pkgver=1.9.6
-pkgrel=6
+pkgver=1.10.1
+pkgrel=1
 pkgdesc='Build and publish crates with pyo3, rust-cpython and cffi bindings'
 arch=('x86_64')
 url='https://www.maturin.rs/'
@@ -21,33 +21,33 @@ makedepends=(
   "pkgconf")
 options=('!strip')
 source=("https://pypi.org/packages/source/${pkgbase::1}/${pkgbase}/${pkgbase}-${pkgver}.tar.gz"
-        "https://github.com/PyO3/maturin/commit/608963e067b905940658b5cb06d7fc04595a0536.patch"
-        "0003-allow-msys-too.patch")
-sha256sums=('2c2ae37144811d365509889ed7220b0598487f1278c2441829c3abf56cc6324a'
-            '5e636be1400a660a83a4ae2b8e5948610a8a3c147be809720d00f2def87d9bfc'
-            '023b52d6eb2985608f1a7206d1950bf7e428bd4c00a7f2b69a8b3cf18c1b4c0c')
+        "ring-0.17.14.tar.gz::https://crates.io/api/v1/crates/ring/0.17.14/download"
+        "0003-allow-msys-too.patch"
+        "0004-ring-support-cygwin.patch")
+sha256sums=('69543e8bad4221c3c7ae7d7f31f275757bff8a66936368e013fa0256f8d6b512'
+            'a4689e6c2294d81e88dc6261c768b63bc4fcdb852be6d1352498b114f61383b7'
+            '023b52d6eb2985608f1a7206d1950bf7e428bd4c00a7f2b69a8b3cf18c1b4c0c'
+            '258dc64aab2bb464878b9cc203e59db87d7b769b6b58fb2d9c69bf53bb418683')
 
 prepare() {
   cp -r "${pkgbase}-${pkgver}" "python-build" && cd "python-build"
 
-  # https://github.com/PyO3/maturin/pull/2819
-  patch -Np1 -i ../608963e067b905940658b5cb06d7fc04595a0536.patch
   patch -Np1 -i ../0003-allow-msys-too.patch
+  patch -p1 -d ../ring-0.17.14 -i ../0004-ring-support-cygwin.patch
+  cat >> Cargo.toml <<END
 
-  # All these can removed once the next release is out
-  cargo update -p xattr@1.3.1 --precise 1.5.0
-  cargo update -p tempfile@3.11.0 --precise 3.18.0
-  cargo update -p which@7.0.0 --precise 7.0.3
-  cargo update -p clap@4.5.7 --precise 4.5.19
-  cargo update -p psm@0.1.21 --precise 0.1.26
+[patch.crates-io]
+ring.path = "../ring-0.17.14"
+END
 
+  cargo update -p ring
   cargo fetch --locked --target 'x86_64-pc-cygwin'
 }
 
 build() {
   cd "python-build"
 
-  export MATURIN_SETUP_ARGS="--no-default-features --features cli-completion,scaffolding"
+  export MATURIN_SETUP_ARGS="--no-default-features --features full,rustls"
   export OPENSSL_NO_VENDOR=1
   python -m build --wheel --skip-dependency-check --no-isolation
 }
