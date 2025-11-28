@@ -88,54 +88,17 @@ index c85b05b..8f69bc6 100644
  	  if (cval != val)
  	    free (cval);
  	  free (val);
-@@ -3124,6 +3157,17 @@ test_for_directory (name)
-   int r;
- 
-   fn = bash_tilde_expand (name, 0);
-+#if __CYGWIN
-+  /* stat("//server") can only be successful as a directory, but can take
-+     seconds to time out on failure.  It is much faster to assume that
-+     "//server" is a valid name than it is to wait for a stat, even if it
-+     gives false positives on bad names.  */
-+  if (fn[0] == '/' && fn[1] == '/' && ! strchr (&fn[2], '/'))
-+    {
-+      free (fn);
-+      return 1;
-+    }
-+#endif
-   r = file_isdir (fn);
-   free (fn);
- 
 diff --git a/builtins/read.def b/builtins/read.def
 index 3c38bc0..62a5e07 100644
 --- a/builtins/read.def
 +++ b/builtins/read.def
-@@ -86,7 +86,6 @@ $END
- 
- #ifdef __CYGWIN__
- #  include <fcntl.h>
--#  include <io.h>
- #endif
- 
- #include "../bashintl.h"
-@@ -611,10 +610,6 @@ read_builtin (list)
-       fflush (stderr);
-     }
- 
--#if defined (__CYGWIN__) && defined (O_TEXT)
--  setmode (0, O_TEXT);
--#endif
--
-   ps2 = 0;
-   for (print_ps2 = eof = retval = 0;;)
-     {
 @@ -768,6 +763,14 @@ read_builtin (list)
        if (c == '\0' && delim != '\0')
  	continue;		/* skip NUL bytes in input */
  
 +#ifdef __CYGWIN__
 +      {
-+        extern igncr;
++        extern int igncr;
 +	if (igncr && c == '\r' && delim != '\r')
 +	  continue; /* skip carriage return */
 +      }
@@ -226,10 +189,10 @@ index 44f1769..51f28d2 100644
  #endif
    { "xtrace",	  'x', (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL  },
    {(char *)NULL, 0 , (int *)NULL, (setopt_set_func_t *)NULL, (setopt_get_func_t *)NULL },
-@@ -486,6 +507,15 @@ int
- set_minus_o_option (on_or_off, option_name)
-      int on_or_off;
-      char *option_name;
+@@ -474,6 +495,15 @@
+ 
+ int
+ set_minus_o_option (int on_or_off, char *option_name)
 +#ifdef __CYGWIN__
 +{
 +  /* See Cygwin comments above. */
@@ -399,15 +362,6 @@ index 85c5a8b..f4c2a2f 100644
  #if !defined (errno)
  extern int errno;
  #endif /* !errno */
-@@ -839,7 +843,7 @@ make_absolute (string, dot_path)
-       char pathbuf[PATH_MAX + 1];
- 
-       /* WAS cygwin_conv_to_full_posix_path (string, pathbuf); */
--      cygwin_conv_path (CCP_WIN_A_TO_POSIX, string, pathbuf, PATH_MAX);
-+      cygwin_conv_path (CCP_WIN_A_TO_POSIX | CCP_ABSOLUTE, string, pathbuf, PATH_MAX);
-       result = savestring (pathbuf);
-     }
- #else
 diff --git a/input.c b/input.c
 index 7b439f8..3944585 100644
 --- a/input.c
@@ -465,18 +419,6 @@ index 95b72f1..f7edbed 100644
    char tbuf[PATH_MAX+1], linkbuf[PATH_MAX+1];
    char *result, *p, *q, *qsave, *qbase, *workpath;
    int double_slash_path, linklen, nlink;
-@@ -214,11 +218,7 @@ error:
- 	    {
- 	      q = result;
- 	      /* Duplicating some code here... */
--#if defined (__CYGWIN__)
--	      qbase = (ISALPHA((unsigned char)workpath[0]) && workpath[1] == ':') ? workpath + 3 : workpath + 1;
--#else
- 	      qbase = workpath + 1;
--#endif
- 	      double_slash_path = DOUBLE_SLASH (workpath);
- 	      qbase += double_slash_path;
-     
 diff --git a/lib/sh/tmpfile.c b/lib/sh/tmpfile.c
 index ef8b067..2c18ee3 100644
 --- a/lib/sh/tmpfile.c
@@ -490,27 +432,6 @@ index ef8b067..2c18ee3 100644
      tdir = get_sys_tmpdir ();
  
  #if defined (HAVE_PATHCONF) && defined (_PC_NAME_MAX)
-diff --git a/mksyntax.c b/mksyntax.c
-index 0385686..ccdbc69 100644
---- a/mksyntax.c
-+++ b/mksyntax.c
-@@ -29,13 +29,13 @@
- 
- #ifdef HAVE_UNISTD_H
- #  include <unistd.h>
-+#else
-+extern int optind;
-+extern char *optarg;
- #endif
- 
- #include "syntax.h"
- 
--extern int optind;
--extern char *optarg;
--
- #ifndef errno
- extern int errno;
- #endif
 diff --git a/parse.y b/parse.y
 index d887eec..0ae3458 100644
 --- a/parse.y
@@ -565,59 +486,6 @@ index d9feabc..2001b4e 100644
  
        /* Add the character to ISTRING, possibly after resizing it. */
        RESIZE_MALLOCED_BUFFER (istring, istring_index, mb_cur_max+1, istring_size, 512);
-@@ -6982,6 +6990,28 @@ command_substitute (string, quoted, flags)
-       goto error_exit;
-     }
- 
-+#ifdef __CYGWIN__
-+  /* Passing a pipe through std fds can cause hangs when talking to a
-+     non-cygwin child.  Move it.  */
-+  if (fildes[0] < 3)
-+    {
-+      int fd = fcntl (fildes[0], F_DUPFD, 3);
-+      close (fildes[0]);
-+      fildes[0] = fd;
-+    }
-+  if (fildes[1] < 3)
-+    {
-+      int fd = fcntl (fildes[1], F_DUPFD, 3);
-+      close (fildes[1]);
-+      fildes[1] = fd;
-+    }
-+  if (fildes[0] < 0 || fildes[1] < 0)
-+    {
-+      sys_error (_("cannot make pipe for command substitution"));
-+      goto error_exit;
-+    }
-+#endif /* __CYGWIN__ */
-+
- #if defined (JOB_CONTROL)
-   old_pipeline_pgrp = pipeline_pgrp;
-   /* Don't reset the pipeline pgrp if we're already a subshell in a pipeline or
-diff --git a/support/bashversion.c b/support/bashversion.c
-index ad02d46..2c9ac36 100644
---- a/support/bashversion.c
-+++ b/support/bashversion.c
-@@ -26,6 +26,9 @@
- 
- #if defined (HAVE_UNISTD_H)
- #  include <unistd.h>
-+#else
-+extern int optind;
-+extern char *optarg;
- #endif
- 
- #include "bashansi.h"
-@@ -41,9 +44,6 @@
- #define LFLAG	0x0020
- #define XFLAG	0x0040
- 
--extern int optind;
--extern char *optarg;
--
- extern char *dist_version;
- extern int patch_level;
- 
 diff --git a/support/mkversion.sh b/support/mkversion.sh
 index 5960a42..d72c44c 100755
 --- a/support/mkversion.sh
@@ -631,15 +499,3 @@ index 5960a42..d72c44c 100755
  	-s)	shift; rel_status=$1; shift ;;
  	-p)	shift; patch_level=$1; shift ;;
  	-d)	shift; dist_version=$1; shift ;;
-diff --git a/variables.c b/variables.c
-index 1a0c2c4..028667c 100644
---- a/variables.c
-+++ b/variables.c
-@@ -6098,6 +6098,7 @@ sv_winsize (name)
- /* Update the value of HOME in the export environment so tilde expansion will
-    work on cygwin. */
- #if defined (__CYGWIN__)
-+void
- sv_home (name)
-      char *name;
- {
