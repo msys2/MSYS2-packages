@@ -1,0 +1,166 @@
+--- a/src/uucore/src/lib/features/fs.rs
++++ b/src/uucore/src/lib/features/fs.rs
+@@ -123,6 +123,7 @@ impl FileInformation {
+             not(target_os = "openbsd"),
+             not(target_os = "illumos"),
+             not(target_os = "solaris"),
++            not(target_os = "cygwin"),
+             not(target_arch = "aarch64"),
+             not(target_arch = "riscv64"),
+             not(target_arch = "loongarch64"),
+@@ -140,6 +141,7 @@ impl FileInformation {
+                 target_os = "openbsd",
+                 target_os = "illumos",
+                 target_os = "solaris",
++                target_os = "cygwin",
+                 target_arch = "aarch64",
+                 target_arch = "riscv64",
+                 target_arch = "loongarch64",
+--- a/src/uucore/src/lib/features/fsext.rs
++++ b/src/uucore/src/lib/features/fsext.rs
+@@ -7,9 +7,9 @@
+ 
+ // spell-checker:ignore DATETIME getmntinfo subsecond (fs) cifs smbfs
+ 
+-#[cfg(any(target_os = "linux", target_os = "android"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "cygwin"))]
+ const LINUX_MTAB: &str = "/etc/mtab";
+-#[cfg(any(target_os = "linux", target_os = "android"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "cygwin"))]
+ const LINUX_MOUNTINFO: &str = "/proc/self/mountinfo";
+ #[cfg(all(unix, not(any(target_os = "aix", target_os = "redox"))))]
+ static MOUNT_OPT_BIND: &str = "bind";
+@@ -94,7 +94,8 @@ pub use libc::statfs as StatFs;
+     target_os = "dragonfly",
+     target_os = "illumos",
+     target_os = "solaris",
+-    target_os = "redox"
++    target_os = "redox",
++    target_os = "cygwin",
+ ))]
+ pub use libc::statvfs as StatFs;
+ 
+@@ -112,7 +113,8 @@ pub use libc::statfs as statfs_fn;
+     target_os = "illumos",
+     target_os = "solaris",
+     target_os = "dragonfly",
+-    target_os = "redox"
++    target_os = "redox",
++    target_os = "cygwin",
+ ))]
+ pub use libc::statvfs as statfs_fn;
+ 
+@@ -189,7 +191,7 @@ pub struct MountInfo {
+     pub dummy: bool,
+ }
+ 
+-#[cfg(any(target_os = "linux", target_os = "android"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "cygwin"))]
+ fn replace_special_chars(s: &[u8]) -> Vec<u8> {
+     use bstr::ByteSlice;
+ 
+@@ -205,7 +207,7 @@ fn replace_special_chars(s: &[u8]) -> Vec<u8> {
+ }
+ 
+ impl MountInfo {
+-    #[cfg(any(target_os = "linux", target_os = "android"))]
++    #[cfg(any(target_os = "linux", target_os = "android", target_os = "cygwin"))]
+     fn new(file_name: &str, raw: &[&[u8]]) -> Option<Self> {
+         use std::ffi::OsStr;
+         use std::os::unix::ffi::OsStrExt;
+@@ -459,9 +461,9 @@ use crate::error::UResult;
+     target_os = "windows"
+ ))]
+ use crate::error::USimpleError;
+-#[cfg(any(target_os = "linux", target_os = "android"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "cygwin"))]
+ use std::fs::File;
+-#[cfg(any(target_os = "linux", target_os = "android"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_os = "cygwin"))]
+ use std::io::{BufRead, BufReader};
+ #[cfg(any(
+     target_vendor = "apple",
+@@ -481,7 +483,7 @@ use std::slice;
+ 
+ /// Read file system list.
+ pub fn read_fs_list() -> UResult<Vec<MountInfo>> {
+-    #[cfg(any(target_os = "linux", target_os = "android"))]
++    #[cfg(any(target_os = "linux", target_os = "android", target_os = "cygwin"))]
+     {
+         let (file_name, f) = File::open(LINUX_MOUNTINFO)
+             .map(|f| (LINUX_MOUNTINFO, f))
+@@ -722,6 +724,7 @@ impl FsMeta for StatFs {
+             not(target_os = "solaris"),
+             not(target_os = "redox"),
+             not(target_arch = "s390x"),
++            not(target_os = "cygwin"),
+             target_pointer_width = "64"
+         ))]
+         return self.f_bsize;
+@@ -730,6 +733,7 @@ impl FsMeta for StatFs {
+             not(target_os = "freebsd"),
+             not(target_os = "netbsd"),
+             not(target_os = "redox"),
++            not(target_os = "cygwin"),
+             any(
+                 target_arch = "s390x",
+                 target_vendor = "apple",
+@@ -747,6 +751,7 @@ impl FsMeta for StatFs {
+             target_os = "illumos",
+             target_os = "solaris",
+             target_os = "redox",
++            target_os = "cygwin",
+             all(target_os = "android", target_pointer_width = "64"),
+         ))]
+         return self.f_bsize.try_into().unwrap();
+--- a/src/uucore/src/lib/features/signals.rs
++++ b/src/uucore/src/lib/features/signals.rs
+@@ -346,6 +346,48 @@ pub static ALL_SIGNALS: [&str; 37] = [
+     "VIRT", "TALRM",
+ ];
+ 
++/*
++   The following signals are defined in Cygwin
++
++   SIGHUP: 1
++   SIGINT: 2
++   SIGQUIT: 3
++   SIGILL: 4
++   SIGTRAP: 5
++   SIGABRT: 6
++   SIGEMT: 7
++   SIGFPE: 8
++   SIGKILL: 9
++   SIGBUS: 10
++   SIGSEGV: 11
++   SIGSYS: 12
++   SIGPIPE: 13
++   SIGALRM: 14
++   SIGTERM: 15
++   SIGURG: 16
++   SIGSTOP: 17
++   SIGTSTP: 18
++   SIGCONT: 19
++   SIGCHLD: 20
++   SIGTTIN: 21
++   SIGTTOU: 22
++   SIGIO: 23
++   SIGXCPU: 24
++   SIGXFSZ: 25
++   SIGVTALRM: 26
++   SIGPROF: 27
++   SIGWINCH: 28
++   SIGPWR: 29
++   SIGUSR1: 30
++   SIGUSR2: 31
++*/
++#[cfg(target_os = "cygwin")]
++pub static ALL_SIGNALS: [&str; 32] = [
++    "EXIT", "HUP", "INT", "QUIT", "ILL", "TRAP", "ABRT", "EMT", "FPE", "KILL", "BUS", "SEGV",
++    "SYS", "PIPE", "ALRM", "TERM", "URG", "STOP", "TSTP", "CONT", "CHLD", "TTIN", "TTOU", "IO",
++    "XCPU", "XFSZ", "VTALRM", "PROF", "WINCH", "PWR", "USR1", "USR2",
++];
++
+ /// Returns the signal number for a given signal name or value.
+ pub fn signal_by_name_or_value(signal_name_or_value: &str) -> Option<usize> {
+     let signal_name_upcase = signal_name_or_value.to_uppercase();
