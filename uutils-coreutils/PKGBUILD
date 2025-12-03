@@ -16,15 +16,13 @@ license=('spdx:MIT')
 depends=("oniguruma" "gcc-libs")
 makedepends=("rust" "pkgconf")
 source=("https://github.com/uutils/coreutils/archive/${pkgver}/${_realname}-${pkgver}.tar.gz"
-        "libc-0.2.177.tar.gz::https://crates.io/api/v1/crates/libc/0.2.177/download"
+        "libc-0.2.178.tar.gz::https://crates.io/api/v1/crates/libc/0.2.178/download"
         "nix-0.30.1.tar.gz::https://crates.io/api/v1/crates/nix/0.30.1/download"
-        "libc-add-missing-cygwin-definitions.patch"
         "nix-add-sync.patch"
         "uucore-support-cygwin.patch")
 sha256sums=('5f0c3f97b807e72edccc844c6a685ec9862199f16a665df07de5b1d20ec21233'
-            '2874a2af47a2325c2001a6e6fad9b16a53b802102b528163885171cf92b15976'
+            '37c93d8daa9d8a012fd8ab92f088405fb202ea0b6ab73ee2482ae66af4f42091'
             '74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6'
-            'cc9bcd5c68cbbd2732e6f43d2686033f00d650eb2dc7c18b70992847a7e2bfa2'
             '14f430635fb87d0bc12d1b6870365614f7ae259f7c235c420454303250aef7dd'
             '8cf8d3b83fb1f66b7d1fd8892368f755216cdfffc8a8687a33aa6b79fb5d183e')
 
@@ -32,12 +30,11 @@ prepare() {
   cd "${_realname}-${pkgver}"
 
   patch -p1 -i ../uucore-support-cygwin.patch
-  patch -d ../libc-0.2.177 -p1 -i ../libc-add-missing-cygwin-definitions.patch
   patch -d ../nix-0.30.1 -p1 -i ../nix-add-sync.patch
   cat >> Cargo.toml <<END
 
 [patch.crates-io]
-libc.path = "../libc-0.2.177"
+libc.path = "../libc-0.2.178"
 mio = { git = "https://github.com/tokio-rs/mio", rev = "f352b81d27e39ca3ee1da08c12d8f5795a9dca12" }
 nix.path = "../nix-0.30.1"
 END
@@ -50,16 +47,16 @@ END
 package() {
   cd "${_realname}-${pkgver}"
 
-  # `more` exists in util-linux package
+  # Remove utils if MinGW version does not have cygwin path issue
+  # PROFILE=release-fast is replaced by release at 0.4.0 yet...
+  export SKIP_UTILS="arch date factor false sleep true uname yes"
   export RUSTONIG_DYNAMIC_LIBONIG=1
   make -O install \
     DESTDIR="${pkgdir}" \
     PREFIX="/usr" \
-    PROFILE=release \
-    SKIP_UTILS="more" \
+    PROFILE=release-fase \
     PROG_PREFIX="uu-" \
-    MULTICALL=y \
-    LN="ln -vf"
+    MULTICALL=y
 
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/uutils-${_realname}/LICENSE"
 }
