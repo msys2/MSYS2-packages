@@ -1,0 +1,42 @@
+From c1a5ef18ab54b5b67f272f181b45c520f3450106 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Hannes=20M=C3=BCller?= <>
+Date: Wed, 3 Dec 2025 22:12:46 +0100
+Subject: [PATCH] test-guild-compile: Skip cleanup test on Windows
+
+Windows usually prevents deleting files that are currently open by a
+process. When 'guild compile' receives SIGINT, the signal handler attempts
+to unlink the output file while the file handle is arguably still open.
+This causes a race condition where the cleanup sometimes fails on Windows.
+
+Since deleting open files is not supported by the OS, skip this test on
+Cygwin, MinGW, and MSYS to avoid flaky build failures.
+
+* test-suite/standalone/test-guild-compile: Skip test on Windows platforms.
+---
+ test-suite/standalone/test-guild-compile | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/test-suite/standalone/test-guild-compile b/test-suite/standalone/test-guild-compile
+index edc623570..1f2c9c962 100755
+--- a/test-suite/standalone/test-guild-compile
++++ b/test-suite/standalone/test-guild-compile
+@@ -8,6 +8,16 @@ target="$source.go"
+ 
+ trap 'rm -f "$source" "$target"' EXIT
+ 
++# Windows file locking prevents deleting open files. When guild compile
++# is interrupted, it typically fails to delete its temporary output file
++# because the file handle is still open during the signal handler execution.
++case `uname -s` in
++    *CYGWIN* | *MINGW* | *MSYS*)
++        echo "Skipping test on Windows due to file locking restrictions."
++        exit 77
++        ;;
++esac
++
+ cat > "$source"<<EOF
+ (eval-when (expand load eval)
+   ;; Wait for SIGINT, if the pause function exists.
+-- 
+2.47.3
+

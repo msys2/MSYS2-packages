@@ -1,0 +1,164 @@
+From b2df0e8e0e5bbdb1a43068ab6de69738d7b92154 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Hannes=20M=C3=BCller?= <>
+Date: Mon, 1 Dec 2025 21:04:03 +0100
+Subject: [PATCH] lightening: Fix x86 compilation and ABI compliance on
+ Windows/Cygwin
+
+This patch restores required x86 platform adaptations that were missing or
+incomplete, specifically targeting Windows (MinGW) and Cygwin environments.
+
+* libguile/lightening/lightening.h (JIT_API): Do not use hidden visibility
+  attribute on Windows/Cygwin as it interferes with DLL symbol export.
+
+* libguile/lightening/lightening/x86-cpu.c:
+  - (reg8_p): Update register constraints for Windows/Cygwin and x32 to
+    ensure correct register selection.
+  - (__ffs, ffsw): Add a fallback implementation using __builtin_ffs()
+    because the standard POSIX ffs() function is often missing on Windows
+    platforms.
+
+* libguile/lightening/lightening/x86.c (abi_gpr_args, abi_fpr_args,
+  reset_abi_arg_iterator, next_abi_arg): Use _WIN32 to detect Windows
+  environments (which covers both 32-bit and 64-bit builds in many
+  toolchains) instead of relying solely on _WIN64. Ensure the required
+  32-byte shadow space is reserved on the stack for the Windows x64 ABI.
+
+* libguile/lightening/lightening/x86.h: Update platform detection macros.
+---
+ libguile/lightening/lightening.h         |  2 +-
+ libguile/lightening/lightening/x86-cpu.c | 26 +++++++++++++++++++-----
+ libguile/lightening/lightening/x86.c     | 10 ++++-----
+ libguile/lightening/lightening/x86.h     |  2 +-
+ 4 files changed, 28 insertions(+), 12 deletions(-)
+
+diff --git a/libguile/lightening/lightening.h b/libguile/lightening/lightening.h
+index b364e18cc..4e4205fec 100644
+--- a/libguile/lightening/lightening.h
++++ b/libguile/lightening/lightening.h
+@@ -106,7 +106,7 @@ typedef struct jit_reloc
+   uint32_t offset;
+ } jit_reloc_t;
+ 
+-#if defined(__GNUC__) && (__GNUC__ >= 4)
++#if defined(__GNUC__) && (__GNUC__ >= 4) && !defined(_WIN32) && !defined(__CYGWIN__)
+ #  define JIT_API		extern __attribute__ ((__visibility__("hidden")))
+ #else
+ #  define JIT_API		extern
+diff --git a/libguile/lightening/lightening/x86-cpu.c b/libguile/lightening/lightening/x86-cpu.c
+index 7757dc054..1825ea1f2 100644
+--- a/libguile/lightening/lightening/x86-cpu.c
++++ b/libguile/lightening/lightening/x86-cpu.c
+@@ -20,7 +20,7 @@
+ /* avoid using it due to partial stalls */
+ #define USE_INC_DEC                     0
+ 
+-#if __X32
++#if __X32 || __X64_32
+ # define WIDE 0
+ # define IF_WIDE(wide, narrow) narrow
+ #else
+@@ -46,7 +46,7 @@
+ #define _R15_REGNO                      15
+ #define r7(reg)                 ((reg) & 7)
+ #define r8(reg)                 ((reg) & 15)
+-#if __X32
++#if ___X32 || __CYGWIN__ || __X64_32 || _WIN32
+ # define reg8_p(rn) ((rn) >= _RAX_REGNO && (rn) <= _RBX_REGNO)
+ #else
+ # define reg8_p(rn) 1
+@@ -1012,14 +1012,30 @@ mulr(jit_state_t *_jit, int32_t r0, int32_t r1, int32_t r2)
+   }
+ }
+ 
++#if defined(__GNUC__) && defined(_WIN32)
++/* ffs may be missing on WIN32 but is always available as GCC
++   builtin. */
++#define USE_BUILTIN_FFS
++#endif
++
++static int
++__ffs(int i)
++{
++#ifdef USE_BUILTIN_FFS
++  return __builtin_ffs(i);
++#else
++  return ffs(i);
++#endif
++}
++
+ static int
+ ffsw(jit_word_t i)
+ {
+   if (sizeof(int) == sizeof(i))
+-    return ffs(i);
+-  int bit = ffs((int)i);
++    return __ffs(i);
++  int bit = __ffs((int)i);
+   if (bit == 0) {
+-    bit = ffs((int)((uint64_t)i >> 32));
++    bit = __ffs((int)((uint64_t)i >> 32));
+     if (bit)
+       bit += 32;
+   }
+diff --git a/libguile/lightening/lightening/x86.c b/libguile/lightening/lightening/x86.c
+index 86afc17b7..9b0d0bf89 100644
+--- a/libguile/lightening/lightening/x86.c
++++ b/libguile/lightening/lightening/x86.c
+@@ -237,7 +237,7 @@ jit_init(jit_state_t *_jit)
+ static const jit_gpr_t abi_gpr_args[] = {
+ #if __X32
+   /* No GPRs in args.  */
+-#elif defined(__CYGWIN__) || defined(_WIN64)
++#elif defined(__CYGWIN__) || defined(_WIN32)
+   _RCX, _RDX, _R8, _R9
+ #else
+   _RDI, _RSI, _RDX, _RCX, _R8, _R9
+@@ -247,7 +247,7 @@ static const jit_gpr_t abi_gpr_args[] = {
+ static const jit_fpr_t abi_fpr_args[] = {
+ #if __X32
+   /* No FPRs in args.  */
+-#elif defined(__CYGWIN__) || defined(_WIN64)
++#elif defined(__CYGWIN__) || defined(_WIN32)
+   _XMM0, _XMM1, _XMM2, _XMM3
+ #else
+   _XMM0, _XMM1, _XMM2, _XMM3, _XMM4, _XMM5, _XMM6, _XMM7
+@@ -317,7 +317,7 @@ reset_abi_arg_iterator(struct abi_arg_iterator *iter, size_t argc,
+   memset(iter, 0, sizeof *iter);
+   iter->argc = argc;
+   iter->args = args;
+-#if (defined(__CYGWIN__) || defined(_WIN64)) && __X64
++#if (defined(__CYGWIN__) || defined(_WIN32)) && __X64
+   // Reserve slots on the stack for 4 register parameters (8 bytes each).
+   iter->stack_size = 32;
+ #endif
+@@ -330,12 +330,12 @@ next_abi_arg(struct abi_arg_iterator *iter, jit_operand_t *arg)
+   enum jit_operand_abi abi = iter->args[iter->arg_idx].abi;
+   if (is_gpr_arg(abi) && iter->gpr_idx < abi_gpr_arg_count) {
+     *arg = jit_operand_gpr (abi, abi_gpr_args[iter->gpr_idx++]);
+-#if defined(__CYGWIN__) || defined(_WIN64)
++#if defined(__CYGWIN__) || defined(_WIN32)
+     iter->fpr_idx++;
+ #endif
+   } else if (is_fpr_arg(abi) && iter->fpr_idx < abi_fpr_arg_count) {
+     *arg = jit_operand_fpr (abi, abi_fpr_args[iter->fpr_idx++]);
+-#if defined(__CYGWIN__) || defined(_WIN64)
++#if defined(__CYGWIN__) || defined(_WIN32)
+     iter->gpr_idx++;
+ #endif
+   } else {
+diff --git a/libguile/lightening/lightening/x86.h b/libguile/lightening/lightening/x86.h
+index 7da8c5977..983ebdb8f 100644
+--- a/libguile/lightening/lightening/x86.h
++++ b/libguile/lightening/lightening/x86.h
+@@ -92,7 +92,7 @@
+ #  define JIT_F6   _XMM6
+ #  define JIT_FTMP _XMM7
+ #  define JIT_PLATFORM_CALLEE_SAVE_GPRS JIT_TMP0
+-#elif defined(__CYGWIN__) || defined(_WIN64)
++#elif __CYGWIN__
+ #  define JIT_R0   _RAX
+ #  define JIT_R1   _RCX
+ #  define JIT_R2   _RDX
+-- 
+2.47.3
+
