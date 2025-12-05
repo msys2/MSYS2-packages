@@ -1,0 +1,123 @@
+From 60d57550b3dc7c4c2b88099f196c319882c907be Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Hannes=20M=C3=BCller?= <>
+Date: Wed, 3 Dec 2025 19:59:44 +0100
+Subject: [PATCH] test-suite/standalone: Skip resource-limit tests on MSYS2
+
+Both `test-out-of-memory` and `test-stack-overflow` rely on `setrlimit`
+with `RLIMIT_AS` to restrict memory usage. On MSYS2 (as on Cygwin), this
+limit is ineffective or produces errors. Running these tests without a
+working limit poses a risk of crashing the system.
+
+This patch refactors the platform detection to be more efficient (calling
+uname only once) and adds MSYS2 to the list of skipped platforms for
+both tests.
+
+* test-suite/standalone/test-out-of-memory: Refactor platform checks
+and skip on MSYS2.
+* test-suite/standalone/test-stack-overflow: Likewise.
+---
+ test-suite/standalone/test-out-of-memory  | 35 ++++++++++----------
+ test-suite/standalone/test-stack-overflow | 39 ++++++++++++-----------
+ 2 files changed, 38 insertions(+), 36 deletions(-)
+
+diff --git a/test-suite/standalone/test-out-of-memory b/test-suite/standalone/test-out-of-memory
+index 31375a559..333bf22d2 100755
+--- a/test-suite/standalone/test-out-of-memory
++++ b/test-suite/standalone/test-out-of-memory
+@@ -9,25 +9,26 @@ exec guile -q -s "$0" "$@"
+   ;; should run as part of an automated test suite.
+   (exit 0))
+ 
+-(when (string-ci= "darwin" (vector-ref (uname) 0))
+-  ;; setrlimits are ignored in OS X (tested on 10.9 and 10.10). Proceeding
+-  ;; with the test would fill all available memory and probably end in a crash.
+-  ;; See also test-stack-overflow.
+-  (exit 77)) ; unresolved
++(let ((sys (vector-ref (uname) 0)))
++  (when (string-ci= "darwin" sys)
++    ;; setrlimits are ignored in OS X (tested on 10.9 and 10.10). Proceeding
++    ;; with the test would fill all available memory and probably end in a crash.
++    ;; See also test-stack-overflow.
++    (exit 77)) ; unresolved
+ 
+-(when (string-ci= "GNU" (vector-ref (uname) 0))
+-  ;; setrlimits are not yet implemented on GNU/Hurd systems. Proceeding
+-  ;; with the test would end in a crash. See
+-  ;; <https://lists.gnu.org/archive/html/bug-hurd/2017-05/msg00013.html>
+-  (exit 77)) ; unresolved
++  (when (string-ci= "GNU" sys)
++    ;; setrlimits are not yet implemented on GNU/Hurd systems. Proceeding
++    ;; with the test would end in a crash. See
++    ;; <https://lists.gnu.org/archive/html/bug-hurd/2017-05/msg00013.html>
++    (exit 77)) ; unresolved
+ 
+-(when (string-contains-ci (vector-ref (uname) 0) "CYGWIN_NT")
+-  ;; attempting to use setrlimits for memory RLIMIT_AS will always
+-  ;; produce an invalid argument error on Cygwin (tested on
+-  ;; CYGWIN_NT-10.0 DLL v2.7.0).  Proceeding with the test would fill
+-  ;; all available memory and probably end in a crash.  See also
+-  ;; test-stack-overflow.
+-  (exit 77)) ; unresolved
++  (when (or (string-contains-ci sys "CYGWIN_NT")
++            (string-contains-ci sys "MSYS_NT"))
++    ;; attempting to use setrlimits for memory RLIMIT_AS will always
++    ;; produce an invalid argument error or be ignored on Cygwin/MSYS.
++    ;; Proceeding with the test would fill all available memory and
++    ;; probably end in a crash.  See also test-stack-overflow.
++    (exit 77))) ; unresolved
+ 
+ (catch #t
+   ;; Silence GC warnings.
+diff --git a/test-suite/standalone/test-stack-overflow b/test-suite/standalone/test-stack-overflow
+index dd54249d8..c199b7232 100755
+--- a/test-suite/standalone/test-stack-overflow
++++ b/test-suite/standalone/test-stack-overflow
+@@ -9,25 +9,26 @@ exec guile -q -s "$0" "$@"
+   ;; something we should run as part of an automated test suite.
+   (exit 0))
+ 
+-(when (string-ci= "darwin" (vector-ref (uname) 0))
+-  ;; setrlimits are ignored in OS X (tested on 10.9 and 10.10). Proceeding
+-  ;; with the test would fill all available memory and probably end in a crash.
+-  ;; See also test-out-of-memory.
+-  (exit 77)) ; uresolved
+-
+-(when (string-ci= "GNU" (vector-ref (uname) 0))
+-  ;; setrlimits are not yet implemented on GNU/Hurd systems. Proceeding
+-  ;; with the test would end in a crash. See
+-  ;; <https://lists.gnu.org/archive/html/bug-hurd/2017-05/msg00013.html>
+-  (exit 77)) ; unresolved
+-
+-(when (string-contains-ci (vector-ref (uname) 0) "CYGWIN_NT")
+-  ;; attempting to use setrlimits for memory RLIMIT_AS will always
+-  ;; produce an invalid argument error on Cygwin (tested on
+-  ;; CYGWIN_NT-10.0 DLL v2.7.0).  Proceeding with the test would fill
+-  ;; all available memory and probably end in a crash.  See also
+-  ;; test-out-of-memory.
+-  (exit 77)) ; unresolved
++(let ((sys (vector-ref (uname) 0)))
++  (when (string-ci= "darwin" sys)
++    ;; setrlimits are ignored in OS X (tested on 10.9 and 10.10). Proceeding
++    ;; with the test would fill all available memory and probably end in a crash.
++    ;; See also test-out-of-memory.
++    (exit 77)) ; unresolved
++
++  (when (string-ci= "GNU" sys)
++    ;; setrlimits are not yet implemented on GNU/Hurd systems. Proceeding
++    ;; with the test would end in a crash. See
++    ;; <https://lists.gnu.org/archive/html/bug-hurd/2017-05/msg00013.html>
++    (exit 77)) ; unresolved
++
++  (when (or (string-contains-ci sys "CYGWIN_NT")
++            (string-contains-ci sys "MSYS_NT"))
++    ;; attempting to use setrlimits for memory RLIMIT_AS will always
++    ;; produce an invalid argument error or be ignored on Cygwin/MSYS.
++    ;; Proceeding with the test would fill all available memory and
++    ;; probably end in a crash.  See also test-out-of-memory.
++    (exit 77))) ; unresolved
+ 
+ ;; 100 MB.
+ (define *limit* (* 100 1024 1024))
+-- 
+2.47.3
+

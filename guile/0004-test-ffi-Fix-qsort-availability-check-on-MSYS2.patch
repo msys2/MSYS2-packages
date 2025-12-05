@@ -1,0 +1,47 @@
+From 8a02a81e2cc5d3bcacad9455803f8d6d74f523e5 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Hannes=20M=C3=BCller?= <>
+Date: Tue, 2 Dec 2025 21:22:21 +0100
+Subject: [PATCH] test-ffi: Fix qsort availability check on MSYS2
+
+On MSYS2, the libc name is "msys-2.0", not "cygwin1". Use uname to
+distinguish between Cygwin and MSYS2 environments to load the correct
+library for the qsort test.
+
+* test-suite/standalone/test-ffi (qsort): Use uname to detect the
+running system and select "cygwin1" for Cygwin or "msys-2.0" for
+MSYS2.
+---
+ test-suite/tests/foreign.test | 17 +++++++++--------
+ 1 file changed, 9 insertions(+), 8 deletions(-)
+
+diff --git a/test-suite/tests/foreign.test b/test-suite/tests/foreign.test
+index 3329a0517..ed645ec84 100644
+--- a/test-suite/tests/foreign.test
++++ b/test-suite/tests/foreign.test
+@@ -235,14 +235,15 @@
+     ;; not visible.
+     (false-if-exception
+      (foreign-library-function
+-      (cond
+-       ((string-contains %host-type "cygwin")
+-        ;; On Cygwin, load-foreign-library does not search recursively
+-        ;; into linked DLLs. Thus, one needs to link to the core C
+-        ;; library DLL explicitly.
+-        "cygwin1")
+-       (else #f))
+-      "qsort" #:arg-types (list '* size_t size_t '*))))
++      (let ((sys (vector-ref (uname) 0)))
++       (cond
++        ;; On Cygwin and MSYS2, load-foreign-library does not search
++        ;; recursively into linked DLLs. Thus, one needs to link to
++        ;; the core C library DLL explicitly.
++        ((string-contains-ci sys "CYGWIN_NT") "cygwin1")
++        ((string-contains-ci sys "MSYS_NT") "msys-2.0")
++        (else #f)))
++       "qsort" #:arg-types (list '* size_t size_t '*))))
+ 
+   (define (dereference-pointer-to-byte ptr)
+     (let ((b (pointer->bytevector ptr 1)))
+-- 
+2.47.3
+

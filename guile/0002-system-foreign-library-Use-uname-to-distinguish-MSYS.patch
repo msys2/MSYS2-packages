@@ -1,0 +1,79 @@
+From 5fdabad3b5e7cad4069f0213877e06941023efca Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Hannes=20M=C3=BCller?= <>
+Date: Tue, 2 Dec 2025 19:52:48 +0100
+Subject: [PATCH] system/foreign-library: Use uname to distinguish MSYS2 from
+ Cygwin
+
+On MSYS2 systems, `%host-type` may contain "cygwin", rendering it
+ambiguous for distinguishing between standard Cygwin and MSYS2
+environments. However, correct distinction is required to apply the
+proper library naming convention (`cyg*.dll` vs `msys-*.dll`).
+
+This patch uses `uname`, which reliably reports "CYGWIN_NT" or
+"MSYS_NT", to select the appropriate library name transformation. It
+also removes redundant "msys" checks in `%host-type` where the
+"cygwin" check is sufficient for general DLL handling.
+
+* module/system/foreign-library.scm (system-library-extensions)
+(guile-system-extensions-path): Remove redundant checks for "msys"
+in `%host-type`.
+(load-foreign-library): Use `uname` to detect "CYGWIN_NT" or
+"MSYS_NT" strings to conditionally apply `lib->cyg` or `lib->msys`.
+---
+ module/system/foreign-library.scm | 19 +++++++++----------
+ 1 file changed, 9 insertions(+), 10 deletions(-)
+
+diff --git a/module/system/foreign-library.scm b/module/system/foreign-library.scm
+index d0de93a2d..bdf5f9e9a 100644
+--- a/module/system/foreign-library.scm
++++ b/module/system/foreign-library.scm
+@@ -53,8 +53,7 @@
+    ((string-contains %host-type "-darwin")
+     '(".bundle" ".so" ".dylib"))
+    ((or (string-contains %host-type "cygwin")
+-        (string-contains %host-type "mingw")
+-        (string-contains %host-type "msys"))
++        (string-contains %host-type "mingw"))
+     '(".dll"))
+    (else
+     '(".so"))))
+@@ -182,8 +181,7 @@
+   (make-parameter
+    (or (parse-path "GUILE_SYSTEM_EXTENSIONS_PATH")
+        (list (if (or (string-contains %host-type "cygwin")
+-                     (string-contains %host-type "mingw")
+-                     (string-contains %host-type "msys"))
++                     (string-contains %host-type "mingw"))
+                  (assq-ref %guile-build-info 'bindir)
+                  (assq-ref %guile-build-info 'libdir))
+              (assq-ref %guile-build-info 'extensiondir)))))
+@@ -298,10 +296,12 @@ name."
+     (file-exists-in-path-with-extension
+      filename search-path extensions allow-dll-version-suffix?))
+   (when host-type-rename?
+-    (when (string-contains %host-type "cygwin")
+-      (set! filename (lib->cyg filename)))
+-    (when (string-contains %host-type "msys")
+-      (set! filename (lib->msys filename))))
++    (let ((sys (vector-ref (uname) 0)))
++      (cond
++       ((string-contains-ci sys "CYGWIN_NT")
++        (set! filename (lib->cyg filename)))
++       ((string-contains-ci sys "MSYS_NT")
++        (set! filename (lib->msys filename))))))
+   (make-foreign-library
+    filename
+    (cond
+@@ -324,8 +324,7 @@ name."
+      => dlopen*)
+     ((and search-system-paths?
+           (or (string-contains %host-type "cygwin")
+-              (string-contains %host-type "mingw")
+-              (string-contains %host-type "msys")))
++              (string-contains %host-type "mingw")))
+      (let ((fullname (file-exists-in-path-with-ext filename (system-dll-path) '(".dll"))))
+        (if fullname
+            (dlopen* fullname)
+-- 
+2.47.3
+

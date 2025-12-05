@@ -1,0 +1,107 @@
+From 992a77333027c21d2165c0b273c3b66479dedfe7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Hannes=20M=C3=BCller?= <>
+Date: Tue, 2 Dec 2025 21:44:17 +0100
+Subject: [PATCH] test-suite/standalone: Fix MSYS2 loading and enforce failure
+ on error
+
+Updates library detection to correctly identify MSYS2 ("msys-2.0") using
+uname. Additionally, changes `test-foreign-object-scm` to fail with an
+error code (exit 1) instead of skipping (exit 0) if the library cannot
+be loaded. This ensures that configuration errors on supported platforms
+are not silently ignored.
+
+* test-suite/standalone/test-ffi (global): Use uname to detect MSYS2
+and load "msys-2.0".
+* test-suite/standalone/test-foreign-object-scm: Likewise. Change
+exception handler to exit with status 1 on failure and print a clear
+error message.
+---
+ test-suite/standalone/test-ffi                | 27 +++++++++-------
+ test-suite/standalone/test-foreign-object-scm | 31 +++++++++++--------
+ 2 files changed, 34 insertions(+), 24 deletions(-)
+
+diff --git a/test-suite/standalone/test-ffi b/test-suite/standalone/test-ffi
+index 113a102cc..ee6ae9e12 100755
+--- a/test-suite/standalone/test-ffi
++++ b/test-suite/standalone/test-ffi
+@@ -263,17 +263,22 @@ exec guile -q -s "$0" "$@"
+ (if (defined? 'setlocale)
+     (setlocale LC_ALL "C"))
+ 
+-(define global (cond
+-                ((string-contains %host-type "cygwin")
+-                 ;; On Cygwin, dynamic-link doesn't search recursively
+-                 ;; into linked DLLs. Thus one needs to link to the core
+-                 ;; C library DLL explicitly.
+-                 (dynamic-link "cygwin1"))
+-                ((string-contains %host-type "mingw")
+-                 ;; Also, no recursive search into linked DLLs in MinGW.
+-                 (dynamic-link "msvcrt"))
+-                (else
+-                 (dynamic-link))))
++(define global
++  (let ((sys (vector-ref (uname) 0)))
++    (cond
++     ((string-contains-ci sys "CYGWIN_NT")
++      ;; On Cygwin, dynamic-link doesn't search recursively
++      ;; into linked DLLs. Thus one needs to link to the core
++      ;; C library DLL explicitly.
++      (dynamic-link "cygwin1"))
++     ((string-contains-ci sys "MSYS_NT")
++      ;; Same restriction on MSYS2, but the library is named different.
++      (dynamic-link "msys-2.0"))
++     ((string-contains %host-type "mingw")
++      ;; Also, no recursive search into linked DLLs in MinGW.
++      (dynamic-link "msvcrt"))
++     (else
++      (dynamic-link)))))
+ 
+ 
+ (define strerror
+diff --git a/test-suite/standalone/test-foreign-object-scm b/test-suite/standalone/test-foreign-object-scm
+index be3441c3e..49fc64ac8 100755
+--- a/test-suite/standalone/test-foreign-object-scm
++++ b/test-suite/standalone/test-foreign-object-scm
+@@ -28,21 +28,26 @@ exec guile -q -s "$0" "$@"
+   (catch #t
+     (lambda ()
+       (dynamic-pointer name
+-                       (cond
+-                        ((string-contains %host-type "cygwin")
+-                         ;; On Cygwin, dynamic-link does not search
+-                         ;; recursively into linked DLLs. Thus, one
+-                         ;; needs to link to the core C library DLL
+-                         ;; explicitly.
+-                         (dynamic-link "cygwin1"))
+-                        ((string-contains %host-type "mingw")
+-                         (dynamic-link "msvcrt"))
+-                        (else
+-                         (dynamic-link)))))
++                       (let ((sys (vector-ref (uname) 0)))
++                         (cond
++                          ((string-contains-ci sys "CYGWIN_NT")
++                           ;; On Cygwin, dynamic-link does not search
++                           ;; recursively into linked DLLs. Thus, one
++                           ;; needs to link to the core C library DLL
++                           ;; explicitly.
++                           (dynamic-link "cygwin1"))
++                          ((string-contains-ci sys "MSYS_NT")
++                           ;; Same restriction on MSYS2.
++                           (dynamic-link "msys-2.0"))
++                          ((string-contains %host-type "mingw")
++                           (dynamic-link "msvcrt"))
++                          (else
++                           (dynamic-link))))))
+     (lambda (k . args)
+       (print-exception (current-error-port) #f k args)
+-      (write "Skipping test.\n" (current-error-port))
+-      (exit 0))))
++      (write "Setup failed: Could not load required library. Aborting test.\n"
++             (current-error-port))
++      (exit 1))))
+ 
+ (define malloc (pointer->procedure '* (libc-ptr "malloc") (list size_t)))
+ (define memcpy (pointer->procedure void (libc-ptr "memcpy") (list '* '* size_t)))
+-- 
+2.47.3
+
