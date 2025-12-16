@@ -1,0 +1,48 @@
+# Contributor: Alexey Pavlov <alexpux@gmail.com>
+
+pkgname=coreutils-nocygwin # this package should be removed after coreutils was updated
+pkgver=9.9
+pkgver() {
+  cd coreutils
+  git describe --long --tags | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' # for --md5sum --text and hardlinks
+}
+pkgrel=1
+pkgdesc="The basic file, shell and text manipulation utilities (no cygwin support)"
+arch=('x86_64')
+license=('GPL3')
+url="https://www.gnu.org/software/coreutils"
+msys2_references=(
+  "cpe: cpe:/a:gnu:coreutils"
+)
+depends=('gmp' 'libiconv' 'libintl')
+makedepends=('git' 'groff' 'gmp-devel' 'gperf' 'libiconv-devel' 'gettext-devel' 'help2man' 'autotools' 'gcc' 'python')
+source=(git+https://github.com/coreutils/coreutils #tag=v${pkgver} 
+git+https://git.savannah.gnu.org/git/gnulib.git)
+sha256sums=('SKIP'
+            'SKIP')
+
+prepare() {
+  cd coreutils
+  sed -i '/^wget.*/d' bootstrap.conf # wget is used to DL po
+  git submodule init
+  git config submodule.gnulib.url ../gnulib
+  git -c protocol.file.allow=always submodule update
+  ./bootstrap --skip-po
+}
+
+build(){
+  cd coreutils
+  ./configure \
+    --disable-werror \
+    --prefix=/usr/lib/${pkgname} \
+    --libexecdir=/usr/lib/${pkgname} \
+    --enable-install-program=arch,kill,uptime,hostname \
+    --enable-no-install-program=stdbuf
+  
+  make
+}
+
+package() {
+  cd coreutils
+  make DESTDIR=${pkgdir} install
+}
