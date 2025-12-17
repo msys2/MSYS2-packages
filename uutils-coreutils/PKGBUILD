@@ -14,26 +14,30 @@ msys2_references=(
 )
 license=('spdx:MIT')
 depends=("oniguruma" "gcc-libs")
-makedepends=("rust" "pkgconf")
+makedepends=("git" "rust" "pkgconf")
 source=("https://github.com/uutils/coreutils/archive/${pkgver}/${_realname}-${pkgver}.tar.gz"
-        "nix-0.30.1.tar.gz::https://crates.io/api/v1/crates/nix/0.30.1/download"
-        "nix-add-sync.patch")
+        "git+https://github.com/nix-rust/nix#tag=v0.30.1"
+        "ioctl.patch::https://patch-diff.githubusercontent.com/raw/nix-rust/nix/pull/2715.patch" # unstable csum. should cherry-pick
+        "uu-cygwin.patch::https://patch-diff.githubusercontent.com/raw/uutils/coreutils/pull/9686.patch") # unstable csum. should cherry-pick
 sha256sums=('83535e10c3273c31baa2f553dfa0ceb4148914e9c1a9c5b00d19fbda5b2d4d7d'
-            '74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6'
-            '14f430635fb87d0bc12d1b6870365614f7ae259f7c235c420454303250aef7dd')
+            'aebec7d9c51d26d003333bc53158ac75b8e960ca5cb75d24fe8a5cb027c59842'
+            '3b2a744cba48a350eed165c84971c83fb1becab74c5764c5a90894ade6ffafd2'
+            '20dee6f07630f44f5f09f0d63004efadc9f0904d9e36109f013b71ef06940010')
 
 prepare() {
-  cd "${_realname}-${pkgver}"
-
-  patch -d ../nix-0.30.1 -p1 -i ../nix-add-sync.patch
+  cd nix
+  git cherry-pick -n 71f6ee9f4380d5caad3c049dbd352627b9d6eb0a # add sync
+  git apply -v -p1 ../ioctl.patch
+  cd ../"${_realname}-${pkgver}"
+  patch -Np1 -i ../uu-cygwin.patch
   cat >> Cargo.toml <<END
 
 [patch.crates-io]
-mio = { git = "https://github.com/tokio-rs/mio", rev = "f352b81d27e39ca3ee1da08c12d8f5795a9dca12" }
-nix.path = "../nix-0.30.1"
+nix.path = "../nix"
 END
 
-  cargo update -p mio -p nix
+  cargo update -p signal-hook-mio -p mio
+  cargo update -p nix
   cargo update -p libc --precise 0.2.178
   cargo fetch --locked --target "${RUST_CHOST}"
 }
@@ -45,7 +49,7 @@ package() {
   # Remove utils if MinGW version does not have cygwin path issue
   export SKIP_UTILS="arch date expr factor false sleep true uname yes"
   export RUSTONIG_DYNAMIC_LIBONIG=1
-  make -O install \
+  make install \
     DESTDIR="${pkgdir}" \
     PREFIX="/usr" \
     PROFILE=release-fast \
