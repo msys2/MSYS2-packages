@@ -4,7 +4,7 @@
 _realname=coreutils
 pkgname="uutils-${_realname}"
 pkgver=0.5.0
-pkgrel=2
+pkgrel=3
 pkgdesc="Cross-platform Rust rewrite of the GNU coreutils"
 arch=('any')
 url='https://github.com/uutils/coreutils'
@@ -13,8 +13,10 @@ msys2_references=(
   'purl: pkg:cargo/coreutils'
 )
 license=('spdx:MIT')
-depends=("oniguruma" "gcc-libs")
+depends=("gcc-libs" "oniguruma")
 makedepends=("git" "rust" "pkgconf")
+provides=("coreutils")
+conflicts=("coreutils")
 source=("https://github.com/uutils/coreutils/archive/${pkgver}/${_realname}-${pkgver}.tar.gz"
         "git+https://github.com/nix-rust/nix#tag=v0.30.1"
         "ioctl.patch::https://patch-diff.githubusercontent.com/raw/nix-rust/nix/pull/2715.patch" # unstable csum. should cherry-pick
@@ -28,16 +30,19 @@ prepare() {
   cd nix
   git cherry-pick -n 71f6ee9f4380d5caad3c049dbd352627b9d6eb0a # add sync
   git apply -v -p1 ../ioctl.patch
+
   cd ../"${_realname}-${pkgver}"
   patch -Np1 -i ../uu-cygwin.patch
+
   cat >> Cargo.toml <<END
 
 [patch.crates-io]
 nix.path = "../nix"
 END
 
-  cargo update -p signal-hook-mio -p mio
   cargo update -p nix
+  cargo update -p signal-hook-mio --precise 0.2.5
+  cargo update -p mio@1.0.4 --precise 1.1.0
   cargo update -p libc --precise 0.2.178
   cargo fetch --locked --target "${RUST_CHOST}"
 }
@@ -46,15 +51,16 @@ END
 package() {
   cd "${_realname}-${pkgver}"
 
-  # Remove utils if MinGW version does not have cygwin path issue
-  export SKIP_UTILS="arch date expr factor false sleep true uname yes"
   export RUSTONIG_DYNAMIC_LIBONIG=1
-  make install \
+  # workaround base image issue
+  export CARGO_BUILD_JOBS=1
+
+  make -j1 install \
     DESTDIR="${pkgdir}" \
     PREFIX="/usr" \
     PROFILE=release-fast \
-    PROG_PREFIX="uu-" \
+    SKIP_UTILS="more kill uptime" \
     MULTICALL=y
 
-  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/uutils-${_realname}/LICENSE"
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
