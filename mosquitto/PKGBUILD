@@ -1,0 +1,62 @@
+pkgname=mosquitto
+pkgver=2.0.22
+pkgrel=1
+pkgdesc="An Open Source MQTT Broker"
+arch=(x86_64)
+url="https://mosquitto.org"
+msys2_repository_url="https://github.com/eclipse-mosquitto/mosquitto"
+msys2_references=(
+  "cpe: cpe:/a:eclipse:mosquitto"
+)
+license=('spdx:EPL-2.0 OR EDL-1.0')
+depends=(
+  libcares
+  libopenssl
+)
+makedepends=(
+  cmake
+  docbook-xsl
+  gcc
+  libcares-devel
+  openssl-devel
+)
+source=(
+  https://mosquitto.org/files/source/$pkgname-$pkgver.tar.gz
+  0001-align-SigThreadProc-ifdef.patch
+)
+sha512sums=(
+  5aae399b308d8262a758a72064c613bfd6930e1a54f34939e30454d988c65c9d7c4c139ed70a016baa1264a0100a0c842c00e843ffe3ef83f90be440403e7482
+  e5d4126b65b0f741de16e84a979a20ee60bee45ec2ce2222170ca099fec38a6dfdff1e2a97c9bf3c7ddcddf4e6880bc8b28da1367ef6c7039d75489413857a94
+)
+validpgpkeys=('A0D6EEA1DCAE49A635A3B2F0779B22DFB3E717B7') # Roger A. Light <roger@atchoo.org>
+
+prepare() {
+  cd $pkgname-$pkgver
+
+  patch -p1 -i "${srcdir}/0001-align-SigThreadProc-ifdef.patch"
+}
+
+build() {
+  local cmake_options=(
+    -B build
+    -D CMAKE_BUILD_TYPE=None
+    -D CMAKE_INSTALL_PREFIX=/usr
+    -D CMAKE_INSTALL_SBINDIR=bin
+    -D CMAKE_INSTALL_SYSCONFDIR=/etc
+    -D WITH_SRV=ON
+    -D WITH_PLUGINS=OFF
+    -S $pkgname-$pkgver
+    -W no-dev
+  )
+  cmake "${cmake_options[@]}"
+
+  cmake --build build
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+
+  install -Dm644 "$pkgname-$pkgver/epl-v20" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  ln -sf msys-mosquitto-1.dll   "$pkgdir/usr/bin/msys-mosquitto.dll"
+  ln -sf msys-mosquittopp-1.dll "$pkgdir/usr/bin/msys-mosquittopp.dll"
+}
