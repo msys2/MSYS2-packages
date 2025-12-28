@@ -1,0 +1,67 @@
+# Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
+
+pkgname=just
+pkgver=1.45.0
+pkgrel=1
+pkgdesc="A handy way to save and run project-specific commands"
+arch=("x86_64")
+url='https://just.systems'
+msys2_repository_url='https://github.com/casey/just'
+msys2_documentation_url='https://just.systems/man/en'
+msys2_changelog_url='https://github.com/casey/just/blob/master/CHANGELOG.md'
+msys2_references=(
+  'anitya: 141393'
+  'archlinux: just'
+  'gentoo: dev-build/just'
+  'purl: pkg:cargo/just'
+)
+license=("spdx:CC0")
+depends=("gcc-libs")
+makedepends=("rust")
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/casey/${pkgname}/archive/${pkgver}.tar.gz"
+        "target-2.1.0.tar.gz::https://crates.io/api/v1/crates/target/2.1.0/download"
+        "https://patch-diff.githubusercontent.com/raw/casey/target/pull/20.patch")
+noextract=("${pkgname}-${pkgver}.tar.gz")
+sha256sums=('e43dfa0f541fd8a115fb61de7c30d949d2f169d155fb1776abeaba9be7eb0e07'
+            '1e8f05f774b2db35bdad5a8237a90be1102669f8ea013fea9777b366d34ab145'
+            'c2098edaf413bf7890ba169c9fc97f38539562247ff603fa6e8a7040fbba1a91')
+
+prepare() {
+  bsdtar -xf "${srcdir}/${pkgname}-${pkgver}.tar.gz" || true
+  cd "${pkgname}-${pkgver}"
+
+  patch -p1 -d ../target-2.1.0 -i ../20.patch
+  cat >> Cargo.toml <<END
+
+[patch.crates-io]
+target.path = "../target-2.1.0"
+END
+  cargo update -p target
+
+  cargo fetch --locked --target "$(rustc --print host-tuple)"
+
+  mkdir -p man completions
+}
+
+build() {
+  cd "${pkgname}-${pkgver}"
+  cargo build --frozen --release
+  local just="cargo run --frozen --release --"
+  $just --man > "man/${pkgname}.1"
+}
+
+check() {
+  cd "${pkgname}-${pkgver}"
+  cargo check --frozen --release
+}
+
+package() {
+  cd "${pkgname}-${pkgver}"
+  install -Dm755 -t "${pkgdir}/usr/bin/" "target/release/${pkgname}"
+  install -Dm644 -t "${pkgdir}/usr/share/man/man1/" "man/${pkgname}.1"
+  install -Dm644 -t "${pkgdir}/usr/share/licenses/${pkgname}/" "LICENSE"
+  install -Dm644 "completions/${pkgname}.bash" "${pkgdir}/usr/share/bash-completion/completions/${pkgname}"
+  install -Dm644 "completions/${pkgname}.elvish" "${pkgdir}/usr/share/elvish/lib/${pkgname}.elv"
+  install -Dm644 -t "${pkgdir}/usr/share/fish/vendor_completions.d/" "completions/${pkgname}.fish"
+  install -Dm644 "completions/${pkgname}.zsh" "${pkgdir}/usr/share/zsh/site-functions/_${pkgname}"
+}
