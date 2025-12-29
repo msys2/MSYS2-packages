@@ -4,7 +4,7 @@
 _realname=coreutils
 pkgname="uutils-${_realname}"
 pkgver=0.5.0
-pkgrel=4
+pkgrel=4 # bump later
 pkgdesc="Cross-platform Rust rewrite of the GNU coreutils"
 arch=('any')
 url='https://github.com/uutils/coreutils'
@@ -15,22 +15,21 @@ msys2_references=(
 license=('spdx:MIT')
 depends=("gcc-libs" "oniguruma")
 makedepends=("git" "rust" "pkgconf")
-source=("https://github.com/uutils/coreutils/archive/${pkgver}/${_realname}-${pkgver}.tar.gz"
+source=("${pkgname}::git+${url}#tag=$pkgver"
         "git+https://github.com/nix-rust/nix#tag=v0.30.1"
-        "ioctl.patch::https://patch-diff.githubusercontent.com/raw/nix-rust/nix/pull/2715.patch" # unstable csum. should cherry-pick
-        "uu-cygwin.patch::https://patch-diff.githubusercontent.com/raw/uutils/coreutils/pull/9686.patch") # unstable csum. should cherry-pick
-sha256sums=('83535e10c3273c31baa2f553dfa0ceb4148914e9c1a9c5b00d19fbda5b2d4d7d'
+        "ioctl.patch::https://patch-diff.githubusercontent.com/raw/nix-rust/nix/pull/2715.patch") # unstable csum. should cherry-pick
+sha256sums=('6ed67de40fe5950b7bc4263e96674adaeccc347a4bd368c9d8eee8c6cd0a0d84'
             'aebec7d9c51d26d003333bc53158ac75b8e960ca5cb75d24fe8a5cb027c59842'
-            '3b2a744cba48a350eed165c84971c83fb1becab74c5764c5a90894ade6ffafd2'
-            '20dee6f07630f44f5f09f0d63004efadc9f0904d9e36109f013b71ef06940010')
+            '3b2a744cba48a350eed165c84971c83fb1becab74c5764c5a90894ade6ffafd2')
 
 prepare() {
   cd nix
   git cherry-pick -n 71f6ee9f4380d5caad3c049dbd352627b9d6eb0a # add sync
   git apply -v -p1 ../ioctl.patch
 
-  cd ../"${_realname}-${pkgver}"
-  patch -Np1 -i ../uu-cygwin.patch
+  cd ../"${pkgname}"
+  git cherry-pick -n 54ba74bb7e72addeb1967c2b04da475315f24f96 # add sync
+  git cherry-pick -n f3f4993b11bbbc2f71686ccf0892da8fc0bbf408 # bump mio
 
   cat >> Cargo.toml <<END
 
@@ -39,15 +38,15 @@ nix.path = "../nix"
 END
 
   cargo update -p nix
-  cargo update -p signal-hook-mio --precise 0.2.5
-  cargo update -p mio@1.0.4 --precise 1.1.0
   cargo update -p libc --precise 0.2.178
   cargo fetch --locked --target "${RUST_CHOST}"
+
+  sed -i "s/--features feat_external_libstdbuf//" GNUmakefile
 }
 
 # spliting build() sometimes cause building twice at make build
 package() {
-  cd "${_realname}-${pkgver}"
+  cd "$pkgname"
 
   export RUSTONIG_DYNAMIC_LIBONIG=1
 
@@ -55,7 +54,7 @@ package() {
     DESTDIR="${pkgdir}" \
     PREFIX="/usr" \
     PROFILE=release-fast \
-    SKIP_UTILS="stdbuf" \
+    LIBSTDBUF_DIR="/usr/lib/${pkgname}" \
     PROG_PREFIX="uu-" \
     MULTICALL=y
 
