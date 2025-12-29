@@ -1,8 +1,8 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgbase=gpgme
-pkgname=('libgpgme' 'libgpgme-devel' 'libgpgme-python')
-pkgver=1.24.3
+pkgname=('libgpgme' 'libgpgme-devel')
+pkgver=2.0.1
 pkgrel=1
 pkgdesc="A C wrapper library for GnuPG"
 arch=('i686' 'x86_64')
@@ -16,17 +16,13 @@ depends=('libassuan' 'libgpg-error' 'gnupg')
 makedepends=(
   'libassuan-devel'
   'libgpg-error-devel'
-  'python-devel'
-  'python-setuptools'
-  'swig'
   'autotools'
   'gcc'
-  'python-build'
-  'python-installer'
 )
+conflicts=('libgpgme-python<2.0.0')
 source=(https://gnupg.org/ftp/gcrypt/${pkgbase}/${pkgbase}-${pkgver}.tar.bz2{,.sig}
         0001-fix-broken-version.patch)
-sha256sums=('bfc17f5bd1b178c8649fdd918956d277080f33df006a2dc40acdecdce68c50dd'
+sha256sums=('821ab0695c842eab51752a81980c92b0410c7eadd04103f791d5d2a526784966'
             'SKIP'
             'ff9eec1d2c1803a3f1f77cb8073c7a328859e5b26e8b0327581357110038d4cd')
 #These might be signed by any of these keys https://gnupg.org/signature_key.html
@@ -56,17 +52,9 @@ build() {
     --disable-g13-test \
     --enable-shared \
     --enable-static \
-    --enable-languages="cpp python cl" \
     --enable-fixed-path="/usr/bin:/bin:/usr/sbin:/usr/local/bin"
 
   make no_undefined=-no-undefined
-
-  (
-    # use a PEP517 workflow to get a reproducible Python package
-    cd lang/python/
-    top_builddir="${srcdir}/${pkgbase}-${pkgver}" \
-      python -m build --wheel --no-isolation
-  )
 
   make DESTDIR=${srcdir}/dest install
 }
@@ -94,22 +82,8 @@ package_libgpgme-devel() {
   mkdir -p ${pkgdir}/usr/{bin,lib,share}
   cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
   cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
-  cp -rf ${srcdir}/dest/usr/lib/cmake ${pkgdir}/usr/lib/
   cp -rf ${srcdir}/dest/usr/lib/pkgconfig ${pkgdir}/usr/lib/
   cp -f ${srcdir}/dest/usr/lib/*.a ${pkgdir}/usr/lib/
   cp -rf ${srcdir}/dest/usr/share/aclocal ${pkgdir}/usr/share/
   cp -rf ${srcdir}/dest/usr/share/common-lisp ${pkgdir}/usr/share/
-}
-
-package_libgpgme-python() {
-  pkgdesc="libgpgme bindings for Python"
-  groups=('development')
-  depends=("libgpgme=${pkgver}" "python")
-  provides=("libgpgme-python3")
-  conflicts=("libgpgme-python3")
-  replaces=("libgpgme-python3")
-
-  cd ${srcdir}/${pkgbase}-${pkgver}
-
-  python -m installer --destdir="$pkgdir" lang/python/dist/*.whl
 }
