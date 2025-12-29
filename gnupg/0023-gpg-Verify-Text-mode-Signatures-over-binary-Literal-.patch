@@ -1,0 +1,300 @@
+From 23af3106c5e95e2a103f1b7f74ba49ce1cdd76ad Mon Sep 17 00:00:00 2001
+From: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+Date: Tue, 4 Mar 2025 23:56:30 -0500
+Subject: [PATCH 23/23] gpg: Verify Text mode Signatures over binary Literal
+ Data Packets
+
+* tests/openpgp/issue7539{.scm,-signer.asc,message.asc}: Add test
+with text-mode Signature over binary Literal Data Packet.
+* tests/openpgp/Makefile.am: include 7539 test materials.
+* g10/filter.h: add textmode and seen_cr members to
+md_filter_context_t
+* g10/mainproc.c (proc_plaintext): set mfx.textmode if the signature
+is over a text document.
+* g10/mdfilter.c (md_filter): when mfx.textmode is set, normalize line
+endings to CRLF. (free_md_filter_context): clean up textmode and
+seen_cr
+* g10/plaintext.c (handle_plaintext): when mfx.textmode is set,
+normalize line endings to CRLF.
+
+--
+
+GnuPG does not produce text signatures over binary literal data
+packets, but the OpenPGP standard permits them, and other OpenPGP
+implementations may produce them.
+
+See the discussion starting at
+https://mailarchive.ietf.org/arch/msg/openpgp/RLMBugGhg_c9xT7zmDrkBklRZB8/
+
+This fix still doesn't handle the even-more-obscure struture where
+there are both text and binary signatures over a binary literal data
+packet, like so:
+
+  OPS0 OPS1 LITb SIG1 SIG0
+
+But a more complete fix would be more complex (it would require, for
+instance, multiple message digest handles), and this initial fix is
+still a substantial improvement over the status quo.
+
+GnuPG-bug-id: 7539
+Signed-off-by: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+---
+ g10/filter.h                        |  2 ++
+ g10/mainproc.c                      | 20 +++++++++++++++-----
+ g10/mdfilter.c                      | 15 +++++++++++++--
+ g10/plaintext.c                     | 28 ++++++++++++++++++++++++++--
+ tests/openpgp/Makefile.am           |  7 +++++--
+ tests/openpgp/issue7539-message.asc |  8 ++++++++
+ tests/openpgp/issue7539-signer.asc  |  9 +++++++++
+ tests/openpgp/issue7539.scm         | 29 +++++++++++++++++++++++++++++
+ 8 files changed, 107 insertions(+), 11 deletions(-)
+ create mode 100644 tests/openpgp/issue7539-message.asc
+ create mode 100644 tests/openpgp/issue7539-signer.asc
+ create mode 100644 tests/openpgp/issue7539.scm
+
+diff --git a/g10/filter.h b/g10/filter.h
+index 4b4fc55ff..8e1662b4e 100644
+--- a/g10/filter.h
++++ b/g10/filter.h
+@@ -27,6 +27,8 @@ typedef struct {
+     gcry_md_hd_t md;      /* catch all */
+     gcry_md_hd_t md2;     /* if we want to calculate an alternate hash */
+     size_t maxbuf_size;
++    int textmode;         /* 1 hashing needs to normalize line-endings to CRLF */
++    int seen_cr;          /* 1 if last octet hashed was '\r' */
+ } md_filter_context_t;
+ 
+ typedef struct {
+diff --git a/g10/mainproc.c b/g10/mainproc.c
+index ee8f02bd2..a85e523d0 100644
+--- a/g10/mainproc.c
++++ b/g10/mainproc.c
+@@ -971,9 +971,12 @@ proc_plaintext( CTX c, PACKET *pkt )
+           if (n->pkt->pkt.onepass_sig->digest_algo)
+             {
+               if (!opt.skip_verify)
+-                gcry_md_enable (c->mfx.md,
+-                                n->pkt->pkt.onepass_sig->digest_algo);
+-
++                {
++                  gcry_md_enable (c->mfx.md,
++                                  n->pkt->pkt.onepass_sig->digest_algo);
++                  if (n->pkt->pkt.onepass_sig->sig_class == 0x01)
++                    c->mfx.textmode = 1;
++                }
+               any = 1;
+             }
+         }
+@@ -992,7 +995,10 @@ proc_plaintext( CTX c, PACKET *pkt )
+           clearsig = (*data == 0x01);
+           for (data++, datalen--; datalen; datalen--, data++)
+             if (!opt.skip_verify)
+-              gcry_md_enable (c->mfx.md, *data);
++              {
++                gcry_md_enable (c->mfx.md, *data);
++                c->mfx.textmode = 1;
++              }
+           any = 1;
+           break;  /* Stop here as one-pass signature packets are not
+                      expected.  */
+@@ -1001,7 +1007,11 @@ proc_plaintext( CTX c, PACKET *pkt )
+         {
+           /* The SIG+LITERAL case that PGP used to use.  */
+           if (!opt.skip_verify)
+-            gcry_md_enable (c->mfx.md, n->pkt->pkt.signature->digest_algo);
++            {
++              gcry_md_enable (c->mfx.md, n->pkt->pkt.signature->digest_algo);
++              if (n->pkt->pkt.signature->sig_class == 0x01)
++                c->mfx.textmode = 1;
++            }
+           any = 1;
+         }
+     }
+diff --git a/g10/mdfilter.c b/g10/mdfilter.c
+index f3318f15c..4872d9cb4 100644
+--- a/g10/mdfilter.c
++++ b/g10/mdfilter.c
+@@ -40,7 +40,7 @@ md_filter( void *opaque, int control,
+ {
+     size_t size = *ret_len;
+     md_filter_context_t *mfx = opaque;
+-    int i, rc=0;
++    int i, rc=0, n;
+ 
+     if( control == IOBUFCTRL_UNDERFLOW ) {
+ 	if( mfx->maxbuf_size && size > mfx->maxbuf_size )
+@@ -48,7 +48,16 @@ md_filter( void *opaque, int control,
+ 	i = iobuf_read( a, buf, size );
+ 	if( i == -1 ) i = 0;
+ 	if( i ) {
+-	    gcry_md_write(mfx->md, buf, i );
++            if (!mfx->textmode)
++              gcry_md_write(mfx->md, buf, i );
++            else
++              for (n = 0; n < i; n++)
++                {
++                  if (buf[n] == '\n' && !mfx->seen_cr)
++                    gcry_md_putc(mfx->md, '\r');
++                  gcry_md_putc(mfx->md, buf[n]);
++                  mfx->seen_cr = (buf[n] == '\r');
++                }
+ 	    if( mfx->md2 )
+ 		gcry_md_write(mfx->md2, buf, i );
+ 	}
+@@ -70,4 +79,6 @@ free_md_filter_context( md_filter_context_t *mfx )
+     mfx->md = NULL;
+     mfx->md2 = NULL;
+     mfx->maxbuf_size = 0;
++    mfx->textmode = 0;
++    mfx->seen_cr = 0;
+ }
+diff --git a/g10/plaintext.c b/g10/plaintext.c
+index c906d05b6..25da64a78 100644
+--- a/g10/plaintext.c
++++ b/g10/plaintext.c
+@@ -311,6 +311,7 @@ handle_plaintext (PKT_plaintext * pt, md_filter_context_t * mfx,
+ 	  while (pt->len)
+ 	    {
+ 	      int len = pt->len > temp_size ? temp_size : pt->len;
++              int n;
+ 	      len = iobuf_read (pt->buf, buffer, len);
+ 	      if (len == -1)
+ 		{
+@@ -321,7 +322,18 @@ handle_plaintext (PKT_plaintext * pt, md_filter_context_t * mfx,
+ 		  goto leave;
+ 		}
+ 	      if (mfx->md)
+-		gcry_md_write (mfx->md, buffer, len);
++                {
++                  if (!mfx->textmode)
++                    gcry_md_write (mfx->md, buffer, len);
++                  else
++                    for (n = 0; n < len; n++)
++                      {
++                        if (buffer[n] == '\n' && !mfx->seen_cr)
++                          gcry_md_putc(mfx->md, '\r');
++                        gcry_md_putc(mfx->md, buffer[n]);
++                        mfx->seen_cr = (buffer[n] == '\r');
++                      }
++                }
+ 	      if (fp)
+ 		{
+ 		  if (opt.max_output && (count += len) > opt.max_output)
+@@ -409,12 +421,24 @@ handle_plaintext (PKT_plaintext * pt, md_filter_context_t * mfx,
+ 	       * So, always assume EOF if iobuf_read returns less bytes
+ 	       * then requested */
+ 	      int len = iobuf_read (pt->buf, buffer, temp_size);
++              int n;
+ 	      if (len == -1)
+ 		break;
+ 	      if (len < temp_size)
+ 		eof_seen = 1;
+ 	      if (mfx->md)
+-		gcry_md_write (mfx->md, buffer, len);
++                {
++                  if (!mfx->textmode)
++                    gcry_md_write (mfx->md, buffer, len);
++                  else
++                    for (n = 0; n < len; n++)
++                      {
++                        if (buffer[n] == '\n' && !mfx->seen_cr)
++                          gcry_md_putc(mfx->md, '\r');
++                        gcry_md_putc(mfx->md, buffer[n]);
++                        mfx->seen_cr = (buffer[n] == '\r');
++                      }
++                }
+ 	      if (fp)
+ 		{
+ 		  if (opt.max_output && (count += len) > opt.max_output)
+diff --git a/tests/openpgp/Makefile.am b/tests/openpgp/Makefile.am
+index ea8207e28..bf2f11a08 100644
+--- a/tests/openpgp/Makefile.am
++++ b/tests/openpgp/Makefile.am
+@@ -105,7 +105,8 @@ XTESTS = \
+ 	issue2417.scm \
+ 	issue2419.scm \
+ 	issue2929.scm \
+-	issue2941.scm
++	issue2941.scm \
++	issue7539.scm
+ 
+ 
+ # XXX: Currently, one cannot override automake's 'check' target.  As a
+@@ -178,7 +179,9 @@ TEST_FILES = pubring.asc secring.asc plain-1o.asc plain-2o.asc plain-3o.asc \
+ 	     trust-pgp/david.sec.asc \
+ 	     trust-pgp/frank.sec.asc \
+ 	     trust-pgp/grace.sec.asc \
+-	     trust-pgp/heidi.sec.asc
++	     trust-pgp/heidi.sec.asc \
++	     issue7539-signer.asc \
++	     issue7539-message.asc
+ 
+ data_files = data-500 data-9000 data-32000 data-80000 plain-large
+ 
+diff --git a/tests/openpgp/issue7539-message.asc b/tests/openpgp/issue7539-message.asc
+new file mode 100644
+index 000000000..d9627e9de
+--- /dev/null
++++ b/tests/openpgp/issue7539-message.asc
+@@ -0,0 +1,8 @@
++-----BEGIN PGP MESSAGE-----
++
++xA0DAQoWT96UsBf1XGsBywtiAAAAAAB0ZXN0CsJ1BAEWCgAdFiEE4nTJ+uve2SXH
++vtD4T96UsBf1XGsFAme5OzsACgkQT96UsBf1XGtKWAEAjmR2dUu8Jsvq+j3QArUQ
++J549CNsbbuHLLAhaE0C2zZMBAJD4hLT9KXxnpTINCAcgZfytWChkNP+qKqb4pV5N
++ItsH
++=OYzj
++-----END PGP MESSAGE-----
+diff --git a/tests/openpgp/issue7539-signer.asc b/tests/openpgp/issue7539-signer.asc
+new file mode 100644
+index 000000000..170498e1e
+--- /dev/null
++++ b/tests/openpgp/issue7539-signer.asc
+@@ -0,0 +1,9 @@
++-----BEGIN PGP PUBLIC KEY BLOCK-----
++
++xjMEZ7k39xYJKwYBBAHaRw8BAQdAOfCju+pxXLXR2WU7ItL1LdlJFfubUeXQPk33
++sqDgebXNCHRlc3Qga2V5wo8EEBYIADcCGQEFAme5N/cCGwMICwkIBwoNDAsFFQoJ
++CAsCFgIBJxYhBOJ0yfrr3tklx77Q+E/elLAX9VxrAAoJEE/elLAX9VxrJKcBAPzY
++8Ct8qZ2xbzMXMtHrnR+a2kYLVDA9U8xPtrzQOUcOAPoDW17PxLj0IyZBS7ewb2Zt
++bbZ7yHLYYKmrF2mAyBOiCA==
++=UNOn
++-----END PGP PUBLIC KEY BLOCK-----
+diff --git a/tests/openpgp/issue7539.scm b/tests/openpgp/issue7539.scm
+new file mode 100644
+index 000000000..c84c40feb
+--- /dev/null
++++ b/tests/openpgp/issue7539.scm
+@@ -0,0 +1,29 @@
++#!/usr/bin/env gpgscm
++
++;; Copyright (C) 2025 Daniel Kahn Gillmor <dkg@fifthhorseman.net>
++;;
++;; This file is part of GnuPG.
++;;
++;; GnuPG is free software; you can redistribute it and/or modify
++;; it under the terms of the GNU General Public License as published by
++;; the Free Software Foundation; either version 3 of the License, or
++;; (at your option) any later version.
++;;
++;; GnuPG is distributed in the hope that it will be useful,
++;; but WITHOUT ANY WARRANTY; without even the implied warranty of
++;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++;; GNU General Public License for more details.
++;;
++;; You should have received a copy of the GNU General Public License
++;; along with this program; if not, see <https://www.gnu.org/licenses/>.
++
++(load (in-srcdir "tests" "openpgp" "defs.scm"))
++(setup-legacy-environment)
++
++(define keyfile (in-srcdir "tests" "openpgp" "issue7539-signer.asc"))
++(define msg (in-srcdir "tests" "openpgp" "issue7539-message.asc"))
++
++(info "Checking text Signature over binary Literal Data Packet")
++
++(call-check `(,@gpg --import ,keyfile))
++(call-check `(,@gpg --verify ,msg))
+-- 
+2.51.1
+

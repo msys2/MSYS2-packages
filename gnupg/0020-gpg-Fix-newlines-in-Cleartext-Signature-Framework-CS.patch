@@ -1,0 +1,215 @@
+From cb346555d171ccd5b1932d7628df254623be5e4a Mon Sep 17 00:00:00 2001
+From: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+Date: Thu, 20 Feb 2025 20:03:48 -0500
+Subject: [PATCH 20/23] gpg: Fix newlines in Cleartext Signature Framework
+ (CSF) messages
+
+* g10/armor.c (fake_packet): trim the final newline (and any trailing
+whitespace) from synthetic literal data packet when parsing CSF.
+* g10/plaintext.c (handle_plaintext): don't drop final newline when
+verifying a CSF message.
+* g10/textfilter.c (copy_clearsig_text): digest each newline in the
+text to be signed, and always emit a non-digested additional newline
+before the signature section.
+* tests/openpgp/clearsig.scm: tighten up tests to confirm equality
+even when the message has no final newline.
+
+--
+
+https://datatracker.ietf.org/doc/html/rfc9580#section-7.1-3
+https://datatracker.ietf.org/doc/html/rfc4880#section-7.1
+
+Says:
+
+> The line ending (i.e., the <CR><LF>) before the '-----BEGIN PGP
+> SIGNATURE-----' line that terminates the signed text is not
+> considered part of the signed text.
+
+Before this change, GnuPG would emit a spurious newline at the end of
+the message when verifying a CSF message, even if the signed text did
+not contain an extra newline.
+
+This change aligns the output of gpg -- when generating and verifying
+CSF messages -- to match the input exactly.  When signing, it produces
+a signature over the textmode version of the input material.  And when
+verifying while producing output, it produces output corresponding to
+the signed material.
+
+GnuPG-bug-id: 7106
+Signed-off-by: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+---
+ g10/armor.c                | 10 ++++++++++
+ g10/plaintext.c            | 39 ++++++--------------------------------
+ g10/textfilter.c           | 17 ++++++-----------
+ tests/openpgp/clearsig.scm | 15 ++++++---------
+ 4 files changed, 28 insertions(+), 53 deletions(-)
+
+diff --git a/g10/armor.c b/g10/armor.c
+index 81af15339..da4aedbf2 100644
+--- a/g10/armor.c
++++ b/g10/armor.c
+@@ -777,6 +777,16 @@ fake_packet( armor_filter_context_t *afx, IOBUF a,
+     }
+ 
+     if( lastline ) { /* write last (ending) length header */
++      /* drop the final newline and any trailing whitespace before the BEGIN PGP SIGNATURE divider
++       * see RFC 4880 section 7.1 */
++        if (tempbuf_len && tempbuf[tempbuf_len-1] == '\n')
++          tempbuf_len -= 1;
++        if (tempbuf_len && tempbuf[tempbuf_len-1] == '\r')
++          tempbuf_len -= 1;
++        if( !afx->not_dash_escaped )
++          while (tempbuf_len && isblank(tempbuf[tempbuf_len-1]))
++            tempbuf_len -= 1;
++
+         if(tempbuf_len<192)
+ 	  buf[len++]=tempbuf_len;
+ 	else
+diff --git a/g10/plaintext.c b/g10/plaintext.c
+index 5c21dd7f6..c906d05b6 100644
+--- a/g10/plaintext.c
++++ b/g10/plaintext.c
+@@ -439,9 +439,9 @@ handle_plaintext (PKT_plaintext * pt, md_filter_context_t * mfx,
+ 	}
+       pt->buf = NULL;
+     }
+-  else /* Clear text signature - don't hash the last CR,LF.   */
++  else /* Clear text signature.   */
+     {
+-      int state = 0;
++      int cr = 0;
+ 
+       while ((c = iobuf_get (pt->buf)) != -1)
+ 	{
+@@ -464,37 +464,10 @@ handle_plaintext (PKT_plaintext * pt, md_filter_context_t * mfx,
+ 	    }
+ 	  if (!mfx->md)
+ 	    continue;
+-	  if (state == 2)
+-	    {
+-	      gcry_md_putc (mfx->md, '\r');
+-	      gcry_md_putc (mfx->md, '\n');
+-	      state = 0;
+-	    }
+-	  if (!state)
+-	    {
+-	      if (c == '\r')
+-		state = 1;
+-	      else if (c == '\n')
+-		state = 2;
+-	      else
+-		gcry_md_putc (mfx->md, c);
+-	    }
+-	  else if (state == 1)
+-	    {
+-	      if (c == '\n')
+-		state = 2;
+-	      else
+-		{
+-		  gcry_md_putc (mfx->md, '\r');
+-		  if (c == '\r')
+-		    state = 1;
+-		  else
+-		    {
+-		      state = 0;
+-		      gcry_md_putc (mfx->md, c);
+-		    }
+-		}
+-	    }
++          if ((c == '\n') && !cr)
++            gcry_md_putc (mfx->md, '\r');
++          gcry_md_putc (mfx->md, c);
++          cr = (c == '\r');
+ 	}
+       pt->buf = NULL;
+     }
+diff --git a/g10/textfilter.c b/g10/textfilter.c
+index 3e68900bb..d8837b30e 100644
+--- a/g10/textfilter.c
++++ b/g10/textfilter.c
+@@ -167,7 +167,6 @@ copy_clearsig_text( IOBUF out, IOBUF inp, gcry_md_hd_t md,
+     unsigned int bufsize = 0; /* and size of this buffer */
+     unsigned int n;
+     int truncated = 0;
+-    int pending_lf = 0;
+ 
+    if( !escape_dash )
+ 	escape_from = 0;
+@@ -185,16 +184,15 @@ copy_clearsig_text( IOBUF out, IOBUF inp, gcry_md_hd_t md,
+ 
+ 	/* update the message digest */
+ 	if( escape_dash ) {
+-	    if( pending_lf ) {
+-		gcry_md_putc ( md, '\r' );
+-		gcry_md_putc ( md, '\n' );
+-	    }
+ 	    gcry_md_write ( md, buffer,
+                             len_without_trailing_chars (buffer, n, " \t\r\n"));
++            if (buffer[n-1] == '\n') {
++		gcry_md_putc ( md, '\r' );
++		gcry_md_putc ( md, '\n' );
++            }
+ 	}
+ 	else
+             gcry_md_write ( md, buffer, n );
+-	pending_lf = buffer[n-1] == '\n';
+ 
+ 	/* write the output */
+ 	if(    ( escape_dash && *buffer == '-')
+@@ -231,11 +229,8 @@ copy_clearsig_text( IOBUF out, IOBUF inp, gcry_md_hd_t md,
+     }
+ 
+     /* at eof */
+-    if( !pending_lf ) { /* make sure that the file ends with a LF */
+-	iobuf_writestr( out, LF );
+-	if( !escape_dash )
+-	    gcry_md_putc( md, '\n' );
+-    }
++    /* add a newline before signature is emitted: */
++    iobuf_writestr( out, LF );
+ 
+     if( truncated )
+ 	log_info(_("input line longer than %d characters\n"), MAX_LINELEN );
+diff --git a/tests/openpgp/clearsig.scm b/tests/openpgp/clearsig.scm
+index b1c72c2ec..e99659641 100755
+--- a/tests/openpgp/clearsig.scm
++++ b/tests/openpgp/clearsig.scm
+@@ -30,12 +30,7 @@
+ (for-each-p
+  "Checking signing and verifying plain text messages"
+  (lambda (source)
+-   ((if (equal? "plain-3" source)
+-	;; plain-3 does not end in a newline, and gpg will add one.
+-	;; Therefore, we merely check that the verification is ok.
+-	check-execution
+-	;; Otherwise, we do check that we recover the original file.
+-	check-identity)
++   (check-identity
+     source
+     (check-signing '(--passphrase-fd "0" --clear-sign) usrpass1)))
+  (append plain-files '("plain-large")))
+@@ -65,7 +60,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ " #t ())
+ 
+     ;; and one with an empty body
+-    ("" #f ())
++    ("" #t ())
+ 
+     ;; and one with one empty line at the end
+     ("line 1
+@@ -75,8 +70,10 @@ there is a blank line after this
+ 
+ " #t ())
+ 
+-    ;; I think this file will be constructed wrong (gpg 0.9.3) but it
+-    ;; should verify okay anyway.
++    ;; Input text with trailing whitespace on any line will have the
++    ;; trailing whitespace stripped when clearsigning (see RFC 4880
++    ;; section 7.1), so verification will succeed, but the type-
++    ;; specific data passed to the digest will not be identical.
+     ("this is a sig test
+  " #f ())
+ 
+-- 
+2.51.1
+

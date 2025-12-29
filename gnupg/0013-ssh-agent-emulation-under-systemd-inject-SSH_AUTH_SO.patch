@@ -1,0 +1,54 @@
+From e2b3002fabf0a08d9b27d72d7334ef4774cb3026 Mon Sep 17 00:00:00 2001
+From: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+Date: Thu, 30 Jan 2025 11:22:12 -0500
+Subject: [PATCH 13/23] ssh-agent emulation under systemd: inject SSH_AUTH_SOCK
+ at socket start/stop
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+If enable-ssh-support is set, we want the user's system environment to
+know about the agent's socket.
+
+By injecting it into the systemd session manager's user environment
+when the socket is first opened:
+
+- The lifetime of SSH_AUTH_SOCK is tied to the lifetime of the
+  service.
+- The variable is set in a user-visible file.
+- It is easier to customize the socket variable, for instance for
+  running multiple ssh-agent or testing purpuse.
+
+Author: Bastien Roucariès <rouca@debian.org> (inject environment variable)
+
+Author: Richard Hansen <rhansen@rhansen.org> (gate on enable-ssh-agent config)
+
+Signed-off-by: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+---
+ doc/examples/systemd-user/gpg-agent-ssh.socket | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/doc/examples/systemd-user/gpg-agent-ssh.socket b/doc/examples/systemd-user/gpg-agent-ssh.socket
+index 798c1d967..425682dfb 100644
+--- a/doc/examples/systemd-user/gpg-agent-ssh.socket
++++ b/doc/examples/systemd-user/gpg-agent-ssh.socket
+@@ -3,7 +3,16 @@ Description=GnuPG cryptographic agent (ssh-agent emulation)
+ Documentation=man:gpg-agent(1) man:ssh-add(1) man:ssh-agent(1) man:ssh(1)
+ 
+ [Socket]
++# If you change ListenStream, change the name in ExecStartPost below as well.
+ ListenStream=%t/gnupg/S.gpg-agent.ssh
++
++# After creating and binding the service notify environment
++# Don't get location from config file because systemd directly passes fd, overriding the config file
++ExecStartPost=sh -c '[ -z "$$(gpgconf --list-options gpg-agent | awk -F: \'/^enable-ssh-support:/{print$$10}\')" ] || systemctl --user set-environment "$$@"' - "SSH_AUTH_SOCK=%t/gnupg/S.gpg-agent.ssh"
++
++# before unbinding stop exporting that we listen to socket
++ExecStopPre=sh -c '[ -z "$$(gpgconf --list-options gpg-agent | awk -F: \'/^enable-ssh-support:/{print$$10}\')" ] || systemctl --user unset-environment SSH_AUTH_SOCK'
++
+ FileDescriptorName=ssh
+ Service=gpg-agent.service
+ SocketMode=0600
+-- 
+2.51.1
+
