@@ -1,0 +1,173 @@
+From cab676e959ceb4c304953c60826d813fb5e04beb Mon Sep 17 00:00:00 2001
+From: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+Date: Mon, 3 Feb 2025 23:39:08 -0500
+Subject: [PATCH 14/23] gpg: Sync compliance mode cleanup with master
+
+* g10/gpg.c (set_compliance_option): Clean up option settings for
+compliance modes.
+* doc/gpg.texi: note that --allow-old-cipher-algos must come after any
+compliance setting.
+
+--
+
+This makes it possible to reset all options affected by any non-gnupg
+compliance mode to their default values by using --compliance=gnupg.
+
+This synchronizes the compliance mode behaviors with the master
+branch, including commits:
+
+- 54a8770aeb20eb9e18b5e95e51c376ec7820f8f6
+- 0bdf5859935e3db15baaf5d0d96b723ddbd2acd5
+- 04d58ff8475575f22a5ee1fb8c4f2c2dca0b5522
+- aa46ba28ba75fc479b407c572c723b51b22d4a73
+- 4b2729b983bf3c6c1186ebdf1962f64d8cb1b3a1
+
+GnuPG-Bug-id: 7501
+Signed-off-by: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+---
+ doc/gpg.texi |  7 ++++--
+ g10/gpg.c    | 61 ++++++++++++++++++++++++++--------------------------
+ 2 files changed, 35 insertions(+), 33 deletions(-)
+
+diff --git a/doc/gpg.texi b/doc/gpg.texi
+index 652003c27..4f44e4530 100644
+--- a/doc/gpg.texi
++++ b/doc/gpg.texi
+@@ -3084,7 +3084,8 @@ to the default of 3.
+ @subsection Compliance options
+ 
+ These options control what GnuPG is compliant to. Only one of these
+-options may be active at a time. Note that the default setting of
++options may be active at a time. If multiple options are given, the
++last one supersedes all the others. Note that the default setting of
+ this is nearly always the correct one. See the INTEROPERABILITY WITH
+ OTHER OPENPGP PROGRAMS section below before using one of these
+ options.
+@@ -3691,7 +3692,9 @@ blocks of 64 bits; modern algorithms use blocks of 128 bit instead.
+ To avoid certain attack on these old algorithms it is suggested not to
+ encrypt more than 150 MiByte using the same key.  For this reason gpg
+ does not allow the use of 64 bit block size algorithms for encryption
+-unless this option is specified.
++unless this option is specified.  Some compliance modes already set or
++clear this flag and thus this flag should be used after a compliance
++mode setting.
+ 
+ @item --allow-weak-digest-algos
+ @opindex allow-weak-digest-algos
+diff --git a/g10/gpg.c b/g10/gpg.c
+index 43488d60b..b1fb24b6b 100644
+--- a/g10/gpg.c
++++ b/g10/gpg.c
+@@ -2265,51 +2265,59 @@ set_compliance_option (enum cmd_and_opt_values option)
+ {
+   switch (option)
+     {
++    case oGnuPG:
++      /* set up default options affected by policy compliance: */
++      opt.compliance = CO_GNUPG;
++      opt.flags.dsa2 = 0;
++      opt.flags.require_cross_cert = 1;
++      opt.rfc2440_text = 0;
++      opt.allow_non_selfsigned_uid = 0;
++      opt.allow_freeform_uid = 0;
++      opt.escape_from = 1;
++      opt.not_dash_escaped = 0;
++      opt.def_cipher_algo = 0;
++      opt.def_digest_algo = 0;
++      opt.cert_digest_algo = 0;
++      opt.compress_algo = -1;
++      opt.s2k_mode = 3; /* iterated+salted */
++      opt.s2k_digest_algo = 0;
++      opt.s2k_cipher_algo = DEFAULT_CIPHER_ALGO;
++      opt.flags.allow_old_cipher_algos = 0;
++      break;
+     case oOpenPGP:
+     case oRFC4880:
++      set_compliance_option (oGnuPG);
+       /* This is effectively the same as RFC2440, but with
+          "--enable-dsa2 --no-rfc2440-text --escape-from-lines
+          --require-cross-certification". */
+       opt.compliance = CO_RFC4880;
+       opt.flags.dsa2 = 1;
+-      opt.flags.require_cross_cert = 1;
+-      opt.rfc2440_text = 0;
+       opt.allow_non_selfsigned_uid = 1;
+       opt.allow_freeform_uid = 1;
+-      opt.escape_from = 1;
+-      opt.not_dash_escaped = 0;
+-      opt.def_cipher_algo = 0;
+-      opt.def_digest_algo = 0;
+-      opt.cert_digest_algo = 0;
+-      opt.compress_algo = -1;
+-      opt.s2k_mode = 3; /* iterated+salted */
+       opt.s2k_digest_algo = DIGEST_ALGO_SHA1;
+       opt.s2k_cipher_algo = CIPHER_ALGO_3DES;
+       opt.flags.allow_old_cipher_algos = 1;
+       break;
+     case oRFC2440:
++      set_compliance_option (oGnuPG);
+       opt.compliance = CO_RFC2440;
+-      opt.flags.dsa2 = 0;
++      opt.flags.require_cross_cert = 0;
+       opt.rfc2440_text = 1;
+       opt.allow_non_selfsigned_uid = 1;
+       opt.allow_freeform_uid = 1;
+       opt.escape_from = 0;
+-      opt.not_dash_escaped = 0;
+-      opt.def_cipher_algo = 0;
+-      opt.def_digest_algo = 0;
+-      opt.cert_digest_algo = 0;
+-      opt.compress_algo = -1;
+-      opt.s2k_mode = 3; /* iterated+salted */
+       opt.s2k_digest_algo = DIGEST_ALGO_SHA1;
+       opt.s2k_cipher_algo = CIPHER_ALGO_3DES;
+       opt.flags.allow_old_cipher_algos = 1;
+       break;
+-    case oPGP7:  opt.compliance = CO_PGP7;  break;
+-    case oPGP8:  opt.compliance = CO_PGP8;  break;
+-    case oGnuPG:
+-      opt.compliance = CO_GNUPG;
++    case oPGP7:
++      set_compliance_option (oGnuPG);
++      opt.compliance = CO_PGP7;
++      break;
++    case oPGP8:
++      set_compliance_option (oGnuPG);
++      opt.compliance = CO_PGP8;
+       break;
+-
+     case oDE_VS:
+       set_compliance_option (oOpenPGP);
+       opt.compliance = CO_DE_VS;
+@@ -2463,19 +2471,10 @@ main (int argc, char **argv)
+     opt.command_fd = -1; /* no command fd */
+     opt.compress_level = -1; /* defaults to standard compress level */
+     opt.bz2_compress_level = -1; /* defaults to standard compress level */
+-    /* note: if you change these lines, look at oOpenPGP */
+-    opt.def_cipher_algo = 0;
+-    opt.def_digest_algo = 0;
+-    opt.cert_digest_algo = 0;
+-    opt.compress_algo = -1; /* defaults to DEFAULT_COMPRESS_ALGO */
+-    opt.s2k_mode = 3; /* iterated+salted */
+     opt.s2k_count = 0; /* Auto-calibrate when needed.  */
+-    opt.s2k_cipher_algo = DEFAULT_CIPHER_ALGO;
+     opt.completes_needed = 1;
+     opt.marginals_needed = 3;
+     opt.max_cert_depth = 5;
+-    opt.escape_from = 1;
+-    opt.flags.require_cross_cert = 1;
+     opt.import_options = (IMPORT_REPAIR_KEYS
+                           | IMPORT_COLLAPSE_UIDS
+                           | IMPORT_COLLAPSE_SUBKEYS);
+@@ -2509,7 +2508,7 @@ main (int argc, char **argv)
+     opt.passphrase_repeat = 1;
+     opt.emit_version = 0;
+     opt.weak_digests = NULL;
+-    opt.compliance = CO_GNUPG;
++    set_compliance_option (oGnuPG);
+ 
+     /* Check special options given on the command line.  */
+     orig_argc = argc;
+-- 
+2.51.1
+

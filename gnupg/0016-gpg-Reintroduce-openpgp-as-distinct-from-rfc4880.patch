@@ -1,0 +1,163 @@
+From e2a8b3411810a0bdd74dfdc05ac9446e48261d05 Mon Sep 17 00:00:00 2001
+From: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+Date: Tue, 4 Feb 2025 01:11:08 -0500
+Subject: [PATCH 16/23] gpg: Reintroduce --openpgp as distinct from --rfc4880
+
+* common/compliance.{c,h}: add CO_OPENPGP
+* options.h: #define OPENPGP by analogy with RFC4880
+* g10/gpg.c (set_compliance_option): define oOpenPGP separately from
+oRFC4880; re-point oDE_VS to use oRFC4880 to avoid changing oDE_VS.
+* g10/misc.c (compliance_failure): Describe standards modes
+* doc/gpg.texi: (Compliance options): distinguish between --rfc4880
+and --openpgp
+--
+
+This change adopts baseline MTI digest algorithms for modern OpenPGP
+when --compliance=openpgp is supplied.
+
+Signed-off-by: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+---
+ common/compliance.c |  6 +++++-
+ common/compliance.h |  2 +-
+ doc/gpg.texi        | 15 ++++++---------
+ g10/gpg.c           |  7 +++++++
+ g10/misc.c          |  8 ++++++--
+ g10/options.h       |  1 +
+ 6 files changed, 26 insertions(+), 13 deletions(-)
+
+diff --git a/common/compliance.c b/common/compliance.c
+index 5e468a11c..9f395e69b 100644
+--- a/common/compliance.c
++++ b/common/compliance.c
+@@ -52,6 +52,7 @@ static int *
+ get_compliance_cache (enum gnupg_compliance_mode compliance, int for_rng)
+ {
+   static int r_gnupg   = -1, s_gnupg   = -1;
++  static int r_openpgp = -1, s_openpgp = -1;
+   static int r_rfc4880 = -1, s_rfc4880 = -1;
+   static int r_rfc2440 = -1, s_rfc2440 = -1;
+   static int r_pgp7    = -1, s_pgp7    = -1;
+@@ -63,6 +64,7 @@ get_compliance_cache (enum gnupg_compliance_mode compliance, int for_rng)
+   switch (compliance)
+     {
+     case CO_GNUPG:   ptr = for_rng? &r_gnupg   : &s_gnupg  ; break;
++    case CO_OPENPGP: ptr = for_rng? &r_openpgp : &s_openpgp; break;
+     case CO_RFC4880: ptr = for_rng? &r_rfc4880 : &s_rfc4880; break;
+     case CO_RFC2440: ptr = for_rng? &r_rfc2440 : &s_rfc2440; break;
+     case CO_PGP7:    ptr = for_rng? &r_pgp7    : &s_pgp7   ; break;
+@@ -653,6 +655,7 @@ gnupg_status_compliance_flag (enum gnupg_compliance_mode compliance)
+     {
+     case CO_GNUPG:
+       return "8";
++    case CO_OPENPGP:
+     case CO_RFC4880:
+     case CO_RFC2440:
+     case CO_PGP7:
+@@ -711,7 +714,8 @@ gnupg_compliance_option_string (enum gnupg_compliance_mode compliance)
+   switch (compliance)
+     {
+     case CO_GNUPG:   return "--compliance=gnupg";
+-    case CO_RFC4880: return "--compliance=openpgp";
++    case CO_OPENPGP: return "--compliance=openpgp";
++    case CO_RFC4880: return "--compliance=rfc4880";
+     case CO_RFC2440: return "--compliance=rfc2440";
+     case CO_PGP7:    return "--compliance=pgp7";
+     case CO_PGP8:    return "--compliance=pgp8";
+diff --git a/common/compliance.h b/common/compliance.h
+index 2ddf38f83..47d81f0f8 100644
+--- a/common/compliance.h
++++ b/common/compliance.h
+@@ -38,7 +38,7 @@ void gnupg_initialize_compliance (int gnupg_module_name);
+ 
+ enum gnupg_compliance_mode
+   {
+-    CO_GNUPG, CO_RFC4880, CO_RFC2440,
++    CO_GNUPG, CO_OPENPGP, CO_RFC4880, CO_RFC2440,
+     CO_PGP7, CO_PGP8, CO_DE_VS
+   };
+ 
+diff --git a/doc/gpg.texi b/doc/gpg.texi
+index 834c5dda5..5a03ce592 100644
+--- a/doc/gpg.texi
++++ b/doc/gpg.texi
+@@ -3102,18 +3102,15 @@ gpg.conf file.
+ 
+ @item --openpgp
+ @opindex openpgp
+-Reset all packet, cipher and digest options to strict OpenPGP
+-behavior.  This option implies @option{--allow-old-cipher-algos}.  Use
+-this option to reset all previous options like @option{--s2k-*},
+-@option{--cipher-algo}, @option{--digest-algo} and
+-@option{--compress-algo} to OpenPGP compliant values. All PGP
+-workarounds are disabled.
++Set all packet, cipher and digest options to OpenPGP compatible
++(RFC-9580) behavior.  Note that not all of RFC-9580 is implemented by
++GnuPG.
+ 
+ @item --rfc4880
+ @opindex rfc4880
+-Reset all packet, cipher and digest options to strict RFC-4880
+-behavior.  This option implies @option{--allow-old-cipher-algos}.
+-Note that this is currently the same thing as @option{--openpgp}.
++Set all packet, cipher and digest options to strict RFC-4880 behavior.
++RFC-4880 is the legacy version of the OpenPGP standard.  This option
++implies @option{--allow-old-cipher-algos}.
+ 
+ @item --rfc4880bis
+ @opindex rfc4880bis
+diff --git a/g10/gpg.c b/g10/gpg.c
+index 2b1f47088..ef96325ae 100644
+--- a/g10/gpg.c
++++ b/g10/gpg.c
+@@ -2286,6 +2286,13 @@ set_compliance_option (enum cmd_and_opt_values option)
+       opt.def_new_key_algo = NULL;
+       break;
+     case oOpenPGP:
++      /* use MTIs from RFC 9580 at least: */
++      set_compliance_option (oGnuPG);
++      opt.compliance = CO_OPENPGP;
++      opt.flags.dsa2 = 1;
++      opt.allow_non_selfsigned_uid = 0;
++      opt.allow_freeform_uid = 1;
++      break;
+     case oRFC4880:
+       set_compliance_option (oGnuPG);
+       /* This is effectively the same as RFC2440, but with
+diff --git a/g10/misc.c b/g10/misc.c
+index 0e6d9d56c..b54f15250 100644
+--- a/g10/misc.c
++++ b/g10/misc.c
+@@ -1410,12 +1410,16 @@ compliance_failure(void)
+       ver="GnuPG";
+       break;
+ 
+-    case CO_RFC4880:
++    case CO_OPENPGP:
+       ver="OpenPGP";
+       break;
+ 
++    case CO_RFC4880:
++      ver="OpenPGP (older, RFC 4880)";
++      break;
++
+     case CO_RFC2440:
+-      ver="OpenPGP (older)";
++      ver="OpenPGP (oldest, RFC 2440)";
+       break;
+ 
+     case CO_PGP7:
+diff --git a/g10/options.h b/g10/options.h
+index 29641119d..c7fc1524b 100644
+--- a/g10/options.h
++++ b/g10/options.h
+@@ -392,6 +392,7 @@ EXTERN_UNLESS_MAIN_MODULE int memory_stat_debug_mode;
+ 
+ /* Compliance test macors.  */
+ #define GNUPG   (opt.compliance==CO_GNUPG || opt.compliance==CO_DE_VS)
++#define OPENPGP (opt.compliance==CO_OPENPGP)
+ #define RFC2440 (opt.compliance==CO_RFC2440)
+ #define RFC4880 (opt.compliance==CO_RFC4880)
+ #define PGP7    (opt.compliance==CO_PGP7)
+-- 
+2.51.1
+

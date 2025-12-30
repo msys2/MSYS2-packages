@@ -1,0 +1,200 @@
+From 1abc12a884004fdcaa2e0a07166264ce91661dc7 Mon Sep 17 00:00:00 2001
+From: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+Date: Tue, 4 Feb 2025 01:22:41 -0500
+Subject: [PATCH 15/23] gpg: emit RSA pubkey algorithm when in compatibility
+ modes
+
+* doc/gpg.texi (Compliance Options): --gnupg offers LibrePGP behavior,
+and prefers LibrePGP where it diverges from OpenPGP; --rfc4880bis is
+an alias for --gnupg; Explain that --rfc2440 is ancient; correct
+punctuation. (default-new-key-algo): drop incorrect information
+about defaults. (default-new-key-algo): Remind the user that this
+should come after any compliance modes, like --allow-old-cipher-algos.
+* g10/gpg.c (set_compliance_option): default pubkey algorithm for
+legacy compliance is 3072-bit RSA.
+* common/compliance.c (gnupg_compliance_label) new function,
+prototyped...
+* common/compliance.h: ...here.
+* g10/keygen.c (parse_key_parameter_part): when using a legacy
+compliance mode, ensure that new keys are only algorithms known by the
+corresponding tools.
+
+--
+
+Before this fix, the following command:
+
+   gpg --rfc4880 --quick-gen-key "$USERID"
+
+would produce an OpenPGP secret key that would not be compatible for
+use with an RFC 4880 client.  The generated certificate would be a
+problem if the user has a another OpenPGP client that is limited to
+RFC 4880, and it would be a problem for any peer who wants
+to encrypt to or validate signatures from the corresponding
+certificate.
+
+With this fix, default key generation under a compatibility mode will
+actually produce compatible, interoperable OpenPGP key.
+
+GnuPG-bug-id: 7511
+Signed-off-by: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+---
+ common/compliance.c |  7 +++++++
+ common/compliance.h |  2 ++
+ doc/gpg.texi        | 40 ++++++++++++++++++----------------------
+ g10/gpg.c           |  3 +++
+ g10/keygen.c        |  9 +++++++++
+ 5 files changed, 39 insertions(+), 22 deletions(-)
+
+diff --git a/common/compliance.c b/common/compliance.c
+index 84449af25..5e468a11c 100644
+--- a/common/compliance.c
++++ b/common/compliance.c
+@@ -696,6 +696,13 @@ gnupg_parse_compliance_option (const char *string,
+   return -1;
+ }
+ 
++/* Return label for the given COMPLIANCE mode.  */
++const char *
++gnupg_compliance_label (enum gnupg_compliance_mode compliance)
++{
++  /* just offset by strlen("--compliance=") */
++  return gnupg_compliance_option_string (compliance) + 13;
++}
+ 
+ /* Return the command line option for the given COMPLIANCE mode.  */
+ const char *
+diff --git a/common/compliance.h b/common/compliance.h
+index 111fdc74b..2ddf38f83 100644
+--- a/common/compliance.h
++++ b/common/compliance.h
+@@ -91,6 +91,8 @@ int gnupg_parse_compliance_option (const char *string,
+                                    int quiet);
+ const char *gnupg_compliance_option_string (enum gnupg_compliance_mode
+                                             compliance);
++const char *gnupg_compliance_label (enum gnupg_compliance_mode
++                                    compliance);
+ 
+ void gnupg_set_compliance_extra_info (unsigned int min_rsa);
+ 
+diff --git a/doc/gpg.texi b/doc/gpg.texi
+index 4f44e4530..834c5dda5 100644
+--- a/doc/gpg.texi
++++ b/doc/gpg.texi
+@@ -3094,12 +3094,11 @@ options.
+ 
+ @item --gnupg
+ @opindex gnupg
+-Use standard GnuPG behavior. This is essentially OpenPGP behavior (see
+-@option{--openpgp}), but with extension from the proposed update to
+-OpenPGP and with some additional workarounds for common compatibility
+-problems in different versions of PGP.  This is the default option, so
+-it is not generally needed, but it may be useful to override a
+-different compliance option in the gpg.conf file.
++Use standard GnuPG behavior. This is now LibrePGP behavior, which is a
++different draft protocol that overlaps in some cases with
++OpenPGP. This is the default option, so it is not generally needed,
++but it may be useful to override a different compliance option in the
++gpg.conf file.
+ 
+ @item --openpgp
+ @opindex openpgp
+@@ -3118,21 +3117,20 @@ Note that this is currently the same thing as @option{--openpgp}.
+ 
+ @item --rfc4880bis
+ @opindex rfc4880bis
+-Reset all packet, cipher and digest options to strict according to the
+-proposed updates of RFC-4880.
++This option is obsolete; it is handled as an alias for @option{--gnupg}.
+ 
+ @item --rfc2440
+ @opindex rfc2440
+-Reset all packet, cipher and digest options to strict RFC-2440
+-behavior.  Note that by using this option encryption packets are
+-created in a legacy mode without MDC protection.  This is dangerous
+-and should thus only be used for experiments.  This option implies
+-@option{--allow-old-cipher-algos}.  See also option
+-@option{--ignore-mdc-error}.
++Set all packet, cipher and digest options to strict RFC-2440 behavior.
++RFC-2440 is a very old version of OpenPGP.  Note that by using this
++option encryption packets are created in a legacy mode without MDC
++protection.  This is dangerous and should thus only be used for
++experiments.  This option implies @option{--allow-old-cipher-algos}.
++See also option @option{--ignore-mdc-error}.
+ 
+ @item --pgp6
+ @opindex pgp6
+-This option is obsolete; it is handled as an alias for @option{--pgp7}
++This option is obsolete; it is handled as an alias for @option{--pgp7}.
+ 
+ @item --pgp7
+ @opindex pgp7
+@@ -3848,13 +3846,11 @@ absolute date in the form YYYY-MM-DD. Defaults to "0".
+ @opindex default-new-key-algo @var{string}
+ This option can be used to change the default algorithms for key
+ generation. The @var{string} is similar to the arguments required for
+-the command @option{--quick-add-key} but slightly different.  For
+-example the current default of @code{"rsa2048/cert,sign+rsa2048/encr"}
+-(or @code{"rsa3072"}) can be changed to the value of what we currently
+-call future default, which is @code{"ed25519/cert,sign+cv25519/encr"}.
+-You need to consult the source code to learn the details.  Note that
+-the advanced key generation commands can always be used to specify a
+-key algorithm directly.
++the command @option{--quick-add-key} but slightly different.  You need
++to consult the source code to learn the details.  Note that the
++advanced key generation commands can always be used to specify a key
++algorithm directly.  Setting a compliance mode will set or clear this
++flag, so it should only be used after a compliance mode setting.
+ 
+ @item --no-auto-trust-new-key
+ @opindex no-auto-trust-new-key
+diff --git a/g10/gpg.c b/g10/gpg.c
+index b1fb24b6b..2b1f47088 100644
+--- a/g10/gpg.c
++++ b/g10/gpg.c
+@@ -2283,6 +2283,7 @@ set_compliance_option (enum cmd_and_opt_values option)
+       opt.s2k_digest_algo = 0;
+       opt.s2k_cipher_algo = DEFAULT_CIPHER_ALGO;
+       opt.flags.allow_old_cipher_algos = 0;
++      opt.def_new_key_algo = NULL;
+       break;
+     case oOpenPGP:
+     case oRFC4880:
+@@ -2297,6 +2298,7 @@ set_compliance_option (enum cmd_and_opt_values option)
+       opt.s2k_digest_algo = DIGEST_ALGO_SHA1;
+       opt.s2k_cipher_algo = CIPHER_ALGO_3DES;
+       opt.flags.allow_old_cipher_algos = 1;
++      opt.def_new_key_algo = "rsa3072/cert,sign+rsa3072/encr";
+       break;
+     case oRFC2440:
+       set_compliance_option (oGnuPG);
+@@ -2309,6 +2311,7 @@ set_compliance_option (enum cmd_and_opt_values option)
+       opt.s2k_digest_algo = DIGEST_ALGO_SHA1;
+       opt.s2k_cipher_algo = CIPHER_ALGO_3DES;
+       opt.flags.allow_old_cipher_algos = 1;
++      opt.def_new_key_algo = "rsa3072/cert,sign+rsa3072/encr";
+       break;
+     case oPGP7:
+       set_compliance_option (oGnuPG);
+diff --git a/g10/keygen.c b/g10/keygen.c
+index 9b547ad23..0eacd610d 100644
+--- a/g10/keygen.c
++++ b/g10/keygen.c
+@@ -3577,6 +3577,15 @@ parse_key_parameter_part (ctrl_t ctrl,
+   else
+     return gpg_error (GPG_ERR_UNKNOWN_CURVE);
+ 
++  if ((RFC4880||RFC2440||PGP8||PGP7) &&
++      (algo != PUBKEY_ALGO_RSA) &&
++      (algo != PUBKEY_ALGO_DSA) &&
++      (algo != PUBKEY_ALGO_ELGAMAL_E)) {
++    log_error (_("Cannot generate pubkey algorithm \"%s\" in compliance mode: %s\n"),
++               string, gnupg_compliance_label (opt.compliance));
++    return gpg_error (GPG_ERR_UNKNOWN_ALGORITHM);
++  }
++
+   /* Parse the flags.  */
+   keyuse = 0;
+   if (flags)
+-- 
+2.51.1
+

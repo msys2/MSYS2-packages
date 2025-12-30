@@ -1,0 +1,117 @@
+From 399173d84d4790bcd5848fe42a9e5ada64f5e4ae Mon Sep 17 00:00:00 2001
+From: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+Date: Tue, 4 Feb 2025 02:56:36 -0500
+Subject: [PATCH 17/23] gpg: Emit LibrePGP material only in --compliance=gnupg
+
+* g10/encrypt.c (use_aead): only emit LibrePGP AEAD/OCB if in
+--compliance=gnupg or --force-ocb
+* g10/keygen.c (keygen_set_std_prefs): when opt.compliance !=
+CO_GNUPG, skip the LibrePGP AEAD algorithm preferences subpacket
+during key generation. (keygen_upd_std_prefs): If opt.compliance !=
+CO_GNUPG, don't advertise support for LibrePGP features (v5 keys,
+OCB). (parse_key_parameter_part): Unless opt.compliance == CO_GNUPG,
+error out when prompted to produce a v5 key.
+
+--
+
+Emit the following objects only in CO_GNUPG:
+
+- AEAD/OCB
+- preferred AEAD Algorithm subpackets
+- Feature bit for "v5" and LibrePGP AEAD
+- new v5 keys, new *448 keys
+
+This change makes it so that --compliance=openpgp mode produces
+objects that other OpenPGP-compatible implementations will be able to
+handle.
+
+In the case of encrypted data, it will decline to emit LibrePGP
+AEAD/OCB, which means other implementations will be able to decrypt.
+
+In the case of new keys, not only will OpenPGP-compatible peers be
+able to communicate with the newly generated certificates, but if the
+secret key is shared with other OpenPGP implementations they will be
+able to handle it.
+
+And we avoid setting feature advertisements which might encourage
+other people to send LibrePGP-formatted material to the user, so that
+when the secret key is shared with another OpenPGP-compatible
+implementation, it will be able to handle the incoming material.
+
+Signed-off-by: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
+---
+ g10/encrypt.c |  5 +++++
+ g10/keygen.c  | 19 ++++++++++++++++---
+ 2 files changed, 21 insertions(+), 3 deletions(-)
+
+diff --git a/g10/encrypt.c b/g10/encrypt.c
+index 5593f694c..de4811fe8 100644
+--- a/g10/encrypt.c
++++ b/g10/encrypt.c
+@@ -358,6 +358,11 @@ use_aead (pk_list_t pk_list, int algo)
+         }
+       return AEAD_ALGO_OCB;
+     }
++  if (opt.compliance != CO_GNUPG)
++    {
++      /* the "AEAD: OCB" feature is LibrePGP only */
++      return 0;
++    }
+ 
+   /* AEAD does only work with 128 bit cipher blocklength.  */
+   if (!can_use)
+diff --git a/g10/keygen.c b/g10/keygen.c
+index 0eacd610d..c7af82c64 100644
+--- a/g10/keygen.c
++++ b/g10/keygen.c
+@@ -455,7 +455,7 @@ keygen_set_std_prefs (const char *string,int personal)
+ 	      strcat(dummy_string,"S7 ");
+ 	    strcat(dummy_string,"S2 "); /* 3DES */
+ 
+-            if (!openpgp_aead_test_algo (AEAD_ALGO_OCB))
++            if ((opt.compliance == CO_GNUPG) && (!openpgp_aead_test_algo (AEAD_ALGO_OCB)))
+ 	      strcat(dummy_string,"A2 ");
+ 
+             if (personal)
+@@ -939,8 +939,10 @@ keygen_upd_std_prefs (PKT_signature *sig, void *opaque)
+ 
+   /* Make sure that the MDC feature flag is set if needed.  */
+   add_feature_mdc (sig,mdc_available);
+-  add_feature_aead (sig, aead_available);
+-  add_feature_v5 (sig, 1);
++  if (opt.compliance == CO_GNUPG) {
++    add_feature_aead (sig, aead_available);
++    add_feature_v5 (sig, 1);
++  }
+   add_keyserver_modify (sig,ks_modify);
+   keygen_add_keyserver_url(sig,NULL);
+ 
+@@ -3643,7 +3645,13 @@ parse_key_parameter_part (ctrl_t ctrl,
+                 }
+             }
+           else if (!ascii_strcasecmp (s, "v5"))
++            {
++              if (opt.compliance != CO_GNUPG) {
++                log_error (_("Cannot create a v5 key without --compliance=gnupg"));
++                return gpg_error (GPG_ERR_UNKNOWN_VERSION);
++              }
+             keyversion = 5;
++            }
+           else if (!ascii_strcasecmp (s, "v4"))
+             keyversion = 4;
+           else
+@@ -3824,6 +3832,11 @@ parse_key_parameter_part (ctrl_t ctrl,
+   /* Ed448 and X448 must only be used as v5 keys.  */
+   if (is_448)
+     {
++      if (opt.compliance != CO_GNUPG)
++        {
++          log_error(_("Cannot create Ed448 or Curve448 key without --compliance=gnupg.\n"));
++          return gpg_error (GPG_ERR_PUBKEY_ALGO);
++        }
+       if (keyversion == 4)
+         log_info (_("WARNING: v4 is specified, but overridden by v5.\n"));
+ 
+-- 
+2.51.1
+
