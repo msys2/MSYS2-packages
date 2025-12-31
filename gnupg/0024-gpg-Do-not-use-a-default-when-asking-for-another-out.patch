@@ -1,0 +1,74 @@
+From 9d89572219b1bd5d5e85ac227b3d8db63d99d37c Mon Sep 17 00:00:00 2001
+From: Werner Koch <wk@gnupg.org>
+Date: Mon, 27 Oct 2025 12:43:27 +0100
+Subject: [PATCH] gpg: Do not use a default when asking for another output
+ filename.
+
+* g10/options.h (COMPAT_SUGGEST_EMBEDDED_NAME): New.
+* g10/gpg.c (compatibility_flags): New flags "suggest-embedded-name".
+* g10/openfile.c (ask_outfile_name): Do not show a default unless the
+compatibiliy flag is used.
+---
+ g10/gpg.c      |  1 +
+ g10/openfile.c | 12 +++++++++---
+ g10/options.h  |  5 +++++
+ 3 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/g10/gpg.c b/g10/gpg.c
+index e3ec86c2a..f7d192c1a 100644
+--- a/g10/gpg.c
++++ b/g10/gpg.c
+@@ -1038,6 +1038,7 @@ static struct debug_flags_s debug_flags [] =
+ static struct compatibility_flags_s compatibility_flags [] =
+   {
+     { COMPAT_COMPR_KEYS,   "compr-keys" },
++    { COMPAT_SUGGEST_EMBEDDED_NAME, "suggest-embedded-name" },
+     { 0, NULL }
+   };
+ 
+diff --git a/g10/openfile.c b/g10/openfile.c
+index 5ca168a13..0c728db76 100644
+--- a/g10/openfile.c
++++ b/g10/openfile.c
+@@ -125,7 +125,7 @@ make_outfile_name (const char *iname)
+    NAMELEN is its actual length.
+  */
+ char *
+-ask_outfile_name( const char *name, size_t namelen )
++ask_outfile_name (const char *name, size_t namelen)
+ {
+   size_t n;
+   const char *s;
+@@ -136,8 +136,14 @@ ask_outfile_name( const char *name, size_t namelen )
+   if ( opt.batch )
+     return NULL;
+ 
+-  defname = name && namelen? make_printable_string (name, namelen, 0) : NULL;
+-
++  /* To avoid tricking the user into using the embedded filename we do
++   * not anymore include that name in the prompt as default.  For
++   * modern v5 signature this might make sense as they are now covered
++   * by the signature but we better leave such a decision to a GUI.  */
++  if (name && namelen && (opt.compat_flags & COMPAT_SUGGEST_EMBEDDED_NAME))
++    defname = make_printable_string (name, namelen, 0);
++  else
++    defname = NULL;
+   s = _("Enter new filename");
+   n = strlen(s) + (defname?strlen (defname):0) + 10;
+   prompt = xmalloc (n);
+diff --git a/g10/options.h b/g10/options.h
+index db52701b3..e7935ecee 100644
+--- a/g10/options.h
++++ b/g10/options.h
+@@ -388,6 +388,11 @@ EXTERN_UNLESS_MAIN_MODULE int memory_stat_debug_mode;
+ 
+ /* Compatibility flags */
+ #define COMPAT_COMPR_KEYS     4  /* Allow import of compressed keys. (T7014) */
++#define COMPAT_SUGGEST_EMBEDDED_NAME 16 /* Show the non-signed
++                                         * embedded filename as
++                                         * suggestion.  */
++
++
+ 
+ 
+ /* Compliance test macors.  */
