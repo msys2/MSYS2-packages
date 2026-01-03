@@ -1,8 +1,9 @@
 # Maintainer: Alexey Pavlov <Alexpux@gmail.com>
 
-pkgname=('libiconv' 'libiconv-devel')
+pkgname=('libiconv' 'iconv' 'libiconv-devel')
 pkgver=1.18
-pkgrel=1
+pkgrel=2
+conflicts=('libiconv<1.18-2')
 pkgdesc='Libiconv is a conversion library'
 groups=('libraries')
 arch=('i686' 'x86_64')
@@ -14,12 +15,14 @@ source=("https://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.gz"
         1.16-aliases.patch
         1.16-cross-install.patch
         1.16-wchar.patch
-        libiconv-1.16-msysize.patch)
+        libiconv-1.16-msysize.patch
+        0001-fixes-building-with-gcc-15.patch)
 sha256sums=('3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8'
             '72c8318424acdf92260550176359ae1426e751e2071ecfa061a515a8f59d292c'
             '1e24e990d67fd8fbb9ece6318880127ff06b84d2d278dd18b0643044e64e5edf'
             'c2f4b2d0ce0cd7d2dc98aa1d5e2db31c3b88c1b399d3706dbdacfaef3c13d70c'
-            '8a43391e9402e99f70ef3f5dfbb8dda7ab7a30d91c00189ce5ab38c1bc6352d8')
+            '8a43391e9402e99f70ef3f5dfbb8dda7ab7a30d91c00189ce5ab38c1bc6352d8'
+            '126065bc77421edfe0eb01ca50c2920742f0ddddb5860f8eec06d0e497cbcd20')
 options=(!libtool)
 
 apply_patch_with_msg() {
@@ -37,7 +40,8 @@ prepare() {
     1.16-aliases.patch \
     1.16-cross-install.patch \
     1.16-wchar.patch \
-    libiconv-1.16-msysize.patch
+    libiconv-1.16-msysize.patch \
+    0001-fixes-building-with-gcc-15.patch
 
   cp -f srcm4/* m4/
 
@@ -66,17 +70,26 @@ check() {
 }
 
 package_libiconv() {
-  depends=('gcc-libs' 'libintl')
+  depends=('gcc-libs')
 
   mkdir -p ${pkgdir}/usr
   cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
   cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
+  rm ${pkgdir}/usr/bin/*.exe
+}
+
+package_iconv() {
+  depends=('gcc-libs' "libiconv=${pkgver}" 'libintl')
+
+  mkdir -p ${pkgdir}/usr
+  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
+  rm ${pkgdir}/usr/bin/*.dll
 }
 
 package_libiconv-devel() {
   groups=('development')
   options=('staticlibs')
-  depends=("libiconv=${pkgver}")
+  depends=("iconv=${pkgver}" "libiconv=${pkgver}")
   pkgdesc="libiconv headers and libraries"
 
   mkdir -p ${pkgdir}/usr
