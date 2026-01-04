@@ -1,0 +1,124 @@
+From f56fcf82ee55d23e463984508017d2f947512a12 Mon Sep 17 00:00:00 2001
+From: Yonggang Luo <luoyonggang@gmail.com>
+Date: Sun, 19 Apr 2026 04:25:13 +0800
+Subject: [PATCH] man-db: update stddef_h.m4 and Makefile.am  of gnulib for
+ building with gcc 15.x
+
+---
+ gl/lib/Makefile.am |  1 +
+ gl/m4/stddef_h.m4  | 62 +++++++++++++++++++++++++++-------------------
+ 2 files changed, 37 insertions(+), 26 deletions(-)
+
+diff --git a/gl/lib/Makefile.am b/gl/lib/Makefile.am
+index 8f570a1..44ecfab 100644
+--- a/gl/lib/Makefile.am
++++ b/gl/lib/Makefile.am
+@@ -2454,6 +2454,7 @@ stddef.h: stddef.in.h $(top_builddir)/config.status
+ 	      -e 's|@''STDDEF_NOT_IDEMPOTENT''@|$(STDDEF_NOT_IDEMPOTENT)|g' \
+ 	      -e 's|@''REPLACE_NULL''@|$(REPLACE_NULL)|g' \
+ 	      -e 's|@''HAVE_MAX_ALIGN_T''@|$(HAVE_MAX_ALIGN_T)|g' \
++		  -e 's|@''HAVE_C_UNREACHABLE''@|$(HAVE_C_UNREACHABLE)|g' \
+ 	      $(srcdir)/stddef.in.h > $@-t
+ 	$(AM_V_at)mv $@-t $@
+ else
+diff --git a/gl/m4/stddef_h.m4 b/gl/m4/stddef_h.m4
+index c7f75b3..299472b 100644
+--- a/gl/m4/stddef_h.m4
++++ b/gl/m4/stddef_h.m4
+@@ -1,9 +1,10 @@
+ # stddef_h.m4
+-# serial 17
+-dnl Copyright (C) 2009-2024 Free Software Foundation, Inc.
++# serial 23
++dnl Copyright (C) 2009-2026 Free Software Foundation, Inc.
+ dnl This file is free software; the Free Software Foundation
+ dnl gives unlimited permission to copy and/or distribute it,
+ dnl with or without modifications, as long as this notice is preserved.
++dnl This file is offered as-is, without any warranty.
+ 
+ dnl A placeholder for <stddef.h>, for platforms that have issues.
+ 
+@@ -63,22 +64,28 @@ AC_DEFUN_ONCE([gl_STDDEF_H],
+     GL_GENERATE_STDDEF_H=true
+   fi
+ 
+-  AC_CACHE_CHECK([for unreachable],
+-    [gl_cv_func_unreachable],
++  AC_CACHE_CHECK([for unreachable in C],
++    [gl_cv_c_func_unreachable],
+     [AC_LINK_IFELSE(
+        [AC_LANG_PROGRAM(
+           [[#include <stddef.h>
+           ]],
+           [[unreachable ();
+           ]])],
+-       [gl_cv_func_unreachable=yes],
+-       [gl_cv_func_unreachable=no])
++       [gl_cv_c_func_unreachable=yes],
++       [gl_cv_c_func_unreachable=no])
+     ])
+-  if test $gl_cv_func_unreachable = no; then
++  if test $gl_cv_c_func_unreachable = no; then
+     GL_GENERATE_STDDEF_H=true
++    HAVE_C_UNREACHABLE=0
++  else
++    HAVE_C_UNREACHABLE=1
+   fi
++  AC_SUBST([HAVE_C_UNREACHABLE])
++  dnl Provide gl_unreachable() unconditionally.
++  GL_GENERATE_STDDEF_H=true
+ 
+-  dnl https://gcc.gnu.org/bugzilla/show_bug.cgi?id=114869
++  dnl https://gcc.gnu.org/PR114869
+   AC_CACHE_CHECK([whether nullptr_t needs <stddef.h>],
+     [gl_cv_nullptr_t_needs_stddef],
+     [AC_COMPILE_IFELSE([AC_LANG_DEFINES_PROVIDED[nullptr_t x;]],
+@@ -89,24 +96,27 @@ AC_DEFUN_ONCE([gl_STDDEF_H],
+     GL_GENERATE_STDDEF_H=true
+   fi
+ 
+-  AC_CACHE_CHECK([for clean definition of __STDC_VERSION_STDDEF_H__],
+-    [gl_cv_clean_version_stddef],
+-    [AC_PREPROC_IFELSE(
+-       [AC_LANG_SOURCE(
+-          [[/* https://gcc.gnu.org/bugzilla/show_bug.cgi?id=114870 */
+-            #include <stddef.h>
+-            #undef __STDC_VERSION_STDDEF_H__
+-            #include <time.h>
+-            #ifdef __STDC_VERSION_STDDEF_H__
+-            # error "<time.h> defines __STDC_VERSION_STDDEF_H__"
+-            #endif
+-          ]])],
+-        [gl_cv_clean_version_stddef=yes],
+-        [gl_cv_clean_version_stddef=no])])
+-  if test "$gl_cv_clean_version_stddef" = no; then
+-    STDDEF_NOT_IDEMPOTENT=1
+-    GL_GENERATE_STDDEF_H=true
+-  fi
++  dnl https://gcc.gnu.org/PR114870
++  dnl affects GCC 13.3 and 14.2.
++  AC_CACHE_CHECK([whether <stddef.h> is idempotent],
++    [gl_cv_stddef_idempotent],
++    [AC_COMPILE_IFELSE([AC_LANG_SOURCE(
++       [[
++       #if \
++           ((__GNUC__ == 13 && __GNUC_MINOR__ <= 3) \
++            || (__GNUC__ == 14 && __GNUC_MINOR__ <= 2))
++        #error "bug 114870 is present"
++       #endif
++       ]])],
++       [gl_cv_stddef_idempotent="guessing yes"],
++       [gl_cv_stddef_idempotent="guessing no"])
++    ])
++  case "$gl_cv_stddef_idempotent" in
++    *yes) ;;
++    *) STDDEF_NOT_IDEMPOTENT=1
++       GL_GENERATE_STDDEF_H=true
++       ;;
++  esac
+ 
+   if $GL_GENERATE_STDDEF_H; then
+     gl_NEXT_HEADERS([stddef.h])
+-- 
+2.52.0.windows.1
+
