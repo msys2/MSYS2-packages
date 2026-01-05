@@ -1,0 +1,90 @@
+From 2592119809ac5c378e772b15d98024d22fda319c Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Fri, 19 Dec 2025 11:26:38 +0900
+Subject: [PATCH 43/N] Cygwin: termios: Change argument of
+ fhandler_termios::spawn_worker()
+
+This patch changes the argument for passsing a path to an app
+to fhandler_termios::spawn_worker() from const WCHAR *runpath
+to path_conv &pc. The purpose of this patch is to prepare for
+a subsequent patch, that is intended to fix a bug in executing
+Microsoft Store apps.
+
+Reviewed-by: Johannes Schindelin <Johannes.Schindelin@gmx.de>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/fhandler/termios.cc       | 14 +++++++++-----
+ winsup/cygwin/local_includes/fhandler.h |  2 +-
+ winsup/cygwin/spawn.cc                  |  2 +-
+ 3 files changed, 11 insertions(+), 7 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler/termios.cc b/winsup/cygwin/fhandler/termios.cc
+index 8f98e42..e6e6419 100644
+--- a/winsup/cygwin/fhandler/termios.cc
++++ b/winsup/cygwin/fhandler/termios.cc
+@@ -702,13 +702,17 @@ fhandler_termios::fstat (struct stat *buf)
+ }
+ 
+ static bool
+-is_console_app (const WCHAR *filename)
++is_console_app (path_conv &pc)
+ {
+-  wchar_t *e = wcsrchr (filename, L'.');
++  tmp_pathbuf tp;
++  WCHAR *native_path = tp.w_get ();
++  pc.get_wide_win32_path (native_path);
++
++  wchar_t *e = wcsrchr (native_path, L'.');
+   if (e && (wcscasecmp (e, L".bat") == 0 || wcscasecmp (e, L".cmd") == 0))
+     return true;
+   HANDLE h;
+-  h = CreateFileW (filename, GENERIC_READ, FILE_SHARE_READ,
++  h = CreateFileW (native_path, GENERIC_READ, FILE_SHARE_READ,
+ 		   NULL, OPEN_EXISTING, 0, NULL);
+   if (h == INVALID_HANDLE_VALUE)
+     return true;
+@@ -761,7 +765,7 @@ fhandler_termios::ioctl (unsigned int cmd, void *varg)
+ 
+ void
+ fhandler_termios::spawn_worker::setup (bool iscygwin, HANDLE h_stdin,
+-				       const WCHAR *runpath, bool nopcon,
++				       path_conv &pc, bool nopcon,
+ 				       bool reset_sendsig,
+ 				       const WCHAR *envblock)
+ {
+@@ -800,7 +804,7 @@ fhandler_termios::spawn_worker::setup (bool iscygwin, HANDLE h_stdin,
+ 	    ptys->setup_locale ();
+ 	  }
+     }
+-  if (!iscygwin && ptys_primary && is_console_app (runpath))
++  if (!iscygwin && ptys_primary && is_console_app (pc))
+     {
+       if (h_stdin == ptys_primary->get_handle_nat ())
+ 	stdin_is_ptys = true;
+diff --git a/winsup/cygwin/local_includes/fhandler.h b/winsup/cygwin/local_includes/fhandler.h
+index 5e8f3d3..9fa7389 100644
+--- a/winsup/cygwin/local_includes/fhandler.h
++++ b/winsup/cygwin/local_includes/fhandler.h
+@@ -2035,7 +2035,7 @@ class fhandler_termios: public fhandler_base
+     spawn_worker () :
+       ptys_need_cleanup (false), cons_need_cleanup (false),
+       stdin_is_ptys (false), ptys_ttyp (NULL) {}
+-    void setup (bool iscygwin, HANDLE h_stdin, const WCHAR *runpath,
++    void setup (bool iscygwin, HANDLE h_stdin, path_conv &pc,
+ 		bool nopcon, bool reset_sendsig, const WCHAR *envblock);
+     bool need_cleanup () { return ptys_need_cleanup || cons_need_cleanup; }
+     void cleanup ();
+diff --git a/winsup/cygwin/spawn.cc b/winsup/cygwin/spawn.cc
+index 2cc5716..3467aa6 100644
+--- a/winsup/cygwin/spawn.cc
++++ b/winsup/cygwin/spawn.cc
+@@ -609,7 +609,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 
+       bool no_pcon = mode != _P_OVERLAY && mode != _P_WAIT;
+       term_spawn_worker.setup (iscygwin (), handle (fileno_stdin, false),
+-			       runpath, no_pcon, reset_sendsig, envblock);
++			       real_path, no_pcon, reset_sendsig, envblock);
+ 
+       /* Set up needed handles for stdio */
+       si.dwFlags = STARTF_USESTDHANDLES;
