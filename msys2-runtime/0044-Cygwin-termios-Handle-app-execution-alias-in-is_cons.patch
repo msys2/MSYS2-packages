@@ -1,0 +1,54 @@
+From d78a360ea960fa1774ee3a2d077dcc4a59f32cc5 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Fri, 19 Dec 2025 11:26:39 +0900
+Subject: [PATCH 44/N] Cygwin: termios: Handle app execution alias in
+ is_console_app()
+
+Microsoft Store apps are run via app execution aliases, i.e. special
+reparse points. Currently, spawn.cc does not resolve a reparse point
+when retrieving the path of app after the commit f74dc93c6359, that
+disabled to follow windows reparse point by adding PC_SYM_NOFOLLOW_REP
+flag.
+
+However, unlike proper reparse point, app execution aliases are not
+resolved when trying to open the file via CreateFile(). As a result,
+if the path, that is_console_app() received, is the reparse point
+for an app execution alias, the func retuned false due to open-failure
+because CreateFile() cannot open an app execution alias, while it can
+open normal reparse point. If is_console_app() returns false, standard
+handles for console app (such as WSL) would not be setup. This causes
+that the console input cannot be transfered to the non-cygwin app.
+
+This patch fixes the issue by locally converting the path once again
+using option PC_SYM_FOLLOW (without PC_SYM_NOFOLLOW_REP), which is
+used inside is_console_app() to resolve the reparse point, if the path
+is an app execution alias.
+
+Fixes: f74dc93c6359 ("fix native symlink spawn passing wrong arg0")
+Reviewed-by: Johannes Schindelin <Johannes.Schindelin@gmx.de>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/fhandler/termios.cc | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/winsup/cygwin/fhandler/termios.cc b/winsup/cygwin/fhandler/termios.cc
+index e6e6419..01d00da 100644
+--- a/winsup/cygwin/fhandler/termios.cc
++++ b/winsup/cygwin/fhandler/termios.cc
+@@ -711,6 +711,15 @@ is_console_app (path_conv &pc)
+   wchar_t *e = wcsrchr (native_path, L'.');
+   if (e && (wcscasecmp (e, L".bat") == 0 || wcscasecmp (e, L".cmd") == 0))
+     return true;
++
++  if (pc.is_app_execution_alias ())
++    {
++      UNICODE_STRING upath;
++      RtlInitUnicodeString (&upath, native_path);
++      path_conv target (&upath, PC_SYM_FOLLOW);
++      target.get_wide_win32_path (native_path);
++    }
++
+   HANDLE h;
+   h = CreateFileW (native_path, GENERIC_READ, FILE_SHARE_READ,
+ 		   NULL, OPEN_EXISTING, 0, NULL);

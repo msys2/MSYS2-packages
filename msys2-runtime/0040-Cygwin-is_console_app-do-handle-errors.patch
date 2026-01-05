@@ -1,0 +1,46 @@
+From a8cd439d695d40eecf3e7957ea05fd923e6084d4 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Fri, 19 Dec 2025 11:26:35 +0900
+Subject: [PATCH 40/N] Cygwin: is_console_app(): do handle errors
+
+When that function was introduced in bb4285206207 (Cygwin: pty: Implement
+new pseudo console support., 2020-08-19) (back then, it was added to
+`spawn.cc`, later it was moved to `fhandler/termios.cc` in 32d6a6cb5f1e
+(Cygwin: pty, console: Encapsulate spawn.cc code related to
+pty/console., 2022-11-19)), it was implemented with strong assumptions
+that neither creating the file handle nor reading 1024 bytes from said
+handle could fail.
+
+This assumption, however, is incorrect. Concretely, I encountered the
+case where `is_console_app()` needed to open an app execution alias,
+failed to do so, and still tried to read from the invalid handle.
+
+Let's add some error handling to that function.
+
+Fixes: bb4285206207 (Cygwin: pty: Implement new pseudo console support., 2020-08-19)
+Co-authored-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/fhandler/termios.cc | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/fhandler/termios.cc b/winsup/cygwin/fhandler/termios.cc
+index 645aa1a..61d01e9 100644
+--- a/winsup/cygwin/fhandler/termios.cc
++++ b/winsup/cygwin/fhandler/termios.cc
+@@ -707,10 +707,14 @@ is_console_app (const WCHAR *filename)
+   HANDLE h;
+   h = CreateFileW (filename, GENERIC_READ, FILE_SHARE_READ,
+ 		   NULL, OPEN_EXISTING, 0, NULL);
++  if (h == INVALID_HANDLE_VALUE)
++    return true;
+   char buf[1024];
+   DWORD n;
+-  ReadFile (h, buf, sizeof (buf), &n, 0);
++  BOOL res = ReadFile (h, buf, sizeof (buf), &n, 0);
+   CloseHandle (h);
++  if (!res)
++    return true;
+   /* The offset of Subsystem is the same for both IMAGE_NT_HEADERS32 and
+      IMAGE_NT_HEADERS64, so only IMAGE_NT_HEADERS32 is used here. */
+   IMAGE_NT_HEADERS32 *p = (IMAGE_NT_HEADERS32 *) memmem (buf, n, "PE\0\0", 4);
