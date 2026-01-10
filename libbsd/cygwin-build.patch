@@ -1,0 +1,139 @@
+diff --git a/configure.ac b/configure.ac
+index 2a15d720f9db..e2a42236b463 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -87,6 +87,53 @@ abi_vis=unknown
+ abi_wcsl=unknown
+ 
+ AS_CASE([$host_os],
++  [cygwin*], [
++    api_time_macros=no
++
++    abi_accmode=yes
++    abi_arc4random=yes
++    abi_arc4random_stir=yes
++    abi_asprintf=no
++    abi_bsd_getopt=yes
++    abi_closefrom=yes
++    abi_err=no
++    abi_errc=yes
++    abi_expand_number=yes
++    abi_explicit_bzero=yes
++    abi_fgetln=yes
++    abi_flopen=yes
++    abi_fmtcheck=yes
++    abi_fpurge=yes
++    abi_freezero=yes
++    abi_funopen=no
++    abi_getbsize=yes
++    abi_getpeereid=no
++    abi_humanize_number=yes
++    abi_id_from_name=yes
++    abi_inet_net_pton=yes
++    abi_md5=no
++    abi_name_from_id=yes
++    abi_nlist=yes
++    abi_pidfile=yes
++    abi_proctitle=yes
++    abi_progname=yes
++    abi_readpassphrase=yes
++    abi_reallocarray=yes
++    abi_reallocf=yes
++    abi_recallocarray=yes
++    abi_stringlist=yes
++    abi_sort=yes
++    abi_strl=yes
++    abi_strmode=yes
++    abi_strnstr=yes
++    abi_strtonum=yes
++    abi_strtox=yes
++    abi_timeconv=yes
++    # DROP: On libmd.
++    abi_transparent_libmd=yes
++    abi_vis=yes
++    abi_wcsl=yes
++  ],
+   [*-gnu* | gnu*], [
+     api_time_macros=no
+ 
+diff --git a/include/bsd/stdio.h b/include/bsd/stdio.h
+index d67aab19fa0c..657f8688c62f 100644
+--- a/include/bsd/stdio.h
++++ b/include/bsd/stdio.h
+@@ -65,6 +65,11 @@ char *fgetln(FILE *fp, size_t *lenp)
+ 	                  "use getline(3) instead, as it is supported "
+ 	                  "by GNU and POSIX.1-2008.");
+ 
++/* newlib/Cygwin uses ssize_t as type of the size param so shadow the
++   following declaration */
++#ifdef __CYGWIN__
++#define funopen __bsd_funopen
++#endif
+ /*
+  * Note: We diverge from the FreeBSD, OpenBSD and DragonFlyBSD declarations,
+  * because seekfn() there wrongly uses fpos_t, assuming it's an integral
+@@ -82,6 +87,10 @@ FILE *funopen(const void *cookie,
+ #define fropen(cookie, fn) funopen(cookie, fn, NULL, NULL, NULL)
+ #define fwopen(cookie, fn) funopen(cookie, NULL, fn, NULL, NULL)
+ 
++#ifdef __CYGWIN__
++#undef funopen
++#endif
++
+ int fpurge(FILE *fp);
+ __END_DECLS
+ 
+diff --git a/include/bsd/stdlib.h b/include/bsd/stdlib.h
+index e404bdb22cb0..9fb3bcfe749d 100644
+--- a/include/bsd/stdlib.h
++++ b/include/bsd/stdlib.h
+@@ -51,7 +51,7 @@
+ #include <stdint.h>
+ 
+ __BEGIN_DECLS
+-#if !defined(__APPLE__) && !defined(__sun)
++#if !defined(__APPLE__) && !defined(__sun) && !defined(__CYGWIN__)
+ #if !defined(__GLIBC__) || \
+     !__GLIBC_PREREQ(2, 36) || \
+     !defined(_DEFAULT_SOURCE)
+diff --git a/include/bsd/unistd.h b/include/bsd/unistd.h
+index f246ac5d93fd..0d8afa32354c 100644
+--- a/include/bsd/unistd.h
++++ b/include/bsd/unistd.h
+@@ -25,6 +25,13 @@
+  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  */
+ 
++/* While building libbsd itself, avoid a redefinition of 'setproctitle_init'
++ * error starting with unistd.h from Cygwin 3.6.0 onwards.
++*/
++#if defined(__BUILD_LIBBSD) && defined(__CYGWIN__)
++#define setproctitle_init __bsd_setproctitle_init
++#endif
++
+ #ifdef LIBBSD_OVERLAY
+ #include <sys/cdefs.h>
+ #if __has_include_next(<unistd.h>)
+@@ -46,6 +53,10 @@
+ #define S_ISTXT S_ISVTX
+ #endif
+ 
++#if defined(__BUILD_LIBBSD) && defined(__CYGWIN__)
++#undef setproctitle_init
++#endif
++
+ __BEGIN_DECLS
+ #if !defined(__APPLE__)
+ extern int optreset;
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 00181bd9607b..6ca5712cd0f6 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -5,6 +5,7 @@ AM_CPPFLAGS = \
+ 	-isystem $(top_srcdir)/include/bsd/ \
+ 	-include $(top_builddir)/config.h \
+ 	-DLIBBSD_OVERLAY -DLIBBSD_DISABLE_DEPRECATED \
++	-D__BUILD_LIBBSD \
+ 	-D__REENTRANT \
+ 	# EOL
+ 
