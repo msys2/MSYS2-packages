@@ -1,0 +1,52 @@
+From edbcd1958c8977e9f7cc8723c92fb78ee304251f Mon Sep 17 00:00:00 2001
+From: Yonggang Luo <luoyonggang@gmail.com>
+Date: Sun, 11 Jan 2026 10:13:05 +0800
+Subject: [PATCH] zip: Fixes building with gcc 15
+
+zip.h:728:8: error: conflicting types for 'memcmp'; have 'int(char *, char *, unsigned int)'
+unix/unix.c:71:14: error: conflicting types for 'DIR'; have 'FILE'
+unix/unix.c:244:13: error: implicit declaration of function 'isascii' [-Wimplicit-function-declaration]
+---
+ unix/configure | 6 +++++-
+ unix/unix.c    | 1 +
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/unix/configure b/unix/configure
+index 73ba803..c5240c4 100644
+--- a/unix/configure
++++ b/unix/configure
+@@ -519,7 +519,10 @@ done
+ 
+ 
+ echo Check for memset
+-echo "int main(){ char k; memset(&k,0,0); return 0; }" > conftest.c
++cat > conftest.c << _EOF_
++#include <string.h>
++int main(){ char k; memset(&k,0,0); return 0; }
++_EOF_
+ $CC -o conftest conftest.c >/dev/null 2>/dev/null
+ [ $? -ne 0 ] && CFLAGS="${CFLAGS} -DZMEM"
+ 
+@@ -556,6 +559,7 @@ $CC $CFLAGS -c conftest.c >/dev/null 2>/dev/null
+ 
+ echo Check for directory libraries
+ cat > conftest.c << _EOF_
++#include <dirent.h>
+ int main() { return closedir(opendir(".")); }
+ _EOF_
+ 
+diff --git a/unix/unix.c b/unix/unix.c
+index f4d655d..5975a25 100644
+--- a/unix/unix.c
++++ b/unix/unix.c
+@@ -13,6 +13,7 @@
+ #ifndef UTIL    /* the companion #endif is a bit of ways down ... */
+ 
+ #include <time.h>
++#include <ctype.h>
+ 
+ #if defined(MINIX) || defined(__mpexl)
+ #  ifdef S_IWRITE
+-- 
+2.52.0.windows.1
+
