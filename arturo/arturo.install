@@ -1,0 +1,67 @@
+
+pre_install() {
+  mkdir -p ~/.arturo/bin/
+}
+
+post_install() {
+  mv /opt/arturo/* ~/.arturo/bin/
+
+  echo "Arturo has been successfully installed!"
+  echo ""
+
+  ARTURO_PATH='export PATH="$HOME/.arturo/bin:$PATH"'
+
+  # bash / sh / dash
+  for f in "$HOME/.bashrc" "$HOME/.profile"; do
+    if [ -f "$f" ] && ! grep -q '.arturo/bin' "$f"; then
+      echo "$ARTURO_PATH" >> "$f"
+    fi
+  done
+
+  # zsh
+  if [ -f "$HOME/.zshrc" ] && ! grep -q '.arturo/bin' "$HOME/.zshrc"; then
+    echo "$ARTURO_PATH" >> "$HOME/.zshrc"
+  fi
+
+  # fish
+  if command -v fish >/dev/null 2>&1; then
+    fish -c 'if not contains $HOME/.arturo/bin $fish_user_paths; set -U fish_user_paths $HOME/.arturo/bin $fish_user_paths; end'
+  fi
+
+  echo "Arturo was added to your PATH. Restart your shell."
+  echo ""
+  echo "Rock on! 🤘"
+
+}
+
+post_upgrade() {
+    post_install
+}
+
+post_remove() {
+    # Remove Arturo's files
+    rm -rf "$HOME/.arturo/bin"
+
+    # Arturo's PATH
+    ARTURO_REGEX='\.arturo/bin'
+
+    # Unregister from POSIX shells: bash / sh / dash
+    for f in "$HOME/.bashrc" "$HOME/.profile"; do
+        if [ -f "$f" ]; then
+            sed -i "/$ARTURO_REGEX/d" "$f"
+        fi
+    done
+
+    # Unregister from zsh
+    if [ -f "$HOME/.zshrc" ]; then
+        sed -i "/$ARTURO_REGEX/d" "$HOME/.zshrc"
+    fi
+
+    # Unregister from fish
+    if command -v fish >/dev/null 2>&1; then
+        fish -c 'set -U fish_user_paths (string match -v "$HOME/.arturo/bin" $fish_user_paths)'
+    fi
+
+    echo "Arturo has been removed."
+    echo "Restart your shell to apply PATH changes."
+}
