@@ -3,8 +3,8 @@
 
 pkgbase=python
 pkgname=('python' 'python-devel')
-pkgver=3.12.12
-pkgrel=3
+pkgver=3.13.11
+pkgrel=1
 _pybasever=${pkgver%.*}
 pkgdesc="Next generation of the python high-level scripting language"
 arch=('i686' 'x86_64')
@@ -33,32 +33,32 @@ makedepends=(
 source=(https://www.python.org/ftp/python/${pkgver%rc*}/Python-${pkgver}.tar.xz
         003-3.4-select-cygwin.patch
         005-3.7-ctypes-cygwin.patch
-        009-3.8-export-PySignal_SetWakeupFd.patch
         012-3.8-pep3149-cygwin.patch
         027-install-import-library.patch
         900-msysize.patch
         920-allow-win-drives-in-os-path-isabs.patch
         940-rebase-python-dll.patch
         950-rebase-dlls.patch
-        970-ossaudiodev.patch
+        960-cygwin-time_clockid_converter.patch
         980-fix-module-lib-dep.patch
         990-cygwin-default-to-spawn-for-multiprocessing-and-disa.patch
         991-py-limited-api.patch
+        991-fix-pc.patch
         EXTERNALLY-MANAGED)
-sha256sums=('fb85a13414b028c49ba18bbd523c2d055a30b56b18b92ce454ea2c51edc656c4'
+sha256sums=('16ede7bb7cdbfa895d11b0642fa0e523f291e6487194d53cf6d3b338c3a17ea2'
             '82cfafc5b31ad4c9bb4c9786044c39c75762dbc2656abdfdc433c23fee69c02f'
             'f0bb75ca69c63894fc43e0f8218c9dbcc746935bf5ea095a724e6fb2f5dcc566'
-            '70f854f00de71372e49f2ebbff7491e09e9e036e8e3f3646fe2984e30fb4a9da'
-            '24cc76e155b5e017d2e46e784eb3407de60f2f1fd26e691ef222bc2088bbb9d5'
+            '9cb8b53dc72d8bfdbe59978067d707911cf3a8c79218f0b46335a09a680c14cf'
             '9d0efb7e7e913e96b9f7953802311bbc2d046a7bfdcc3ffaf11fc509731b4d18'
-            'a0acb9da960df3d509dfb530f548adeffbcab616e7f4f2fc92fc98659649d43b'
+            '5fecb91bcb50e3470db6369e66b132611eaeeb97d4caa8d43246e91b91a2d33a'
             '85d9d042e0fa3493ec54b364e6b4fb6d2b12ba09641e01047bc84a09605ef76b'
             'b439ff4f0a1f13858f8fb596414b74ed2c14fc3103d90287bb8e461ee89288b9'
             'bcdb4e7922e30f7dfbd3993ffe6db2dfd0df29326bebd12203dce376ea3451d9'
-            'ee109d91a1c7ea84d278d9a8b0e1feb397e691b8868d79f77ea7bb6b1b3b1968'
+            '32e8250f3c9432f99c7bb77117c4930f260075599d843602ce01f2d460693811'
             'e2861218f05741bfe99b05bb41cf88e14f57747aedec251626691b05482a50bd'
             'd04ca4778f150b880e23b9bc1fe5c5385e41228399093320c80ad4d5e29c6aab'
-            '2124efe25780baee553f5634b1d0487a0fc631622f30198dcf4976b9665aa2a6'
+            'fce607316ab780a8c2916e545d86071d34b734f4f883fa497d0f8a0551c15b2b'
+            '5e5b69211025a4f89319d7084263bcfa611dc3d3d7573e025370b81ce92baf5c'
             '2c8cdad18085b8736e985653c0f18523958f29b72125e15124806a0f3d1a20ee')
 
 apply_patch_with_msg() {
@@ -75,15 +75,13 @@ prepare() {
   apply_patch_with_msg \
     003-3.4-select-cygwin.patch \
     005-3.7-ctypes-cygwin.patch \
-    009-3.8-export-PySignal_SetWakeupFd.patch \
     012-3.8-pep3149-cygwin.patch \
     027-install-import-library.patch \
     900-msysize.patch \
     920-allow-win-drives-in-os-path-isabs.patch \
     940-rebase-python-dll.patch \
     950-rebase-dlls.patch \
-    970-ossaudiodev.patch \
-    980-fix-module-lib-dep.patch
+    960-cygwin-time_clockid_converter.patch \
 
   # https://github.com/msys2/MSYS2-packages/pull/4743#issuecomment-2213043559
   apply_patch_with_msg \
@@ -94,6 +92,10 @@ prepare() {
   apply_patch_with_msg \
     991-py-limited-api.patch
 
+  # github.com/python/cpython/issues/138800
+  apply_patch_with_msg \
+    991-fix-pc.patch
+
   # Ensure that we are using the system copy of various libraries (expat, zlib and libffi),
   # rather than copies shipped in the tarball
   rm -r Modules/expat
@@ -102,10 +104,12 @@ prepare() {
 }
 
 build() {
-  cd "${srcdir}/Python-${pkgver}"
-
   export MSYSTEM=CYGWIN
-  ./configure \
+
+  mkdir -p "${srcdir}/build-${MSYSTEM}"
+  cd "${srcdir}/build-${MSYSTEM}"
+
+  "${srcdir}/Python-${pkgver}"/configure \
     --prefix=/usr \
     --build=${CHOST} \
     --host=${CHOST} \
@@ -124,8 +128,8 @@ build() {
 }
 
 check() {
-  cd "${srcdir}/Python-${pkgver}"
-  "${srcdir}/Python-${pkgver}/python.exe" -m test.regrtest -x test_posixpath test_logging
+  cd "${srcdir}/build-${MSYSTEM}"
+  "./python.exe" -m test.regrtest -x test_posixpath test_logging
 }
 
 package_python() {
@@ -135,7 +139,7 @@ package_python() {
   provides=('python3')
   replaces=('python3')
 
-  cd "${srcdir}/Python-${pkgver}"
+  cd "${srcdir}/build-${MSYSTEM}"
   make DESTDIR="${pkgdir}" install
 
   # Why are these not done by default...
@@ -150,7 +154,7 @@ package_python() {
   install -Dm644 "$srcdir"/EXTERNALLY-MANAGED -t "${pkgdir}/usr/lib/python${_pybasever}/"
 
   # License
-  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 "${srcdir}/Python-${pkgver}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
 
 package_python-devel() {
