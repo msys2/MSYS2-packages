@@ -1,0 +1,42 @@
+From 3b08ff965513378f2a79d285233667dba3717055 Mon Sep 17 00:00:00 2001
+From: Daniel Garcia Moreno <daniel.garcia@suse.com>
+Date: Thu, 22 Jan 2026 13:21:23 +0100
+Subject: [PATCH] Resolve URI after xmlCatalogResolve
+
+xmlCatalogResolve returns the plain "uri" value when looking for a
+publicID that exists in the catalog.
+
+This patch calls to xmlCatalogResolveURI after the resource resultion to
+make sure that all rewrite rules are correctly applied in the new
+resource uri.
+
+Fix https://gitlab.gnome.org/GNOME/libxml2/-/issues/1046
+---
+ parserInternals.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/parserInternals.c b/parserInternals.c
+index c3eec132d..a274fc2ee 100644
+--- a/parserInternals.c
++++ b/parserInternals.c
+@@ -2329,6 +2329,17 @@ xmlResolveFromCatalog(const char *url, const char *publicId,
+                                               BAD_CAST url);
+     }
+ 
++    /*
++     * Resolve the URI, to make sure that rewrite rules are applied
++     */
++    if ((resource != NULL) && !xmlStrEqual(BAD_CAST resource, BAD_CAST url)) {
++        xmlChar *res = xmlCatalogResolveURI(BAD_CAST resource);
++        if (res != NULL) {
++            xmlFree(resource);
++            resource = (char *) res;
++        }
++    }
++
+     /*
+      * Try to resolve url using URI rules.
+      *
+-- 
+GitLab
+
