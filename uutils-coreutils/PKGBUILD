@@ -3,8 +3,8 @@
 
 _realname=coreutils
 pkgname="uutils-${_realname}"
-pkgver=0.5.0
-pkgrel=4
+pkgver=0.6.0
+pkgrel=1
 pkgdesc="Cross-platform Rust rewrite of the GNU coreutils"
 arch=('any')
 url='https://github.com/uutils/coreutils'
@@ -17,21 +17,16 @@ depends=("gcc-libs" "oniguruma")
 makedepends=("git" "rust" "pkgconf")
 source=("https://github.com/uutils/coreutils/archive/${pkgver}/${_realname}-${pkgver}.tar.gz"
         "git+https://github.com/nix-rust/nix#tag=v0.30.1"
-        "ioctl.patch::https://patch-diff.githubusercontent.com/raw/nix-rust/nix/pull/2715.patch" # unstable csum. should cherry-pick
-        "uu-cygwin.patch::https://patch-diff.githubusercontent.com/raw/uutils/coreutils/pull/9686.patch") # unstable csum. should cherry-pick
-sha256sums=('83535e10c3273c31baa2f553dfa0ceb4148914e9c1a9c5b00d19fbda5b2d4d7d'
+        "nix-ioctl.patch")
+sha256sums=('f751b8209ec05ae304941a727e42a668dcc45674986252f44d195ed43ccfad2f'
             'aebec7d9c51d26d003333bc53158ac75b8e960ca5cb75d24fe8a5cb027c59842'
-            '3b2a744cba48a350eed165c84971c83fb1becab74c5764c5a90894ade6ffafd2'
-            '20dee6f07630f44f5f09f0d63004efadc9f0904d9e36109f013b71ef06940010')
+            'b0b8db1334dfcbc805d087969e1860e67ec0dc13a54589741b22684ee3144cee')
 
 prepare() {
-  cd nix
-  git cherry-pick -n 71f6ee9f4380d5caad3c049dbd352627b9d6eb0a # add sync
-  git apply -v -p1 ../ioctl.patch
+  cd "${_realname}-${pkgver}"
 
-  cd ../"${_realname}-${pkgver}"
-  patch -Np1 -i ../uu-cygwin.patch
-
+  git -C ../nix cherry-pick -n 71f6ee9f4380d5caad3c049dbd352627b9d6eb0a # add sync
+  git -C ../nix apply -v -p1 ../nix-ioctl.patch
   cat >> Cargo.toml <<END
 
 [patch.crates-io]
@@ -39,9 +34,6 @@ nix.path = "../nix"
 END
 
   cargo update -p nix
-  cargo update -p signal-hook-mio --precise 0.2.5
-  cargo update -p mio@1.0.4 --precise 1.1.0
-  cargo update -p libc --precise 0.2.178
   cargo fetch --locked --target "${RUST_CHOST}"
 }
 
