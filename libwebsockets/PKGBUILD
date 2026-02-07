@@ -1,0 +1,64 @@
+pkgname=libwebsockets
+pkgver=4.5.2
+pkgrel=1
+pkgdesc="C library for websocket clients and servers"
+arch=(x86_64)
+url='https://libwebsockets.org/'
+msys2_repository_url='https://libwebsockets.org/git/libwebsockets/'
+msys2_references=(
+  'archlinux: libwebsockets'
+)
+license=('spdx:MIT')
+depends=(
+  openssl
+  zlib
+)
+makedepends=(
+  cmake
+  gcc
+  openssl-devel
+)
+source=(
+  https://github.com/warmcat/${pkgname}/archive/v${pkgver}/${pkgname}-${pkgver}.tar.gz
+  0001-Allow-for-cygwin-and-msys2-build.patch
+)
+noextract=(
+  $pkgname-$pkgver.tar.gz
+)
+sha512sums=(
+  8427ade9325051b486321b9d0b07b136428ed28f34972a3cc0b0440a9f1efab7b34ee82b6b778eb39669dea08d47976eef04a99f8e15ba03cb6b3c1dc28cb9f9
+  70aff8532dde0179e8503a41136f8238a3af73ca30179bac72038ddd790a657e7e891d6803c02587aebfa56bfe07a3525a6588899d93c3b6910f6ad0e1643c31
+)
+
+prepare() {
+  MSYS=winsymlinks:nativestrict \
+    tar -xzf $pkgname-$pkgver.tar.gz
+
+  cd $pkgname-$pkgver
+  patch -p1 -i $srcdir/0001-Allow-for-cygwin-and-msys2-build.patch
+}
+
+build() {
+  local cmake_options=(
+    -B build
+    -D CMAKE_BUILD_TYPE=None
+    -D CMAKE_INSTALL_PREFIX=/usr
+    -D CMAKE_INSTALL_SBINDIR=bin
+    -D CMAKE_INSTALL_SYSCONFDIR=/etc
+    -D LWS_WITHOUT_TESTAPPS=ON
+    -D LWS_WITHOUT_TEST_SERVER=ON
+    -D LWS_WITH_MINIMAL_EXAMPLES=OFF
+    -D LWS_WITH_EXTERNAL_POLL=ON
+    -S $pkgname-$pkgver
+    -W no-dev
+  )
+
+  cmake "${cmake_options[@]}"
+
+  make -C build
+}
+
+package() {
+  DESTDIR=$pkgdir make -C build install
+  install -vDm 644 $pkgname-$pkgver/LICENSE $pkgdir/usr/share/licenses/$pkgname/LICENSE
+}
