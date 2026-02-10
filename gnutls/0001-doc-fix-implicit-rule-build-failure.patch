@@ -1,0 +1,39 @@
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 10 Feb 2026 12:00:00 +0000
+Subject: doc: fix implicit rule build failure on Windows
+
+GnuTLS 3.8.12 consolidated the three separate texi generation rules into
+a single `stamp_error_codes` target.  The new recipe calls:
+
+    $(MAKE) $(AM_MAKEFLAGS) errcodes printlist alert-printlist
+
+On Windows, automake generates rules for `errcodes$(EXEEXT)` (i.e.,
+`errcodes.exe`), not bare `errcodes`.  When make is invoked with the bare
+name, it falls back to implicit rules and compiles directly with `$(CC)`,
+bypassing the AM_CPPFLAGS that provide the include paths:
+
+    gcc printlist.c -o printlist
+    printlist.c:21:10: fatal error: config.h: No such file or directory
+
+The previous 3.8.11 approach used `$(MAKE) $(builddir)/errcodes` which
+worked because the path-like target matched correctly.
+
+Fix this by adding `$(EXEEXT)` to the target names in the make invocation.
+
+Assisted-by: Claude Opus 4.5
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ doc/Makefile.am | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/doc/Makefile.am b/doc/Makefile.am
+--- a/doc/Makefile.am
++++ b/doc/Makefile.am
+@@ -433,7 +433,7 @@ stamp_error_codes: \
+ 		$(top_srcdir)/lib/errors.c errcodes.c \
+ 		$(top_srcdir)/lib/algorithms/ciphers.c printlist.c \
+ 		$(top_srcdir)/lib/alert.c alert-printlist.c
+-	$(MAKE) $(AM_MAKEFLAGS) errcodes printlist alert-printlist
++	$(MAKE) $(AM_MAKEFLAGS) errcodes$(EXEEXT) printlist$(EXEEXT) alert-printlist$(EXEEXT)
+ 	./errcodes > error_codes.texi-tmp
+ 	mv -f error_codes.texi-tmp error_codes.texi
