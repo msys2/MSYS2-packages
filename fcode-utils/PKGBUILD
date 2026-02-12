@@ -2,26 +2,47 @@
 
 pkgname="fcode-utils"
 pkgver=1.0.3
-pkgrel=1
+pkgrel=2
 pkgdesc="The OpenBIOS FCODE suite"
 arch=('i686' 'x86_64')
 url="https://www.openbios.org/"
 msys2_repository_url="https://github.com/openbios/fcode-utils"
 license=('GPL2')
-makedepends=('make' 'gcc')
-source=("${pkgname}-${pkgver}.tar.gz"::"https://github.com/openbios/fcode-utils/archive/v${pkgver}.tar.gz")
-sha256sums=('9a37771b0547f7b5110069f1653aacca60335daae1dba2a7a9edc99a54227a0b')
+makedepends=('make' 'gcc' 'git')
+_commit='545fdf1faedc5fb5342a3ea44a043edde501c3eb'
+
+source=("fcode-utils"::"git+https://github.com/openbios/fcode-utils.git#commit=$_commit"
+0001-fixes-compiling-with-gcc-15.patch)
+
+sha256sums=('ec3802d00b81361a73a1dff8baa4bad75f20ce8f4b25c31de5cb70385f75d40e'
+            'c1c7b17df18d49741884c3c37cb1192ad86a04e90e08443d408016cc00c50ed3')
+
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _fname in "$@"
+  do
+    msg2 "Applying ${_fname}"
+    patch -Nbp1 -i "${srcdir}"/${_fname}
+  done
+}
+
+prepare() {
+  cd ${srcdir}/${pkgname}
+  apply_patch_with_msg \
+    0001-fixes-compiling-with-gcc-15.patch
+}
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/${pkgname}
+  CFLAGS="-O2 -Wall -Wno-incompatible-pointer-types" \
   make -j1
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/${pkgname}
   mkdir -p ${pkgdir}/usr/bin
 
-  cp -rf ${srcdir}/${pkgname}-${pkgver}/toke/toke.exe ${pkgdir}/usr/bin/
-  cp -rf ${srcdir}/${pkgname}-${pkgver}/detok/detok.exe ${pkgdir}/usr/bin/
-  cp -rf ${srcdir}/${pkgname}-${pkgver}/romheaders/romheaders.exe ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/${pkgname}/toke/toke.exe ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/${pkgname}/detok/detok.exe ${pkgdir}/usr/bin/
+  cp -rf ${srcdir}/${pkgname}/romheaders/romheaders.exe ${pkgdir}/usr/bin/
 }
