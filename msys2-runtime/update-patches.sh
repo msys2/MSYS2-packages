@@ -27,14 +27,14 @@ test -d msys2-runtime || {
 } ||
 die "Could not clone msys2-runtime"
 
-git -C msys2-runtime fetch --no-tags $url $base_tag:$base_tag $msys2_branch:$msys2_branch
+git --git-dir msys2-runtime fetch --no-tags $url $base_tag:$base_tag $msys2_branch:$msys2_branch
 
 git -c core.abbrev=7 \
 	-c diff.renames=true \
 	-c format.from=false \
 	-c format.numbered=auto \
 	-c format.useAutoBase=false \
-	-C msys2-runtime \
+	--git-dir msys2-runtime \
 	format-patch \
 		--no-signature \
 		--topo-order \
@@ -45,7 +45,6 @@ git -c core.abbrev=7 \
 		--no-thread \
 		--suffix=.patch \
 		--subject-prefix=PATCH \
-		--output-directory .. \
 		$base_tag..$msys2_branch \
 		-- ':(exclude).github/' ||
 die "Could not generate new patch set"
@@ -56,7 +55,7 @@ do
 	sed -i 's/^\(Subject: \[PATCH [0-9]*\/\)[1-9][0-9]*/\1N/' $p ||
 	die "Could not fix Subject: line in $p"
 done &&
-git -C msys2-runtime rev-parse --verify $msys2_branch >msys2-runtime.commit &&
+git --git-dir msys2-runtime rev-parse --verify $msys2_branch >msys2-runtime.commit &&
 git add $patches msys2-runtime.commit ||
 die "Could not stage new patch set"
 
