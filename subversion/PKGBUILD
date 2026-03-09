@@ -167,7 +167,30 @@ build() {
 #check() {
 #   cd ${pkgname}-${pkgver}
 #   export LANG=C LC_ALL=C
-#   make check check-swig-pl check-swig-py check-swig-rb CLEANUP=yes # check-javahl
+#   make check # check-swig-py check-swig-rb CLEANUP=yes # check-javahl
+#
+#   # The swig-pl tests load _Core.dll etc. via perl.exe. Those extension
+#   # DLLs import msys-svn_swig_perl-1-0.dll and friends, which the
+#   # Windows loader resolves by searching the *EXE* directory first.
+#   # When perl.exe lives in /usr/bin alongside the *installed* (old)
+#   # DLLs, the locally-built ones in .libs/ are never found, causing
+#   # a SWIG struct-layout mismatch and segfaults.
+#   #
+#   # Work around this by placing a hard-linked perl.exe into a
+#   # throw-away directory together with the locally-built DLLs, so
+#   # the "application directory" search rule picks up ours first.
+#   local _testbin="${srcdir}/.test-bin"
+#   rm -rf "$_testbin"
+#   mkdir -p "$_testbin"
+#   ln /usr/bin/perl.exe "$_testbin/"
+#   find subversion -name 'msys-svn_*-0.dll' -path '*/.libs/*' \
+#     -exec ln {} "$_testbin/" \;
+#   make swig-pl
+#   cd subversion/bindings/swig/perl/native
+#   PATH="$_testbin:$PATH" \
+#     make test FULLPERL="$_testbin/perl.exe"
+#   cd "${srcdir}/${pkgname}-${pkgver}"
+#   rm -rf "$_testbin"
 #}
 
 package() {
