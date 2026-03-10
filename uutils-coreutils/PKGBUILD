@@ -3,7 +3,7 @@
 
 _realname=coreutils
 pkgname="uutils-${_realname}"
-pkgver=0.6.0
+pkgver=0.7.0
 pkgrel=1
 pkgdesc="Cross-platform Rust rewrite of the GNU coreutils"
 arch=('any')
@@ -18,16 +18,17 @@ depends=("gcc-libs" "oniguruma")
 makedepends=("git" "rust" "pkgconf")
 source=("https://github.com/uutils/coreutils/archive/${pkgver}/${_realname}-${pkgver}.tar.gz"
         "git+https://github.com/nix-rust/nix#tag=v0.30.1"
-        "nix-ioctl.patch")
-sha256sums=('f751b8209ec05ae304941a727e42a668dcc45674986252f44d195ed43ccfad2f'
+        "https://raw.githubusercontent.com/uutils/coreutils/33d698b4054a0474968b4091677d914d759224fb/GNUmakefile" # add libstdbuf
+        )
+sha256sums=('dc56a3c4632742357d170d60a7dcecb9693de710daeaafa3ad925750b1905522'
             'aebec7d9c51d26d003333bc53158ac75b8e960ca5cb75d24fe8a5cb027c59842'
-            'b0b8db1334dfcbc805d087969e1860e67ec0dc13a54589741b22684ee3144cee')
+            'cc4bfc90ebbfba7aa27482c585123a79fee0c1c6c5825c5f14bbe76bc961b5d3')
 
 prepare() {
   cd "${_realname}-${pkgver}"
-
+  ln -f ../GNUmakefile GNUmakefile
   git -C ../nix cherry-pick -n 71f6ee9f4380d5caad3c049dbd352627b9d6eb0a # add sync
-  git -C ../nix apply -v -p1 ../nix-ioctl.patch
+  git -C ../nix cherry-pick -n 962d80cb6174f305d954ae2015d3d94bd4efd93e # add ioctl
   cat >> Cargo.toml <<END
 
 [patch.crates-io]
@@ -43,14 +44,18 @@ package() {
   cd "${_realname}-${pkgver}"
 
   export RUSTONIG_DYNAMIC_LIBONIG=1
+  export RUSTFLAGS="${RUSTFLAGS} -C link-arg=-Wl,--dynamicbase -C link-arg=-Wl,--enable-auto-image-base"
 
   make install \
     DESTDIR="${pkgdir}" \
     PREFIX="/usr" \
-    PROFILE=release-fast \
-    SKIP_UTILS="stdbuf" \
+    PROFILE=release \
+    LIBSTDBUF_DIR="/usr/lib/${pkgname}" \
     PROG_PREFIX="uu-" \
+    LN="ln -f" \
     MULTICALL=y
-
+  
+  # check that binary is not broken
+  "${pkgdir}/usr/bin/uu-stdbuf" --version
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
