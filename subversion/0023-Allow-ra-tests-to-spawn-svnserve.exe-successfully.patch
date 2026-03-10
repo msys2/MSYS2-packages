@@ -1,0 +1,42 @@
+From 8cd0076a822a3a49a8c3a5d29e86d610c50908ff Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johasc@microsoft.com>
+Date: Tue, 10 Mar 2026 12:43:20 +0100
+Subject: [PATCH 23/N] Allow `ra-tests` to spawn `svnserve.exe` successfully
+
+Three problems here, all hailing back to the differences in search path
+behavior between Windows and Linux. Subversion expects to be able to
+execute `svnserve` without any `PATH`, but that does not work. It also
+would appear that the libtool wrapper does not manage to get the `.dll`
+dependencies to be resolved properly, and finally, it seems as if the
+`.exe` file extension is necessary even when building the MSYS/Cygwin
+variant
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ subversion/tests/libsvn_ra/ra-test.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/subversion/tests/libsvn_ra/ra-test.c b/subversion/tests/libsvn_ra/ra-test.c
+index 8cdaa2c..1d02bca 100644
+--- a/subversion/tests/libsvn_ra/ra-test.c
++++ b/subversion/tests/libsvn_ra/ra-test.c
+@@ -228,8 +228,8 @@ open_tunnel(svn_stream_t **request, svn_stream_t **response,
+ 
+   SVN_TEST_ASSERT(b->magic == TUNNEL_MAGIC);
+ 
+-  SVN_ERR(svn_dirent_get_absolute(&svnserve, "../../svnserve/svnserve", pool));
+-#ifdef WIN32
++  SVN_ERR(svn_dirent_get_absolute(&svnserve, "../../svnserve/.libs/svnserve", pool));
++#if defined(WIN32)
+   svnserve = apr_pstrcat(pool, svnserve, ".exe", SVN_VA_NULL);
+ #endif
+   SVN_ERR(svn_io_check_path(svnserve, &kind, pool));
+@@ -242,7 +242,7 @@ open_tunnel(svn_stream_t **request, svn_stream_t **response,
+   if (status == APR_SUCCESS)
+     status = apr_procattr_io_set(attr, 1, 1, 0);
+   if (status == APR_SUCCESS)
+-    status = apr_procattr_cmdtype_set(attr, APR_PROGRAM);
++    status = apr_procattr_cmdtype_set(attr, APR_PROGRAM_ENV);
+   proc = apr_palloc(pool, sizeof(*proc));
+   if (status == APR_SUCCESS)
+     status = apr_proc_create(proc,
