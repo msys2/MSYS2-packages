@@ -1,0 +1,50 @@
+From f2802c5fefd4276aab87c8043cc9834a9b1d3808 Mon Sep 17 00:00:00 2001
+From: Pip Cet <pipcet@protonmail.com>
+Date: Thu, 12 Mar 2026 08:17:27 +0100
+Subject: [PATCH 39/N] Cygwin: Fix segfault when XSAVE area sizes are
+ unaligned
+
+During signal delivery, Cygwin saves the CPU's extended register state
+(floating-point, SSE, AVX, etc.) to a stack buffer using the xsave64
+instruction, which requires its destination to be 64-byte aligned.
+Before executing xsave64, the code queries the CPU (via cpuid) for the
+required buffer size, then subtracts that size (plus a fixed overhead)
+from the stack pointer.
+
+The stack alignment arithmetic assumes that cpuid returns a size that
+is a multiple of 64. Until recently, this held true for all x86 CPUs.
+On recent AMD and Intel CPUs, however, the PKU feature (Protection Keys
+for Userspace, a memory-protection mechanism) adds an XSAVE component
+of only 8 bytes, which makes the total size no longer a multiple of 64.
+The subtraction then places the xsave64 buffer at a misaligned address,
+causing a segfault.
+
+This was first observed when running Cygwin/MSYS2 under Wine on Linux,
+where the host kernel exposes the PKU feature directly. The same
+problem could surface on future Windows versions that expose PKU or
+other small XSAVE components.
+
+The fix rounds up the cpuid-reported size to the next 64-byte multiple
+before using it in the stack allocation. The existing code already
+guarantees correct alignment for any buffer size that is a multiple of
+64, so this rounding is sufficient.
+
+Fixes: c607889824 ("Cygwin: sigfe: Fix a bug that signal handler destroys fpu states")
+Signed-off-by: Pip Cet <pipcet@protonmail.com>
+---
+ winsup/cygwin/scripts/gendef | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 861a240..6328fe2 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -233,6 +233,8 @@ sigdelayed:
+ 	xorl	%ecx,%ecx
+ 	cpuid	# get necessary space for xsave
+ 	movq	%rbx,%rcx
++	addq	\$63, %rbx
++	andq	\$-64, %rbx # align to next 64-byte multiple
+ 	addq	\$0x48,%rbx # 0x18 for alignment, 0x30 for additional space
+ 	subq	%rbx,%rsp
+ 	movl	%ebx,0x24(%rsp)
