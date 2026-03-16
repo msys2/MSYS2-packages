@@ -47,6 +47,7 @@ rem Console types
 if "x%~1" == "x-mintty" shift& set /a msys2_shiftCounter+=1& set MSYSCON=mintty.exe& goto :checkparams
 if "x%~1" == "x-conemu" shift& set /a msys2_shiftCounter+=1& set MSYSCON=conemu& goto :checkparams
 if "x%~1" == "x-defterm" shift& set /a msys2_shiftCounter+=1& set MSYSCON=defterm& goto :checkparams
+if "x%~1" == "x-alacritty" shift& set /a msys2_shiftCounter+=1& set MSYSCON=alacritty& goto :checkparams
 rem Other parameters
 if "x%~1" == "x-full-path" shift& set /a msys2_shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
 if "x%~1" == "x-use-full-path" shift& set /a msys2_shiftCounter+=1& set MSYS2_PATH_TYPE=inherit& goto :checkparams
@@ -100,26 +101,33 @@ rem Setup proper title and icon
 if "%MSYSTEM%" == "MINGW32" (
   set "CONTITLE=MinGW x32"
   set "CONICON=mingw32.ico"
+  set "WD_PLATFORM_PATH=%WD%..\..\mingw32\"
 ) else if "%MSYSTEM%" == "MINGW64" (
   set "CONTITLE=MinGW x64"
   set "CONICON=mingw64.ico"
+  set "WD_PLATFORM=%WD%..\..\mingw64\"
 ) else if "%MSYSTEM%" == "UCRT64" (
   set "CONTITLE=MinGW UCRT x64"
   set "CONICON=ucrt64.ico"
+  set "WD_PLATFORM=%WD%..\..\ucrt64\"
 ) else if "%MSYSTEM%" == "CLANG64" (
   set "CONTITLE=MinGW Clang x64"
   set "CONICON=clang64.ico"
+  set "WD_PLATFORM=%WD%..\..\clang64\"
 ) else if "%MSYSTEM%" == "CLANGARM64" (
   set "CONTITLE=MinGW Clang ARM64"
   set "CONICON=clangarm64.ico"
+  set "WD_PLATFORM=%WD%..\..\clangarm64\"
 ) else (
   set "CONTITLE=MSYS2 MSYS"
   set "CONICON=msys2.ico"
+  set "WD_PLATFORM=%WD%"
 )
 
 if "x%MSYSCON%" == "xmintty.exe" goto startmintty
 if "x%MSYSCON%" == "xconemu" goto startconemu
 if "x%MSYSCON%" == "xdefterm" goto startsh
+if "x%MSYSCON%" == "xalacritty" goto startalacritty
 
 if NOT EXIST "%WD%mintty.exe" goto startsh
 set MSYSCON=mintty.exe
@@ -149,6 +157,18 @@ if not defined MSYS2_NOSTART (
   start "%CONTITLE%" "%WD%\%LOGINSHELL%" -l !SHELL_ARGS!
 ) else (
   "%WD%\%LOGINSHELL%" -l !SHELL_ARGS!
+)
+exit /b %ERRORLEVEL%
+
+:startalacritty
+if not exist "%WD_PLATFORM%bin\alacritty.exe" (
+  echo "Alacritty not found. Exiting." 1>&2
+  exit /b 2
+)
+if not defined MSYS2_NOSTART (
+  start "%CONTITLE%" "%WD_PLATFORM%bin\alacritty.exe" -T "%CONTITLE%" -e "%WD%%LOGINSHELL%" !SHELL_ARGS!
+) else (
+  "%WD_PLATFORM%bin\alacritty.exe" -T "%CONTITLE%" -e "%WD%%LOGINSHELL%" !SHELL_ARG!
 )
 exit /b %ERRORLEVEL%
 
@@ -204,7 +224,8 @@ echo.
 echo Options:
 echo     -mingw32 ^| -mingw64 ^| -ucrt64 ^| -clang64 ^|
 echo     -msys[2] ^| -clangarm64           Set shell type
-echo     -defterm ^| -mintty ^| -conemu     Set terminal type
+echo     -defterm ^| -mintty ^| -conemu ^|
+echo     -alacritty                       Set terminal type
 echo     -here                            Use current directory as working
 echo                                      directory
 echo     -where DIRECTORY                 Use specified DIRECTORY as working
