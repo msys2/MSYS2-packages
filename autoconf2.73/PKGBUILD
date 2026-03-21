@@ -1,0 +1,76 @@
+# Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
+
+_realname=autoconf
+pkgname=${_realname}2.73
+pkgver=2.73
+pkgrel=1
+pkgdesc="A GNU tool for automatically configuring source code"
+arch=('any')
+url="https://www.gnu.org/software/autoconf"
+msys2_references=(
+  'archlinux: autoconf'
+)
+license=('spdx:GPL-2.0-or-later AND GPL-3.0-or-later AND Autoconf-exception-3.0')
+depends=('awk' 'm4' 'diffutils' 'bash' 'perl' 'sed')
+makedepends=('make')
+source=(https://ftp.gnu.org/pub/gnu/${_realname}/${_realname}-${pkgver}.tar.xz
+        0001-autoconf-2.70-MSYS2-specifics-AC_CYGWIN.patch
+        0002-autoconf-2.70-MSYS2-Autotest-Unify-EOLs-By-Default.patch
+        0003-autoconf-2.70-MSYS2-specifics-config.guess.patch
+        0004-LLVM-Flang.patch
+        0005-package.patch)
+sha256sums=('9fd672b1c8425fac2fa67fa0477b990987268b90ff36d5f016dae57be0d6b52e'
+            '01edbaa771818518dc64fe54740d60909feb581428eb3751e0c2b6851e104038'
+            '3d37cb317d88843b07cadaf2981e1f6293bce2245fa0f0265fdaf08c18ffac61'
+            '82cb932ea114ad79d63072350457cde64bd60ece835a605e8aea0e4b7806b03c'
+            'd43d4bd0ca33820305d8eefb1940f23c8e474b94429281796c5fd55e0cd0d09d'
+            '4fc790e3ac5ee3595e80023095f6f1b13a9115307b84bd23e13cbac7e49d5d39')
+
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying $_patch"
+    patch -Np1 -i "${srcdir}"/$_patch
+  done
+}
+
+prepare() {
+  cd "${srcdir}"/${_realname}-${pkgver}
+
+  # MSYS2
+  apply_patch_with_msg \
+    0001-autoconf-2.70-MSYS2-specifics-AC_CYGWIN.patch \
+    0002-autoconf-2.70-MSYS2-Autotest-Unify-EOLs-By-Default.patch \
+    0003-autoconf-2.70-MSYS2-specifics-config.guess.patch \
+    0004-LLVM-Flang.patch \
+    0005-package.patch
+}
+
+build() {
+  mkdir -p build-${MSYSTEM} && cd build-${MSYSTEM}
+
+  ../${_realname}-${pkgver}/configure \
+    --prefix=/usr \
+    --program-suffix=-2.73
+
+  make
+}
+
+check() {
+  cd build-${MSYSTEM}
+  # CAUTION: The tests run very very long, even on a server.
+  make check TESTSUITEFLAGS='-j16'
+}
+
+package() {
+  make -C build-${MSYSTEM} DESTDIR="${pkgdir}" install
+
+  # license exception
+  install -Dm644 ${_realname}-${pkgver}/COPYING.EXCEPTION \
+    "${pkgdir}"/usr/share/licenses/autoconf${pkgver}/COPYING.EXCEPTION
+
+  # Note: Remove these files once a newer autoconf is added, and add
+  # a versioned conflict to the old version of this package to make
+  # upgrades work.
+  # rm -rf "${pkgdir}"/usr/share/info
+}
