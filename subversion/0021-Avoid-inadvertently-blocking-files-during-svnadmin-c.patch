@@ -1,0 +1,36 @@
+From ad8af1ebd87fb90f5b4c2030e40f97705db41be7 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Thu, 28 Jul 2022 00:52:02 +0200
+Subject: [PATCH 21/N] Avoid inadvertently blocking files during `svnadmin
+ create`
+
+When running `svnadmin create <path>` on MSYS2, the user is greeted with
+an error similar to this:
+
+	svnadmin: E000013: Can't open file '<path>/db/revprops/0/0': Permission denied
+
+There is already special-handling for Win32 to avoid flushing the data
+lest appending at a later stage fails (see
+https://github.com/apache/subversion/commit/7b0aa264e6f8f244259cc5b1afda3811c31cbdf1
+and https://svn.haxx.se/dev/archive-2015-05/0211.shtml for more
+context). Let's use the same handling for MSYS2, which is closer to
+Win32 than Cygwin in this instance.
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ subversion/libsvn_subr/io.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/subversion/libsvn_subr/io.c b/subversion/libsvn_subr/io.c
+index c47fbae..e184a86 100644
+--- a/subversion/libsvn_subr/io.c
++++ b/subversion/libsvn_subr/io.c
+@@ -4582,7 +4582,7 @@ svn_io_file_rename2(const char *from_path, const char *to_path,
+       SVN_ERR(svn_io_file_flush_to_disk(file, pool));
+       SVN_ERR(svn_io_file_close(file, pool));
+     }
+-#elif !defined(WIN32)
++#elif !defined(WIN32) && !defined(__MSYS__)
+   /* Flush the target of the rename to disk. */
+   if (flush_to_disk)
+     {
