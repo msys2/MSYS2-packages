@@ -65,6 +65,7 @@ my %distmods = (
     'PathTools' => 'Cwd',
     'Scalar-List-Utils' => 'List::Util',
     'IO-Compress' => 'IO::Compress::Gzip',
+    'podlators' => 'Pod::Man',
 );
 sub dist_srcpath
 {
@@ -81,6 +82,7 @@ sub dist_srcpath
         lib_modpath($path, $modname),
         dumb_modpath($path, $modname, '.pm'),
         dumb_modpath($path, $modname, '_pm.PL'),
+        dumb_modpath($path, '__'.$modname.'__', '.pm'),
         "$path/VERSION", # for podlators
     );
     for my $src (@srcpaths){
@@ -95,15 +97,11 @@ sub scrape_verln
     my($srcpath) = @_;
     open my $fh, '<', $srcpath or die "open: $!";
     while(my $ln = <$fh>){
-        # Handle old-style VERSION assignments
-        if($ln =~ s/^.*VERSION *=>? *//){
-            close $fh;
-            return $ln;
-        }
-        # Handle new-style package declaration with version
-        if($ln =~ /^package\s+\S+\s+(v?[\d._]+[^;]*);?\s*$/){
-            close $fh;
-            return $1 . "\n";  # Add newline to match expected format
+        if($ln =~ s/^.*VERSION *=>? *// || $ln =~ s/^package \w+(?:::\w+)* *//){
+            if ($ln =~ m/^[^#;]/) {
+                close $fh;
+                return $ln;
+            }
         }
     }
     close $fh;
@@ -163,7 +161,13 @@ sub pkgspec
 {
     my($dist, $ver) = @$_;
     # $dist =~ tr/A-Z/a-z/;
-    $ver = eval $ver;
+    if ($ver =~ /^(v[\d.]+)/) {
+        require version;
+        $ver = version->parse($1)->normal;
+        $ver =~ s/^v//;
+    } else {
+        $ver = eval $ver;
+    }
     return "perl-$dist=$ver";
 }
 
