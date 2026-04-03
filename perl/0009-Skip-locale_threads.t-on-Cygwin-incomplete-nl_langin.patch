@@ -1,0 +1,41 @@
+From 130ab39b7165420936a0e54bafb4bdf726d81924 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 31 Mar 2026 13:16:19 +0200
+Subject: [PATCH 09/10] Skip locale_threads.t on Cygwin: incomplete nl_langinfo
+ data
+
+On Cygwin/MSYS2, several locales (e.g. bs_BA with codeset ISO-8859-2)
+have incomplete locale data: setlocale(LC_ALL, "bs_BA") succeeds,
+but nl_langinfo(ABMON_1) returns an empty string. Perl 5.42 introduced
+a panic in locale.c:6617 when nl_langinfo returns empty for a locale
+item that should have data, interpreting this as evidence that the
+locale is not genuinely installed despite setlocale having reported
+success. The locale_threads.t test iterates over all available system
+locales in threaded subprocesses; when it reaches bs_BA, the panic
+kills the subprocess (exit 138), which the test harness sees as a
+hang or crash.
+---
+ lib/locale_threads.t | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/lib/locale_threads.t b/lib/locale_threads.t
+index 86036f0..4bb84c7 100644
+--- a/lib/locale_threads.t
++++ b/lib/locale_threads.t
+@@ -14,6 +14,16 @@ BEGIN {
+     skip_all("Fails on threaded builds on OpenBSD")
+         if ($^O =~ m/^(openbsd)$/);
+ 
++    # On Cygwin/MSYS2, several locales (e.g. bs_BA) have incomplete
++    # locale data: setlocale() succeeds but nl_langinfo() returns
++    # empty strings for time-related items like ABMON_1.  Perl 5.42's
++    # locale.c treats this as a fatal panic ("nl_langinfo returned
++    # empty for <item> in supposed locale"), which kills the threaded
++    # test subprocess.  This is a Cygwin runtime deficiency, not a
++    # Perl bug.
++    skip_all("Cygwin has locales with incomplete nl_langinfo data")
++        if $^O eq 'cygwin';
++
+     require './loc_tools.pl';
+ 
+     eval { require POSIX; POSIX->import(qw(errno_h locale_h unistd_h )) };
