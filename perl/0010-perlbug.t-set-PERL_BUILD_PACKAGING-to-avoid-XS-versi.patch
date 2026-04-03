@@ -1,0 +1,53 @@
+From 7d38d585ed5d7ec3c81f1b179b591b2aad73977d Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Thu, 2 Apr 2026 15:20:00 +0200
+Subject: [PATCH 10/10] perlbug.t: set PERL_BUILD_PACKAGING to avoid XS version
+ mismatch
+
+When the test suite runs during a build of a new perl version while an
+older perl is already installed, the built-in @INC includes
+vendor_perl and site_perl paths from the system installation.  These
+directories may contain XS modules (shared libraries) that were
+compiled against the old perl's ABI.
+
+perlbug's Init() calls Mail::Util::maildomain(), which lazily loads
+Net::SMTP, which in turn loads IO::Socket::SSL and Net::SSLeay at
+require time.  If Net::SSLeay's .dll/.so was built for the old perl
+(e.g. 5.40) but is loaded into the new perl (e.g. 5.42), the struct
+layout mismatch causes an immediate SIGSEGV, making every perlbug.t
+subtest return empty output.
+
+perlbug already respects the PERL_BUILD_PACKAGING environment
+variable: when set, it marks Mail::Util as unavailable, so Init()
+falls back to Sys::Hostname::hostname() for the domain lookup instead
+of calling maildomain().  This is correct behavior during a build.
+
+Set PERL_BUILD_PACKAGING=1 in perlbug.t so that every runperl() child
+inherits it, keeping the test suite safe from incompatible system XS
+modules.
+---
+ lib/perlbug.t | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/lib/perlbug.t b/lib/perlbug.t
+index b1f876e..42d155c 100644
+--- a/lib/perlbug.t
++++ b/lib/perlbug.t
+@@ -19,6 +19,17 @@ if (!(-e $extracted_program)) {
+     exit 0;
+ }
+ 
++# perlbug consults Mail::Util::maildomain() when it can load Mail::Util
++# and PERL_BUILD_PACKAGING is not set.  maildomain() in turn tries to
++# load Net::SMTP, which pulls in IO::Socket::SSL and Net::SSLeay.
++# When the test suite runs during a build against a *different* perl
++# version that is already installed, the Net::SSLeay XS module picked
++# up from the system vendor_perl was compiled for the old perl and
++# crashes with a SIGSEGV.  Setting PERL_BUILD_PACKAGING makes perlbug
++# skip the maildomain() call (falling back to Sys::Hostname), which is
++# the right thing to do during a build anyway.
++$ENV{PERL_BUILD_PACKAGING} = 1;
++
+ my $result;
+ my $testreport = 'test.rep';
+ unlink $testreport;

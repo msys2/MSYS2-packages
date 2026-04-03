@@ -1,0 +1,32 @@
+From 1f0ae69759cf3786b87c7b076c3771b871fefe04 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 31 Mar 2026 12:14:35 +0200
+Subject: [PATCH 08/10] Censor /dev/stdin in stat.t like stdout and stderr
+
+On MSYS2/Cygwin, /dev/stdin is a symlink to /proc/self/fd/0. ls -l
+reports it as type 'l' (symlink), but Perl's -c filetest follows
+through the symlink to the underlying character device and returns
+true. This causes the 'ls and -c agreeing on /dev' test to find
+one more -c entry than ls reports 'c' lines, the same mismatch
+that already motivated censoring stdout and stderr.
+---
+ t/op/stat.t | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/t/op/stat.t b/t/op/stat.t
+index be5672c..8eb2056 100644
+--- a/t/op/stat.t
++++ b/t/op/stat.t
+@@ -285,9 +285,11 @@ SKIP: {
+     # /dev/stdout might be either character special or a named pipe,
+     # or a symlink, or a socket, depending on which OS and how are
+     # you running the test, so let's censor that one away.
+-    # Similar remarks hold for stderr.
++    # Similar remarks hold for stdin and stderr.
+     $DEV =~ s{^[cpls].+?\sstdout$}{}m;
+     @DEV =  grep { $_ ne 'stdout' } @DEV;
++    $DEV =~ s{^[cpls].+?\sstdin$}{}m;
++    @DEV =  grep { $_ ne 'stdin' } @DEV;
+     $DEV =~ s{^[cpls].+?\sstderr$}{}m;
+     @DEV =  grep { $_ ne 'stderr' } @DEV;
+ 
