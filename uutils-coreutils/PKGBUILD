@@ -3,7 +3,7 @@
 
 _realname=coreutils
 pkgname="uutils-${_realname}"
-pkgver=0.6.0
+pkgver=0.8.0
 pkgrel=1
 pkgdesc="Cross-platform Rust rewrite of the GNU coreutils"
 arch=('any')
@@ -17,17 +17,14 @@ license=('spdx:MIT')
 depends=("gcc-libs" "oniguruma")
 makedepends=("git" "rust" "pkgconf")
 source=("https://github.com/uutils/coreutils/archive/${pkgver}/${_realname}-${pkgver}.tar.gz"
-        "git+https://github.com/nix-rust/nix#tag=v0.30.1"
-        "nix-ioctl.patch")
-sha256sums=('f751b8209ec05ae304941a727e42a668dcc45674986252f44d195ed43ccfad2f'
-            'aebec7d9c51d26d003333bc53158ac75b8e960ca5cb75d24fe8a5cb027c59842'
-            'b0b8db1334dfcbc805d087969e1860e67ec0dc13a54589741b22684ee3144cee')
+        "git+https://github.com/nix-rust/nix#tag=v0.31.2"
+        )
+sha256sums=('03f765fd23e9cc66f8789edc6928644d8eae5e5a7962d83795739d0a8a85eaef'
+            '93c4a2491774ddb2badc665310fab119272245d7bfbd68c2721900bc3de3bf8f')
 
 prepare() {
   cd "${_realname}-${pkgver}"
-
-  git -C ../nix cherry-pick -n 71f6ee9f4380d5caad3c049dbd352627b9d6eb0a # add sync
-  git -C ../nix apply -v -p1 ../nix-ioctl.patch
+  git -C ../nix cherry-pick -n 962d80cb6174f305d954ae2015d3d94bd4efd93e # add ioctl
   cat >> Cargo.toml <<END
 
 [patch.crates-io]
@@ -43,12 +40,14 @@ package() {
   cd "${_realname}-${pkgver}"
 
   export RUSTONIG_DYNAMIC_LIBONIG=1
+  # this fixed build failure on the CI, but not reliable
+  # export RUSTFLAGS="${RUSTFLAGS} -C link-arg=-Wl,--dynamicbase -C link-arg=-Wl,--enable-auto-image-base"
 
   make install \
     DESTDIR="${pkgdir}" \
     PREFIX="/usr" \
-    PROFILE=release-fast \
-    SKIP_UTILS="stdbuf" \
+    PROFILE=release \
+    LIBSTDBUF_DIR="/usr/lib/${pkgname}" \
     PROG_PREFIX="uu-" \
     MULTICALL=y
 
