@@ -1,0 +1,46 @@
+From 3dad72f061ac31304378e86d5bd3279614993c79 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 31 Mar 2026 10:30:34 +0200
+Subject: [PATCH 07/10] Skip optree_specials test 13 on Cygwin (Windows
+ Defender false positive)
+
+---
+ ext/B/t/optree_specials.t | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/ext/B/t/optree_specials.t b/ext/B/t/optree_specials.t
+index 6207ab6..5e132c0 100644
+--- a/ext/B/t/optree_specials.t
++++ b/ext/B/t/optree_specials.t
+@@ -27,6 +27,9 @@ use OptreeCheck;	# ALSO DOES @ARGV HANDLING !!!!!!
+ 
+ plan tests => 15;
+ 
++use Config;
++my $is_cygwin = $Config{osname} eq 'cygwin';
++
+ require_ok("B::Concise");
+ 
+ my $out = runperl(
+@@ -368,6 +371,13 @@ EOT_EOT
+ # 2              <$> gvsv(*init) s ->3
+ EONT_EONT
+ 
++SKIP: {
++    # On Cygwin/MSYS2, Windows Defender flags this particular command line
++    # (combining all special blocks in one -MO=Concise invocation) as
++    # Trojan:Win32/ClickFix.R!ml, causing "Permission denied".
++    skip "Windows Defender false positive on combined special-block invocation", 2
++	if $is_cygwin;
++
+ checkOptree ( name	=> 'all of BEGIN END INIT CHECK UNITCHECK -exec',
+ 	      bcopts	=> [qw/ BEGIN END INIT CHECK UNITCHECK -exec /],
+ 	      prog	=> $src,
+@@ -595,6 +605,7 @@ EOT_EOT
+ # 2o <1> postinc[t2] sK/1
+ # 2p <1> leavesub[1 ref] K/REFC,1
+ EONT_EONT
++} # end SKIP Windows Defender
+ 
+ # perl "-I../lib" -MO=Concise,BEGIN,CHECK,INIT,END,-exec -e '$a=$b && print q/foo/'
+ 
