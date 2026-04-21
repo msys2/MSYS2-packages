@@ -1,0 +1,275 @@
+From 52d227e6260dd1a99177ebf6dfcb653d614ad5e5 Mon Sep 17 00:00:00 2001
+From: Yonggang Luo <luoyonggang@gmail.com>
+Date: Mon, 5 Jan 2026 06:23:50 +0800
+Subject: [PATCH] Fixes building with gcc 15
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+../MSTA/../MSTA/parser.c:5589:11: error: implicit declaration of function ‘output_LR_situation’; did you mean ‘IR_new_LR_situation’? [-Wimplicit-function-declaration]
+
+Signed-off-by: Yonggang Luo <luoyonggang@gmail.com>
+---
+ DINO/d_yacc.h     | 4 +++-
+ DINO/gmp.c        | 1 +
+ DINO/ipcerr_int.c | 1 +
+ DINO/mpi.c        | 1 +
+ DINO/socket_int.c | 2 ++
+ MSTA/p-yacc.y     | 1 +
+ MSTA/parser.c     | 1 +
+ MSTA/yacc.h       | 4 +++-
+ MSTA/yacc.y       | 2 +-
+ NONA/yacc.h       | 4 +++-
+ NONA/yacc.y       | 1 +
+ OKA/yacc.h        | 4 +++-
+ OKA/yacc.y        | 1 +
+ SHILKA/gen.c      | 3 ++-
+ SHILKA/yacc.h     | 4 +++-
+ SHILKA/yacc.y     | 1 +
+ SPRUT/yacc.h      | 4 +++-
+ SPRUT/yacc.y      | 1 +
+ 18 files changed, 32 insertions(+), 8 deletions(-)
+
+diff --git a/DINO/d_yacc.h b/DINO/d_yacc.h
+index 9c8d354..caf6184 100644
+--- a/DINO/d_yacc.h
++++ b/DINO/d_yacc.h
+@@ -28,5 +28,7 @@ extern IR_node_t first_program_stmt;
+ 
+ extern void initiate_scanner (void);
+ extern void start_scanner_file (const char *file_name, position_t error_pos);
+-extern yyparse (void);
++extern int yylex (void);
++extern int yyparse (void);
++extern int yyerror (const char *message);
+ extern void finish_scanner (void);
+diff --git a/DINO/gmp.c b/DINO/gmp.c
+index b2e30ab..1f8517b 100644
+--- a/DINO/gmp.c
++++ b/DINO/gmp.c
+@@ -27,6 +27,7 @@
+ 
+ #include "d_extern.h"
+ #include <stdlib.h>
++#include <string.h>
+ 
+ #ifdef HAVE_GMP_H
+ #include "gmp.h"
+diff --git a/DINO/ipcerr_int.c b/DINO/ipcerr_int.c
+index 4f24110..452c37d 100644
+--- a/DINO/ipcerr_int.c
++++ b/DINO/ipcerr_int.c
+@@ -28,6 +28,7 @@
+ #include "d_extern.h"
+ #include <assert.h>
+ #include <errno.h>
++#include <string.h>
+ 
+ val_t _eaddrinuse_no, _eaddrnotavail_no, _eafnosupport_no,
+   _ealready_no, _econnaborted_no, _econnrefused_no, _econnreset_no,
+diff --git a/DINO/mpi.c b/DINO/mpi.c
+index 653934a..4e12374 100644
+--- a/DINO/mpi.c
++++ b/DINO/mpi.c
+@@ -28,6 +28,7 @@
+ #include "d_extern.h"
+ #include "arithm.h"
+ #include <assert.h>
++#include <string.h>
+ 
+ static void
+ mpi_binary_op (int npars, val_t *vals, int_t *size,
+diff --git a/DINO/socket_int.c b/DINO/socket_int.c
+index 5d09881..ea9ec64 100644
+--- a/DINO/socket_int.c
++++ b/DINO/socket_int.c
+@@ -32,6 +32,7 @@
+ #include <assert.h>
+ #include <errno.h>
+ #include <string.h>
++#include <ctype.h>
+ 
+ #ifdef HAVE_SYS_SOCKET_H
+ #include <netdb.h>
+@@ -39,6 +40,7 @@
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
++#include <unistd.h>
+ #endif
+ 
+ #if !defined(__CYGWIN__)
+diff --git a/MSTA/p-yacc.y b/MSTA/p-yacc.y
+index ac3b5c7..7a47411 100644
+--- a/MSTA/p-yacc.y
++++ b/MSTA/p-yacc.y
+@@ -3611,6 +3611,7 @@ flush_syntax_error (void)
+    SOURCE: <>
+ */
+ 
++int
+ yyerror (const char *message)
+ {
+   flush_syntax_error ();
+diff --git a/MSTA/parser.c b/MSTA/parser.c
+index f5e4153..cba0f88 100644
+--- a/MSTA/parser.c
++++ b/MSTA/parser.c
+@@ -46,6 +46,7 @@
+ #include "gen-comm.h"
+ #include "output.h"
+ #include "contexts.h"
++#include "lr-sets.h"
+ #include "parser.h"
+ 
+ #ifdef HAVE_ASSERT_H
+diff --git a/MSTA/yacc.h b/MSTA/yacc.h
+index cc16b18..fb43258 100644
+--- a/MSTA/yacc.h
++++ b/MSTA/yacc.h
+@@ -37,5 +37,7 @@
+ 
+ extern void initiate_parser (void);
+ extern void start_parser_file (const char *new_file_name);
+-extern yyparse ();
++extern int yylex (void);
++extern int yyparse (void);
++extern int yyerror (const char *message);
+ extern void finish_parser (void);
+diff --git a/MSTA/yacc.y b/MSTA/yacc.y
+index 5ef8481..e596293 100644
+--- a/MSTA/yacc.y
++++ b/MSTA/yacc.y
+@@ -1674,7 +1674,7 @@ flush_syntax_error (void)
+     }
+ }
+ 
+-
++int
+ yyerror (const char *message)
+ {
+   flush_syntax_error ();
+diff --git a/NONA/yacc.h b/NONA/yacc.h
+index af9e9f0..4d74371 100644
+--- a/NONA/yacc.h
++++ b/NONA/yacc.h
+@@ -40,5 +40,7 @@
+ 
+ extern void initiate_parser (void);
+ extern void start_parser_file (const char *new_file_name);
+-extern yyparse ();
++extern int yylex (void);
++extern int yyparse (void);
++extern int yyerror (const char *message);
+ extern void finish_parser (void);
+diff --git a/NONA/yacc.y b/NONA/yacc.y
+index 719464a..15c4500 100644
+--- a/NONA/yacc.y
++++ b/NONA/yacc.y
+@@ -1140,6 +1140,7 @@ flush_syntax_error (void)
+    `flush_syntax_error' and saves message given as parameter and
+    `current_lexema position' as its position (see scanner). */
+ 
++int
+ yyerror (const char *message)
+ {
+   flush_syntax_error ();
+diff --git a/OKA/yacc.h b/OKA/yacc.h
+index a0a51e6..fb06487 100644
+--- a/OKA/yacc.h
++++ b/OKA/yacc.h
+@@ -40,5 +40,7 @@
+ 
+ extern void initiate_parser (void);
+ extern void start_parser_file (const char *new_file_name);
+-extern yyparse ();
++extern int yylex (void);
++extern int yyparse (void);
++extern int yyerror (const char *message);
+ extern void finish_parser (void);
+diff --git a/OKA/yacc.y b/OKA/yacc.y
+index dca725d..ade0bf1 100644
+--- a/OKA/yacc.y
++++ b/OKA/yacc.y
+@@ -1347,6 +1347,7 @@ flush_syntax_error (void)
+    `flush_syntax_error' and saves message given as parameter and
+    `current_lexema position' as its position (see scanner). */
+ 
++int
+ yyerror (const char *message)
+ {
+   flush_syntax_error ();
+diff --git a/SHILKA/gen.c b/SHILKA/gen.c
+index fa1dbac..699b989 100644
+--- a/SHILKA/gen.c
++++ b/SHILKA/gen.c
+@@ -61,6 +61,7 @@
+ #include "tab.h"
+ #include "ird.h"
+ #include "gen.h"
++#include "errors.h"
+ 
+ #ifdef HAVE_LIMITS_H
+ #include <limits.h>
+@@ -2156,7 +2157,7 @@ generate (void)
+   output_interface_finish_code_insertions ();
+   output_implementation_start_code_insertions ();
+   if (case_flag)
+-    output_strcaseq_function (length_flag);
++    output_strcaseq_function ();
+   output_find_keyword_function ();
+   output_reset_function ();
+   output_statistics_function ();
+diff --git a/SHILKA/yacc.h b/SHILKA/yacc.h
+index f2cbc82..ab2b3f2 100644
+--- a/SHILKA/yacc.h
++++ b/SHILKA/yacc.h
+@@ -40,5 +40,7 @@
+ 
+ extern void initiate_parser (void);
+ extern void start_parser_file (const char *new_file_name);
+-extern yyparse ();
++extern int yylex (void);
++extern int yyparse (void);
++extern int yyerror (const char *message);
+ extern void finish_parser (void);
+diff --git a/SHILKA/yacc.y b/SHILKA/yacc.y
+index f0452a0..7e77eec 100644
+--- a/SHILKA/yacc.y
++++ b/SHILKA/yacc.y
+@@ -1195,6 +1195,7 @@ flush_syntax_error (void)
+    `flush_syntax_error' and saves message given as parameter and
+    `current_lexema position' as its position (see scanner). */
+ 
++int
+ yyerror (const char *message)
+ {
+   flush_syntax_error ();
+diff --git a/SPRUT/yacc.h b/SPRUT/yacc.h
+index 865e5de..64387ed 100644
+--- a/SPRUT/yacc.h
++++ b/SPRUT/yacc.h
+@@ -42,5 +42,7 @@
+ extern void initiate_parser (void);
+ extern void start_parser_file (const char *new_file_name,
+                                position_t error_position);
+-extern yyparse ();
++extern int yylex (void);
++extern int yyparse (void);
++extern int yyerror (const char *message);
+ extern void finish_parser (void);
+diff --git a/SPRUT/yacc.y b/SPRUT/yacc.y
+index 3340f44..56f2e20 100644
+--- a/SPRUT/yacc.y
++++ b/SPRUT/yacc.y
+@@ -1929,6 +1929,7 @@ flush_syntax_error (void)
+    `flush_syntax_error' and saves message given as parameter and
+    `current_lexema position' as its position (see scanner). */
+ 
++int
+ yyerror (const char *message)
+ {
+   flush_syntax_error ();
+-- 
+2.52.0.windows.1
+
