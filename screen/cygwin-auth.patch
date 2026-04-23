@@ -1,0 +1,45 @@
+--- origsrc/screen-5.0.0/socket.c	2025-04-08 00:24:31.851467200 +0900
++++ src/screen-5.0.0/socket.c	2025-04-08 16:31:46.927444900 +0900
+@@ -82,6 +82,17 @@
+ #include "tty.h"
+ #include "utmp.h"
+ 
++#ifdef __CYGWIN__
++typedef void *HANDLE;
++typedef void *HMODULE;
++typedef uint32_t DWORD;
++typedef uintptr_t DWORD_PTR;
++#define INVALID_HANDLE_VALUE ((HANDLE)-1)
++#define WINVER 0x0502
++#define MAX_PATH 260
++#include <sys/cygwin.h>
++#endif
++
+ static int CheckPid(pid_t);
+ static void ExecCreate(Message *);
+ static void DoCommandMsg(Message *);
+@@ -1214,6 +1225,7 @@ static bool CheckPassword(const char *pa
+ #else /* ENABLE_PAM */
+ 
+ static bool CheckPassword(const char *password) {
++#ifndef __CYGWIN__
+ 	bool ret = false;
+ 	char *passwd = 0;
+ 
+@@ -1256,6 +1264,16 @@ static bool CheckPassword(const char *pa
+ 	ret = (strcmp(passwd, p->sp_pwdp) == 0);
+ #endif
+ 	return ret;
++#else
++	struct passwd *p;
++	p = getpwnam(ppp->pw_name);
++	if (p == NULL)
++		return false;
++
++	HANDLE hToken = (HANDLE) cygwin_logon_user (p, password);
++	cygwin_set_impersonation_token (hToken);
++	return hToken != INVALID_HANDLE_VALUE;
++#endif
+ }
+ #endif /* ENABLE_PAM */
+ 
