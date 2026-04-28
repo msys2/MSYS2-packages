@@ -1,0 +1,81 @@
+# Maintainer: Tiara Rodney <tiara@byteb4rb1e.me>
+# Ported from the Cygwin package by Andrew Schulman.
+# Upstream Cygwin recipe: https://cygwin.com/cgit/cygwin-packages/screen/
+
+pkgname=screen
+pkgver=5.0.1
+pkgrel=1
+pkgdesc='Terminal window manager that multiplexes a physical terminal between several processes'
+arch=('x86_64' 'i686')
+url='https://www.gnu.org/software/screen/'
+msys2_repository_url='https://git.savannah.gnu.org/cgit/screen.git'
+msys2_references=(
+  'anitya: 4772'
+  'cpe: cpe:/a:gnu:screen'
+)
+license=('spdx:GPL-3.0-only')
+depends=('libxcrypt' 'ncurses')
+makedepends=('libxcrypt-devel' 'ncurses-devel' 'gcc' 'texinfo')
+backup=('etc/screenrc')
+source=("https://ftp.gnu.org/gnu/screen/${pkgname}-${pkgver}.tar.gz"
+        'colortest.sh'
+        'cygwin-auth.patch'
+        'etcscreenrc.patch'
+        'install-exe.patch'
+        'peercred.patch'
+        'texinfo.patch'
+        'TIOCCONS.patch')
+sha256sums=('2dae36f4db379ffcd14b691596ba6ec18ac3a9e22bc47ac239789ab58409869d'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP')
+
+# The 5.0.1 tarball contains a symlink screen-5.0.1/FAQ -> doc/FAQ. Without
+# admin / Developer Mode on Windows, bsdtar fails while creating that symlink
+# and makepkg aborts extraction.
+noextract=("${pkgname}-${pkgver}.tar.gz")
+
+prepare() {
+  cd "${srcdir}"
+  MSYS=winsymlinks:lnk tar -xzf "${pkgname}-${pkgver}.tar.gz"
+  cd "${pkgname}-${pkgver}"
+  # Cygwin patches were generated against cygport tree where source
+  # lives under src/screen-5.0.0/... twostill carry prefix need, hence need
+  # -p2; the rest were regenerated with -p1-style headers upstream.
+  patch -p2 -i "${srcdir}/cygwin-auth.patch"
+  patch -p2 -i "${srcdir}/TIOCCONS.patch"
+  patch -p1 -i "${srcdir}/peercred.patch"
+  patch -p1 -i "${srcdir}/install-exe.patch"
+  patch -p1 -i "${srcdir}/etcscreenrc.patch"
+  patch -p1 -i "${srcdir}/texinfo.patch"
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  ./configure \
+    --build=${CHOST} \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
+    --mandir=/usr/share/man \
+    --infodir=/usr/share/info \
+    --disable-pam \
+    --enable-utmp
+  make
+  make info
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make DESTDIR="${pkgdir}" install
+
+  install -Dm644 etc/etcscreenrc "${pkgdir}/etc/screenrc"
+
+  install -Dm755 "${srcdir}/colortest.sh" "${pkgdir}/usr/share/screen/colortest.sh"
+
+  install -Dm644 COPYING "${pkgdir}/usr/share/licenses/${pkgname}/COPYING"
+}
