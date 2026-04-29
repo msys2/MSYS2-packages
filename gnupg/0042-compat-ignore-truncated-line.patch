@@ -1,0 +1,58 @@
+From 586700dd0563bfed1863c282e0fab7d300098fa8 Mon Sep 17 00:00:00 2001
+From: NIIBE Yutaka <gniibe@fsij.org>
+Date: Tue, 6 Jan 2026 18:56:40 +0000
+Subject: compat ignore truncated line
+
+---
+
+diff --git a/g10/armor.c b/g10/armor.c
+index 9ea412ae3..b03b3cdff 100644
+--- a/g10/armor.c
++++ b/g10/armor.c
+@@ -1566,11 +1566,16 @@ armor_filter( void *opaque, int control,
+         /* Note that in a cleartext signature truncated lines in the
+          * plaintext are detected and propagated to the signature
+          * checking code by inserting a \f into the plaintext.  We do
+-         * not use log_info here because some of the truncated lines
+-         * are harmless.  */
+-	if( afx->truncated )
+-	    log_info(_("invalid armor: line longer than %d characters\n"),
+-		      MAX_LINELEN );
++         * not use log_error here because some of the truncated lines
++         * are harmless, in compatibility mode.  */
++        if( afx->truncated ) {
++            if((opt.compat_flags & COMPAT_IGNORE_TRUNCATED_LINE))
++                log_info(_("invalid armor: line longer than %d characters\n"),
++                         MAX_LINELEN );
++            else
++                log_error(_("invalid armor: line longer than %d characters\n"),
++                          MAX_LINELEN );
++        }
+ 	/* issue an error to enforce dissemination of correct software */
+ 	if( afx->qp_detected )
+ 	    log_error(_("quoted printable character in armor - "
+diff --git a/g10/gpg.c b/g10/gpg.c
+index 99fe5b844..7ef911bbc 100644
+--- a/g10/gpg.c
++++ b/g10/gpg.c
+@@ -1065,7 +1065,8 @@ static struct compatibility_flags_s compatibility_flags [] =
+     { COMPAT_COMPR_KEYS,   "compr-keys" },
+     { COMPAT_NO_MANU,      "no-manu" },
+     { COMPAT_SUGGEST_EMBEDDED_NAME, "suggest-embedded-name" },
+     { COMPAT_ALLOW_NOT_DASH_ESCAPED, "allow-not-dash-escaped" },
++    { COMPAT_IGNORE_TRUNCATED_LINE, "ignore-truncated-line" },
+     { 0, NULL }
+   };
+ 
+diff --git a/g10/options.h b/g10/options.h
+index 962f45f16..80d1fe239 100644
+--- a/g10/options.h
++++ b/g10/options.h
+@@ -407,6 +407,7 @@ EXTERN_UNLESS_MAIN_MODULE int memory_stat_debug_mode;
+ #define COMPAT_SUGGEST_EMBEDDED_NAME 16 /* Show the non-signed
+                                          * embedded filename as
+                                          * suggestion.  */
+ #define COMPAT_ALLOW_NOT_DASH_ESCAPED 32 /* Handle NotDashEscaped header.  */
++#define COMPAT_IGNORE_TRUNCATED_LINE 64 /* Ignore truncated line.  */
+ 
+ 

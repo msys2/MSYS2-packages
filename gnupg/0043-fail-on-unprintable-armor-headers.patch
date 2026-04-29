@@ -1,0 +1,47 @@
+From 586700dd0563bfed1863c282e0fab7d300098fa8 Mon Sep 17 00:00:00 2001
+From: Andrew Gallagher <andrewg@andrewg.com>
+Date: Tue, 6 Jan 2026 18:56:40 +0000
+Subject: fail on unprintable armor headers
+
+---
+ g10/armor.c | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/g10/armor.c b/g10/armor.c
+index dae6b99d4..7de6d0438 100644
+--- a/g10/armor.c
++++ b/g10/armor.c
+@@ -466,6 +466,13 @@ parse_header_line( armor_filter_context_t *afx, byte *line, unsigned int len )
+     int hashes=0;
+     unsigned int len2;
+ 
++    if (strlen(line) != len)
++    {
++	/* There must be an embedded null byte in the armor header */
++	log_error(_("invalid clearsig header\n"));
++	return -1;
++    }
++
+     len2 = length_sans_trailing_ws ( line, len );
+     if( !len2 ) {
+         afx->buffer_pos = len2;  /* (it is not the fine way to do it here) */
+@@ -513,7 +520,15 @@ parse_header_line( armor_filter_context_t *afx, byte *line, unsigned int len )
+ 	else if ((opt.compat_flags & COMPAT_ALLOW_NOT_DASH_ESCAPED)
+                  && strlen (line) > 15
+                  && !memcmp( line, "NotDashEscaped:", 15 ) )
+-	  afx->not_dash_escaped = 1;
++	    {
++		for (unsigned int i=15; i<len; i++)
++		    if (!isprint(line[i]))
++		    {
++			log_error(_("invalid clearsig header\n"));
++			return -1;
++		    }
++		afx->not_dash_escaped = 1;
++	    }
+ 	else
+ 	  {
+ 	    log_error(_("invalid clearsig header\n"));
+-- 
+2.39.3 (Apple Git-145)
+
