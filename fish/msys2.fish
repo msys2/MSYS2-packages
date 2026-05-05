@@ -1,9 +1,9 @@
-# To the extent possible under law, the author(s) have dedicated all 
-# copyright and related and neighboring rights to this software to the 
-# public domain worldwide. This software is distributed without any warranty. 
-# You should have received a copy of the CC0 Public Domain Dedication along 
-# with this software. 
-# If not, see <https://creativecommons.org/publicdomain/zero/1.0/>. 
+# To the extent possible under law, the author(s) have dedicated all
+# copyright and related and neighboring rights to this software to the
+# public domain worldwide. This software is distributed without any warranty.
+# You should have received a copy of the CC0 Public Domain Dedication along
+# with this software.
+# If not, see <https://creativecommons.org/publicdomain/zero/1.0/>.
 
 
 # System-wide profile file
@@ -14,7 +14,7 @@
 # To learn more about startup files, refer to your shell's man page.
 
 set MSYS2_PATH /usr/local/bin /usr/bin /bin
-set -x MANPATH /usr/local/man /usr/share/man /usr/man /share/man 
+set -x MANPATH /usr/local/man /usr/share/man /usr/man /share/man
 set -x INFOPATH /usr/local/info /usr/share/info /usr/info /share/info
 
 if not set -q MSYS2_PATH_TYPE
@@ -26,7 +26,7 @@ case strict
     # Do not inherit any path configuration, and allow for full customization
     # of external path. This is supposed to be used in special cases such as
     # debugging without need to change this file, but not daily usage.
-    set -ex ORIGINAL_PATH
+    set -x ORIGINAL_PATH
 case inherit
     # Inherit previous path. Note that this will make all of the Windows path
     # available in current shell, with possible interference in project builds.
@@ -37,7 +37,7 @@ case '*'
     # Do not inherit any path configuration but configure a default Windows path
     # suitable for normal usage with minimal external interference.
     set -l PATH $MSYS2_PATH 2>/dev/null
-	set WIN_ROOT (cygpath -Wu)	
+	set WIN_ROOT (cygpath -Wu)
     set -x ORIGINAL_PATH $WIN_ROOT/System32 $WIN_ROOT $WIN_ROOT/System32/Wbem $WIN_ROOT/System32/WindowsPowerShell/v1.0/
 end
 
@@ -82,7 +82,7 @@ end
 # TMP and TEMP as defined in the Windows environment must be kept
 # for windows apps, even if started from msys2. However, leaving
 # them set to the default Windows temporary directory or unset
-# can have unexpected consequences for msys2 apps, so we define 
+# can have unexpected consequences for msys2 apps, so we define
 # our own to match GNU/Linux behaviour.
 #
 # Note: this uppercase/lowercase workaround does not seem to work.
