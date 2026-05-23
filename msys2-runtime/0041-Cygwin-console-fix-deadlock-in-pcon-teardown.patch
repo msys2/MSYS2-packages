@@ -1,0 +1,47 @@
+From 01d6c708f9221334d18ab332621b6d87eb12d37e Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Mon, 18 May 2026 19:52:49 +0100
+Subject: [PATCH 41/N] Cygwin: console: fix deadlock in pcon teardown
+
+When a process inside a pseudo console (pcon) exits, the sequence was:
+
+  exit()
+    -> atexit handlers (including pcon_hand_over_proc)
+         pcon_hand_over_proc closes parent_pty_input_mutex
+         -- handle slot now free to be recycled --
+    -> _exit() -> do_exit() -> close_all_files() -> fhandler_console::close()
+         set_input_mode() waits on input_mutex  <-- hangs
+
+The fix, suggested by Takashi Yano: remove the atexit registration
+entirely and instead call pcon_hand_over_proc() directly from
+fhandler_console::close(), after both input_mutex and output_mutex
+have been closed.  By that point close() has already waited for
+cons_master_thread to exit, so parent_pty_input_mutex is no longer
+accessed by any other thread and can be safely closed.
+
+Fixes: https://github.com/msys2/msys2-runtime/issues/338
+---
+ winsup/cygwin/fhandler/console.cc | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/fhandler/console.cc b/winsup/cygwin/fhandler/console.cc
+index 6220a91..224177b 100644
+--- a/winsup/cygwin/fhandler/console.cc
++++ b/winsup/cygwin/fhandler/console.cc
+@@ -1954,7 +1954,6 @@ fhandler_console::setup_pcon_hand_over ()
+ 	if (get_console_process_id (owner, true, false, false, false))
+ 	  {
+ 	    inside_pcon = true;
+-	    atexit (fhandler_console::pcon_hand_over_proc);
+ 	    parent_pty = i;
+ 	    parent_pty_input_mutex =
+ 	      cygwin_shared->tty[i]->open_input_mutex (MAXIMUM_ALLOWED);
+@@ -2092,6 +2091,8 @@ fhandler_console::close (int flag)
+   CloseHandle (output_mutex);
+   output_mutex = NULL;
+ 
++  pcon_hand_over_proc ();
++
+   WaitForSingleObject (shared_info_mutex, INFINITE);
+   if (--shared_info_state[unit] == 0 && shared_console_info[unit])
+     {
