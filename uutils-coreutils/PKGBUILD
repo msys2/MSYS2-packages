@@ -3,8 +3,8 @@
 
 _realname=coreutils
 pkgname="uutils-${_realname}"
-pkgver=0.8.0
-pkgrel=1
+pkgver=0.9.0
+pkgrel=2
 pkgdesc="Cross-platform Rust rewrite of the GNU coreutils"
 arch=('any')
 url='https://github.com/uutils/coreutils'
@@ -15,23 +15,14 @@ msys2_references=(
 )
 license=('spdx:MIT')
 depends=("gcc-libs" "oniguruma")
-makedepends=("git" "rust" "pkgconf")
-source=("https://github.com/uutils/coreutils/archive/${pkgver}/${_realname}-${pkgver}.tar.gz"
-        "git+https://github.com/nix-rust/nix#tag=v0.31.2"
-        )
-sha256sums=('03f765fd23e9cc66f8789edc6928644d8eae5e5a7962d83795739d0a8a85eaef'
-            '93c4a2491774ddb2badc665310fab119272245d7bfbd68c2721900bc3de3bf8f')
+makedepends=("rust" "pkgconf")
+provides=("coreutils")
+conflicts=("coreutils")
+source=("https://github.com/uutils/coreutils/archive/${pkgver}/${_realname}-${pkgver}.tar.gz")
+sha256sums=('dafe0126ee4ed55c7cd60c6b559f43724a74751deed3c1b078f4f510311acab2')
 
 prepare() {
   cd "${_realname}-${pkgver}"
-  git -C ../nix cherry-pick -n 962d80cb6174f305d954ae2015d3d94bd4efd93e # add ioctl
-  cat >> Cargo.toml <<END
-
-[patch.crates-io]
-nix.path = "../nix"
-END
-
-  cargo update -p nix
   cargo fetch --locked --target "${RUST_CHOST}"
 }
 
@@ -43,12 +34,14 @@ package() {
   # this fixed build failure on the CI, but not reliable
   # export RUSTFLAGS="${RUSTFLAGS} -C link-arg=-Wl,--dynamicbase -C link-arg=-Wl,--enable-auto-image-base"
 
+  export CARGO_TARGET_DIR="${srcdir}/target-2"
+
   make install \
     DESTDIR="${pkgdir}" \
     PREFIX="/usr" \
     PROFILE=release \
     LIBSTDBUF_DIR="/usr/lib/${pkgname}" \
-    PROG_PREFIX="uu-" \
+    SKIP_UTILS="more kill uptime" \
     MULTICALL=y
 
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"

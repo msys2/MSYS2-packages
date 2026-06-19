@@ -3,8 +3,8 @@
 _realname=uv
 pkgbase=${_realname}
 pkgname=("python-${_realname}-build")
-pkgver=0.10.8
-pkgrel=1
+pkgver=0.11.19
+pkgrel=4
 pkgdesc='An extremely fast Python package installer and resolver, written in Rust (python build backend)'
 arch=('x86_64')
 url="https://github.com/astral-sh/uv"
@@ -19,20 +19,20 @@ makedepends=('rust'
              'git')
 options=('!strip')
 source=("git+${url}.git#tag=${pkgver}"
-        "zstd-sys.tar.gz::https://crates.io/api/v1/crates/zstd-sys/2.0.15+zstd.1.5.7/download"
+        "zstd-sys.tar.gz::https://static.crates.io/crates/zstd-sys/2.0.16+zstd.1.5.7/download"
         "link-zstd-dynamically.patch")
-sha256sums=('9c4163bf05a71fe175ae8e7adc7235e5504595b6e4d2d982dc17530ad0d34eae'
-            'eb81183ddd97d0c74cedf1d50d85c8d08c1b8b68ee863bdee9e706eedba1a237'
+sha256sums=('b69f743055ae8ae07d99c727994de21d90031499a0317c4f84775dde049d3524'
+            '91e19ebc2adc8f83e43039e79776e3fda8ca919132d68a1fed6a5faca2683748'
             '48f4900ceb02d3aaf9a1020f33d56629156e96759f456c0e7ca18bfcf910767b')
 
 prepare() {
   cd "${_realname}"
 
-  patch -d "../zstd-sys-2.0.15+zstd.1.5.7" -i "../link-zstd-dynamically.patch"
+  patch -d "../zstd-sys-2.0.16+zstd.1.5.7" -i "../link-zstd-dynamically.patch"
   cat >> Cargo.toml <<END
 
 [patch.crates-io]
-zstd-sys.path = "../zstd-sys-2.0.15+zstd.1.5.7"
+zstd-sys.path = "../zstd-sys-2.0.16+zstd.1.5.7"
 END
 
   rm rust-toolchain.toml
@@ -43,6 +43,7 @@ END
 build() {
   cd "${_realname}"
 
+  export CARGO_TARGET_DIR="${srcdir}/target-3"
   export ZSTD_SYS_USE_PKG_CONFIG=1
   maturin build --frozen --strip --release --all-features -m crates/uv-build/Cargo.toml
 }
@@ -53,7 +54,7 @@ package() {
   cd "${_realname}"
 
   python -m installer --prefix=/usr \
-    --destdir="${pkgdir}" target/wheels/uv_build-$pkgver-*.whl
+    --destdir="${pkgdir}" "${srcdir}/target-3/wheels/uv_build-$pkgver-"*.whl
 
   install -Dm644 LICENSE-MIT -t "${pkgdir}/usr/share/licenses/${pkgname}/"
   install -Dm644 LICENSE-APACHE -t "${pkgdir}/usr/share/licenses/${pkgname}/"

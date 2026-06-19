@@ -2,34 +2,53 @@
 
 pkgname=cocom
 pkgver=0.996
-pkgrel=4
+pkgrel=5
 pkgdesc="Toolset for creation of compilers and interpreters"
 arch=('i686' 'x86_64')
 url="https://cocom.sourceforge.io/"
 license=('custom')
-depends=()
-makedepends=('autotools' 'gcc')
-source=(https://downloads.sourceforge.net/sourceforge/${pkgname}/${pkgname}-${pkgver}.tar.gz)
-sha256sums=('e143ab556d79a35ef31ec1e240897c9b8a8d0b6693e50a2b6e47d7fd4b200519')
+depends=('gmp')
+makedepends=('autotools' 'gcc' 'git' 'gmp-devel')
+
+_commit='5fc8760a7f4eaf074ce9c116b85015fafb5af26c'
+source=("cocom"::"git+https://github.com/dino-lang/dino.git#commit=$_commit"
+0001-Fixes-building-with-gcc-15.patch)
+sha256sums=('b173e3c3ac30315006e498a3efbbd480b2d698d93c2d16da4d6d90e87df006bc'
+            'a822df8652d131de3bbe62f1ee1e302139e3d14c0615964fafb75d4e491948c3')
+
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying $_patch"
+    patch -Nbp1 -i "${srcdir}/$_patch"
+  done
+}
 
 prepare() {
-  cd ${srcdir}/${pkgname}-${pkgver}/REGEX
+  cd ${srcdir}/${pkgname}/
+  apply_patch_with_msg \
+    0001-Fixes-building-with-gcc-15.patch
 
+  cd ${srcdir}/${pkgname}/
+  WANT_AUTOCONF="2.69" autoreconf -fi
+
+  cd ${srcdir}/${pkgname}/REGEX
   WANT_AUTOCONF="2.69" autoreconf -fi
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/${pkgname}
   ./configure --prefix=/usr --mandir=/usr/share/man
   make
 }
 
 check() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/${pkgname}
   make test
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd ${srcdir}/${pkgname}
   make DESTDIR=${pkgdir} install
 }
