@@ -1,0 +1,65 @@
+From 29fe00be14f74a749aab86d3d0704d4580ed8374 Mon Sep 17 00:00:00 2001
+From: Yonggang Luo <luoyonggang@gmail.com>
+Date: Wed, 24 Jun 2026 02:06:57 +0800
+Subject: [PATCH] crt: Fix ISO vswprintf exact-fit off-by-one error check.
+
+- In __mingw_vswprintf, compare retval against n-1 with > not >= after the
+  buffer size decrement; ISO C95+ should fail only when n or more data wide
+  chars are needed.
+- Extend t_swprintf_tmpl.h with an exact-fit swprintf(buf, 10, ...) case and
+  a truncated n=9 failure case to catch regressions.
+---
+ mingw-w64-crt/stdio/mingw_vsnprintf.c     |  7 +++----
+ mingw-w64-crt/testcases/t_swprintf_tmpl.h | 18 ++++++++++++++++++
+ 2 files changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/mingw-w64-crt/stdio/mingw_vsnprintf.c b/mingw-w64-crt/stdio/mingw_vsnprintf.c
+index b9c357862..dd2d81ea8 100644
+--- a/mingw-w64-crt/stdio/mingw_vsnprintf.c
++++ b/mingw-w64-crt/stdio/mingw_vsnprintf.c
+@@ -57,11 +57,10 @@ int __cdecl __vsnprintf(APICHAR *buf, size_t length, const APICHAR *fmt, va_list
+   buf[retval < (int) length ? retval : (int)length] = '\0';
+ 
+ #if defined(__BUILD_WIDEAPI) && defined(__BUILD_WIDEAPI_ISO)
+-  /* For wide api ISO C95+ vswprintf() when requested length
+-   * is equal or larger than buffer length, returns negative
+-   * value as required by ISO C95+.
++  /* ISO C95+ fails when n or more data wide chars are needed.  length was
++   * already decremented once for the terminator, so use > not >= here.
+    */
+-  if( retval >= (int) length )
++  if( retval > (int) length )
+     retval = -1;
+ #endif
+ 
+diff --git a/mingw-w64-crt/testcases/t_swprintf_tmpl.h b/mingw-w64-crt/testcases/t_swprintf_tmpl.h
+index a12cba9a2..5fe332645 100644
+--- a/mingw-w64-crt/testcases/t_swprintf_tmpl.h
++++ b/mingw-w64-crt/testcases/t_swprintf_tmpl.h
+@@ -19,5 +19,23 @@ int main() {
+     fprintf(stderr, "\n");
+     return 1;
+   }
++
++  /* ISO C95+: output of 9 wide chars plus terminator must succeed when n=10.
++   * Regression for __mingw_vswprintf exact-fit check (retval == n-1). */
++  {
++    wchar_t exact[16] = L"XXXXXXXXXXXXXXXX";
++    ret = swprintf(exact, 10, L".%8x", 0xd8c7bc89U);
++    if (ret != 9 || wcscmp(exact, L".d8c7bc89") != 0) {
++      fprintf(stderr, "exact-fit n=10: ret expected=9 got=%d\n", ret);
++      fprintf(stderr, "exact-fit buffer: %ls\n", exact);
++      return 1;
++    }
++    ret = swprintf(exact, 9, L".%8x", 0xd8c7bc89U);
++    if (ret >= 0) {
++      fprintf(stderr, "exact-fit n=9: ret expected=<0 got=%d\n", ret);
++      return 1;
++    }
++  }
++
+   return 0;
+ }
+-- 
+2.54.0
+

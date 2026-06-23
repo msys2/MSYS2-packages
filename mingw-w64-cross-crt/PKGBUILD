@@ -7,7 +7,7 @@ pkgbase="${_mingw_suff}-${_realname}"
 _targetpkgs=("${_mingw_suff}-ucrt64-${_realname}" "${_mingw_suff}-mingw32-${_realname}" "${_mingw_suff}-mingw64-${_realname}")
 pkgname=("${_mingw_suff}-${_realname}" "${_targetpkgs[@]}")
 pkgver=14.0.0.r1.gbd663f0e1
-pkgrel=1
+pkgrel=2
 pkgdesc='MinGW-w64 CRT for cross-compiler'
 arch=('i686' 'x86_64')
 url='https://www.mingw-w64.org'
@@ -17,9 +17,15 @@ groups=("${_mingw_suff}-toolchain" "${_mingw_suff}")
 makedepends=("git" "${_mingw_suff}-gcc" "${_mingw_suff}-binutils" "${_mingw_suff}-headers" 'autotools')
 options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
 _commit='bd663f0e159e0f50f12ad2e91ce083d0e1a869ad'
-source=("mingw-w64"::"git+https://git.code.sf.net/p/mingw-w64/mingw-w64#commit=$_commit")
 
-sha256sums=('1371beb9bba3a0315391c0b02256eeb3929f7c57a14b9277debf1902eb329520')
+_patches=(
+  0001-crt-Fix-ISO-vswprintf-exact-fit-off-by-one-error-che.patch
+)
+
+source=("mingw-w64"::"git+https://git.code.sf.net/p/mingw-w64/mingw-w64#commit=$_commit"
+        ${_patches[@]})
+sha256sums=('1371beb9bba3a0315391c0b02256eeb3929f7c57a14b9277debf1902eb329520'
+            '87f03a4b206c4c76c04b96d913b6c1b0a594835f365806fe3296c21d3d648357')
 msys2_references=(
   'archlinux: mingw-w64-crt'
   'cpe: cpe:/a:mingw-w64:mingw-w64'
@@ -29,6 +35,15 @@ pkgver() {
   cd "${srcdir}/mingw-w64"
 
   git describe --long ${_commit} | sed 's/\([^-]*-g\)/r\1/;s/-/./g;s/^v//g'
+}
+
+prepare() {
+  cd "${srcdir}/mingw-w64"
+
+  for patch in "${_patches[@]}"; do
+    msg2 "Patching with ${patch}"
+    patch -Nbp1 -i "${srcdir}/${patch}"
+  done
 }
 
 _build() {
