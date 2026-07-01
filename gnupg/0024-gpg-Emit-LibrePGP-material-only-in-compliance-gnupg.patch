@@ -1,7 +1,8 @@
-From 08b9a243d573ee1d06daeb4f3a5f598712651bc0 Mon Sep 17 00:00:00 2001
+From fff7db37a1cb72a6ba9b07bf37073de089bec631 Mon Sep 17 00:00:00 2001
 From: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
 Date: Tue, 4 Feb 2025 02:56:36 -0500
-Subject: [PATCH] gpg: Emit LibrePGP material only in --compliance=gnupg
+Subject: [PATCH GnuPG 15/17] gpg: Emit LibrePGP material only in
+ --compliance=gnupg
 
 * g10/encrypt.c (use_aead): only emit LibrePGP AEAD/OCB if in
 --compliance=gnupg or --force-ocb
@@ -45,10 +46,10 @@ Signed-off-by: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
  2 files changed, 21 insertions(+), 3 deletions(-)
 
 diff --git a/g10/encrypt.c b/g10/encrypt.c
-index 5593f694c..de4811fe8 100644
+index 9b27b595b..35120de61 100644
 --- a/g10/encrypt.c
 +++ b/g10/encrypt.c
-@@ -358,6 +358,11 @@ use_aead (pk_list_t pk_list, int algo)
+@@ -401,6 +401,11 @@ use_aead (pk_list_t pk_list, int algo)
          }
        return AEAD_ALGO_OCB;
      }
@@ -61,19 +62,20 @@ index 5593f694c..de4811fe8 100644
    /* AEAD does only work with 128 bit cipher blocklength.  */
    if (!can_use)
 diff --git a/g10/keygen.c b/g10/keygen.c
-index 0eacd610d..c7af82c64 100644
+index fb78df701..8ad87cc5a 100644
 --- a/g10/keygen.c
 +++ b/g10/keygen.c
-@@ -455,7 +455,7 @@ keygen_set_std_prefs (const char *string,int personal)
- 	      strcat(dummy_string,"S7 ");
- 	    strcat(dummy_string,"S2 "); /* 3DES */
+@@ -489,8 +489,8 @@ keygen_set_std_prefs (const char *string,int personal)
+ 	      strcat(dummy_string,"S7 "); /* AES-128 - LibrePGP default. */
+ 	    if ( !openpgp_cipher_test_algo (CIPHER_ALGO_3DES) )
+               strcat(dummy_string,"S2 "); /* 3DES - RFC4880 default. */
  
 -            if (!openpgp_aead_test_algo (AEAD_ALGO_OCB))
 +            if ((opt.compliance == CO_GNUPG) && (!openpgp_aead_test_algo (AEAD_ALGO_OCB)))
  	      strcat(dummy_string,"A2 ");
  
              if (personal)
-@@ -939,8 +939,10 @@ keygen_upd_std_prefs (PKT_signature *sig, void *opaque)
+@@ -973,8 +973,10 @@ keygen_upd_std_prefs (PKT_signature *sig, void *opaque)
  
    /* Make sure that the MDC feature flag is set if needed.  */
    add_feature_mdc (sig,mdc_available);
@@ -86,7 +88,7 @@ index 0eacd610d..c7af82c64 100644
    add_keyserver_modify (sig,ks_modify);
    keygen_add_keyserver_url(sig,NULL);
  
-@@ -3643,7 +3645,13 @@ parse_key_parameter_part (ctrl_t ctrl,
+@@ -4098,7 +4100,13 @@ parse_key_parameter_part (ctrl_t ctrl,
                  }
              }
            else if (!ascii_strcasecmp (s, "v5"))
@@ -100,9 +102,9 @@ index 0eacd610d..c7af82c64 100644
            else if (!ascii_strcasecmp (s, "v4"))
              keyversion = 4;
            else
-@@ -3824,6 +3832,11 @@ parse_key_parameter_part (ctrl_t ctrl,
-   /* Ed448 and X448 must only be used as v5 keys.  */
-   if (is_448)
+@@ -4279,6 +4287,11 @@ parse_key_parameter_part (ctrl_t ctrl,
+   /* Ed448, X448 and the PQC algos must only be used as v5 keys.  */
+   if (is_448 || is_pqc)
      {
 +      if (opt.compliance != CO_GNUPG)
 +        {
@@ -112,3 +114,6 @@ index 0eacd610d..c7af82c64 100644
        if (keyversion == 4)
          log_info (_("WARNING: v4 is specified, but overridden by v5.\n"));
  
+-- 
+2.47.2
+
