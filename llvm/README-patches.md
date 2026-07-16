@@ -18,6 +18,7 @@ Legend:
 - `"0006-LLVM-Support-Fix-tests-on-Cygwin-151417.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/46f6e62eb9ea01e43ec45961e68c22f9c00b0a27
 - `"0007-LLVM-lit-add-system-cygwin-feature-152780.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/37bcd937766d0bb151d4ee54d72d9cc289fee97b
 - `"0008-LLVM-Coverage-Unittest-Fix-dangling-reference-in-uni.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/ca09801bd03579f28edac60077a164fab0474eb4
+- `"0009-LLVM-cond-in-select-of-load-fold.patch"` :arrow_down_small: https://github.com/llvm/llvm-project/commit/f2dfbf06f7db1a3cace4beb9f65d5a7f6a8b6235
 - `"0101-Clang-Cygwin-Enable-few-conditions-that-are-shared-w.patch"` :arrow_up_small: https://github.com/llvm/llvm-project/commit/a3228b6bf98c3efce3722700cf71f8b093e7870c
 - `"0102-hack-cygwin-allow-multiple-definition-in-c-index-tes.patch"` :grey_exclamation:
 - `"0103-Cygwin-Internal-class-in-explicitly-instantiation-de.patch"` :grey_exclamation:
