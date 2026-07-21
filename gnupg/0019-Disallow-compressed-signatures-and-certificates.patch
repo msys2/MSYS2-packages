@@ -1,7 +1,6 @@
-From 3566abba5948741467c853adbbf5b23b0b8fe676 Mon Sep 17 00:00:00 2001
 From: Demi Marie Obenour <demi@invisiblethingslab.com>
 Date: Wed, 29 Jun 2022 11:07:28 -0400
-Subject: [PATCH] Disallow compressed signatures and certificates
+Subject: Disallow compressed signatures and certificates
 
 Compressed packets have significant attack surface, both due to the
 potential for denial of service (zip bombs and the like) and for code
@@ -27,10 +26,10 @@ Signed-off-by: Demi Marie Obenour <demi@invisiblethingslab.com>
  3 files changed, 60 insertions(+), 3 deletions(-)
 
 diff --git a/g10/mainproc.c b/g10/mainproc.c
-index 82ea79d46..dfd6403dd 100644
+index af11877aa257e46662c42b6ff573ee01c3ad1547..d85124abd7bb0067423835186f61a7f94b734aeb 100644
 --- a/g10/mainproc.c
 +++ b/g10/mainproc.c
-@@ -170,6 +170,7 @@ add_onepass_sig (CTX c, PACKET *pkt)
+@@ -152,6 +152,7 @@ add_onepass_sig (CTX c, PACKET *pkt)
  {
    kbnode_t node;
  
@@ -38,7 +37,7 @@ index 82ea79d46..dfd6403dd 100644
    if (c->list) /* Add another packet. */
      add_kbnode (c->list, new_kbnode (pkt));
    else /* Insert the first one.  */
-@@ -1119,7 +1120,10 @@ proc_compressed (CTX c, PACKET *pkt)
+@@ -1077,7 +1078,10 @@ proc_compressed (CTX c, PACKET *pkt)
  
    /*printf("zip: compressed data packet\n");*/
    if (c->sigs_only)
@@ -50,7 +49,7 @@ index 82ea79d46..dfd6403dd 100644
    else if( c->encrypt_only )
      rc = handle_compressed (c->ctrl, c, zd, proc_encrypt_cb, c);
    else
-@@ -1644,6 +1648,7 @@ do_proc_packets (CTX c, iobuf_t a)
+@@ -1596,6 +1600,7 @@ do_proc_packets (CTX c, iobuf_t a)
    c->iobuf = a;
    init_packet(pkt);
    init_parse_packet (&parsectx, a);
@@ -58,7 +57,7 @@ index 82ea79d46..dfd6403dd 100644
    while ((rc=parse_packet (&parsectx, pkt)) != -1)
      {
        any_data = 1;
-@@ -1655,6 +1660,12 @@ do_proc_packets (CTX c, iobuf_t a)
+@@ -1607,6 +1612,12 @@ do_proc_packets (CTX c, iobuf_t a)
            if (gpg_err_code (rc) == GPG_ERR_INV_PACKET
                && opt.list_packets == 0)
              break;
@@ -71,7 +70,7 @@ index 82ea79d46..dfd6403dd 100644
            continue;
  	}
        newpkt = -1;
-@@ -1692,7 +1703,9 @@ do_proc_packets (CTX c, iobuf_t a)
+@@ -1644,7 +1655,9 @@ do_proc_packets (CTX c, iobuf_t a)
              case PKT_COMPRESSED:  rc = proc_compressed (c, pkt); break;
              case PKT_ONEPASS_SIG: newpkt = add_onepass_sig (c, pkt); break;
              case PKT_GPG_CONTROL: newpkt = add_gpg_control (c, pkt); break;
@@ -83,27 +82,27 @@ index 82ea79d46..dfd6403dd 100644
  	}
        else if (c->encrypt_only)
 diff --git a/g10/packet.h b/g10/packet.h
-index 9a1198d4a..d3f0dfe4a 100644
+index 5a14015a16c872fe7b0b15468598daf7a05ffc02..82dfe786b46051491e7015e64441678140defa9e 100644
 --- a/g10/packet.h
 +++ b/g10/packet.h
-@@ -674,6 +674,7 @@ struct parse_packet_ctx_s
-   int free_last_pkt; /* Indicates that LAST_PKT must be freed.  */
-   int skip_meta;     /* Skip ring trust packets.  */
+@@ -657,6 +657,7 @@ struct parse_packet_ctx_s
+   int only_fookey_enc;  /* Stop if the packet is not {sym,pub}key_enc. */
    unsigned int n_parsed_packets;	/* Number of parsed packets.  */
+   int last_ctb;      /* The last CTB read.  */
 +  int sigs_only;     /* Only accept detached signature packets */
  };
  typedef struct parse_packet_ctx_s *parse_packet_ctx_t;
  
-@@ -684,6 +685,7 @@ typedef struct parse_packet_ctx_s *parse_packet_ctx_t;
-     (a)->free_last_pkt = 0;         \
-     (a)->skip_meta = 0;             \
+@@ -667,6 +668,7 @@ typedef struct parse_packet_ctx_s *parse_packet_ctx_t;
+     (a)->only_fookey_enc = 0;       \
      (a)->n_parsed_packets = 0;      \
+     (a)->last_ctb = 1;              \
 +    (a)->sigs_only = 0;             \
    } while (0)
  
  #define deinit_parse_packet(a) do { \
 diff --git a/g10/parse-packet.c b/g10/parse-packet.c
-index aa6bac9da..da3c4cee4 100644
+index cea1f7ebc5daec3863ae963c1ab25500f86796fe..dca66ff427ea6778e536782ec6bda83584877342 100644
 --- a/g10/parse-packet.c
 +++ b/g10/parse-packet.c
 @@ -738,6 +738,20 @@ parse (parse_packet_ctx_t ctx, PACKET *pkt, int onlykeypkts, off_t * retpos,
