@@ -1,0 +1,90 @@
+From 8fbd9808447ee78ed485deead9b79cd1e40c07b7 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Fri, 17 Jul 2026 10:48:11 +0900
+Subject: [PATCH 40/N] Cygwin: open: Unlock fdtab before open_with_arch()
+
+Since the commit 31bf91f867c5, opening fifo causes a deadlock. This
+is because, open_with_arch() for fifo can be blocked until the other
+side of the fifo is opened. The commit 31bf91f867c5 moves the creating
+cygheap_fdnew before open_with_arch() to address the issue:
+https://cygwin.com/pipermail/cygwin/2026-May/259664.html
+However, cygheap_fdnew locks fdtab, so open() for the other side of
+fifo cannot create cygheap_fdnew until fdtab is unlocked. This is
+the cause of the deadlock.
+
+With this patch, fdtab is unlocked before open_with_arch(), but marked
+as used using tentative fhandler. The summary of open() is as follows.
+ 1) Lock fdtab.
+ 2) Create new fd.
+ 3) Mark fd as used using tentative fhandler.
+ 4) Unlock fdtab.
+ 5) Call open_with_arch().
+ 6) Set final fhandler to fd.
+
+The important point is that create fd before open_with_arch() to
+address https://cygwin.com/pipermail/cygwin/2026-May/259664.html,
+but unlock fdtab before open_with_arch() to address
+https://cygwin.com/pipermail/cygwin/2026-July/259884.html.
+
+Fixes: 31bf91f867c5 ("Cygwin: Ensure unused fd available for open()")
+Addresses: https://cygwin.com/pipermail/cygwin/2026-July/259884.html
+Reported-by: kikairoya <kikairoya@gmail.com>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+Reviewed-by: Mark Geisert <mark@maxrnd.com>
+(cherry picked from commit 524d75ff73986b263161665af771cc90e55b5e01)
+---
+ winsup/cygwin/syscalls.cc | 20 +++++++++++++++++---
+ 1 file changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/winsup/cygwin/syscalls.cc b/winsup/cygwin/syscalls.cc
+index 3ad2039..f04b7d3 100644
+--- a/winsup/cygwin/syscalls.cc
++++ b/winsup/cygwin/syscalls.cc
+@@ -1451,6 +1451,7 @@ extern "C" int
+ open (const char *unix_path, int flags, ...)
+ {
+   int res = -1;
++  int fd = -1;
+   va_list ap;
+   mode_t mode = 0;
+   fhandler_base *fh = NULL;
+@@ -1550,9 +1551,12 @@ open (const char *unix_path, int flags, ...)
+       /* Reserve an fdtable entry here, before calling open_with_arch() below.
+          Otherwise there's a tiny chance of hitting OPEN_MAX further on which
+          could create a new file without any way for Cygwin to refer to it. */
+-      cygheap_fdnew fd;
++      cygheap->fdtab.lock();
++      fd = cygheap->fdtab.find_unused_handle ();
+       if (fd < 0)
+-        __leave;		/* errno already set */
++	__leave;		/* errno already set */
++      cygheap->fdtab[fd] = fh; /* tentative setting to mark as used */
++      cygheap->fdtab.unlock();
+ 
+       if (fh->dev () == FH_PROCESSFD && fh->pc.follow_fd_symlink ())
+ 	{
+@@ -1580,13 +1584,23 @@ open (const char *unix_path, int flags, ...)
+ 	try_to_bin (fh->pc, fh->get_handle (), DELETE,
+ 		    FILE_OPEN_FOR_BACKUP_INTENT);
+ 
+-      fd = fh;
++      cygheap->fdtab.lock ();
++      cygheap->fdtab[fd] = fh;
++      fh->inc_refcnt ();
++      cygheap->fdtab.unlock ();
++
+       if (fd <= 2)
+ 	set_std_handle (fd);
+       res = fd;
+     }
+   __except (EFAULT) {}
+   __endtry
++    if (res < 0 && fd >= 0)
++      {
++	cygheap->fdtab.lock ();
++	cygheap->fdtab[fd] = NULL; /* Mark as unused */
++	cygheap->fdtab.unlock ();
++      }
+   if (res < 0 && fh)
+     delete fh;
+   syscall_printf ("%R = open(%s, %y)", res, unix_path, flags);
