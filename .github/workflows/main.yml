@@ -40,6 +40,23 @@ jobs:
           # Needs to be C:, see https://github.com/al-cheb/configure-pagefile-action/issues/18
           disk-root: "C:"
 
+      # Windows is case-insensitive by default, so linkers and build scripts can
+      # succeed in CI while failing for users on case-sensitive directories (or
+      # Cygwin case-sensitive library lookups). Use NTFS per-directory flags so
+      # the checkout and MSYS2 install match that environment.
+      - name: Prepare case-sensitive directories
+        run: |
+          $drive = "${{ steps.facts.outputs.drive }}"
+          foreach ($dir in @("_", "M")) {
+            $path = Join-Path $drive $dir
+            if (Test-Path $path) { Remove-Item -Recurse -Force $path }
+            New-Item -ItemType Directory -Path $path | Out-Null
+            fsutil.exe file setCaseSensitiveInfo $path enable
+            if ($LASTEXITCODE -ne 0) { throw "Failed to enable case sensitivity on $path" }
+            $info = fsutil.exe file queryCaseSensitiveInfo $path
+            if ($info -notmatch 'enabled') { throw "Case sensitivity not enabled on $path" }
+          }
+
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           path: temp
@@ -68,8 +85,8 @@ jobs:
       - name: Move Checkout
         run: |
           $path = "${{ steps.facts.outputs.drive }}\_"
-          If (Test-Path "$path") { rm -r -fo "$path" }
-          Move-Item -Path ".\temp" -Destination "$path"
+          Get-ChildItem -Path ".\temp" -Force | Move-Item -Destination "$path"
+          Remove-Item -Path ".\temp" -Recurse -Force
 
       - name: CI-Build
         shell: msys2 {0}
