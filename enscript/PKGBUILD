@@ -16,26 +16,76 @@ license=('spdx:GPL-3.0-or-later')
 depends=('perl' 'libintl' 'libiconv')
 makedepends=('autotools' 'gcc' 'gettext-devel' 'libiconv-devel')
 optdepends=('cygutils: Send the output to a physical printer instead of stdout.')
+
+_patches=(
+  # patches from https://src.fedoraproject.org/rpms/enscript/blob/rawhide/f/enscript.spec
+  # Use regexp 'Patch\d+: ' to replace prefixes
+
+  # RH #61294
+  enscript-1.6.1-locale.patch
+
+  # RH #224548
+  enscript-wrap_header.patch
+
+  enscript-1.6.4-rh457720.patch
+  enscript-rh477382.patch
+  # enscript-build.patch cygwin want this
+  enscript-manfixes.patch
+  enscript-bufpos-crash.patch
+  # 1664367 - adding support for 2 other encodings, enscript cannot print f.e. euro symbol
+  # without it
+  # rhbz: https://bugzilla.redhat.com/show_bug.cgi?id=1664367
+  # upstream patch: http://lists.gnu.org/archive/html/bug-enscript/2018-04/msg00008.html
+  0001-enscript-newencodings.patch
+  # enscript bundles some gnulib source files, so some issues or CVEs in gnulib can be
+  # present in enscript
+  # gnulib CVE: https://bugzilla.redhat.com/show_bug.cgi?id=1635896
+  enscript-CVE-vasnprintf.patch
+  # C23 takes empty brackets in declaration as no arguments, have to define args and their types
+  # https://savannah.gnu.org/bugs/index.php?66845
+  enscript-c23.patch
+
+  # Patch tests for .exe extension, from Cygwin
+  enscript-EXEEXT.patch
+
+  0002-fixes-getopt-compile-with-gcc-15-under-cygwin.patch
+)
+
 source=(
         "https://ftp.gnu.org/gnu/$pkgname/$pkgname-$pkgver.tar.gz"
         "300ecf85a8fe166a39f9dd818945c7b8a970db39.patch"::"https://git.savannah.gnu.org/cgit/enscript.git/patch/?id=300ecf85a8fe166a39f9dd818945c7b8a970db39"
-        "enscript-EXEEXT.patch")
+        ${_patches[@]}
+        )
 sha256sums=('6d56bada6934d055b34b6c90399aa85975e66457ac5bf513427ae7fc77f5c0bb'
-            '53705eb99a11fbc4277140534331813fff526e5380f5d5a2046484ae92900186'
-            'adba69a58e184c63fe3ac6dc7487967ce019af4bfb0313325a8a8765eee09b1a')
+            '4b00a24c82bd5b806da8c33ba0e89cf6eca16fc7c65858d9e8c5a8053cc2ba71'
+            'f55b8e7d3bbbc7d55c23292e59ccd62ab5a7812a8faefda1221dd1bca0ed82d3'
+            'b33163b8e27be3388058ab15b8aa4e77dd4ef828ed5346f4fd9d6d60b0b2ee1a'
+            '8b42e9a8bd0f8249de9edad25becebea9228739d448ffd66a7ef924e96ef4914'
+            '6ebfa84c3fdb2d48f449139159eac2db3659c9b00e3d1334dd9525afcac0d70e'
+            '0409f5e2a1d93304f5a16af3aa97d7dc22cee83189ca74ca4396d25babb8f8e6'
+            '45d331ddff5da1da995163a5b5f85b577cf64814b2acb7bfddf6a01a5c125c7c'
+            'aa54b033e9e2f3a749e140ae538cc33e4421414edacfeb9a136045af6713e932'
+            'c503b8a065d7232c64ca61d0197b7e28978a30fe65e471afc35bde9fe0aa228d'
+            '644350cf0216526837d4b50d58276604a5dae8d820192ffd5aa430d58a36caa9'
+            '81a8ee79b4ae8972aea0c6c1a20dc6c2482521b7b807bbffb4d6267c11a80838'
+            'c4eca5b96cefa704f9aa435bfd7dc3bf555bcb56580648d0c62a70dcba5e0f07')
 #public key 38734D7787901452 has been revoked
 #validpgpkeys=('0862E74AAD81B2F26170064438734D7787901452')
 
 # To avoid a mess with lpr, the config file will be patched to send to stdout by default.
 prepare() {
   cd $pkgname-$pkgver
+
+  for patch_filename in "${_patches[@]}"; do
+    echo "Applying patch: '${patch_filename}'"
+    patch --binary -Nbp1 -i "${srcdir}/${patch_filename}"
+  done
+
   sed -i '52s/DefaultOutputMethod: printer/DefaultOutputMethod: stdout/' lib/enscript.cfg.in
 
   # Also, tiny additional modification to fix issue with compilation warning fixed in the upstream git, but not stable tarball yet.
   patch -Nbp1 -i "${srcdir}/300ecf85a8fe166a39f9dd818945c7b8a970db39.patch"
 
-  # Patch tests for .exe extension, from Cygwin
-  patch -Nbp2 -i "${srcdir}/enscript-EXEEXT.patch"
 }
 
 build() {
