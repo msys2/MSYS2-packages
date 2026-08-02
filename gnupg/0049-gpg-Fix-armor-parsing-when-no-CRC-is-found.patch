@@ -1,0 +1,41 @@
+From 8a597f8b389881ac61a3b472617a600dd493e821 Mon Sep 17 00:00:00 2001
+From: NIIBE Yutaka <gniibe@fsij.org>
+Date: Fri, 20 Feb 2026 11:54:50 +0900
+Subject: gpg: Fix armor parsing when no CRC is found.
+
+* g10/armor.c (radix64_read): Fix no CRC at the end of armor.
+
+--
+
+Cherry pick master commit of:
+	b7aa3f5e320dff0d35ce90c6f6381ee4213b6eb7
+
+Fixes-commit: 62b8bf2f390533d23e24d27552fecf562752d358
+GnuPG-bug-id: 7071
+Signed-off-by: NIIBE Yutaka <gniibe@fsij.org>
+---
+ g10/armor.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/g10/armor.c b/g10/armor.c
+index 2222dee4e..a24f29677 100644
+--- a/g10/armor.c
++++ b/g10/armor.c
+@@ -1034,7 +1034,13 @@ radix64_read( armor_filter_context_t *afx, IOBUF a, size_t *retn,
+         else if (afx->buffer_pos == 1 && c == '-'
+                  && afx->buffer_len > 9
+                  && !strncmp (afx->buffer, "-----END ", 9)) {
+-            break; /* End in --dearmor mode or No CRC.  */
++            /* End in --dearmor mode.  */
++            if (n)
++                /* No CRC found, and the end of the armor is detected.
++                   Let return with the result of N-byte now, and come
++                   again to process the end of the armor with N=0.  */
++                afx->buffer_pos--;
++            break;
+         }
+ 	else {
+ 	    log_error(_("invalid radix64 character %02X skipped\n"), c);
+-- 
+2.39.5
+
