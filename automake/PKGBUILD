@@ -1,9 +1,9 @@
 # Maintainer: Yang Kun <ikspress@outlook.com>
 
 _basever=1.18
-pkgname=automake${_basever}
+pkgname=automake
 pkgver=${_basever}.1
-pkgrel=2
+pkgrel=1
 pkgdesc="A GNU tool for automatically creating Makefiles"
 arch=('any')
 license=('spdx:GPL-2.0-or-later')
@@ -17,13 +17,13 @@ makedepends=('autoconf' 'make' 'texinfo')
 checkdepends=('bison' 'cscope' 'dejagnu' 'emacs' 'expect' 'flex' 'gcc' 'gettext'
               'help2man' 'libtool' 'lzip' 'sharutils' 'texinfo-tex' 'zip')
 source=(https://ftp.gnu.org/gnu/automake/automake-${pkgver}.tar.xz{,.sig}
-        automake-1.18-documentation.patch
         automake-1.17-msys2.patch)
 sha256sums=('168aa363278351b89af56684448f525a5bce5079d0b6842bd910fdd3f1646887'
             'SKIP'
-            '3b066deda7ecb755a4cab8263f7fe7d5f44cf7790b45b5dcb48e5232f800856c'
             'a6b3a7099fb23ddc3d1402b16df32cf8f21bb63ca6b9314ff7caff5869b6ed50')
 validpgpkeys=('17D3311B14BC0F248267BF020716748A30D155AD') # Karl Berry
+provides=('automake1.18')
+conflicts=('automake1.18')
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -32,21 +32,12 @@ apply_patch_with_msg() {
     patch -Nbp1 -i "${srcdir}/${_fname}"
   done
 }
-
-del_file_exists() {
-  for _fname in "$@"; do
-    if [ -f $_fname ] || [ -d $_fname ]; then
-      rm -rf $_fname
-    fi
-  done
-}
 # =========================================== #
 
 prepare() {
   cd "${srcdir}/automake-${pkgver}"
 
   apply_patch_with_msg \
-    automake-1.18-documentation.patch \
     automake-1.17-msys2.patch
 }
 
@@ -54,9 +45,6 @@ build() {
   cd "${srcdir}/automake-${pkgver}"
   ./configure --prefix=/usr
   make
-  # build versioned info files
-  cd doc
-  makeinfo automake.texi automake-history.texi
 }
 
 check() {
@@ -68,22 +56,4 @@ check() {
 package() {
   cd ${srcdir}/automake-${pkgver}
   make DESTDIR=${pkgdir} install
-
-  mv "${pkgdir}/usr/share/aclocal/README" "${pkgdir}/usr/share/aclocal/README.am${_basever#*.}"
-
-  # remove the unversioned info files
-  rm -f "${pkgdir}"/usr/share/info/automake{,-history}.info*
-
-  # remove the unversioned executables
-  rm -f "${pkgdir}/usr/bin/automake" "${pkgdir}/usr/bin/aclocal"
-
-  # remove the unversioned man pages
-  rm -f "${pkgdir}/usr/share/man/man1/automake.1" \
-    "${pkgdir}/usr/share/man/man1/aclocal.1"
-
-  # remove amhello
-  rm -rf "${pkgdir}/usr/share/doc"
-
-  # install the versioned info files
-  install -Dm644 "${srcdir}"/automake-${pkgver}/doc/*${_basever}.info* -t "${pkgdir}/usr/share/info/"
 }
