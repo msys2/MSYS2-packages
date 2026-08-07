@@ -1,7 +1,7 @@
-From d20f4638b2951114e53871be0b673a81aca5ae21 Mon Sep 17 00:00:00 2001
+From f149ead6f32662d75039570b2b80e94991e62fdd Mon Sep 17 00:00:00 2001
 From: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
 Date: Tue, 4 Feb 2025 01:11:08 -0500
-Subject: [PATCH] gpg: Reintroduce --openpgp as distinct from --rfc4880
+Subject: gpg: Reintroduce --openpgp as distinct from --rfc4880
 
 * common/compliance.{c,h}: add CO_OPENPGP
 * options.h: #define OPENPGP by analogy with RFC4880
@@ -26,10 +26,10 @@ Signed-off-by: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
  6 files changed, 25 insertions(+), 13 deletions(-)
 
 diff --git a/common/compliance.c b/common/compliance.c
-index 5e468a11c..9f395e69b 100644
+index 43a7892e5..b80cfcf1e 100644
 --- a/common/compliance.c
 +++ b/common/compliance.c
-@@ -52,6 +52,7 @@ static int *
+@@ -85,6 +85,7 @@ static int *
  get_compliance_cache (enum gnupg_compliance_mode compliance, int for_rng)
  {
    static int r_gnupg   = -1, s_gnupg   = -1;
@@ -37,7 +37,7 @@ index 5e468a11c..9f395e69b 100644
    static int r_rfc4880 = -1, s_rfc4880 = -1;
    static int r_rfc2440 = -1, s_rfc2440 = -1;
    static int r_pgp7    = -1, s_pgp7    = -1;
-@@ -63,6 +64,7 @@ get_compliance_cache (enum gnupg_compliance_mode compliance, int for_rng)
+@@ -96,6 +97,7 @@ get_compliance_cache (enum gnupg_compliance_mode compliance, int for_rng)
    switch (compliance)
      {
      case CO_GNUPG:   ptr = for_rng? &r_gnupg   : &s_gnupg  ; break;
@@ -45,7 +45,7 @@ index 5e468a11c..9f395e69b 100644
      case CO_RFC4880: ptr = for_rng? &r_rfc4880 : &s_rfc4880; break;
      case CO_RFC2440: ptr = for_rng? &r_rfc2440 : &s_rfc2440; break;
      case CO_PGP7:    ptr = for_rng? &r_pgp7    : &s_pgp7   ; break;
-@@ -653,6 +655,7 @@ gnupg_status_compliance_flag (enum gnupg_compliance_mode compliance)
+@@ -742,6 +744,7 @@ gnupg_status_compliance_flag (enum gnupg_compliance_mode compliance)
      {
      case CO_GNUPG:
        return "8";
@@ -53,7 +53,7 @@ index 5e468a11c..9f395e69b 100644
      case CO_RFC4880:
      case CO_RFC2440:
      case CO_PGP7:
-@@ -711,7 +714,8 @@ gnupg_compliance_option_string (enum gnupg_compliance_mode compliance)
+@@ -871,7 +874,8 @@ gnupg_compliance_option_string (enum gnupg_compliance_mode compliance)
    switch (compliance)
      {
      case CO_GNUPG:   return "--compliance=gnupg";
@@ -64,7 +64,7 @@ index 5e468a11c..9f395e69b 100644
      case CO_PGP7:    return "--compliance=pgp7";
      case CO_PGP8:    return "--compliance=pgp8";
 diff --git a/common/compliance.h b/common/compliance.h
-index 2ddf38f83..47d81f0f8 100644
+index 994869fc7..0b3d76ac8 100644
 --- a/common/compliance.h
 +++ b/common/compliance.h
 @@ -38,7 +38,7 @@ void gnupg_initialize_compliance (int gnupg_module_name);
@@ -77,10 +77,10 @@ index 2ddf38f83..47d81f0f8 100644
    };
  
 diff --git a/doc/gpg.texi b/doc/gpg.texi
-index 834c5dda5..5a03ce592 100644
+index acca0c82a..018ec8659 100644
 --- a/doc/gpg.texi
 +++ b/doc/gpg.texi
-@@ -3102,18 +3102,15 @@ gpg.conf file.
+@@ -3150,18 +3150,15 @@ gpg.conf file.
  
  @item --openpgp
  @opindex openpgp
@@ -106,12 +106,12 @@ index 834c5dda5..5a03ce592 100644
  @item --rfc4880bis
  @opindex rfc4880bis
 diff --git a/g10/gpg.c b/g10/gpg.c
-index b64a65b5a..dce171efb 100644
+index d9db8e457..ac638dd9f 100644
 --- a/g10/gpg.c
 +++ b/g10/gpg.c
-@@ -2287,6 +2287,12 @@ set_compliance_option (enum cmd_and_opt_values option)
-       opt.def_new_key_algo = NULL;
+@@ -2319,6 +2319,12 @@ set_compliance_option (enum cmd_and_opt_values option)
        break;
+ 
      case oOpenPGP:
 +      /* use MTIs from RFC 9580 at least: */
 +      set_compliance_option (oGnuPG);
@@ -120,13 +120,13 @@ index b64a65b5a..dce171efb 100644
 +      opt.allow_freeform_uid = 1;
 +      break;
      case oRFC4880:
-       set_compliance_option (oGnuPG);
        /* This is effectively the same as RFC2440, but with
+          "--enable-dsa2 --no-rfc2440-text --escape-from-lines
 diff --git a/g10/misc.c b/g10/misc.c
-index 0e6d9d56c..b54f15250 100644
+index 468b1a4a5..f1348ff15 100644
 --- a/g10/misc.c
 +++ b/g10/misc.c
-@@ -1410,12 +1410,16 @@ compliance_failure(void)
+@@ -1425,12 +1425,16 @@ compliance_failure(void)
        ver="GnuPG";
        break;
  
@@ -146,14 +146,17 @@ index 0e6d9d56c..b54f15250 100644
  
      case CO_PGP7:
 diff --git a/g10/options.h b/g10/options.h
-index 62d667277..db52701b3 100644
+index 5512ecb11..94ce556f9 100644
 --- a/g10/options.h
 +++ b/g10/options.h
-@@ -392,6 +392,7 @@ EXTERN_UNLESS_MAIN_MODULE int memory_stat_debug_mode;
+@@ -407,6 +407,7 @@ EXTERN_UNLESS_MAIN_MODULE int memory_stat_debug_mode;
  
- /* Compliance test macors.  */
+ /* Compliance test macros.  */
  #define GNUPG   (opt.compliance==CO_GNUPG || opt.compliance==CO_DE_VS)
 +#define OPENPGP (opt.compliance==CO_OPENPGP)
  #define RFC2440 (opt.compliance==CO_RFC2440)
  #define RFC4880 (opt.compliance==CO_RFC4880)
  #define PGP7    (opt.compliance==CO_PGP7)
+-- 
+2.39.5
+
