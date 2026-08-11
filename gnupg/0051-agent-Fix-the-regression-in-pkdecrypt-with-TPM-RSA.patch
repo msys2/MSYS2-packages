@@ -1,0 +1,42 @@
+From 555a9f5b3a0ca69e663373d47902e0bec0bd49d0 Mon Sep 17 00:00:00 2001
+From: NIIBE Yutaka <gniibe@fsij.org>
+Date: Thu, 12 Feb 2026 11:51:17 +0900
+Subject: agent: Fix the regression in pkdecrypt with TPM RSA.
+
+* agent/divert-tpm2.c (divert_tpm2_pkdecrypt): Care about additional
+0x00.
+
+--
+
+Cherry pick master commit of:
+	6eed3959303c81c9699fe9273030e480732f72be
+
+GnuPG-bug-id: 8045
+Signed-off-by: NIIBE Yutaka <gniibe@fsij.org>
+---
+ agent/divert-tpm2.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/agent/divert-tpm2.c b/agent/divert-tpm2.c
+index 2496d091a..5b5bd14bb 100644
+--- a/agent/divert-tpm2.c
++++ b/agent/divert-tpm2.c
+@@ -135,6 +135,15 @@ divert_tpm2_pkdecrypt (ctrl_t ctrl,
+       if (!smatch (&s, n, "a"))
+         return gpg_error (GPG_ERR_UNKNOWN_SEXP);
+       n = snext (&s);
++      /* NOTE: gpg-agent protocol uses signed integer for RSA (%m in
++       * MPI), where 0x00 is added when the MSB is 1.  TPM2 uses
++       * unsigned integer.  We need to remove this 0x00, or else
++       * it may result GPG_ERR_TOO_LARGE in tpm2daemon.  */
++      if (!*s && (n&1))
++        {
++          s++;
++          n--;
++        }
+     }
+   else if (smatch (&s, n, "ecdh"))
+     {
+-- 
+2.39.5
+

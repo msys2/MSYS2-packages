@@ -1,7 +1,7 @@
-From 02865ddda0ead7d1ec402ae67649714f5add385d Mon Sep 17 00:00:00 2001
+From 237b8e86e7575a9841047b6a99f4fd59196d898a Mon Sep 17 00:00:00 2001
 From: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
 Date: Mon, 3 Feb 2025 23:39:08 -0500
-Subject: [PATCH] gpg: Sync compliance mode cleanup with master
+Subject: [PATCH GnuPG 14/19] gpg: Sync compliance mode cleanup with master
 
 * g10/gpg.c (set_compliance_option): Clean up option settings for
 compliance modes.
@@ -30,7 +30,7 @@ Signed-off-by: Daniel Kahn Gillmor <dkg@fifthhorseman.net>
  2 files changed, 35 insertions(+), 33 deletions(-)
 
 diff --git a/doc/gpg.texi b/doc/gpg.texi
-index 652003c27..4f44e4530 100644
+index 652003c27..f99afd7e5 100644
 --- a/doc/gpg.texi
 +++ b/doc/gpg.texi
 @@ -3084,7 +3084,8 @@ to the default of 3.
@@ -55,51 +55,51 @@ index 652003c27..4f44e4530 100644
  @item --allow-weak-digest-algos
  @opindex allow-weak-digest-algos
 diff --git a/g10/gpg.c b/g10/gpg.c
-index 03298a295..b5928963f 100644
+index 43488d60b..b1fb24b6b 100644
 --- a/g10/gpg.c
 +++ b/g10/gpg.c
-@@ -2266,51 +2266,59 @@ set_compliance_option (enum cmd_and_opt_values option)
+@@ -2265,17 +2265,14 @@ set_compliance_option (enum cmd_and_opt_values option)
  {
    switch (option)
      {
+-    case oOpenPGP:
+-    case oRFC4880:
+-      /* This is effectively the same as RFC2440, but with
+-         "--enable-dsa2 --no-rfc2440-text --escape-from-lines
+-         --require-cross-certification". */
+-      opt.compliance = CO_RFC4880;
+-      opt.flags.dsa2 = 1;
 +    case oGnuPG:
 +      /* set up default options affected by policy compliance: */
 +      opt.compliance = CO_GNUPG;
 +      opt.flags.dsa2 = 0;
-+      opt.flags.require_cross_cert = 1;
-+      opt.rfc2440_text = 0;
+       opt.flags.require_cross_cert = 1;
+       opt.rfc2440_text = 0;
+-      opt.allow_non_selfsigned_uid = 1;
+-      opt.allow_freeform_uid = 1;
 +      opt.allow_non_selfsigned_uid = 0;
 +      opt.allow_freeform_uid = 0;
-+      opt.escape_from = 1;
-+      opt.not_dash_escaped = 0;
-+      opt.def_cipher_algo = 0;
-+      opt.def_digest_algo = 0;
-+      opt.cert_digest_algo = 0;
-+      opt.compress_algo = -1;
-+      opt.s2k_mode = 3; /* iterated+salted */
+       opt.escape_from = 1;
+       opt.not_dash_escaped = 0;
+       opt.def_cipher_algo = 0;
+@@ -2283,33 +2280,44 @@ set_compliance_option (enum cmd_and_opt_values option)
+       opt.cert_digest_algo = 0;
+       opt.compress_algo = -1;
+       opt.s2k_mode = 3; /* iterated+salted */
 +      opt.s2k_digest_algo = 0;
 +      opt.s2k_cipher_algo = DEFAULT_CIPHER_ALGO;
 +      opt.flags.allow_old_cipher_algos = 0;
 +      break;
-     case oOpenPGP:
-     case oRFC4880:
++    case oOpenPGP:
++    case oRFC4880:
 +      set_compliance_option (oGnuPG);
-       /* This is effectively the same as RFC2440, but with
-          "--enable-dsa2 --no-rfc2440-text --escape-from-lines
-          --require-cross-certification". */
-       opt.compliance = CO_RFC4880;
-       opt.flags.dsa2 = 1;
--      opt.flags.require_cross_cert = 1;
--      opt.rfc2440_text = 0;
-       opt.allow_non_selfsigned_uid = 1;
-       opt.allow_freeform_uid = 1;
--      opt.escape_from = 1;
--      opt.not_dash_escaped = 0;
--      opt.def_cipher_algo = 0;
--      opt.def_digest_algo = 0;
--      opt.cert_digest_algo = 0;
--      opt.compress_algo = -1;
--      opt.s2k_mode = 3; /* iterated+salted */
++      /* This is effectively the same as RFC2440, but with
++         "--enable-dsa2 --no-rfc2440-text --escape-from-lines
++         --require-cross-certification". */
++      opt.compliance = CO_RFC4880;
++      opt.flags.dsa2 = 1;
++      opt.allow_non_selfsigned_uid = 1;
++      opt.allow_freeform_uid = 1;
        opt.s2k_digest_algo = DIGEST_ALGO_SHA1;
        opt.s2k_cipher_algo = CIPHER_ALGO_3DES;
        opt.flags.allow_old_cipher_algos = 1;
@@ -139,7 +139,7 @@ index 03298a295..b5928963f 100644
      case oDE_VS:
        set_compliance_option (oOpenPGP);
        opt.compliance = CO_DE_VS;
-@@ -2464,19 +2472,10 @@ main (int argc, char **argv)
+@@ -2463,19 +2471,10 @@ main (int argc, char **argv)
      opt.command_fd = -1; /* no command fd */
      opt.compress_level = -1; /* defaults to standard compress level */
      opt.bz2_compress_level = -1; /* defaults to standard compress level */
@@ -159,7 +159,7 @@ index 03298a295..b5928963f 100644
      opt.import_options = (IMPORT_REPAIR_KEYS
                            | IMPORT_COLLAPSE_UIDS
                            | IMPORT_COLLAPSE_SUBKEYS);
-@@ -2510,7 +2509,7 @@ main (int argc, char **argv)
+@@ -2509,7 +2508,7 @@ main (int argc, char **argv)
      opt.passphrase_repeat = 1;
      opt.emit_version = 0;
      opt.weak_digests = NULL;
@@ -168,3 +168,6 @@ index 03298a295..b5928963f 100644
  
      /* Check special options given on the command line.  */
      orig_argc = argc;
+-- 
+2.47.2
+

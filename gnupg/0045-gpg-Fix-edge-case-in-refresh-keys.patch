@@ -1,0 +1,44 @@
+From 6b11615a051bd8e1c8c0e163b8f02d9aabf644db Mon Sep 17 00:00:00 2001
+From: Werner Koch <wk@gnupg.org>
+Date: Tue, 7 Apr 2026 16:49:39 +0200
+Subject: gpg: Fix edge case in --refresh-keys
+
+* g10/keyserver.c (keyserver_get): Take care of NO_DATA in one chunk.
+--
+
+This should fix this bug:
+
+ gnupg fetches the keys in batches (chunks) of, e.g., 21 keys per
+ batch. If all keys of a single batch of 21 keys do not have a
+ representation on the key server, gnupg aborts the overall update
+ process with an error, not fetching all the key updates from the
+ server.
+
+GnuPG-bug-id: 8197
+---
+ g10/keyserver.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/g10/keyserver.c b/g10/keyserver.c
+index 3fc72bbcf..c818039f9 100644
+--- a/g10/keyserver.c
++++ b/g10/keyserver.c
+@@ -1570,6 +1570,15 @@ keyserver_get (ctrl_t ctrl, KEYDB_SEARCH_DESC *desc, int ndesc,
+                                  override_keyserver, flags, r_fpr, r_fprlen);
+       if (!err)
+         any_good = 1;
++      if (gpg_err_code (err) == GPG_ERR_NO_DATA)
++        {
++          /* That error is returned by dirmngr from its own loop.  We
++           * clear the error if more descriptions are available so
++           * that the next chunk gets retrieved.  In the other case
++           * the error will cause the termination of the loop.  */
++          if (ndesc_used < ndesc)
++            err = 0;
++        }
+       if (err || ndesc_used >= ndesc)
+         break; /* Error or all processed.  */
+       /* Prepare for the next chunk.  */
+-- 
+2.39.5
+

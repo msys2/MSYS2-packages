@@ -1,0 +1,38 @@
+From cfee46c84edca6a3c3c086db8313ea1c2cc56893 Mon Sep 17 00:00:00 2001
+From: Werner Koch <wk@gnupg.org>
+Date: Thu, 18 Jun 2026 10:51:34 +0200
+Subject: gpgsm: Require a minimum tag length for GCM decryption.
+
+* sm/decrypt.c (gpgsm_decrypt): Require a minimum authtaglen.
+--
+
+Reported-by: Thai Duong <thai@calif.io>
+This is similar to OpenSSL's
+CVE-id: CVE-2026-34182
+---
+ sm/decrypt.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/sm/decrypt.c b/sm/decrypt.c
+index 6d63189b8..df791dd43 100644
+--- a/sm/decrypt.c
++++ b/sm/decrypt.c
+@@ -1488,7 +1488,14 @@ gpgsm_decrypt (ctrl_t ctrl, int in_fd, estream_t out_fp)
+                 }
+               if (DBG_CRYPTO)
+                 log_printhex (authtag, authtaglen, "Authtag ...:");
+-              rc = gcry_cipher_checktag (dfparm.hd, authtag, authtaglen);
++              if (authtaglen < 12)
++                {
++                  log_info ("authentication tag is too short (%zu octets)\n",
++                            authtaglen);
++                  rc = gpg_error (GPG_ERR_CHECKSUM);
++                }
++              else
++                rc = gcry_cipher_checktag (dfparm.hd, authtag, authtaglen);
+               xfree (authtag);
+               if (rc)
+                 log_error ("data is not authentic: %s\n", gpg_strerror (rc));
+-- 
+2.39.5
+
