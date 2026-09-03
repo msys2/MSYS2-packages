@@ -1,37 +1,53 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=pkgfile
-pkgver=21
-pkgrel=2
+pkgver=26
+pkgrel=1
 pkgdesc="A pacman .files metadata explorer"
 arch=('i686' 'x86_64')
-url="https://github.com/falconindy/pkgfile"
+url='https://github.com/falconindy/pkgfile'
+msys2_repository_url='https://github.com/falconindy/pkgfile'
+msys2_references=(
+  'anitya: 137691'
+  'archlinux: pkgfile'
+)
 license=('spdx:MIT')
 makedepends=('pcre-devel' 'libarchive-devel' 'libcurl-devel' 'meson' 'clang' 'gcc')
 depends=('libarchive' 'curl' 'pcre' 'pacman')
 options=('emptydirs')
 source=(${pkgname}-${pkgver}.tar.gz::"https://github.com/falconindy/${pkgname}/archive/v${pkgver}.tar.gz"
-        001-cygwin-alloca.patch)
+        '001-meson-pkgfiled.patch')
 install=pkgfile.install
-sha256sums=('809d75738cae785839950c85371ac087bc3b450eed497a565eca01b653f254a5'
-            '9281aa0964a912c3b698eea169ff698f7e24eff8e7ae5929c235b7fc58989de7')
+sha256sums=('8c6c558ebec32a6d40ba90a18a06328e382c0639879ae02dd83dfa03a5d51988'
+            '45a4a018170d4114ee018f883f2bd4c0903360f6d1fc4163af45fe88fcdf3dad'
+            '618f55b39aebf3234941e888bf181aa226fd09e35192344523a32533da2dbe65'
+            '77d0cfaf0e8285bf327017abddac8eac5ae69756aeeaa18dddd22290682b9f77'
+            'dd230d0481f118aa6d39717259b4ccee7c9a0eed37e7f1d29617635cd73d3f65')
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  patch -p1 -i ${srcdir}/001-cygwin-alloca.patch
+
+  # msys cannot use systemd daemons
+  patch -p1 -i "${srcdir}/001-meson-pkgfiled.patch"
 }
 
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  meson \
+
+  export CXXFLAGS="${CXXFLAGS} -D_GNU_SOURCE"
+
+  meson setup \
+    --prefix=/usr \
     -Dsystemd_units=false \
     build-${CARCH}
-  ninja -v -C build-${CARCH}
+
+  meson compile -C build-${CARCH}
 }
 
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
-  DESTDIR="${pkgdir}" ninja -C build-${CARCH} install
+  DESTDIR="${pkgdir}" meson install -C build-${CARCH}
+
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
