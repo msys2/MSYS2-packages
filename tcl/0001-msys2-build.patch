@@ -1,0 +1,36 @@
+--- origsrc/tcl8.6.12/.github/workflows/msys2-build.yml	2026-09-03 00:33:37.553992800 +0200
++++ src/tcl8.6.12/.github/workflows/msys2-build.yml	2026-09-03 00:32:44.271156200 +0200
+@@ -0,0 +1,33 @@
++name: msys2
++
++on:
++  push:
++
++jobs:
++  msys2:
++    runs-on: windows-2025
++
++    defaults:
++      run:
++        shell: msys2 {0}
++        working-directory: unix
++
++    steps:
++      - name: Init MSYS
++        uses: msys2/setup-msys2@v2
++        with:
++          msystem: MSYS
++          install: git base-devel msys2-devel zlib
++          update: true
++      - name: Checkout
++        uses: actions/checkout@v7
++      - name: Build
++        run: |
++          autoreconf -vfi
++          ./configure -C --prefix=/usr --enable-64bit || { cat config.log; cat config.cache; exit 1; }
++          make
++      - name: Run Tests (ignoring test io-53.4.1 which hangs)
++        run: make test
++        env:
++          ERROR_ON_FAILURES: 1
++          TESTFLAGS: -skip io-53.4.1

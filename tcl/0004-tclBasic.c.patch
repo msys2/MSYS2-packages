@@ -1,0 +1,121 @@
+--- origsrc/tcl8.6.12/generic/tclBasic.c	2026-04-30 18:02:26.000000000 +0200
++++ src/tcl8.6.12/generic/tclBasic.c	2026-09-03 00:49:04.757035700 +0200
+@@ -469,6 +469,109 @@
+ /*
+  *----------------------------------------------------------------------
+  *
++ * buildInfoObjCmd --
++ *
++ *	Implements tcl::build-info command.
++ *
++ * Results:
++ *	None.
++ *
++ * Side effects:
++ *	None.
++ *
++ *----------------------------------------------------------------------
++ */
++
++static int
++buildInfoObjCmd(
++    void *clientData,
++    Tcl_Interp *interp,		/* Current interpreter. */
++    int objc,			/* Number of arguments. */
++    Tcl_Obj *const objv[])	/* Argument objects. */
++{
++    if (objc > 2) {
++	Tcl_WrongNumArgs(interp, 1, objv, "?option?");
++	return TCL_ERROR;
++    }
++    if (objc == 2) {
++	int len;
++	const char *arg = TclGetStringFromObj(objv[1], &len);
++	const char *p;
++	if (len == 7 && !strcmp(arg, "version")) {
++	    char buf[80];
++	    p = strchr((char *)clientData, '.');
++	    if (p) {
++		const char *q = strchr(p+1, '.');
++		const char *r = strchr(p+1, '+');
++		p = (q < r) ? q : r;
++	    }
++	    if (p) {
++		memcpy(buf, (char *)clientData, p - (char *)clientData);
++		buf[p - (char *)clientData] = '\0';
++		Tcl_AppendResult(interp, buf, NULL);
++	    }
++	    return TCL_OK;
++	} else if (len == 10 && !strcmp(arg, "patchlevel")) {
++	    char buf[80];
++	    p = strchr((char *)clientData, '+');
++	    if (p) {
++		memcpy(buf, (char *)clientData, p - (char *)clientData);
++		buf[p - (char *)clientData] = '\0';
++		Tcl_AppendResult(interp, buf, NULL);
++	    }
++	    return TCL_OK;
++	} else if (len == 6 && !strcmp(arg, "commit")) {
++	    const char *q, *p = strchr((char *)clientData, '+');
++	    if (p) {
++		if ((q = strchr(p, '.'))) {
++		    char buf[80];
++		    memcpy(buf, p+1, q - p - 1);
++		    buf[q - p - 1] = '\0';
++		    Tcl_AppendResult(interp, buf, NULL);
++		} else {
++		    Tcl_AppendResult(interp, p+1, NULL);
++		}
++	    }
++	    return TCL_OK;
++	} else if (len == 8 && !strcmp(arg, "compiler")) {
++	    p = strchr((char *)clientData, '.');
++	    while (p) {
++		if (!strncmp(p+1, "clang-", 6) || !strncmp(p+1, "gcc-", 4)
++			    || !strncmp(p+1, "icc-", 4) || !strncmp(p+1, "msvc-", 5)) {
++		    const char *q = strchr(p+1, '.');
++		    if (q) {
++			char buf[16];
++			memcpy(buf, p+1, q - p - 1);
++			buf[q - p - 1] = '\0';
++			Tcl_AppendResult(interp, buf, NULL);
++		    } else {
++			Tcl_AppendResult(interp, p+1, NULL);
++		    }
++		    return TCL_OK;
++		}
++		p = strchr(p+1, '.');
++	    }
++	    Tcl_AppendResult(interp, "0", NULL);
++	    return TCL_OK;
++	}
++	p = strchr((char *)clientData, '.');
++	while (p) {
++	    if (!strncmp(p+1, arg, len) && ((p[len+1] == '.') || (p[len+1] == '\0'))) {
++		Tcl_AppendResult(interp, "1", NULL);
++		return TCL_OK;
++	    }
++	    p = strchr(p+1, '.');
++	}
++	Tcl_AppendResult(interp, "0", NULL);
++	return TCL_OK;
++    }
++    Tcl_AppendResult(interp, (char *)clientData, NULL);
++    return TCL_OK;
++}
++
++/*
++ *----------------------------------------------------------------------
++ *
+  * Tcl_CreateInterp --
+  *
+  *	Create a new TCL command interpreter.
+@@ -1019,6 +1122,8 @@
+      */
+ 
+     Tcl_PkgProvideEx(interp, "Tcl", version, &tclStubs);
++    Tcl_CreateObjCommand(interp, "::tcl::build-info",
++	    buildInfoObjCmd, (void *)version, NULL);
+ 
+     if (TclTommath_Init(interp) != TCL_OK) {
+ 	Tcl_Panic("%s", Tcl_GetString(Tcl_GetObjResult(interp)));
