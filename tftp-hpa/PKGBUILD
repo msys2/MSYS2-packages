@@ -1,8 +1,8 @@
 # Maintainer: Alexey Pavlov <Alexpux@gmail.com>
 
 pkgname=tftp-hpa
-pkgver=5.2
-pkgrel=6
+pkgver=6.0
+pkgrel=1
 pkgdesc="Official tftp server"
 arch=('i686' 'x86_64')
 url="https://www.kernel.org/pub/software/network/tftp/tftp-hpa/"
@@ -14,63 +14,32 @@ msys2_references=(
 license=('spdx:BSD-4-Clause-UC')
 depends=('libreadline>=6.0.00')
 makedepends=('libreadline-devel' 'gcc' 'autotools')
-source=(https://www.kernel.org/pub/software/network/tftp/tftp-hpa/${pkgname}-${pkgver}.tar.xz
+source=(https://www.kernel.org/pub/software/network/tftp/${pkgname}-${pkgver}.tar.xz
         LICENSE
-        01-rename-server.patch
         02-missing-header.patch
-        03-silence-warnings.patch
-        04-cygwin-select-on-nonblocking-works.patch
-        05-fix-ipv6-logic-error.patch
-        tftp-5.2-1.src.patch
-        tftp-hpa-0.49-fortify-strcpy-crash.patch
-        msysize.patch
+        03-add-header-include-path.patch
         )
-sha256sums=('afee361df96a2f88344e191f6a25480fd714e1d28d176c3f10cc43fa206b718b'
+sha256sums=('76e3fbfd10ae3f55870f5f7e0ddb7fb2c424aa0f8fbecbae4a23ffe1aa1b964e'
             '628639fd20f1716bfd71a8bc4bf983fd16eb004cc1ec5a4abf99e6618cfcb870'
-            '8a02d22b3a02995a911a5434d5a7172a0969468fea2f98eb3f54217d6d4edc34'
-            '47a854f87caff2a136096914ac01127520f239b963cd61445e3e8c0be23380f7'
-            '119c6a5d8066e7cae56046fc001f3450bfda6e218939a1faf236b8750122936b'
-            '0c6be55bfa3bfeb74700e4a3da0eb4219d354627a2cc41c5832fb88772fd0e32'
-            '3dcc0ca2e47c7b9cf789fe125ecd29318f7ced1c303c6427a182250db0d11343'
-            '43d6964a88f9ad6d4ef035ce9576f15176b2d37418d6dda421398c93b842891c'
-            '4862bc4bf61b8abbcfc22c4bc6714a5cf8d52e9db1b1d7f7b4c5059ef89ced2f'
-            'ddfef9d17160bfc6cbd2e66180ab874dec93f0ab6eebea85a18afcac6b5f0422')
+            'd9f494250b09fee09434f4a4bd91284fcda5d56e5fbd548bb0b2b759143830ee'
+            '3d3619e5d0b47a1337aeeaf0570beb35259d7edc23d7cc0a21302a3a9967e46c')
 
 prepare() {
   cd ${pkgname}-${pkgver}
 
-  # copy config.guess and config.sub, to support
-  # the use of AC_CANONICAL_HOST in configure
-  cp /usr/share/automake-1.18/config.guess ${srcdir}/${pkgname}-${pkgver}
-  cp /usr/share/automake-1.18/config.sub ${srcdir}/${pkgname}-${pkgver}
-  chmod +x ${srcdir}/${pkgname}-${pkgver}/config.guess
-  chmod +x ${srcdir}/${pkgname}-${pkgver}/config.sub
-
-  patch -Np2 -i ${srcdir}/01-rename-server.patch
   patch -Np2 -i ${srcdir}/02-missing-header.patch
-  patch -Np2 -i ${srcdir}/03-silence-warnings.patch
-  patch -Np2 -i ${srcdir}/04-cygwin-select-on-nonblocking-works.patch
-  patch -Np2 -i ${srcdir}/05-fix-ipv6-logic-error.patch
-  patch -Np2 -i ${srcdir}/tftp-5.2-1.src.patch
+  patch -Np1 -i ${srcdir}/03-add-header-include-path.patch
 
-  # fix #28103
-  patch -Np1 -i ${srcdir}/tftp-hpa-0.49-fortify-strcpy-crash.patch
-
-  patch -Np1 -i ${srcdir}/msysize.patch
-
-  autoreconf -fiv
+  ./autogen.sh
 }
 
 build() {
   cd ${pkgname}-${pkgver}
 
-  CFLAGS+=" -fcommon"
-
   ./configure --prefix=/usr \
     --build=${CHOST} \
     --mandir=/usr/share/man \
     --sbindir=/usr/bin \
-    --without-tcpwrappers \
     ac_cv_header_winsock_h=no \
     ac_cv_header_winsock2_h=no
 
@@ -82,7 +51,8 @@ package() {
   make INSTALLROOT="${pkgdir}" install
   install -D -m644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
   # Remove server files
-  rm "${pkgdir}/usr/bin/tftpd.exe"
+  rm "${pkgdir}/usr/bin/in.tftpd"
+  rm "${pkgdir}/usr/share/man/man8/in.tftpd.8"
   rm "${pkgdir}/usr/share/man/man8/tftpd.8"
 
   # Install tftp header
