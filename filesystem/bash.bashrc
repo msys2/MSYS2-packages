@@ -9,11 +9,11 @@
 
 # System-wide bashrc file
 
-# Check that we haven't already been sourced.
-([[ -z ${CYG_SYS_BASHRC} ]] && CYG_SYS_BASHRC="1") || return
-
 # If not running interactively, don't do anything
 [[ "$-" != *i* ]] && return
+
+# Check that we haven't already been sourced.
+([[ -z ${CYG_SYS_BASHRC} ]] && CYG_SYS_BASHRC="1") || return
 
 # If started from sshd, make sure profile is sourced
 if [[ -n "$SSH_CONNECTION" ]] && [[ "$PATH" != *:/usr/bin* ]]; then
