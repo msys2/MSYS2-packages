@@ -3,7 +3,7 @@
 pkgname=patch
 pkgver=2.8
 pkgrel=1
-pkgdesc="A utility to apply patch files to original sources"
+pkgdesc='A utility to apply patch files to original sources'
 arch=('i686' 'x86_64')
 url='https://www.gnu.org/software/patch/patch.html'
 msys2_repository_url='https://cgit.git.savannah.gnu.org/cgit/patch.git'
@@ -15,14 +15,22 @@ msys2_references=(
   'gentoo: sys-devel/patch'
 )
 license=('spdx:GPL-3.0-or-later')
-makedepends=('ed' 'git' 'python' 'gcc' 'autotools')
+makedepends=(
+  'autotools'
+  'ed'
+  'gcc'
+  'git'
+  'python'
+)
 optdepends=('ed: for patch -e functionality')
 # tag 2.8 is not signed, so .git?signed cannot be used here and it's better not to skip checksum
-source=("git+https://git.savannah.gnu.org/git/${pkgname}.git#tag=v${pkgver}"
-        'git+https://git.savannah.gnu.org/git/gnulib.git'
-        'msys2-patch-2.7.1.patch'
-        'msys2-patch-manifest.patch'
-        'gnulib-msys2-incompatibility-with-cygwin.patch')
+source=(
+  "git+https://git.savannah.gnu.org/git/${pkgname}.git#tag=v${pkgver}"
+  'git+https://git.savannah.gnu.org/git/gnulib.git'
+  'msys2-patch-2.7.1.patch'
+  'msys2-patch-manifest.patch'
+  'gnulib-msys2-incompatibility-with-cygwin.patch'
+)
 sha256sums=('e5dc0235f8ecdf22002dd3a22e80238502968e5be960e63a47dcd9a1c55ec6b3'
             'SKIP'
             '616eb43416099b94ac12064aac987028454a8745f79a1482524e514285e02c98'
@@ -37,20 +45,18 @@ prepare() {
   git config submodule.gnulib.url "${srcdir}/gnulib"
   git -c protocol.file.allow=always submodule update
 
-  [[ -f src/patch.manifest ]] && rm -f src/patch.manifest
-  [[ -f src/patch.rc ]] && rm -f src/patch.rc
+  rm -f src/patch.manifest src/patch.rc
 
   patch -Np1 -i "${srcdir}/msys2-patch-2.7.1.patch"
   patch -Np2 -i "${srcdir}/msys2-patch-manifest.patch"
 
-  local _arch=
-  if [ "${CARCH}" == 'x86_64' ]; then
+  local _arch
+  if [[ "${CARCH}" == 'x86_64' ]]; then
     _arch='amd64'
-  elif [ "${CARCH}" == 'i686' ]; then
+  elif [[ "${CARCH}" == 'i686' ]]; then
     _arch='x86'
   fi
-  sed -e "s|@ARCH@|${_arch}|g" -i src/patch.manifest
-
+  sed -i "s|@ARCH@|${_arch}|g" src/patch.manifest
 
   ./bootstrap
 
@@ -70,20 +76,26 @@ build() {
   cd "${pkgname}"
 
   export MSYSTEM=CYGWIN
-  ./configure \
-    --build=${CHOST} \
-    --prefix=/usr \
+
+  local _configure_options=(
+    --build="${CHOST}"
+    --prefix=/usr
     ac_cv_func_setmode_dos=yes
+  )
+
+  ./configure "${_configure_options[@]}"
 
   make
 }
 
 check() {
   cd "${pkgname}"
+
   make check
 }
 
 package() {
   cd "${pkgname}"
+
   make DESTDIR="${pkgdir}" install
 }
