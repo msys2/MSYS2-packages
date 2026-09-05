@@ -1,8 +1,8 @@
 # Maintainer: Christoph Reiter <reiter.christoph@gmail.com>
 
-_realname=uv
-pkgbase=${_realname}
-pkgname=("python-${_realname}-build")
+_realname='uv'
+pkgbase="${_realname}"
+pkgname="python-${_realname}-build"
 pkgver=0.12.10
 pkgrel=1
 pkgdesc='An extremely fast Python package installer and resolver, written in Rust (python build backend)'
@@ -19,19 +19,23 @@ msys2_references=(
   'purl: pkg:pypi/uv'
 )
 license=('spdx:Apache-2.0 OR MIT')
-makedepends=('rust'
-             'python-maturin'
-             'python-installer'
-             'liblzma-devel'
-             'libzstd-devel'
-             'pkgconf'
-             'git')
+makedepends=(
+  'git'
+  'liblzma-devel'
+  'libzstd-devel'
+  'pkgconf'
+  'python-installer'
+  'python-maturin'
+  'rust'
+)
 options=('!strip')
-source=("git+${url}.git#tag=${pkgver}"
-        "cap-primitives-4.0.3.tar.gz::https://static.crates.io/crates/cap-primitives/4.0.3/download"
-        "zstd-sys.tar.gz::https://static.crates.io/crates/zstd-sys/2.0.16+zstd.1.5.7/download"
-        "cap-primitives-cygwin.patch"
-        "link-zstd-dynamically.patch")
+source=(
+  "git+${url}.git#tag=${pkgver}"
+  'cap-primitives-4.0.3.tar.gz::https://static.crates.io/crates/cap-primitives/4.0.3/download'
+  'zstd-sys.tar.gz::https://static.crates.io/crates/zstd-sys/2.0.16+zstd.1.5.7/download'
+  'cap-primitives-cygwin.patch'
+  'link-zstd-dynamically.patch'
+)
 sha256sums=('3160966d5f0956d2428fc39d89e5bb91a87c9abec6da1aa02abc50e19eaab4aa'
             '8b5f74729fd2f44701d1a8eb47e906cdb3ccd9ec0f02baad85a744b791940b18'
             '91e19ebc2adc8f83e43039e79776e3fda8ca919132d68a1fed6a5faca2683748'
@@ -39,16 +43,17 @@ sha256sums=('3160966d5f0956d2428fc39d89e5bb91a87c9abec6da1aa02abc50e19eaab4aa'
             '48f4900ceb02d3aaf9a1020f33d56629156e96759f456c0e7ca18bfcf910767b')
 
 prepare() {
-  cd "${_realname}"
+  cd "${srcdir}/${_realname}"
 
-  patch -d "../cap-primitives-4.0.3" -p1 -i "../cap-primitives-cygwin.patch"
-  patch -d "../zstd-sys-2.0.16+zstd.1.5.7" -i "../link-zstd-dynamically.patch"
-  cat >> Cargo.toml <<END
+  patch -d "${srcdir}/cap-primitives-4.0.3" -p1 -i "${srcdir}/cap-primitives-cygwin.patch"
+  patch -d "${srcdir}/zstd-sys-2.0.16+zstd.1.5.7" -i "${srcdir}/link-zstd-dynamically.patch"
+  
+  cat >> Cargo.toml <<EOF
 
 [patch.crates-io]
 cap-primitives.path = "../cap-primitives-4.0.3"
 zstd-sys.path = "../zstd-sys-2.0.16+zstd.1.5.7"
-END
+EOF
 
   rm rust-toolchain.toml
   cargo update -p cap-primitives
@@ -57,20 +62,25 @@ END
 }
 
 build() {
-  cd "${_realname}"
+  cd "${srcdir}/${_realname}"
 
   export CARGO_TARGET_DIR="${srcdir}/target-3"
   export ZSTD_SYS_USE_PKG_CONFIG=1
+
   maturin build --frozen --strip --release --all-features -m crates/uv-build/Cargo.toml
 }
 
 package() {
-  depends=('python' 'liblzma' 'libzstd')
+  depends=(
+  'liblzma'
+  'libzstd'
+  'python'
+)
 
-  cd "${_realname}"
+  cd "${srcdir}/${_realname}"
 
   python -m installer --prefix=/usr \
-    --destdir="${pkgdir}" "${srcdir}/target-3/wheels/uv_build-$pkgver-"*.whl
+    --destdir="${pkgdir}" "${srcdir}/target-3/wheels/uv_build-${pkgver}-"*.whl
 
   install -Dm644 LICENSE-MIT -t "${pkgdir}/usr/share/licenses/${pkgname}/"
   install -Dm644 LICENSE-APACHE -t "${pkgdir}/usr/share/licenses/${pkgname}/"
