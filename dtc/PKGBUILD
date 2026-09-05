@@ -1,52 +1,65 @@
 # Maintainer: Andy Gross <andy.gross@linaro.org>
 
 pkgname=dtc
-pkgver=1.7.2
+pkgver=1.8.1
 pkgrel=1
-pkgdesc="Device Tree Compiler"
+pkgdesc='Device Tree Compiler'
 arch=('i686' 'x86_64')
-url="https://git.kernel.org/pub/scm/utils/dtc/dtc.git"
+url='https://git.kernel.org/pub/scm/utils/dtc/dtc.git'
 msys2_references=(
-  "anitya: 16911"
-  "cpe: cpe:2.3:a:dtc_project:dtc"
+  'anitya: 16911'
+  'cpe: cpe:2.3:a:dtc_project:dtc'
 )
 license=('spdx:GPL-2.0-or-later')
-depends=('libyaml')
-makedepends=('python-devel' 'swig' 'libyaml-devel' 'gcc' 'python-setuptools-scm' 'pkgconf')
-source=("https://git.kernel.org/pub/scm/utils/dtc/dtc.git/snapshot/${pkgname}-${pkgver}.tar.gz"
-        01-correct-shared-library-extension.patch
-        02-pyext-install.patch)
-sha256sums=('8f1486962f093f28a2f79f01c1fd82f144ef640ceabe555536d43362212ceb7c'
-            'ac65df904e09681cd5a4c12a063a91ce7055fdd24748fde6519c433ced480861'
-            '0135724ce6f5a30a381d2097bc6afa561168bdc16c42608fcc34c3990fa5b990')
+depends=(
+  'bash'
+  'libyaml'
+)
+makedepends=(
+  'gcc'
+  'libyaml-devel'
+  'meson'
+  'pkgconf'
+  'python-devel'
+  'python-setuptools-scm'
+  'swig'
+)
+source=(
+  "https://git.kernel.org/pub/scm/utils/dtc/dtc.git/snapshot/${pkgname}-${pkgver}.tar.gz"
+  '001-legacy-swig.patch'
+)
+sha256sums=('74b50bb19134f6562490afea53e59953dd6c4afb17e5ccb60be32221262d3390'
+            '35198d278ab70499ed97f3eb9159efc6756cf2fa672563e0ec40d88b5d770ec0')
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  sed -i 's/python\b/python3/' tests/run_tests.sh
 
-  # to make check work
-  sed -i 's/__attribute__((weak))//' tests/testutils.c
-
-  patch -p1 -i "${srcdir}/01-correct-shared-library-extension.patch"
-  patch -p1 -i "${srcdir}/02-pyext-install.patch"
+  patch -p1 -i "${srcdir}/001-legacy-swig.patch"
 }
 
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
   export SETUPTOOLS_SCM_PRETEND_VERSION="${pkgver}"
-  make
+
+  local _meson_options=(
+    --prefix=/usr
+  )
+
+  meson setup "build-${CARCH}" "${_meson_options[@]}"
+  meson compile -C "build-${CARCH}"
 }
 
 check() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  $ PATH=$PWD/libfdt:$PATH/pylibfdt:$PATH make check || true
+
+  meson test -C "build-${CARCH}" --print-errorlogs || true
 }
 
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  make -j1 PREFIX=/usr DESTDIR="${pkgdir}" install
+  
+  meson install -C "build-${CARCH}" --destdir "${pkgdir}"
 
-  # license
-  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/README.license ${pkgdir}/usr/share/licenses/${pkgname}/README.license
+  install -Dm644 README.license "${pkgdir}/usr/share/licenses/${pkgname}/README.license"
 }
