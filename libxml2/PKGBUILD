@@ -1,6 +1,6 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
-pkgbase=libxml2
+pkgbase='libxml2'
 pkgname=('libxml2' 'libxml2-devel')
 pkgver=2.15.4
 pkgrel=1
@@ -17,7 +17,7 @@ msys2_references=(
   'gentoo: dev-libs/libxml2'
 )
 license=('spdx:MIT')
-makedepends=('gcc' 'libreadline-devel' 'zlib-devel' 'autotools' 'libxslt' 'docbook-xsl' 'doxygen' 'libiconv-devel')
+makedepends=('gcc' 'libreadline-devel' 'zlib-devel' 'meson' 'ninja' 'libxslt' 'docbook-xsl' 'doxygen' 'libiconv-devel')
 source=("https://download.gnome.org/sources/libxml2/${pkgver%.*}/${pkgbase}-${pkgver}.tar.xz"
         'https://www.w3.org/XML/Test/xmlts20130923.tar.gz')
 sha256sums=('98087fd181d9070724f3fbc65c7377db03038eb92bd882374daff44940138821'
@@ -28,41 +28,35 @@ prepare() {
 
   rm -rf "${pkgbase}-${pkgver}/xmlconf"
   mv xmlconf -t "${pkgbase}-${pkgver}"
-
-  cd "${pkgbase}-${pkgver}"
-  autoreconf -vfi
 }
 
 build() {
   cd "${srcdir}/${pkgbase}-${pkgver}"
 
-  export lt_cv_deplibs_check_method='pass_all'
-  export MSYSTEM=CYGWIN
+  local _meson_options=(
+    --prefix=/usr
+    --sysconfdir=/etc
+    --localstatedir=/var
+    --buildtype=plain
+    -Ddefault_library=both
+    -Dhistory=enabled
+    -Diconv=enabled
+    -Dlegacy=enabled
+    -Dhttp=enabled
+    -Ddocs=enabled
+    -Dicu=disabled
+    -Dpython=disabled
+  )
 
-  ./configure \
-    --prefix=/usr \
-    --sysconfdir=/etc \
-    --localstatedir=/var \
-    --build="${CHOST}" \
-    --host="${CHOST}" \
-    --target="${CHOST}" \
-    --with-history \
-    --with-iconv \
-    --with-legacy \
-    --with-http \
-    --with-docs \
-    --without-icu \
-    --without-python \
-    --enable-shared \
-    --enable-static
+  meson setup build "${_meson_options[@]}"
+  meson compile -C build
 
-  make
-  make DESTDIR="${srcdir}/dest" install
+  meson install -C build --destdir "${srcdir}/dest"
 }
 
 check() {
   cd "${srcdir}/${pkgbase}-${pkgver}"
-  make check
+  meson test -C build --print-errorlogs
 }
 
 package_libxml2() {
@@ -72,7 +66,9 @@ package_libxml2() {
 
   mkdir -p "${pkgdir}/usr"
   cp -rf "${srcdir}/dest/usr/bin" "${pkgdir}/usr/"
-  rm -f "${pkgdir}/usr/bin/"*-config
+
+  # Meson might drop legacy -config scripts eventually
+  rm -f "${pkgdir}/usr/bin/"*-config 2>/dev/null || true
 
   mkdir -p "${pkgdir}/usr/share"
   cp -rf "${srcdir}/dest/usr/share/man" "${pkgdir}/usr/share/"
@@ -88,7 +84,8 @@ package_libxml2-devel() {
 
   mkdir -p "${pkgdir}/usr/"{bin,share}
 
-  cp -f "${srcdir}/dest/usr/bin/"*-config "${pkgdir}/usr/bin/"
+  # same as in package_libxml2()
+  cp -f "${srcdir}/dest/usr/bin/"*-config "${pkgdir}/usr/bin/" 2>/dev/null || true
   cp -rf "${srcdir}/dest/usr/include" "${pkgdir}/usr/"
   cp -rf "${srcdir}/dest/usr/lib" "${pkgdir}/usr/"
   cp -rf "${srcdir}/dest/usr/share/doc" "${pkgdir}/usr/share/"
