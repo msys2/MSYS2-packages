@@ -1,61 +1,101 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=patch
-pkgver=2.7.6
-pkgrel=3
-pkgdesc="A utility to apply patch files to original sources"
+pkgver=2.8
+pkgrel=1
+pkgdesc='A utility to apply patch files to original sources'
 arch=('i686' 'x86_64')
-url="https://www.gnu.org/software/patch/patch.html"
+url='https://www.gnu.org/software/patch/patch.html'
+msys2_repository_url='https://cgit.git.savannah.gnu.org/cgit/patch.git'
+msys2_changelog_url='https://cgit.git.savannah.gnu.org/cgit/patch.git/tree/NEWS'
 msys2_references=(
-  "cpe: cpe:/a:gnu:patch"
+  'anitya: 2597'
+  'archlinux: patch'
+  'cpe: cpe:/a:gnu:patch'
+  'gentoo: sys-devel/patch'
 )
 license=('spdx:GPL-3.0-or-later')
-makedepends=('ed' 'gcc' 'autotools')
+makedepends=(
+  'autotools'
+  'ed'
+  'gcc'
+  'git'
+  'python'
+)
 optdepends=('ed: for patch -e functionality')
-source=(https://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig}
-        msys2-patch-2.7.1.patch
-        msys2-patch-manifest.patch)
-sha256sums=('ac610bda97abe0d9f6b7c963255a11dcb196c25e337c61f94e4778d632f1d8fd'
+# tag 2.8 is not signed, so .git?signed cannot be used here and it's better not to skip checksum
+source=(
+  "git+https://git.savannah.gnu.org/git/${pkgname}.git#tag=v${pkgver}"
+  'git+https://git.savannah.gnu.org/git/gnulib.git'
+  'msys2-patch-2.7.1.patch'
+  'msys2-patch-manifest.patch'
+  'gnulib-msys2-incompatibility-with-cygwin.patch'
+)
+sha256sums=('e5dc0235f8ecdf22002dd3a22e80238502968e5be960e63a47dcd9a1c55ec6b3'
             'SKIP'
-            '676502c3821e67ca493d77f546ee9362663f8d042331e38b9a19dccdb3896d06'
-            '714da1a384d3e0acca5351980b0b3b1b09b66140fabe2e74dfd313652f964de9')
+            '616eb43416099b94ac12064aac987028454a8745f79a1482524e514285e02c98'
+            '180a810171f4dc3491e9eb723c30a29d2f9e051a357b4b997ded4b78d6036cbb'
+            '6f10b1a2f08c569b3d4938840f42c8b215a2313b7a5dc9f81419974149c68494')
 validpgpkeys=('259B3792B3D6D319212CC4DCD5BF9FEB0313653A') # Andreas Gruenbacher
 
 prepare() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  [[ -f src/patch.manifest ]] && rm -f src/patch.manifest
-  [[ -f src/patch.rc ]] && rm -f src/patch.rc
-  patch -Np1 -i ${srcdir}/msys2-patch-2.7.1.patch
-  patch -Np2 -i ${srcdir}/msys2-patch-manifest.patch
+  cd "${pkgname}"
 
-  local _arch=
-  if [ "${CARCH}" == 'x86_64' ]; then
+  git submodule init
+  git config submodule.gnulib.url "${srcdir}/gnulib"
+  git -c protocol.file.allow=always submodule update
+
+  rm -f src/patch.manifest src/patch.rc
+
+  patch -Np1 -i "${srcdir}/msys2-patch-2.7.1.patch"
+  patch -Np2 -i "${srcdir}/msys2-patch-manifest.patch"
+
+  local _arch
+  if [[ "${CARCH}" == 'x86_64' ]]; then
     _arch='amd64'
-  elif [ "${CARCH}" == 'i686' ]; then
+  elif [[ "${CARCH}" == 'i686' ]]; then
     _arch='x86'
   fi
-  sed -e "s|@ARCH@|${_arch}|g" -i src/patch.manifest
-  autoreconf -fi
+  sed -i "s|@ARCH@|${_arch}|g" src/patch.manifest
+
+  ./bootstrap
+
+  # this patch must be run after bootstrapping
+  # msys2 has headers incompatible with cygwin that breaks on the latest gnulib
+  # there are whole threads about troubleshooting this problem
+  # below is referenced the most active one of them
+  # https://lists.gnu.org/archive/html/emacs-devel/2025-05/msg00192.html
+  # https://lists.gnu.org/archive/html/emacs-devel/2025-05/msg00167.html
+  patch -Np1 -i "${srcdir}/gnulib-msys2-incompatibility-with-cygwin.patch"
+
+  # alternative
+  # sed -i "s/@STDDEF_NOT_IDEMPOTENT@/0/g" lib/stddef.in.h
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${pkgname}"
 
   export MSYSTEM=CYGWIN
-  ./configure \
-    --build=${CHOST} \
-    --prefix=/usr \
+
+  local _configure_options=(
+    --build="${CHOST}"
+    --prefix=/usr
     ac_cv_func_setmode_dos=yes
+  )
+
+  ./configure "${_configure_options[@]}"
 
   make
 }
 
 check() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${pkgname}"
+
   make check
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make DESTDIR=$pkgdir install
+  cd "${pkgname}"
+
+  make DESTDIR="${pkgdir}" install
 }
