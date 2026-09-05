@@ -1,37 +1,76 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=pkgfile
-pkgver=21
-pkgrel=2
-pkgdesc="A pacman .files metadata explorer"
+pkgver=26
+pkgrel=1
+pkgdesc='A pacman .files metadata explorer'
 arch=('i686' 'x86_64')
-url="https://github.com/falconindy/pkgfile"
+url='https://github.com/falconindy/pkgfile'
+msys2_repository_url='https://github.com/falconindy/pkgfile'
+msys2_references=(
+  'anitya: 137691'
+  'archlinux: pkgfile'
+)
 license=('spdx:MIT')
-makedepends=('pcre-devel' 'libarchive-devel' 'libcurl-devel' 'meson' 'clang' 'gcc')
-depends=('libarchive' 'curl' 'pcre' 'pacman')
+depends=(
+  'curl'
+  'libarchive'
+  'pacman'
+  'pcre'
+)
+makedepends=(
+  'clang'
+  'gcc'
+  'libarchive-devel'
+  'libcurl-devel'
+  'meson'
+  'pcre-devel'
+  'perl'
+)
+checkdepends=(
+  'gtest'
+  'python'
+)
 options=('emptydirs')
-source=(${pkgname}-${pkgver}.tar.gz::"https://github.com/falconindy/${pkgname}/archive/v${pkgver}.tar.gz"
-        001-cygwin-alloca.patch)
-install=pkgfile.install
-sha256sums=('809d75738cae785839950c85371ac087bc3b450eed497a565eca01b653f254a5'
-            '9281aa0964a912c3b698eea169ff698f7e24eff8e7ae5929c235b7fc58989de7')
+install='pkgfile.install'
+source=(
+  "${pkgname}-${pkgver}.tar.gz::https://github.com/falconindy/${pkgname}/archive/v${pkgver}.tar.gz"
+  '001-meson-pkgfiled.patch'
+)
+sha256sums=('8c6c558ebec32a6d40ba90a18a06328e382c0639879ae02dd83dfa03a5d51988'
+            '618f55b39aebf3234941e888bf181aa226fd09e35192344523a32533da2dbe65')
 
 prepare() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  patch -p1 -i ${srcdir}/001-cygwin-alloca.patch
+
+  # msys cannot use systemd daemons
+  patch -p1 -i "${srcdir}/001-meson-pkgfiled.patch"
 }
 
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  meson \
-    -Dsystemd_units=false \
-    build-${CARCH}
-  ninja -v -C build-${CARCH}
+
+  export CXXFLAGS="${CXXFLAGS} -D_GNU_SOURCE"
+
+  local _meson_options=(
+    --prefix=/usr
+    -Dsystemd_units=false
+  )
+
+  meson setup "build-${CARCH}" "${_meson_options[@]}"
+  meson compile -C "build-${CARCH}"
+}
+
+check() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  
+  meson test -C "build-${CARCH}" --print-errorlogs
 }
 
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"
 
-  DESTDIR="${pkgdir}" ninja -C build-${CARCH} install
+  meson install -C "build-${CARCH}" --destdir "${pkgdir}"
+
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
