@@ -1,106 +1,105 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
-pkgbase=libxml2
+pkgbase='libxml2'
 pkgname=('libxml2' 'libxml2-devel')
-pkgver=2.15.3
+pkgver=2.15.4
 pkgrel=1
-pkgdesc="XML parsing library, version 2"
-arch=(i686 x86_64)
-license=('spdx:MIT')
-makedepends=('gcc' 'libreadline-devel' 'zlib-devel' 'autotools' 'libxslt' 'docbook-xsl' 'doxygen' 'libiconv-devel')
-url="https://gitlab.gnome.org/GNOME/libxml2/-/wikis/"
-msys2_repository_url="https://gitlab.gnome.org/GNOME/libxml2"
+pkgdesc='XML parsing library, version 2'
+arch=('i686' 'x86_64')
+url='https://gitlab.gnome.org/GNOME/libxml2'
+msys2_repository_url='https://gitlab.gnome.org/GNOME/libxml2'
+msys2_documentation_url='https://gitlab.gnome.org/GNOME/libxml2/-/wikis'
+msys2_changelog_url='https://gitlab.gnome.org/GNOME/libxml2/-/blob/master/NEWS'
 msys2_references=(
-  "cpe: cpe:/a:xmlsoft:libxml2"
+  'anitya: 1783'
+  'archlinux: libxml2'
+  'cpe: cpe:/a:xmlsoft:libxml2'
+  'gentoo: dev-libs/libxml2'
 )
-source=("https://download.gnome.org/sources/libxml2/${pkgver%.*}/${pkgbase}-${pkgver}.tar.xz"
-        https://www.w3.org/XML/Test/xmlts20130923.tar.gz)
-sha256sums=('78262a6e7ac170d6528ebfe2efccdf220191a5af6a6cd61ea4a9a9a5042c7a07'
+license=('spdx:MIT')
+makedepends=(
+  'docbook-xsl'
+  'doxygen'
+  'gcc'
+  'git'
+  'libiconv-devel'
+  'libreadline-devel'
+  'libxslt'
+  'meson'
+  'ninja'
+  'zlib-devel'
+)
+source=(
+  "https://download.gnome.org/sources/libxml2/${pkgver%.*}/${pkgbase}-${pkgver}.tar.xz"
+  'https://www.w3.org/XML/Test/xmlts20130923.tar.gz'
+)
+sha256sums=('98087fd181d9070724f3fbc65c7377db03038eb92bd882374daff44940138821'
             '9b61db9f5dbffa545f4b8d78422167083a8568c59bd1129f94138f936cf6fc1f')
 
-# Helper macros to help make tasks easier #
-apply_patch_with_msg() {
-  for _patch in "$@"
-  do
-    msg2 "Applying $_patch"
-    patch -Nbp1 -i "${srcdir}/$_patch"
-  done
-}
-
-del_file_exists() {
-  for _fname in "$@"
-  do
-    if [ -f $_fname ] || [ -d $_fname ]; then
-      rm -rf $_fname
-    fi
-  done
-}
-# =========================================== #
-
-
 prepare() {
-  cd ${srcdir}
-  del_file_exists ${pkgbase}-${pkgver}/xmlconf
-  mv xmlconf -t ${pkgbase}-${pkgver}
+  cd "${srcdir}"
 
-  cd ${pkgbase}-${pkgver}
-
-  autoreconf -vfi
+  rm -rf "${pkgbase}-${pkgver}/xmlconf"
+  mv xmlconf -t "${pkgbase}-${pkgver}"
 }
 
 build() {
-  export lt_cv_deplibs_check_method='pass_all'
+  cd "${srcdir}/${pkgbase}-${pkgver}"
 
-  cd ${pkgbase}-${pkgver}
-  export MSYSTEM=CYGWIN
-  ./configure \
-    --prefix=/usr \
-    --sysconfdir=/etc \
-    --localstatedir=/var \
-    --build=${CHOST} \
-    --host=${CHOST} \
-    --target=${CHOST} \
-    --with-history \
-    --with-iconv \
-    --with-legacy \
-    --with-http \
-    --with-docs \
-    --without-icu \
-    --without-python \
-    --enable-shared \
-    --enable-static
-  make
-  make DESTDIR=${srcdir}/dest install
+  local _meson_options=(
+    --prefix=/usr
+    --sysconfdir=/etc
+    --localstatedir=/var
+    --buildtype=plain
+    -Ddefault_library=both
+    -Dhistory=enabled
+    -Diconv=enabled
+    -Dlegacy=enabled
+    -Dhttp=enabled
+    -Ddocs=enabled
+    -Dicu=disabled
+    -Dpython=disabled
+  )
 
+  meson setup build "${_meson_options[@]}"
+  meson compile -C build
+
+  meson install -C build --destdir "${srcdir}/dest"
 }
 
 check() {
-  cd ${pkgbase}-${pkgver}
-  make check
+  cd "${srcdir}/${pkgbase}-${pkgver}"
+  meson test -C build --print-errorlogs
 }
 
 package_libxml2() {
   depends=('coreutils' 'libreadline' 'zlib')
   groups=('libraries')
-  install=libxml2.install
+  install='libxml2.install'
 
-  mkdir -p ${pkgdir}/usr
-  cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/
-  rm -f ${pkgdir}/usr/bin/*-config
-  mkdir -p ${pkgdir}/usr/share
-  cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
-  install -Dm644 ${srcdir}/${pkgbase}-${pkgver}/Copyright "${pkgdir}/usr/share/licenses/${pkgbase}/Copyright"
+  mkdir -p "${pkgdir}/usr"
+  cp -rf "${srcdir}/dest/usr/bin" "${pkgdir}/usr/"
+
+  # Meson might drop legacy -config scripts eventually
+  rm -f "${pkgdir}/usr/bin/"*-config 2>/dev/null || true
+
+  mkdir -p "${pkgdir}/usr/share"
+  cp -rf "${srcdir}/dest/usr/share/man" "${pkgdir}/usr/share/"
+
+  install -Dm644 "${srcdir}/${pkgbase}-${pkgver}/Copyright" "${pkgdir}/usr/share/licenses/${pkgbase}/Copyright"
 }
 
 package_libxml2-devel() {
-  pkgdesc="Libxml2 headers and libraries"
+  pkgdesc='Libxml2 headers and libraries'
   groups=('development')
   options=('staticlibs')
   depends=("libxml2=${pkgver}" 'libreadline-devel' 'zlib-devel' 'libiconv-devel')
 
-  mkdir -p ${pkgdir}/usr/{bin,share}
-  cp -f ${srcdir}/dest/usr/bin/*-config ${pkgdir}/usr/bin/
-  cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
-  cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
-  cp -rf ${srcdir}/dest/usr/share/doc ${pkgdir}/usr/share/
+  mkdir -p "${pkgdir}/usr/"{bin,share}
+
+  # same as in package_libxml2()
+  cp -f "${srcdir}/dest/usr/bin/"*-config "${pkgdir}/usr/bin/" 2>/dev/null || true
+  cp -rf "${srcdir}/dest/usr/include" "${pkgdir}/usr/"
+  cp -rf "${srcdir}/dest/usr/lib" "${pkgdir}/usr/"
+  cp -rf "${srcdir}/dest/usr/share/doc" "${pkgdir}/usr/share/"
 }
