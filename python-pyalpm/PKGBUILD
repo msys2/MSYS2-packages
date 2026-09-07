@@ -34,7 +34,6 @@ makedepends=(
   'python-build'
   'python-installer'
   'python-pkgconfig'
-  # 'python-wheel' # may be needed?
 )
 checkdepends=(
   # 'python-pytest'
@@ -44,15 +43,14 @@ provides=("python3-${_realname}")
 conflicts=("python3-${_realname}")
 replaces=("python3-${_realname}")
 source=("git+https://gitlab.archlinux.org/archlinux/pyalpm.git#tag=${pkgver}"
-        "0005-Use-pkg-config-add-LIBALPM_STATIC-env.-var.patch")
+        "001-add-static-libalpm-option.patch")
 sha256sums=('7d4b8f0329c93970de83df6586e8d55b4b7ecd1c0dc369267e93e9272349ab36'
-            'e26201c95cf6511cc884a38a8ca17cd61154542c390bcd8f7484bdc8e560cee9')
+            'b39f317b4eb4285888f5a58693eae141f74554a9a6eca3d839664b106608c0ed')
 
 prepare() {
   cd "${_realname}"
 
-  # TODO: patch for meson
-  # patch -p1 -i "${srcdir}/0005-Use-pkg-config-add-LIBALPM_STATIC-env.-var.patch"
+  patch -Nbp1 -i "${srcdir}/001-add-static-libalpm-option.patch"
 
   # The git repo uses symlinks in the scripts folder to
   # the actual source files in the pycman folder. Patch
@@ -71,15 +69,8 @@ prepare() {
 build() {
   cd "${_realname}"
 
-  # If believing pyalpm repository README, `python -m build`` is not needed
-  # but that is not the case when checking original PKGBUILD.
-
-  # TODO: patch for meson
-  # LIBALPM_STATIC=1 \
-  python -m build --wheel --skip-dependency-check --no-isolation
-
-  meson setup build
-  meson compile -C build
+  python -m build --wheel --skip-dependency-check --no-isolation \
+    -C setup-args="-Dstatic-libalpm=true" # passed to meson
 }
 
 check() {
@@ -87,6 +78,11 @@ check() {
 
   # MISSING: python-pytest-pacman
   # TODO: uncomment when finished
+
+  # `python -m build` runs meson internally,
+  # running manually is needed for tests.
+  # meson setup build
+  # meson compile -C build
   # meson test -C build -v
 }
 
