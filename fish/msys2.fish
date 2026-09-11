@@ -13,6 +13,10 @@
 # Modifying these default path settings can be done in different ways.
 # To learn more about startup files, refer to your shell's man page.
 
+if not status is-login
+  return
+end
+
 set MSYS2_PATH /usr/local/bin /usr/bin /bin
 set -x MANPATH /usr/local/man /usr/share/man /usr/man /share/man
 set -x INFOPATH /usr/local/info /usr/share/info /usr/info /share/info
