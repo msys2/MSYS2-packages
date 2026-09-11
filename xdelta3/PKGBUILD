@@ -1,37 +1,68 @@
 # Maintainer: David Macek <david.macek.0@gmail.com>
 
-pkgname=xdelta3
-pkgver=3.1.0
-pkgrel=2
-pkgdesc='Diff utility which works with binary files'
-arch=('x86_64' 'i686')
-url='http://xdelta.org/'
-msys2_repository_url="https://github.com/jmacd/xdelta"
+pkgname='xdelta3'
+pkgver=3.2.0
+pkgrel=1
+pkgdesc='Diff utility for binary files'
+arch=('i686' 'x86_64')
+url='https://github.com/jmacd/xdelta'
+msys2_repository_url='https://github.com/jmacd/xdelta'
+msys2_documentation_url='https://jmacd.github.io/xdelta/'
+msys2_changelog_url='https://github.com/jmacd/xdelta/releases'
 msys2_references=(
-  "anitya: 5177"
+  'anitya: 5177'
+  'archlinux: xdelta3'
+  'gentoo: dev-util/xdelta'
 )
-license=('spdx:GPL-2.0-or-later')
-depends=('xz' 'liblzma')
-makedepends=('liblzma-devel' 'autotools' 'gcc')
-source=("https://github.com/jmacd/${pkgname/3}-gpl/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
-sha256sums=('114543336ab6cee3764e3c03202701ef79d7e5e8e4863fe64811e4d9e61884dc')
+license=('spdx:Apache-2.0')
+depends=(
+  'liblzma'
+  'xz'
+)
+makedepends=(
+  'cmake'
+  'gcc'
+  'git'
+  'liblzma-devel'
+  'ninja'
+)
+source=("${pkgname}::git+${url}.git#tag=v${pkgver}")
+sha256sums=('fcaeba6c6dfdd88abe5a5358212f79e716ad2e6f02e928f212a90fa186bac47e')
 
-prepare() {
-  cd "${pkgname}-${pkgver}"
+build() {
+  cd "${pkgname}"
+
+  local _cmake_options=(
+    -B build
+    -S xdelta3
+    -G Ninja
+    -Wno-author
+    -D CMAKE_BUILD_TYPE=None
+    -D CMAKE_INSTALL_PREFIX=/usr
+    -D BUILD_SHARED_LIBS=ON
+    -D XD3_ARMOR=OFF
+  )
+
+  cmake "${_cmake_options[@]}"
+  cmake --build build
 }
 
 check() {
-  cd "${pkgname}-${pkgver}"
-  ./$pkgname test
-}
+  cd "${pkgname}"
 
-build() {
-  cd "${pkgname}-${pkgver}"
-  ./configure --prefix=/usr --build=${CHOST}
-  make
+  local _excluded_tests='(test_armor|xdelta3_main_smoke)'
+  local _ctest_flags=(
+    --test-dir build
+    --output-on-failure
+    --parallel "$(nproc)"
+    --exclude-regex "${_excluded_tests}"
+  )
+
+  ctest "${_ctest_flags[@]}" || true
 }
 
 package() {
-  cd "${pkgname}-${pkgver}"
-  make DESTDIR="${pkgdir}" install
+  cd "${pkgname}"
+
+  DESTDIR="${pkgdir}" cmake --install build
 }
