@@ -1,0 +1,64 @@
+_realname='meson-python'
+_pyname="${_realname/-/_}"
+pkgname="${_realname}"
+pkgver=0.21.1
+pkgrel=1
+pkgdesc='Meson PEP 517 Python build backend'
+arch=('any')
+url='https://mesonbuild.com/meson-python/'
+msys2_repository_url='https://github.com/mesonbuild/meson-python'
+msys2_changelog_url='https://mesonbuild.com/meson-python/changelog.html'
+msys2_references=(
+  'anitya: 248985'
+  'archlinux: meson-python'
+  'gentoo: dev-python/meson-python'
+  'purl: pkg:pypi/meson-python'
+)
+license=('spdx:MIT')
+depends=(
+  'meson'
+  'python'
+  'python-packaging'
+  'python-pyproject-metadata'
+)
+makedepends=(
+  'python-build'
+  'python-installer'
+)
+checkdepends=(
+  # 'cython'
+  # 'python-pytest'
+  # 'python-pytest-cov' # missing
+  # 'python-pytest-mock' # missing
+  # 'python-wheel' # missing
+)
+options=('!strip')
+source=("https://pypi.org/packages/source/${_pyname::1}/${_pyname}/${_pyname}-${pkgver}.tar.gz")
+noextract=("${_pyname}-${pkgver}.tar.gz")
+sha256sums=('78b3345dcbc0fed7b939e7e37a9faab35bddaae07bf62e7542c8ad479c395af5')
+
+prepare() {
+  # fixes encoding: tests/packages/encoding/???.py
+  bsdtar -xf "${_pyname}-${pkgver}.tar.gz" || true
+}
+
+build() {
+  cp -r "${_pyname}-${pkgver}" "build-${MSYSTEM}" && cd "build-${MSYSTEM}"
+
+  python -m build --wheel --skip-dependency-check --no-isolation
+}
+
+check() {
+  cd "build-${MSYSTEM}"
+
+  # 0.20.0: x failed, x passed, x skipped
+  # PYTHONPATH="${PWD}" python -m pytest || warning "Tests failed"
+}
+
+package() {
+  cd "build-${MSYSTEM}"
+
+  python -m installer --prefix=/usr --destdir="${pkgdir}" dist/*.whl
+
+  install -Dm644 LICENSE -t "${pkgdir}/usr/share/licenses/${pkgname}/"
+}
