@@ -6,14 +6,14 @@ pkgver=6.3.0
 pkgrel=2
 pkgdesc="A free library for arbitrary precision arithmetic"
 groups=('libraries')
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 url="https://gmplib.org/"
 msys2_references=(
   "cpe: cpe:/a:gmplib:gmp"
 )
 license=('spdx:LGPL-3.0-or-later OR GPL-2.0-or-later')
 makedepends=('autotools' 'gcc')
-source=(https://ftp.gnu.org/gnu/gmp/gmp-${pkgver}.tar.xz{,.sig}
+source=(https://mirrors.kernel.org/gnu/gmp/gmp-${pkgver}.tar.xz{,.sig}
         "0001-gcc15.patch")
 sha256sums=('a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898'
             'SKIP'
@@ -28,10 +28,37 @@ prepare() {
   patch -p1 < "${srcdir}/0001-gcc15.patch"
 
   autoreconf -fi
+
+  source "${startdir}/../.ci/fix-msys-libtool.sh"
+  fix_msys_libtool configure ltmain.sh
 }
 
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
+
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # Cross-build for aarch64-pc-cygwin (see .ci/makepkg-aarch64-cross.conf).
+    # --disable-assembly: GMP's hand-written aarch64 assembly assumes the ELF
+    #   ABI; on this PE/COFF target mpz_tdiv_q silently terminates the process
+    #   (exit 0, no message), so `expr N % M` and `expr N / M` returned empty
+    #   and bash's run-set-e failed. The C fallback is slower but correct.
+    # --disable-fat: fat binaries select an x86 CPU variant at runtime; on
+    #   aarch64 gmp uses its own arch dispatch, so fat is meaningless/harmful.
+    CFLAGS+=" -Wno-attributes" \
+    CXXFLAGS+=" -Wno-attributes" \
+    ./configure \
+      --host=aarch64-pc-cygwin \
+      --build=${CHOST} \
+      --prefix=/usr \
+      --enable-cxx \
+      --disable-fat \
+      --disable-assembly \
+      --enable-shared --disable-static
+    make
+    make DESTDIR="${srcdir}/dest" install
+    return
+  fi
+
 # get rid of those pesky declspec warnings
   CFLAGS+=" -Wno-attributes" \
   CXXFLAGS+=" -Wno-attributes" \
@@ -45,11 +72,27 @@ build() {
 }
 
 check() {
+  # target binaries can't run on the x64 (emulated) cross host
+  [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]] && return 0
   cd "${srcdir}/${pkgname}-${pkgver}"
   make check
 }
 
 package_gmp() {
+  if [[ ! -d $srcdir/dest/usr/bin ]]; then
+    if compgen -G "$srcdir/dest/usr/lib/*.dll" > /dev/null; then
+      echo "==> ERROR: gmp DID build shared libraries, but libtool installed them" >&2
+      echo "    into usr/lib instead of usr/bin:" >&2
+      ls -1 "$srcdir"/dest/usr/lib/*.dll >&2
+      echo "    This is the missing '*msys*,*lai,yes,no,*.dll' tdlname label in" >&2
+      echo "    ltmain.sh, NOT a static-only build. See .ci/fix-msys-libtool.sh." >&2
+    else
+      echo "==> ERROR: no $srcdir/dest/usr/bin — gmp built no shared libraries." >&2
+      echo "    Check configure's 'checking if libtool supports shared libraries'." >&2
+    fi
+    return 1
+  fi
+
   mkdir -p ${pkgdir}/usr
   cp -rf $srcdir/dest/usr/bin ${pkgdir}/usr/
   cp -rf $srcdir/dest/usr/share ${pkgdir}/usr/
