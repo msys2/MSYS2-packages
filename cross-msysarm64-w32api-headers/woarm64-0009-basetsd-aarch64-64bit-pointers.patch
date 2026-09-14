@@ -1,0 +1,47 @@
+From: Windows on ARM Experiments <woarm@qti.qualcomm.com>
+Date: Wed, 09 Jul 2026 00:00:00 +0000
+Subject: [PATCH] basetsd.h: treat aarch64 as a 64-bit-pointer target
+
+The MSYS2/Cygwin AArch64 port compiles with the GNU toolchain, which
+does NOT predefine _WIN64 (that macro is an MSVC/mingw convention gated
+on the target ABI, not the pointer width). basetsd.h keys its
+INT_PTR/LONG_PTR/ULONG_PTR and SHANDLE_PTR/HANDLE_PTR typedefs on
+_WIN64, so without this guard AArch64 gets the 32-bit `int`/`long`
+pointer types, which is wrong for the LLP64 ABI (64-bit pointers) and
+corrupts every Win32 handle round-trip.
+
+AArch64 always has 64-bit pointers, so widen the guard to also fire on
+__aarch64__ (matching how __x86_64__/__ia64__ are handled a few lines
+above for POINTER_64_INT). This replaces the post-build `sed` in the
+cross-msysarm64-w32api-headers PKGBUILD with a source-level, reviewable
+change.
+
+Signed-off-by: Windows on ARM Experiments <woarm@qti.qualcomm.com>
+---
+ mingw-w64-headers/include/basetsd.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/mingw-w64-headers/include/basetsd.h b/mingw-w64-headers/include/basetsd.h
+index 1111111..2222222 100644
+--- a/mingw-w64-headers/include/basetsd.h
++++ b/mingw-w64-headers/include/basetsd.h
+@@ -42,7 +42,7 @@
+ #define _W64
+ #endif
+
+-#ifdef _WIN64
++#if defined(_WIN64) || defined(__aarch64__)
+   __MINGW_EXTENSION typedef __int64 INT_PTR,*PINT_PTR;
+   __MINGW_EXTENSION typedef unsigned __int64 UINT_PTR,*PUINT_PTR;
+   __MINGW_EXTENSION typedef __int64 LONG_PTR,*PLONG_PTR;
+@@ -56,7 +56,7 @@
+ #define __int3264 int
+ #endif
+
+-#ifdef _WIN64
++#if defined(_WIN64) || defined(__aarch64__)
+ #define ADDRESS_TAG_BIT 0x40000000000ULL
+
+   __MINGW_EXTENSION typedef __int64 SHANDLE_PTR;
+--
+2.43.0
