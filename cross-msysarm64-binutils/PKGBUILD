@@ -1,0 +1,106 @@
+# Maintainer: Windows on ARM Experiments
+
+_realname=binutils
+_target=aarch64-pc-cygwin
+_host=x86_64-pc-msys
+pkgname="cross-msysarm64-${_realname}"
+pkgver=2.47.50
+pkgrel=1
+pkgdesc="Cross binutils for target ${_target}"
+arch=('i686' 'x86_64')
+url="https://www.gnu.org/software/binutils/"
+license=('GPL')
+depends=("libiconv" "zlib" "libzstd" "libintl")
+makedepends=("libiconv-devel" "zlib-devel" 'autotools' 'gcc' 'libzstd-devel' 'gettext-devel' 'git' 'gmp-devel' 'mpfr-devel' 'flex' 'bison' 'perl' 'texinfo')
+options=('staticlibs' '!distcc' '!ccache' '!buildflags')
+# Upstream binutils-gdb, pinned to the commit our AArch64 series is based on.
+# Our changes are NOT carried in a fork any more: they are the woarm64-*.patch
+# series below, generated from binutils-woarm64 aarch64-on-latest with
+#   git format-patch 1469a04f309..HEAD
+_upstream_commit=1469a04f30917ef6a2bf4afc73e442b836574563
+source=("${_realname}"::"git+https://sourceware.org/git/binutils-gdb.git#commit=${_upstream_commit}"
+        woarm64-0001-WIP-fix-to-dll-relocations.patch
+        woarm64-0002-Add-error-messages-for-invalid-relocations.patch
+        woarm64-0003-binutils-2.43-cygwin-config-rpath.patch.patch
+        woarm64-0004-Add-aarch64-pc-cygwin-target.patch
+        woarm64-0005-Allow-build-of-libsim-for-aarch64-w64-mingw32-and-aa.patch
+        woarm64-0006-Add-auto-import-support-to-AArch64-9.patch
+        woarm64-0007-PE-COFF-AArch64-avoid-ADRP-for-ABS-small-constants.patch
+        woarm64-0008-ld-pep.em-use-mingw_behavior-for-the-aarch64-cygwin-.patch
+        woarm64-0009-bfd-aarch64-PE-mark-handled-relocs-with-r_ignore.patch
+        woarm64-0010-bfd-restore-the-section_htab-guards-removed-by-b3dcd.patch
+        0002-check-for-unusual-file-harder.patch
+        0010-bfd-Increase-_bfd_coff_max_nscns-to-65279.patch
+        9999-workarounds.patch)
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP')
+
+apply_patch_with_msg() {
+  for _patch in "$@"; do
+    msg2 "Applying ${_patch}"
+    patch -p1 -i "${srcdir}/${_patch}"
+  done
+}
+
+prepare() {
+  cd ${srcdir}/binutils
+
+  # The AArch64 port, as a patch series on top of upstream binutils.
+  # (Previously these lived as commits on binutils-woarm64 aarch64-on-latest.)
+  for _p in "${srcdir}"/woarm64-*.patch; do
+    msg2 "Applying $(basename "${_p}")"
+    patch -Nbp1 -i "${_p}" || return 1
+  done
+  # apply_patch_with_msg \
+  #   0002-check-for-unusual-file-harder.patch \
+  #   0010-bfd-Increase-_bfd_coff_max_nscns-to-65279.patch \
+  #   9999-workarounds.patch
+  # No patches on the aarch64-on-latest base (upstream 2.47.50):
+  #   9999-workarounds.patch  readline/tcap.h already has the real prototypes
+  #                           upstream, so the patch is effectively already in.
+  #   0010-..._max_nscns      its bfd/coffcode.h literal is gone upstream and its
+  #                           other targets (rs6000/alpha/mips/sh) are not built
+  #                           here; large section counts on aarch64 are handled
+  #                           by upstream bigobj (aarch64_pe_bigobj_le_vec).
+  :
+}
+
+build() {
+  mkdir -p ${srcdir}/binutils-build && cd ${srcdir}/binutils-build
+
+  ${srcdir}/binutils/configure \
+    --build=${_host} \
+    --host=${_host} \
+    --target=${_target} \
+    --prefix=/usr \
+    --disable-dependency-tracking \
+    --disable-werror \
+    --enable-lto \
+    --enable-64-bit-bfd \
+    --with-libiconv-prefix=/usr \
+    --with-system-zlib
+
+  make CFLAGS="-std=gnu17 -O2 -pipe"
+}
+
+package() {
+  cd ${srcdir}/binutils-build
+  make DESTDIR=${pkgdir} install
+  rm -rf "${pkgdir}/usr/share/info"
+  rm -rf "${pkgdir}/usr/share/locale"
+  rm -rf "${pkgdir}/usr/share/gdb"
+  rm -rf "${pkgdir}/usr/lib"
+  rm -rf "${pkgdir}/usr/include"
+}

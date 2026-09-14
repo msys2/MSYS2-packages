@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Sun, 30 Aug 2026 19:31:36 +0530
+Subject: [PATCH 08/10] ld: pep.em: use mingw_behavior for the aarch64-cygwin
+ case
+
+Upstream renamed cygwin_behavior to mingw_behavior and inverted the
+DEFAULT_DLL_CHARACTERISTICS ternary.  Our aarch64-*-cygwin* case still
+assigned the old name, which git merged cleanly because it is a pure
+addition beside the renamed cases -- no conflict was raised.  The result
+was an empty substitution:
+
+  #define DEFAULT_DLL_CHARACTERISTICS ( ? DYNAMIC_BASE|HIGH_ENTROPY_VA|NX_COMPAT : 0)
+
+  earm64pe.c:100: error: expected expression before '?' token
+
+cygwin_behavior=0 under the old polarity granted DYNAMIC_BASE,
+HIGH_ENTROPY_VA and NX_COMPAT, so the faithful value under the new
+naming is mingw_behavior=1.  (HIGH_ENTROPY_VA stays disabled at link
+time via -Wl,--disable-high-entropy-va in the gcc specs -- see
+msys2-runtime#7.)
+---
+ ld/emultempl/pep.em | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ld/emultempl/pep.em b/ld/emultempl/pep.em
+index b4558da4d29..58b44aa0623 100644
+--- a/ld/emultempl/pep.em
++++ b/ld/emultempl/pep.em
+@@ -9,7 +9,7 @@ fi
+ case ${target} in
+   aarch64-*-cygwin*)
+     move_default_addr_high=1
+-    cygwin_behavior=0;
++    mingw_behavior=1
+     ;;
+   *-*-cygwin*)
+     move_default_addr_high=1

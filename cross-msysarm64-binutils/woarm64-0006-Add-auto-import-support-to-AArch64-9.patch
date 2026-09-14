@@ -1,0 +1,213 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Evgeny Karpov <eukarpov@gmail.com>
+Date: Thu, 25 Sep 2025 10:43:17 +0200
+Subject: [PATCH 06/10] Add auto-import support to AArch64 (#9)
+
+The patch implements the required changes to support runtime relocations in MinGW.
+For 26-bit relocations, the linker generates a jump stub, as a single opcode is not sufficient for relocation.
+
+Co-authored-by: Evgeny Karpov <evgeny@kmaps.co>
+(cherry picked from commit 44335833f8f734f978211b082b15aed14efcf958)
+---
+ bfd/coff-aarch64.c  | 13 +++++--
+ bfd/reloc.c         |  8 -----
+ ld/emultempl/pep.em | 22 ++++++++++++
+ ld/pe-dll.c         | 83 ++++++++++++++++++++++++++++++++++++++++++++-
+ 4 files changed, 115 insertions(+), 11 deletions(-)
+
+diff --git a/bfd/coff-aarch64.c b/bfd/coff-aarch64.c
+index d889359a6fc..c05b12840f8 100644
+--- a/bfd/coff-aarch64.c
++++ b/bfd/coff-aarch64.c
+@@ -266,17 +266,26 @@ static const reloc_howto_type arm64_reloc_howto_branch26
+ = HOW (IMAGE_REL_ARM64_BRANCH26,
+        2, 4, 26, true, 0, signed, NULL, 0x3ffffff);
+ 
++/* On AArch64 COFF, a custom relocation, such as
++   coff_aarch64_rel21_reloc func, is used.
++   The reloc_howto_struct is not used in the usual way.
++   The mask is set to 0 to avoid issues during dynamic linking.  */
+ static const reloc_howto_type arm64_reloc_howto_page21
+ = HOW (IMAGE_REL_ARM64_PAGEBASE_REL21,
+-       12, 4, 21, true, 0, signed, rel21_reloc, 0x1fffff);
++       12, 4, 21, true, 0, signed, rel21_reloc, 0);
+ 
+ static const reloc_howto_type arm64_reloc_howto_lo21
+ = HOW (IMAGE_REL_ARM64_REL21,
+        0, 4, 21, true, 0, signed, rel21_reloc, 0x1fffff);
+ 
++/* Similar to IMAGE_REL_ARM64_PAGEBASE_REL21.
++   On AArch64 COFF, a custom relocation, such as
++   coff_aarch64_po12l_reloc func, is used.
++   The reloc_howto_struct is not used in the usual way.
++   The overflow func is set to dont to avoid issues during dynamic linking.  */
+ static const reloc_howto_type arm64_reloc_howto_pgoff12l
+ = HOW (IMAGE_REL_ARM64_PAGEOFFSET_12L,
+-       0, 4, 12, true, 10, signed, po12l_reloc, 0x3ffc00);
++       0, 4, 12, true, 10, dont, po12l_reloc, 0x3ffc00);
+ 
+ static const reloc_howto_type arm64_reloc_howto_branch19
+ = HOW (IMAGE_REL_ARM64_BRANCH19,
+diff --git a/bfd/reloc.c b/bfd/reloc.c
+index 9b820bdfee6..d0bcb30b97e 100644
+--- a/bfd/reloc.c
++++ b/bfd/reloc.c
+@@ -1212,14 +1212,6 @@ _bfd_relocate_contents (reloc_howto_type *howto,
+   if (howto->negate)
+     relocation = -relocation;
+ 
+-  if (howto->bitsize == 21 ||
+-      howto->bitsize == 12 ||
+-      howto->bitsize == 26)
+-    {
+-      _bfd_error_handler (_("%pB: %d bit relocation not currently supported.\n"),
+-            input_bfd, howto->bitsize);
+-    }
+-
+   /* Get the value we are going to relocate.  */
+   x = read_reloc (input_bfd, location, howto);
+ 
+diff --git a/ld/emultempl/pep.em b/ld/emultempl/pep.em
+index 9aff9929cda..b4558da4d29 100644
+--- a/ld/emultempl/pep.em
++++ b/ld/emultempl/pep.em
+@@ -1170,6 +1170,28 @@ read_addend (arelent *rel, asection *s)
+ 
+   switch (rel->howto->bitsize)
+     {
++#if defined (COFF_WITH_peAArch64)
++    case 12:
++      ok = bfd_get_section_contents (s->owner, s, &addend, rel->address, 4);
++      if (!ok)
++        break;
++      addend = (addend >> 10) & ((1 << 12) - 1);
++      break;
++    case 21:
++      ok = bfd_get_section_contents (s->owner, s, &addend, rel->address, 4);
++      if (!ok)
++        break;
++      addend = (((addend >> 5) & ((1 << 19) - 1)) << 2) | ((addend >> 29) & ((1 << 2) - 1));
++      addend <<= 12;
++      break;
++    case 26:
++      ok = bfd_get_section_contents (s->owner, s, &addend, rel->address, 4);
++      if (!ok)
++        break;
++      addend = addend & ((1 << 12) - 1);
++      addend <<= 2;
++      break;
++#endif
+     case 8:
+       ok = bfd_get_section_contents (s->owner, s, buf, rel->address, 1);
+       if (ok)
+diff --git a/ld/pe-dll.c b/ld/pe-dll.c
+index f43bd14896e..7fd692efb95 100644
+--- a/ld/pe-dll.c
++++ b/ld/pe-dll.c
+@@ -1538,10 +1538,15 @@ pe_find_data_imports (const char *symhead,
+ 	    undef->u.def.value = sym->u.def.value;
+ 	    undef->u.def.section = sym->u.def.section;
+ 
++#if !defined (COFF_WITH_peAArch64)
+ 	    /* We replace the original name with the __imp_ prefixed one, this
+ 	       1) may trash memory 2) leads to duplicate symbols.  But this is
+-	       better than having a misleading name that can confuse GDB.  */
++	       better than having a misleading name that can confuse GDB.
++
++	       On AArch64, it should not be changed, as a jump stub will be generated
++	       for the same function name.  */
+ 	    undef->root.string = sym->root.string;
++#endif
+ 
+ 	    if (link_info.pei386_auto_import == -1)
+ 	      {
+@@ -2842,6 +2847,71 @@ pe_create_runtime_relocator_reference (bfd *parent)
+   return abfd;
+ }
+ 
++#if defined (COFF_WITH_peAArch64)
++static void
++aarch64_make_jump_stub(const char* symbol_name, bfd* parent)
++{
++  static struct bfd_hash_table *stub_hash = NULL;
++  if (!stub_hash) {
++    stub_hash = (struct bfd_hash_table *) xmalloc (sizeof (struct bfd_hash_table));
++    bfd_hash_table_init (stub_hash, bfd_hash_newfunc, sizeof (struct bfd_hash_entry));
++  }
++
++  if (pe_dll_extra_pe_debug)
++    printf ("validate jump stub for %s\n", symbol_name);
++
++  if (bfd_hash_lookup(stub_hash, symbol_name, false, false))
++    return;
++
++  if (pe_dll_extra_pe_debug)
++    printf ("creating jump stub for %s\n", symbol_name);
++  bfd_hash_lookup(stub_hash, symbol_name, true, true);
++
++  asection *tx;
++  unsigned char *td = NULL;
++  char *oname;
++  bfd *abfd;
++  const unsigned char *jmp_bytes = NULL;
++  int jmp_byte_count = 0;
++  jmp_bytes = jmp_aarch64_bytes;
++  jmp_byte_count = sizeof (jmp_aarch64_bytes);
++  static int tmp_stub_seq = 0;
++
++  oname = xasprintf ("jump_stub_d%06d.o", tmp_stub_seq);
++  ++tmp_stub_seq;
++
++  abfd = bfd_create (oname, parent);
++  free (oname);
++  bfd_make_writable (abfd);
++
++  bfd_set_format (abfd, bfd_object);
++  bfd_set_arch_mach (abfd, pe_details->bfd_arch, 0);
++
++  symptr = 0;
++  symtab = xmalloc (12 * sizeof (asymbol *));
++
++  tx  = quick_section (abfd, ".text", SEC_CODE | SEC_HAS_CONTENTS | SEC_READONLY, 2);
++  quick_symbol (abfd, "", symbol_name, "", tx, BSF_GLOBAL, 0);
++  quick_symbol (abfd, "__imp_", symbol_name, "", bfd_und_section_ptr,
++		BSF_GLOBAL, 0);
++
++  bfd_set_section_size (tx, jmp_byte_count);
++  td = xmalloc (jmp_byte_count);
++  tx->contents = td;
++  memcpy (td, jmp_bytes, jmp_byte_count);
++
++  quick_reloc (abfd, 0, BFD_RELOC_AARCH64_ADR_HI21_NC_PCREL, 2);
++  quick_reloc (abfd, 4, BFD_RELOC_AARCH64_ADD_LO12, 2);
++  save_relocs (tx);
++
++  bfd_set_symtab (abfd, symtab, symptr);
++
++  bfd_set_section_contents (abfd, tx, td, 0, jmp_byte_count);
++  bfd_make_readable (abfd);
++  add_bfd_to_link (abfd, bfd_get_filename (abfd), &link_info);
++}
++#endif
++
+ void
+ pe_create_import_fixup (arelent *rel, asection *s, bfd_vma addend, char *name,
+ 			const char *symname)
+@@ -2885,6 +2955,17 @@ pe_create_import_fixup (arelent *rel, asection *s, bfd_vma addend, char *name,
+   if ((addend != 0 && link_info.pei386_runtime_pseudo_reloc == 1)
+       || link_info.pei386_runtime_pseudo_reloc == 2)
+     {
++#if defined (COFF_WITH_peAArch64)
++
++      if (rel->howto->bitsize == 26)
++	{
++/* On AArch64, a single opcode is not sufficient for relocation
++   in dynamic linking. The linker generates a jump stub instead.  */
++	  aarch64_make_jump_stub(name, s->owner);
++	  return;
++	}
++#endif
++
+       if (pe_dll_extra_pe_debug)
+ 	printf ("creating runtime pseudo-reloc entry for %s (addend=%d)\n",
+ 		fixup_name, (int) addend);
