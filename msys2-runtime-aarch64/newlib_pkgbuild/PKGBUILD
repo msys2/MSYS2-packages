@@ -1,0 +1,608 @@
+# Maintainer: Windows on ARM Experiments
+_realname=msys2-runtime
+pkgbase=${_realname}
+# Collision-free cross pkgname: NEVER the host names
+# msys2-runtime / msys2-runtime-devel, which would let `pacman -U` clobber the
+# host x86_64 MSYS2 runtime on the build box. This is the stage-1 bootstrap
+# newlib; distinct from stage-2's cross-msysarm64-newlib so both can coexist.
+pkgname=cross-msysarm64-newlib-stage1
+pkgver=3.6.7
+pkgrel=9
+pkgdesc="Cygwin POSIX emulation engine for aarch64-pc-cygwin"
+arch=('x86_64')
+options=('!strip' '!buildflags')
+url="https://cygwin.com"
+license=('GPL')
+makedepends=(
+  "cross-msysarm64-gcc-stage1"        # provides: aarch64-pc-cygwin-gcc, libgcc.a, crtbegin/end.o
+  "cross-msysarm64-binutils"          # provides: aarch64-pc-cygwin-ld, ar, etc.
+  "cross-msysarm64-w32api-headers"    # provides: sysroot/include/w32api/*.h
+  "cross-msysarm64-runtime-devel"     # provides: sysroot/include/ (newlib + cygwin headers)
+  "mingw-w64-cross-mingwarm64-gcc"    # provides: aarch64-w64-mingw32-g++ for mingw helper
+  "mingw-w64-cross-mingwarm64-crt"    # provides: /opt/aarch64-w64-mingw32/lib/
+  "mingw-w64-cross-mingwarm64-zlib"   # provides: /opt/aarch64-w64-mingw32/lib/libz.a
+  "cocom"                             # provides: osfmk tool for mach interface generation
+  "git"
+  "autotools"
+)
+_upstream_commit=da84778cbc92590c1996c02c68c5a3d3c49e00af
+source=(
+  # Upstream msys2-runtime, pinned to the commit our AArch64 series is based on.
+  # Our changes are the woarm64-*.patch series below, generated from
+  # runtime-upstream-9-sep-nomsys with  git format-patch msys2-3.6.10..HEAD
+  "${_realname}::git+https://github.com/msys2/msys2-runtime#commit=${_upstream_commit}"
+  woarm64-0001-Cygwin-testsuite-Fix-compilation-for-arm64.patch
+  woarm64-0002-Cygwin-testsuite-More-fixes-for-compatibility-w.patch
+  woarm64-0003-newlib-libc-define-_ctype-for-AArch64-Cygwin.patch
+  woarm64-0004-Cygwin-configure-allow-configuring-winsup-for-A.patch
+  woarm64-0005-Cygwin-fix-compatibility-with-GCC-15.patch
+  woarm64-0006-Cygwin-fix-MALLOC_ALIGNMENT-already-defined-in-.patch
+  woarm64-0007-Cygwin-obtain-stack-pointer-on-AArch64.patch
+  woarm64-0008-Cygwin-obtain-stack-base-on-AArch64.patch
+  woarm64-0009-Cygwin-implement-spinlock-pause-for-AArch64.patch
+  woarm64-0010-Cygwin-implement-spinlock-pause-for-AArch64.patch
+  woarm64-0011-Cygwin-fix-syntax-error-in-cpu_relax.h-for-AArc.patch
+  woarm64-0012-Cygwin-stack-base-initialization-for-AArch64.patch
+  woarm64-0013-Cygwin-define-___CTOR_LIST__-and-___DTOR_LIST__.patch
+  woarm64-0014-Cygwin-Aarch64-optimize-pthread_wrapper-registe.patch
+  woarm64-0015-newlib-increase-jump-buffer-length-to-25-to-fit.patch
+  woarm64-0016-Cygwin-add-fastcwd-to-AArch64-build.patch
+  woarm64-0017-Cygwin-gentls_offsets-port-to-support-AArch64.patch
+  woarm64-0018-aarch64-Export-fe-enable-disable-get-except-on-.patch
+  woarm64-0019-Cygwin-define-OUTPUT_FORMAT-and-SEARCH_DIR-for-.patch
+  woarm64-0020-Cygwin-winchild-fix-missing-stdlib.h.patch
+  woarm64-0021-Cygwin-mkimport-port-to-support-AArch64.patch
+  woarm64-0022-Cygwin-profiler-port-to-AArch64.patch
+  woarm64-0023-Cygwin-dumper-port-to-AArch64.patch
+  woarm64-0024-Cygwin-add-dummy-implementation-of-_fe_nomask_e.patch
+  woarm64-0025-Cygwin-malloc_wrapper-port-to-AArch64.patch
+  woarm64-0026-Cygwin-signal-make-context-structures-registers.patch
+  woarm64-0027-Cygwin-gendef-stub-implementations-of-routines-.patch
+  woarm64-0028-newlib-libc-update-asmdefs.h-compatible-with-Cy.patch
+  woarm64-0029-Cygwin-cygcheck-port-to-AArch64.patch
+  woarm64-0030-newlib-add-dummy-implementations-of-fe-get-set-.patch
+  woarm64-0031-Cygwin-configure-add-possibility-to-ski.patch
+  woarm64-0032-newlib-libc-return-back-support-for-AAr.patch
+  woarm64-0033-Cygwin-mkimport-implement-AArch64-4GB-relocatio.patch
+  woarm64-0034-Cygwin-Check-if-gawk-is-available-in-gentls_off.patch
+  woarm64-0035-Cygwin-aarch64-Add-runtime-pseudo-relocation.patch
+  woarm64-0036-Cygwin-testsuite-fixes-for-compatibility-with-G.patch
+  woarm64-0037-Cygwin-_endian.h-Add-AArch64-implementations-fo.patch
+  woarm64-0038-Cygwin-Update-_endian.h-to-handle-unsupported-a.patch
+  woarm64-0039-Cygwin-gendef-add-ARM64-stub-for-fe-in-gendef.patch
+  woarm64-0040-Cygwin-gendef-add-_sigfe_maybe-for-TLS-initiali.patch
+  woarm64-0041-Cygwin-gendef-Implement-_sigfe-function-for-TLS.patch
+  woarm64-0042-Cygwin-gendef-Implement-_sigbe-function-for-TLS.patch
+  woarm64-0043-Cygwin-gendef-Implement-siglongjmp-for-AArch64.patch
+  woarm64-0044-Cygwin-gendef-Implement-sigsetjmp-for-AArch64.patch
+  woarm64-0045-Cygwin-configure-disable-High-Entropy-VA-64-bit.patch
+  woarm64-0046-Cygwin-hookapi.cc-Fix-some-handles-not-being-in.patch
+  woarm64-0047-Cygwin-gendef-restore-support-for-arch-specific.patch
+  woarm64-0048-remove-dll-name.patch
+  woarm64-0049-Cygwin-gendef-export-_alloca-only-on-x86_64.patch
+  woarm64-0050-Cygwin-signal-Implement-sigdelayed-assembly-fun.patch
+  woarm64-0051-Cygwin-gendef-Implement-stabilize_sig_stack-for.patch
+  woarm64-0052-Cygwin-gendef-Implement-setjmp-for-AArch64.patch
+  woarm64-0053-Cygwin-gendef-Implement-longjmp-for-AArch64.patch
+  woarm64-0054-Cygwin-signal-Fix-stabilize_sig_stack-setjmp-lo.patch
+  woarm64-0055-newlib-Disable-ld128-math-library-build-for-aar.patch
+  woarm64-0056-Cygwin-Add-ARM64-support-for-SEH-handler-symbol.patch
+  woarm64-0057-Add-arm64-support-for-exceptions.cc.patch
+  woarm64-0058-Cygwin-Implement-aarch64-support-in-ssp.c.patch
+  woarm64-0059-Cygwin-autoload-stub-assembly-implementation.patch
+  woarm64-0060-Cygwin-TODO-Workarounds-for-long-double-mathema.patch
+  woarm64-0061-Cygwin-TODO-cpuid-implement-for-AArch64.patch
+  woarm64-0062-Std-functions.patch
+  woarm64-0063-Cygwin-Add-AArch64-support-in-config.guess-dfp..patch
+  woarm64-0064-kernal32-workaround.patch
+  woarm64-0065-Add-conditionals-for-AArch64-and-update-MinGW-p.patch
+  woarm64-0066-Cygwin-Adapt-math-functions-to-use-64bit-long-d.patch
+  woarm64-0067-Comment-out-AddVectoredContinueHandler-in-dll_c.patch
+  woarm64-0068-Cygwin-SEH-Fix-crash-and-handle-second-unwind-p.patch
+  woarm64-0069-Cygwin-aarch64-Add-runtime-pseudo-relocation-Fi.patch
+  woarm64-0070-_build-_target.patch
+  woarm64-0071-ld-and-ld128.patch
+  woarm64-0072-newlib-force-disable-building-of-ld-and-ld128.patch
+  woarm64-0073-include-stat.h.patch
+  woarm64-0074-ADD-msys-target-in-newlib.patch
+  woarm64-0075-Workaround-at-cygwin-libc-minires-os-if.c.patch
+  woarm64-0076-Cygwin-Fix-SEH-and-signal-handling-on-AArch64.patch
+  woarm64-0077-ARM64-autoload-wsock_init-fix-msys-trip.patch
+  woarm64-0078-ci-arm64-add-ARM64-winsup-test-job-and-build-ru.patch
+  woarm64-0079-ci-add-unified-ARM64-toolchain-workflow-consume.patch
+  woarm64-0080-ci-vendor-msys2-woarm64-build-pthread-hacks-dro.patch
+  woarm64-0081-ci-arm64-wire-the-toolchain-pipeline-to-the-ext.patch
+  woarm64-0082-ci-repoint-remaining-actions-to-public-upstream.patch
+  woarm64-0083-ci-toolchain-surface-per-package-build-logs-on-.patch
+  woarm64-0084-configure-regenerate-with-the-msys-target-case.patch
+  woarm64-0085-console-helper-arm64-build-the-MinGW-ho.patch
+  woarm64-0086-testsuite-ltp-skip-access01-access05-subtests-u.patch
+  woarm64-0087-Cygwin-restore-the-Windows-DNS-resolver-backend.patch
+  woarm64-0088-Revert-Cygwin-fix-compatibility-with-GCC-15.patch
+  woarm64-0089-Cygwin-testsuite-install-the-test-runtime-under-test.patch
+  woarm64-0090-fixup-Move-root-to-usr.-Change-sorting-mount-points..patch
+  woarm64-0091-fixup-Move-root-to-usr.-Change-sorting-mount-points..patch
+  woarm64-0092-fixup-Move-root-to-usr.-Change-sorting-mount-points..patch
+  woarm64-0093-.gitattributes-enforce-Unix-line-endings-in-.sh-scri.patch
+  woarm64-0094-ci-run-Cygwin-s-testsuite-on-the-MSYS2-runtime.patch
+  woarm64-0095-fixup-ci-run-Cygwin-s-testsuite-on-the-MSYS2-runtime.patch
+  woarm64-0096-fixup-ci-run-Cygwin-s-testsuite-on-the-MSYS2-runtime.patch
+  woarm64-0097-Cygwin-testsuite-XFAIL-permission-tests-that-fail-un.patch
+  woarm64-0098-Cygwin-testsuite-XFAIL-symlink-tests-that-need-non-n.patch
+  woarm64-0099-fixup-ci-run-Cygwin-s-testsuite-on-the-MSYS2-runtime.patch
+  woarm64-0100-Cygwin-add-an-AArch64-implementation-of-fast_cwd.patch
+  woarm64-0101-Cygwin-uname-report-aarch64-for-PROCESSOR_ARCHITECTU.patch
+  woarm64-0102-Cygwin-exit_process-narrow-the-stale-TODO-to-the-mis.patch
+  woarm64-0103-build-getprocaddrarm64-build-when-the-aarch64-MinGW-.patch
+  woarm64-0104-Cygwin-configure-add-possibility-to-skip-build-of-cy.patch
+  woarm64-0105-console-helper-arm64-build-the-MinGW-host-tools-the-.patch
+  woarm64-0106-strace-arm64-add-crash-reporter-to-localize-the-ARM6.patch
+  woarm64-0107-Cygwin-fix-argv-corruption-from-overlapping-strcpy-i.patch
+  woarm64-0108-Revert-include-stat.h.patch
+  woarm64-0109-Cygwin-testsuite-Fix-compatibility-with-GCC-15.patch
+)
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP')
+
+_target=aarch64-pc-cygwin
+_build=x86_64-pc-msys
+
+prepare() {
+
+  # The AArch64 port, as a patch series on top of upstream msys2-runtime.
+  # (Previously these were commits on runtime-upstream-9-sep-nomsys.)
+  # Each patch keeps its original commit message and subject.
+  for _p in "${srcdir}"/woarm64-*.patch; do
+    msg2 "Applying $(basename "${_p}")"
+    ( cd "${srcdir}/${_realname}" && git apply --whitespace=fix "${_p}" ) || return 1
+  done
+  # -------------------------------------------------------------------------
+  # BOOTSTRAP STUBS
+  # We only stub things that ARE what we're building (circular deps).
+  # Everything else must come from real dependency packages.
+  #
+  # Compare with Cygwin's build-cygwin.sh stage1:
+  #   - Headers already installed by install-cygwin-headers.sh
+  #   - Win32 libs already installed by build-mingw-crt.sh --enable-w32api
+  #   - GCC stage1 already built → libgcc.a, crtbegin/end.o available
+  #   - Only crt0.o and libcygwin.a are stubbed (they ARE the build output)
+  # -------------------------------------------------------------------------
+
+  echo "" > /tmp/empty.c
+
+  # --- Stub: crt0.o ---
+  # Circular dep: crt0.o is produced by msys2-runtime, needed to link anything.
+  # We provide a minimal stub that satisfies the linker during bootstrap.
+  # The -c flag means compile-only (no link), so no circular dep here.
+  cat > /tmp/crt0_stub.c << 'CEOF'
+/* Bootstrap stub for crt0.o — replaced after msys2-runtime is built */
+void __main(void) {}
+void _start(void) {}
+void mainCRTStartup(void) {}
+void wmainCRTStartup(void) {}
+CEOF
+  /usr/bin/aarch64-pc-cygwin-gcc -c /tmp/crt0_stub.c \
+    -o /usr/aarch64-pc-cygwin/lib/crt0.o
+  echo "crt0.o stub installed"
+
+  # --- default-manifest.o: NOT stubbed ---
+  # The old stub was an empty object written into the live sysroot and never into
+  # ${pkgdir}, so it shipped in no package while masking the gap in-tree. The real
+  # object comes from cross-msysarm64-windows-default-manifest; re-stubbing here
+  # would clobber it with the empty one.
+
+  # --- Stub: libcygwin.a ---
+  # Circular dep: libcygwin.a IS what we're building.
+  # Empty stub to allow linking during stage1 bootstrap.
+  /usr/bin/aarch64-pc-cygwin-gcc -c /tmp/empty.c -o /tmp/empty.o
+  /usr/bin/aarch64-pc-cygwin-ar rcs \
+    /usr/aarch64-pc-cygwin/lib/libcygwin.a /tmp/empty.o
+  echo "libcygwin.a empty stub installed"
+
+  # --- Real: crtbegin.o / crtend.o ---
+  # These come from libgcc (cross-msysarm64-gcc-stage1), NOT stubs.
+  # Resolve gcc's private dir from the compiler rather than hardcoding a version:
+  # the installed dir tracks the compiler (15.0.1 -> 17.0.0 when the toolchain
+  # moved to upstream GCC), and a stale literal makes every cp below fail with
+  # "No such file or directory" before anything is built.
+  _gccdir="$(dirname "$(aarch64-pc-cygwin-gcc -print-libgcc-file-name)")"
+  cp "${_gccdir}"/crtbegin.o \
+    /usr/aarch64-pc-cygwin/lib/crtbegin.o
+  cp "${_gccdir}"/crtend.o \
+    /usr/aarch64-pc-cygwin/lib/crtend.o
+  echo "crtbegin.o / crtend.o from libgcc installed"
+
+  # --- Real: libgcc.a ---
+  # From cross-msysarm64-gcc-stage1. Copy to sysroot/lib for linker discovery.
+  cp "${_gccdir}"/libgcc.a \
+    /usr/aarch64-pc-cygwin/lib/libgcc.a
+  echo "libgcc.a from gcc-stage1 installed"
+
+  sed -i '1s/^/#pragma GCC optimize("O0")\n/' \
+    ${srcdir}/${_realname}/winsup/cygwin/devices.cc
+  echo "devices.cc ICE workaround applied"
+
+  # mkdir -p ${srcdir}/${_realname}/winsup/cygwin/aarch64
+  # cp ${startdir}/winsup/cygwin/aarch64/fastcwd.cc \
+  #    ${srcdir}/${_realname}/winsup/cygwin/aarch64/fastcwd.cc
+  # echo "aarch64/fastcwd.cc injected from startdir"
+
+  # --- Real: Win32 import libs ---
+  # These come from cross-msysarm64-crt (--enable-w32api build).
+  # They should already be in /usr/aarch64-pc-cygwin/lib/w32api/ with symlinks.
+  # Just verify here — do NOT stub these, stubs will break the link.
+  # echo "--- Verifying Win32 import libs from cross-msysarm64-crt ---"
+  # _ok=1
+  # for lib in kernel32 user32 advapi32 shell32 ntdll; do
+  #   if [ -f /usr/aarch64-pc-cygwin/lib/lib${lib}.a ]; then
+  #     echo "  lib${lib}.a OK"
+  #   else
+  #     echo "  ERROR: lib${lib}.a MISSING — cross-msysarm64-crt not installed correctly"
+  #     _ok=0
+  #   fi
+  # done
+  # if [ $_ok -ne 1 ]; then
+  #   echo "FATAL: Missing Win32 import libs. Install cross-msysarm64-crt first."
+  #   exit 1
+  # fi
+
+  # --- libstdc++ header shadow removal ---
+  # libstdc++ wrappers for C headers shadow newlib headers in the sysroot.
+  # Remove them so winsup sees newlib's versions, not glibc-oriented wrappers.
+  for f in fenv.h stdlib.h alloca.h unistd.h; do
+    _wrapper="${_gccdir}/include/c++/${f}"
+    if [ -f "${_wrapper}" ] && [ ! -f "${_wrapper}.bak" ]; then
+      mv "${_wrapper}" "${_wrapper}.bak"
+      echo "Moved shadowing header: ${f}"
+    fi
+  done
+
+  # --- Headers: newlib + cygwin ---
+  # These should already be in sysroot from cross-msysarm64-runtime-devel.
+  # Refresh them from source to ensure they're the aarch64-patched versions.
+  echo "--- Installing headers from source ---"
+
+  # # newlib first (base layer)
+  # cp -rf ${srcdir}/${_realname}/newlib/libc/include/. \
+  #   /usr/aarch64-pc-cygwin/sys-include/
+  cp -rf ${srcdir}/${_realname}/newlib/libc/include/* \
+    /usr/aarch64-pc-cygwin/include/
+
+  # # cygwin headers second (override layer)
+  # cp -rf ${srcdir}/${_realname}/winsup/cygwin/include/. \
+  #   /usr/aarch64-pc-cygwin/sys-include/
+  # mkdir -p /usr/aarch64-pc-cygwin/include/cygwin
+
+  cp -r ${srcdir}/${_realname}/winsup/cygwin/include/* \
+        /usr/aarch64-pc-cygwin/include/
+
+  # --- Verify aarch64-specific patches are present ---
+  echo "--- Header patch verification ---"
+  grep -c "__aarch64__" \
+    /usr/aarch64-pc-cygwin/sys-include/cygwin/signal.h && \
+    echo "signal.h aarch64 patch OK" || \
+    echo "ERROR: signal.h missing aarch64 — check mcw/aarch64-winsup-sync branch"
+
+  grep -c "aarch64" \
+    ${srcdir}/${_realname}/winsup/cygwin/local_includes/register.h && \
+    echo "register.h aarch64 patch OK" || \
+    echo "ERROR: register.h missing aarch64 — check source branch"
+  # cp -rf ${srcdir}/${_realname}/winsup/cygwin/include/* \
+  #       ${srcdir}/${_realname}/newlib/libc/include/
+  # cp -rf src/msys2-runtime/winsup/cygwin/include/* src/msys2-runtime/newlib/libc/include/
+  # --- Run autogen from TOP-LEVEL ---
+  # We need top-level autogen because we're using top-level configure.
+  # winsup/autogen.sh only regenerates winsup/configure — we need the
+  # top-level configure to be regenerated too if it's stale.
+  cd ${srcdir}/${_realname}/winsup
+  ./autogen.sh || autoreconf -fvi || true
+}
+
+build() {
+  export ac_cv_header_rpc_xdr_h=yes
+  export ac_cv_func_xdrmem_create=yes
+  export newlib_cv_xdr_dir=yes
+  # winsup/configure.ac probes libbfd's deps with AC_CHECK_LIB (link tests) for
+  # sframe_decode/-lsframe and ZSTD_isError/-lzstd. This tree also runs
+  # AC_NO_EXECUTABLES (cross bootstrap: target binaries can't run on the build
+  # host), and a link test after AC_NO_EXECUTABLES is a hard configure error
+  # ("link tests are not allowed after AC_NO_EXECUTABLES"). Pre-seed the cache
+  # so configure skips both link tests — we don't link sframe/zstd (the dumper
+  # is --disable-dumper). Mirrors the stage-2 recipes.
+  export ac_cv_lib_sframe_sframe_decode=no
+  export ac_cv_lib_zstd_ZSTD_isError=no
+  unset CFLAGS CXXFLAGS LDFLAGS CPPFLAGS
+  # Do NOT export CC/CXX here — let configure use native gcc for host tools
+  # and CC_FOR_TARGET for building target libraries (newlib, winsup)
+  export CONFIG_SITE=/dev/null
+  export CCACHE_DISABLE=1
+  export PATH="/opt/bin:/usr/local/bin:/usr/bin:/bin"
+
+  which aarch64-w64-mingw32-g++ || \
+    echo "WARNING: mingw aarch64 g++ not found"
+
+  mkdir -p ${srcdir}/runtime-build
+  cd ${srcdir}/runtime-build
+  # Derived, not hardcoded - see the crtbegin note in prepare().
+  GCC_BASE="$(dirname "$(aarch64-pc-cygwin-gcc -print-libgcc-file-name)")"
+  GCC_VER="$(basename "${GCC_BASE}")"
+
+  # Sysroot-style include (merged newlib + cygwin)
+  SYSROOT_INC=/usr/aarch64-pc-cygwin/include
+
+export CFLAGS="\
+-nostdinc \
+-isystem ${GCC_BASE}/include \
+-isystem ${GCC_BASE}/include-fixed \
+-isystem ${SYSROOT_INC} \
+-isystem ${SYSROOT_INC}/w32api \
+-D_MB_CAPABLE=1 \
+"
+  # -isystem ${SYSROOT_INC}/w32api: the Win32 API headers live under
+  # include/w32api/, and this -nostdinc build must add that dir explicitly since
+  # the gcc spec's automatic -idirafter is suppressed under -nostdinc. Lets a bare
+  # <windows.h> resolve while winsup's <w32api/ntstatus.h> resolves via
+  # ${SYSROOT_INC} above.
+  
+  export CPPFLAGS="$CFLAGS"
+  export CFLAGS_FOR_TARGET="$CFLAGS"
+  export CPPFLAGS_FOR_TARGET="$CFLAGS"
+
+  # winsup's C++ TUs include libstdc++ headers such as <new>, and
+  # -nostdinc/-nostdinc++ drops the default C++ search, so add the target
+  # libstdc++ include dirs explicitly (mirrors the stage-2 runtime recipe).
+  export CXXFLAGS="\
+-nostdinc \
+-nostdinc++ \
+-isystem ${GCC_BASE}/include \
+-isystem ${GCC_BASE}/include-fixed \
+-isystem ${GCC_BASE}/include/c++ \
+-isystem ${GCC_BASE}/include/c++/backward \
+-isystem ${SYSROOT_INC} \
+-isystem ${SYSROOT_INC}/w32api \
+-D_MB_CAPABLE=1 \
+"
+  export CXXFLAGS_FOR_TARGET="$CXXFLAGS"
+
+  # GCC_VER=15.0.1
+  # GCC_BASE=/usr/lib/gcc/aarch64-pc-cygwin/${GCC_VER}
+
+  # SYSROOT_INC=/home/HCKTest/headers/aarch64-pc-cygwin/include
+
+  # export CFLAGS="\
+  # -nostdinc \
+  # -isystem ${SYSROOT_INC} \
+  # -isystem ${GCC_BASE}/include \
+  # -isystem ${GCC_BASE}/include-fixed \
+  # "
+
+  # export CPPFLAGS="$CFLAGS"
+  # export CFLAGS_FOR_TARGET="$CFLAGS"
+  # export CPPFLAGS_FOR_TARGET="$CFLAGS"
+  CXXFLAGS_FOR_TARGET="${CXXFLAGS} -Wno-error -Wno-narrowing" \
+  ${srcdir}/${_realname}/configure \
+    --prefix=/usr \
+    --build=${_build} \
+    --host=${_build} \
+    --target=${_target} \
+    --with-cross-bootstrap \
+    --disable-libgloss \
+    --enable-shared \
+    --enable-static \
+    --disable-doc \
+    --disable-dumper \
+    --disable-cygserver \
+    --disable-utils \
+    --without-mingw-progs \
+    --without-headers \
+    CC="gcc" \
+    CXX="g++" \
+    AR="ar" \
+    RANLIB="ranlib" \
+    NM="nm" \
+    OBJDUMP="objdump" \
+    STRIP="strip" \
+    CC_FOR_TARGET="aarch64-pc-cygwin-gcc" \
+    CXX_FOR_TARGET="aarch64-pc-cygwin-g++" \
+    GCC_FOR_TARGET="aarch64-pc-cygwin-gcc" \
+    AR_FOR_TARGET="aarch64-pc-cygwin-ar" \
+    RANLIB_FOR_TARGET="aarch64-pc-cygwin-ranlib" \
+    NM_FOR_TARGET="aarch64-pc-cygwin-nm" \
+    OBJCOPY_FOR_TARGET="aarch64-pc-cygwin-objcopy" \
+    OBJDUMP_FOR_TARGET="aarch64-pc-cygwin-objdump" \
+    DLLTOOL_FOR_TARGET="aarch64-pc-cygwin-dlltool" \
+    WINDRES_FOR_TARGET="aarch64-pc-cygwin-windres" \
+    WINDMC_FOR_TARGET="aarch64-pc-cygwin-windmc" \
+    LD_FOR_TARGET="aarch64-pc-cygwin-ld" \
+    AS_FOR_TARGET="aarch64-pc-cygwin-as" \
+    STRIP_FOR_TARGET="aarch64-pc-cygwin-strip" \
+    MINGW_CXX=aarch64-w64-mingw32-g++ \
+    MINGW_CC=aarch64-w64-mingw32-gcc  \
+    CFLAGS="-O2 -pipe -D_MB_CAPABLE=1" \
+    CXXFLAGS="${CXXFLAGS} -O2 -pipe"
+
+      # 🔍 MB_CAPABLE CHECK STARTS HERE
+  echo "Checking _MB_CAPABLE..."
+
+  cat > mb_check.c << 'EOF'
+#ifndef _MB_CAPABLE
+#error "_MB_CAPABLE is NOT defined"
+#endif
+int main() { return 0; }
+EOF
+
+  # Compile only: the gate asks a preprocessor question, and linking would need
+  # -lmsys-2.0 (injected by the driver's LIB_SPEC) -- which is this build's own
+  # output, not yet in the sysroot.
+  ${CC} ${CFLAGS} -c mb_check.c -o mb_check.o || {
+    echo "❌ MB_CAPABLE check failed"
+    exit 1
+  }
+
+  echo "✅ MB_CAPABLE is defined"
+  # 🔍 MB_CAPABLE CHECK ENDS HERE  
+  # --------------------------------------------------------------------------
+  # Build ONLY what this recipe delivers: the newlib target libs.
+  #
+  # This is the first runtime step, and its job is to produce the archives
+  # (libc.a / libm.a / libg.a) that package() ships into the sysroot and that
+  # msys2-runtime-aarch64 copies in as ${srcdir}/newlib before building winsup.
+  #
+  # A bare top-level `make` builds `all`, which reaches past newlib into
+  # all-target-winsup -- compiling the whole ~700-object winsup tree and linking
+  # msys-2.0.dll. That work is redundant: the next step configures winsup
+  # separately (winsup/configure, not the top-level one) with its own flags and
+  # its own granular make, and never reads an artifact out of this tree's
+  # winsup/ directory.
+  #
+  # `all-target-newlib` is the exact goal. The top-level Makefile makes winsup
+  # depend on newlib, never the reverse, so asking for newlib alone is
+  # well-defined and cannot silently skip anything newlib needs.
+  # --------------------------------------------------------------------------
+  make -j$(nproc) all-target-newlib
+
+  # Fail here rather than letting a downstream step trip over a missing archive:
+  # package() and the next build step both hard-require these three.
+  _nlb="${srcdir}/runtime-build/${_target}/newlib"
+  for _l in libc.a libm.a libg.a; do
+    [ -f "${_nlb}/${_l}" ] || {
+      echo "FATAL: newlib ${_l} missing at ${_nlb} after 'make all-target-newlib'" >&2
+      exit 1
+    }
+  done
+  echo "newlib target libs built: libc.a libm.a libg.a"
+}
+
+
+
+
+package() {
+  # Cross package: ship the newlib C runtime libs into the SYSROOT
+  # (/usr/aarch64-pc-cygwin/lib) ONLY — these are aarch64 objects consumed by the
+  # aarch64-pc-cygwin cross compiler. `make DESTDIR install` is deliberately NOT
+  # used: configure ran with --prefix=/usr, so a DESTDIR install would stage
+  # into host /usr/{bin,lib,include} and a `pacman -U` of a host-named package
+  # would overwrite the build box's own x86_64 MSYS2 runtime.
+  # Mirrors stage-2 cross-msysarm64-newlib's package().
+  pkgdesc="newlib C runtime libs for the aarch64-pc-cygwin cross toolchain (stage 1)"
+  install -d "${pkgdir}/usr/aarch64-pc-cygwin/lib"
+  local _l _s
+  for _l in libc.a libm.a libg.a; do
+    _s="$(find "${srcdir}/runtime-build" "${srcdir}" -name "${_l}" -path '*newlib*' 2>/dev/null | head -1)"
+    [ -z "${_s}" ] && _s="$(find "${srcdir}/runtime-build" "${srcdir}" -name "${_l}" 2>/dev/null | head -1)"
+    if [ -n "${_s}" ]; then
+      install -m644 "${_s}" "${pkgdir}/usr/aarch64-pc-cygwin/lib/${_l}"
+      echo "packaged ${_l} <- ${_s}"
+    else
+      echo "WARNING: newlib ${_l} not found in build tree"
+    fi
+  done
+}

@@ -1,0 +1,68 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:07 +0530
+Subject: [PATCH 031/109] Cygwin: configure: add possibility to
+ skip build of cygserver and utils
+
+(cherry picked from commit b6e108502ccacac687852a01dd5c321710b69f17)
+---
+ winsup/Makefile.am  | 20 ++++++++++++++++++--
+ winsup/configure.ac | 12 ++++++++++++
+ 2 files changed, 30 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/Makefile.am b/winsup/Makefile.am
+index 9efdd4cb1..877c4e6b9 100644
+--- a/winsup/Makefile.am
++++ b/winsup/Makefile.am
+@@ -14,10 +14,26 @@ cygdoc_DATA = \
+ 	CYGWIN_LICENSE \
+ 	COPYING
+ 
+-SUBDIRS = cygwin cygserver utils testsuite
++SUBDIRS = cygwin testsuite
++
++if BUILD_CYGSERVER
++SUBDIRS += cygserver
++endif
++
++if BUILD_UTILS
++SUBDIRS += utils
++endif
+ 
+ if BUILD_DOC
+ SUBDIRS += doc
+ endif
+ 
+-cygserver utils testsuite: cygwin
++testsuite: cygwin
++
++if BUILD_CYGSERVER
++cygserver: cygwin
++endif
++
++if BUILD_UTILS
++utils: cygwin
++endif
+diff --git a/winsup/configure.ac b/winsup/configure.ac
+index cae3695ce..923da96fd 100644
+--- a/winsup/configure.ac
++++ b/winsup/configure.ac
+@@ -117,6 +117,18 @@ AC_ARG_ENABLE(doc,
+ 	      enable_doc=yes)
+ AM_CONDITIONAL(BUILD_DOC, [test $enable_doc != "no"])
+ 
++# Disabling build of cygserver and utils is needed for zero-bootstrap build of
++# stage 1 Cygwin toolchain where the linker is not able to produce executables
++# yet.
++AC_ARG_ENABLE(cygserver,
++	      [AS_HELP_STRING([--disable-cygserver], [do not build cygserver])],,
++	      enable_cygserver=yes)
++AM_CONDITIONAL(BUILD_CYGSERVER, [test $enable_cygserver != "no"])
++AC_ARG_ENABLE(utils,
++	      [AS_HELP_STRING([--disable-utils], [do not build utils])],,
++	      enable_utils=yes)
++AM_CONDITIONAL(BUILD_UTILS, [test $enable_utils != "no"])
++
+ AC_CHECK_PROGS([DOCBOOK2XTEXI], [docbook2x-texi db2x_docbook2texi])
+ if test -z "$DOCBOOK2XTEXI" ; then
+     if test "x$enable_doc" != "xno"; then

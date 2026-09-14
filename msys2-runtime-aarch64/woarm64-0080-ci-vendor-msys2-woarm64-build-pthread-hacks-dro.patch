@@ -1,0 +1,200 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:15:08 +0530
+Subject: [PATCH 080/109] ci: vendor msys2-woarm64-build pthread hacks;
+ drop driver-repo clone
+
+(cherry picked from commit 74fc97d18f9a538822e313f2b29e9c2fb8f47b58)
+---
+ .github/arm64/README.md                       | 10 +++++---
+ .github/arm64/build-msys2-woarm64-all.sh      | 16 ++++--------
+ .../scripts/pthread-headers-hack-after.sh     | 10 ++++++++
+ .../scripts/pthread-headers-hack-before.sh    | 11 ++++++++
+ .github/workflows/toolchain.yml               | 25 ++++---------------
+ 5 files changed, 37 insertions(+), 35 deletions(-)
+ create mode 100755 .github/arm64/scripts/pthread-headers-hack-after.sh
+ create mode 100755 .github/arm64/scripts/pthread-headers-hack-before.sh
+
+diff --git a/.github/arm64/README.md b/.github/arm64/README.md
+index cbd0df281..035184f43 100644
+--- a/.github/arm64/README.md
++++ b/.github/arm64/README.md
+@@ -17,12 +17,14 @@ This repo drives both halves of the ARM64 pipeline:
+ These external dependencies are intentionally left pointing at their current
+ sources; provision them in this repo's settings first:
+ 
+-1. **`CI_TOKEN` secret** — a PAT with read access to the private sources the
++1. **`CI_TOKEN` secret** — a PAT with read access to the PKGBUILD source the
+    toolchain build clones:
+    - `qcom-eng-691/MSYS2-packages` (PKGBUILDs, branch `ci/cross-runtime-packaging`)
+-   - `qcom-eng-691/msys2-woarm64-build` (build driver, branch `native-mingw-toolchain-2`)
+-   Without it the private clones fail. The release download itself uses the job
+-   token (same repo), so `CI_TOKEN` is only needed for the cross-repo clones.
++   Without it the private clone fails. The release download itself uses the job
++   token (same repo), so `CI_TOKEN` is only needed for that clone. The old
++   `msys2-woarm64-build` driver is no longer cloned — the only pieces the build
++   used from it (the pthread-header hack scripts) are vendored under
++   `.github/arm64/scripts/`.
+ 2. **`qcom-eng-691/setup-msys2`** action — the org fork used by every job. Ensure
+    this repo can resolve it (make it accessible, or vendor/replace the reference).
+ 3. **Runner** — jobs target `windows-11-arm` (GitHub-hosted ARM64). Confirm the
+diff --git a/.github/arm64/build-msys2-woarm64-all.sh b/.github/arm64/build-msys2-woarm64-all.sh
+index 70d3d6afb..320d96951 100755
+--- a/.github/arm64/build-msys2-woarm64-all.sh
++++ b/.github/arm64/build-msys2-woarm64-all.sh
+@@ -45,7 +45,9 @@ set -uo pipefail
+ #------------------------------- config ---------------------------------------
+ ROOT="${ROOT:-/c/msys2-arm64-build}"
+ PKGS="$ROOT/MSYS2-packages"
+-DRIVER="$ROOT/msys2-woarm64-build"
++# The pthread-header hack scripts (the only files this build needs from the old
++# msys2-woarm64-build driver) are now vendored alongside this script.
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ LOGDIR="${LOGDIR:-$HOME/woarm64-logs}"
+ FORCE="${FORCE:-0}"
+ NO_CLONE="${NO_CLONE:-0}"
+@@ -58,8 +60,6 @@ STOP_AFTER="${STOP_AFTER:-0}"
+ 
+ PKGS_REPO="${PKGS_REPO:-https://github.com/Multicorewareinc/MSYS2-packages.git}"
+ PKGS_BRANCH="${PKGS_BRANCH:-woarm64}"
+-DRIVER_REPO="${DRIVER_REPO:-https://github.com/Windows-on-ARM-Experiments/msys2-woarm64-build.git}"
+-DRIVER_BRANCH="${DRIVER_BRANCH:-native-mingw-toolchain-2}"
+ 
+ MINGW_LIBDIR="/opt/aarch64-w64-mingw32/lib"
+ MSYS_SYSROOT="/usr/aarch64-pc-msys"
+@@ -211,12 +211,6 @@ if step 1 "preflight"; then
+     log "cloning MSYS2-packages ($PKGS_BRANCH)..."
+     git clone "$PKGS_REPO" --branch "$PKGS_BRANCH" "$PKGS" || die "clone of MSYS2-packages failed"
+   fi
+-  if [[ ! -d "$DRIVER" ]]; then
+-    [[ "$NO_CLONE" == "1" ]] && die "msys2-woarm64-build missing at $DRIVER and NO_CLONE=1"
+-    log "cloning msys2-woarm64-build ($DRIVER_BRANCH)..."
+-    git clone "$DRIVER_REPO" "$DRIVER" || die "clone of msys2-woarm64-build failed"
+-    ( cd "$DRIVER" && git checkout "$DRIVER_BRANCH" ) || warn "could not checkout $DRIVER_BRANCH (using default)"
+-  fi
+ 
+   # cross PKGBUILDs hardcode $HOME/MSYS2-packages -> make it resolve to $PKGS
+   HP="$HOME/MSYS2-packages"
+@@ -249,8 +243,8 @@ if step 6 "mingw: crt (+pthread hack)"; then
+   elif [[ "$FORCE" == "0" ]] && have_built "$D"; then
+     log "crt already built -- installing prebuilt"; install_built "$D" || die "crt install failed"; ok "crt installed from prebuilt"
+   else
+-    BEFORE="$DRIVER/.github/scripts/pthread-headers-hack-before.sh"
+-    AFTER="$DRIVER/.github/scripts/pthread-headers-hack-after.sh"
++    BEFORE="$SCRIPT_DIR/scripts/pthread-headers-hack-before.sh"
++    AFTER="$SCRIPT_DIR/scripts/pthread-headers-hack-after.sh"
+     [[ -f "$BEFORE" ]] || die "missing $BEFORE"
+     "$BEFORE" 2>&1 | tee "$LOGDIR/06-pthread-before.log" || die "pthread before-hack failed"
+     [[ -f /opt/aarch64-w64-mingw32/include/pthread_compat.h ]] || die "pthread_compat.h not staged"
+diff --git a/.github/arm64/scripts/pthread-headers-hack-after.sh b/.github/arm64/scripts/pthread-headers-hack-after.sh
+new file mode 100755
+index 000000000..b7afec5f2
+--- /dev/null
++++ b/.github/arm64/scripts/pthread-headers-hack-after.sh
+@@ -0,0 +1,10 @@
++#!/bin/bash
++# Undo pthread-headers-hack-before.sh: remove the staged headers and the
++# temporary mingw64 winpthreads. Vendored from msys2-woarm64-build.
++set -eo pipefail
++
++pacman -R --noconfirm mingw-w64-cross-mingw64-winpthreads || true
++rm -rf /opt/aarch64-w64-mingw32/include/pthread_signal.h
++rm -rf /opt/aarch64-w64-mingw32/include/pthread_unistd.h
++rm -rf /opt/aarch64-w64-mingw32/include/pthread_time.h
++rm -rf /opt/aarch64-w64-mingw32/include/pthread_compat.h
+diff --git a/.github/arm64/scripts/pthread-headers-hack-before.sh b/.github/arm64/scripts/pthread-headers-hack-before.sh
+new file mode 100755
+index 000000000..96f0048b8
+--- /dev/null
++++ b/.github/arm64/scripts/pthread-headers-hack-before.sh
+@@ -0,0 +1,11 @@
++#!/bin/bash
++# Stage the mingw64 winpthreads headers into the aarch64 sysroot so the ARM64
++# crt builds. Vendored from msys2-woarm64-build (.github/scripts) so this repo
++# needs no external driver clone.
++set -eo pipefail
++
++pacman -S --noconfirm mingw-w64-cross-mingw64-winpthreads
++cp /opt/x86_64-w64-mingw32/include/pthread_signal.h /opt/aarch64-w64-mingw32/include/
++cp /opt/x86_64-w64-mingw32/include/pthread_unistd.h /opt/aarch64-w64-mingw32/include/
++cp /opt/x86_64-w64-mingw32/include/pthread_time.h /opt/aarch64-w64-mingw32/include/
++cp /opt/x86_64-w64-mingw32/include/pthread_compat.h /opt/aarch64-w64-mingw32/include/
+diff --git a/.github/workflows/toolchain.yml b/.github/workflows/toolchain.yml
+index cdec38f19..cac1f28c9 100644
+--- a/.github/workflows/toolchain.yml
++++ b/.github/workflows/toolchain.yml
+@@ -46,8 +46,8 @@ jobs:
+   # The inter-phase caches used to be keyed by github.run_id (unique per dispatch),
+   # so every re-dispatch was a full miss and rebuilt the ~6h toolchain from scratch.
+   # Instead, hash ONLY the inputs that affect steps 1-13: the 12 toolchain package
+-  # dirs in MSYS2-packages, the build-driver scripts (.github/arm64 here), and the
+-  # msys2-woarm64-build driver tip. The runtime PKGBUILDs (built in steps 14-16,
++  # dirs in MSYS2-packages and the build-driver scripts (.github/arm64 here,
++  # including the vendored pthread hacks). The runtime PKGBUILDs (built in steps 14-16,
+   # never cached) are deliberately EXCLUDED so editing them does not invalidate the
+   # toolchain cache. Same hash H => re-dispatch restores 1-13 and fast-installs them
+   # (pacman -U, minutes); a toolchain change flips H and triggers a correct rebuild.
+@@ -65,13 +65,6 @@ jobs:
+           ref: ${{ github.event.inputs.pkgs_branch || 'ci/cross-runtime-packaging' }}
+           path: _pkgs
+           token: ${{ secrets.CI_TOKEN || github.token }}
+-      - name: Checkout msys2-woarm64-build (toolchain build driver)
+-        uses: actions/checkout@v4
+-        with:
+-          repository: qcom-eng-691/msys2-woarm64-build
+-          ref: native-mingw-toolchain-2
+-          path: _driver
+-          token: ${{ secrets.CI_TOKEN || github.token }}
+       - name: Compute content-addressed toolchain key
+         id: h
+         run: |
+@@ -107,10 +100,8 @@ jobs:
+               # per-dir tree SHA: changes iff anything under that PKGBUILD dir changes
+               git -C _pkgs rev-parse "HEAD:$d"
+             done
+-            # build-driver scripts in THIS repo (step logic, pthread hacks invoked here)
++            # build-driver scripts in THIS repo (step logic + vendored pthread hacks)
+             git rev-parse "HEAD:.github/arm64"
+-            # external driver repo tip (msys2-woarm64-build @ native-mingw-toolchain-2)
+-            git -C _driver rev-parse HEAD
+           } > /tmp/tc-inputs.txt
+           echo "----- toolchain cache inputs -----"
+           cat /tmp/tc-inputs.txt
+@@ -127,8 +118,6 @@ jobs:
+       ROOT: /c/msys2-arm64-build
+       PKGS_REPO: https://github.com/qcom-eng-691/MSYS2-packages.git
+       PKGS_BRANCH: ${{ github.event.inputs.pkgs_branch || 'ci/cross-runtime-packaging' }}
+-      DRIVER_REPO: https://github.com/qcom-eng-691/msys2-woarm64-build.git
+-      DRIVER_BRANCH: native-mingw-toolchain-2
+       # Never block on a git credential prompt (private org clones) — fail fast.
+       GIT_TERMINAL_PROMPT: "0"
+     steps:
+@@ -170,8 +159,8 @@ jobs:
+         shell: msys2 {0}
+         env:
+           LOGDIR: ${{ github.workspace }}/woarm64-logs
+-          # PAT with org read access for the private MSYS2-packages /
+-          # msys2-woarm64-build clones; falls back to the (repo-scoped) job token.
++          # PAT with org read access for the private MSYS2-packages clone;
++          # falls back to the (repo-scoped) job token.
+           GH_TOKEN: ${{ secrets.CI_TOKEN || github.token }}
+           STOP_AFTER: "9"   # stop after the mingw chain; arm64-msys does the rest
+         run: |
+@@ -207,8 +196,6 @@ jobs:
+       ROOT: /c/msys2-arm64-build
+       PKGS_REPO: https://github.com/qcom-eng-691/MSYS2-packages.git
+       PKGS_BRANCH: ${{ github.event.inputs.pkgs_branch || 'ci/cross-runtime-packaging' }}
+-      DRIVER_REPO: https://github.com/qcom-eng-691/msys2-woarm64-build.git
+-      DRIVER_BRANCH: native-mingw-toolchain-2
+       # Never block on a git credential prompt (private org clones) — fail fast.
+       GIT_TERMINAL_PROMPT: "0"
+     steps:
+@@ -293,8 +280,6 @@ jobs:
+       ROOT: /c/msys2-arm64-build
+       PKGS_REPO: https://github.com/qcom-eng-691/MSYS2-packages.git
+       PKGS_BRANCH: ${{ github.event.inputs.pkgs_branch || 'ci/cross-runtime-packaging' }}
+-      DRIVER_REPO: https://github.com/qcom-eng-691/msys2-woarm64-build.git
+-      DRIVER_BRANCH: native-mingw-toolchain-2
+       # Never block on a git credential prompt (private org clones) — fail fast.
+       GIT_TERMINAL_PROMPT: "0"
+     steps:
