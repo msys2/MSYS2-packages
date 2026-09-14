@@ -1,0 +1,411 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:15:05 +0530
+Subject: [PATCH 078/109] ci(arm64): add ARM64 winsup test job and
+ build/runtime fixes
+
+(cherry picked from commit 6b8e278155b399c7f5f448638eacb52c3534bf2e)
+---
+ .github/workflows/build.yaml |  26 ++-
+ .github/workflows/cygwin.yml | 306 ++++++++++++++++++++++++++++++++++-
+ 2 files changed, 324 insertions(+), 8 deletions(-)
+
+diff --git a/.github/workflows/build.yaml b/.github/workflows/build.yaml
+index 4e219c3ce..adf632f76 100644
+--- a/.github/workflows/build.yaml
++++ b/.github/workflows/build.yaml
+@@ -14,7 +14,8 @@ jobs:
+         uses: actions/checkout@v7
+ 
+       - name: setup-msys2
+-        uses: msys2/setup-msys2@v2
++        # org fork of msys2/setup-msys2 (enterprise policy blocks external actions)
++        uses: qcom-eng-691/setup-msys2@v2
+         with:
+           msystem: MSYS
+           update: true
+@@ -24,7 +25,18 @@ jobs:
+         shell: msys2 {0}
+         run: |
+           (cd winsup && ./autogen.sh)
+-          ./configure --disable-dependency-tracking --with-msys2-runtime-commit="$GITHUB_SHA"
++          # Build the MSYS2 runtime as the x86_64-pc-msys triple, NOT
++          # x86_64-pc-cygwin. This fork renamed the upstream `*-*-cygwin*` cases
++          # to `*-*-msys*` in both the top-level configure (which adds
++          # target-winsup/target-newlib to target_configdirs) and
++          # newlib/configure.host (posix_dir, xdr_dir, _MB_CAPABLE). Configuring
++          # as -cygwin matches neither, so the build produces no runtime.
++          # --disable-utils: skip cygcheck/strace (mingw-built, trip -Werror on
++          # upstream warnings); only msys-2.0.dll is needed for the test artifact.
++          ./configure --disable-dependency-tracking --with-msys2-runtime-commit="$GITHUB_SHA" \
++            --build=x86_64-pc-msys --host=x86_64-pc-msys \
++            --disable-utils \
++            CFLAGS_FOR_TARGET="-g -O2 -D_MB_CAPABLE=1"
+           make -j8
+ 
+       - name: Install
+@@ -44,7 +56,8 @@ jobs:
+       matrix: ${{ steps.matrix.outputs.matrix }}
+     steps:
+       - id: matrix
+-        uses: msys2/msys2-tests/gha-matrix-gen@main
++        # org fork of msys2/msys2-tests (enterprise policy blocks external actions)
++        uses: qcom-eng-691/msys2-tests/gha-matrix-gen@main
+ 
+   msys2-tests:
+     needs: [build, generate-msys2-tests-matrix]
+@@ -61,7 +74,8 @@ jobs:
+       FC: ${{ matrix.fc }}
+     steps:
+       - id: msys2
+-        uses: msys2/setup-msys2@v2
++        # org fork of msys2/setup-msys2 (enterprise policy blocks external actions)
++        uses: qcom-eng-691/setup-msys2@v2
+         with:
+           msystem: ${{ matrix.msystem }}
+           update: true
+@@ -91,5 +105,5 @@ jobs:
+         run: uname -a
+ 
+       - name: Run tests
+-        uses: msys2/msys2-tests@main
+-
++        # org fork of msys2/msys2-tests (enterprise policy blocks external actions)
++        uses: qcom-eng-691/msys2-tests@main
+diff --git a/.github/workflows/cygwin.yml b/.github/workflows/cygwin.yml
+index 998dc0157..7f12f2cef 100644
+--- a/.github/workflows/cygwin.yml
++++ b/.github/workflows/cygwin.yml
+@@ -1,9 +1,27 @@
+ name: cygwin
+ 
+-on: workflow_dispatch
++# Upstream x86_64-pc-cygwin build/test (fedora-build + windows-build) PLUS the
++# ARM64 winsup testsuite (windows-build-arm64). The upstream cygwin jobs do not
++# build on this ARM64-port branch's newlib, so they are manual-dispatch only.
++# windows-build-arm64 runs per push/PR: it downloads the prebuilt aarch64-pc-msys
++# toolchain published by the qcom-eng-691/msys2-cross-toolchain repo, builds the
++# MSYS2 runtime from the commit under test, and runs `make check` — the ARM64
++# counterpart of windows-build, working toward msys2/msys2-runtime#341.
++
++on:
++  push:
++  pull_request:
++  workflow_dispatch:
++    inputs:
++      arm64_runner:
++        description: "Runner label for windows-build-arm64 (windows-11-arm hosted, or a self-hosted ARM64 label)"
++        type: string
++        default: windows-11-arm
+ 
+ jobs:
+   fedora-build:
++    # x86_64-pc-cygwin: does not build on this ARM64-port branch — dispatch only.
++    if: github.event_name == 'workflow_dispatch'
+     runs-on: ubuntu-latest
+     container: fedora:latest
+     strategy:
+@@ -85,6 +103,8 @@ jobs:
+       if: env.HAS_SSH_KEY == 'true'
+ 
+   windows-build:
++    # x86_64-pc-cygwin: does not build on this ARM64-port branch — dispatch only.
++    if: github.event_name == 'workflow_dispatch'
+     runs-on: windows-latest
+     strategy:
+       fail-fast: false
+@@ -109,7 +129,8 @@ jobs:
+ 
+     # install cygwin and build tools
+     - name: Install Cygwin
+-      uses: cygwin/cygwin-install-action@master
++      # org fork of cygwin/cygwin-install-action (enterprise policy blocks external actions)
++      uses: qcom-eng-691/cygwin-install-action@master
+       with:
+         platform: ${{ matrix.pkgarch }}
+         packages: >-
+@@ -179,3 +200,284 @@ jobs:
+     # workaround problems with actions/checkout post-run step using cygwin git
+     - name: Avoid actions/checkout post-run step using Cygwin git
+       run: bash -c 'rm /usr/bin/git.exe'
++
++  windows-build-arm64:
++    # aarch64-pc-msys: the ARM64 counterpart of windows-build. Installs the
++    # prebuilt cross toolchain published as the toolchain-arm64-latest release on
++    # qcom-eng-691/msys2-cross-toolchain, builds the MSYS2 runtime from THIS
++    # commit, then runs the winsup testsuite. SKIPS GREEN if the release does not
++    # exist yet (run the Toolchain (ARM64) workflow there once to publish it).
++    # Non-gating: publishes a baseline; never fails the build on test failures.
++    runs-on: ${{ github.event.inputs.arm64_runner || 'windows-11-arm' }}
++    timeout-minutes: 150
++    name: Windows native arm64 (aarch64-pc-msys)
++    env:
++      ROOT: /c/msys2-arm64-build
++      GIT_TERMINAL_PROMPT: "0"
++    steps:
++    - run: git config --global core.autocrlf input
++    - uses: actions/checkout@v4
++      with:
++        fetch-depth: 0
++
++    - name: Setup MSYS2 (x86_64, emulated host)
++      # org fork of msys2/setup-msys2 (enterprise policy blocks external actions)
++      uses: qcom-eng-691/setup-msys2@v2
++      with:
++        msystem: MSYS
++        update: false        # ARM64 runner image: MSYS2 keys are "unknown trust"
++    # Two-pass update (what setup-msys2 does internally): pass 1 populates the
++    # keyring + upgrades the core and self-terminates the shell (so it is
++    # continue-on-error); pass 2 then completes cleanly.
++    - name: Trust keyring + core update (pass 1, self-terminates)
++      shell: msys2 {0}
++      continue-on-error: true
++      run: |
++        pacman-key --init
++        pacman-key --populate msys2
++        pacman -Syuu --noconfirm
++    - name: Update MSYS2 (pass 2)
++      shell: msys2 {0}
++      run: pacman -Syuu --noconfirm
++    - name: Install build + test prerequisites
++      shell: msys2 {0}
++      run: pacman -S --noconfirm --needed base-devel patch git autotools gcc make diffutils perl gperf lndir cocom busybox dejagnu
++
++    - name: Download published toolchain
++      # gh is not on PATH in the msys2 shell — download here (pwsh), pacman next.
++      # The release lives on a DIFFERENT repo (msys2-cross-toolchain), so this
++      # needs a token that can read it: CI_TOKEN (PAT with org read). Skip green
++      # if the release is missing so a PR is not blocked before it is published.
++      id: dl
++      shell: pwsh
++      env:
++        GH_TOKEN: ${{ secrets.CI_TOKEN || github.token }}
++      run: |
++        New-Item -ItemType Directory -Force C:\pkgs | Out-Null
++        gh release download toolchain-arm64-latest --repo qcom-eng-691/msys2-cross-toolchain --dir C:\pkgs --pattern '*.pkg.tar.zst'
++        if ($LASTEXITCODE -eq 0) {
++          "found=true" >> $env:GITHUB_OUTPUT
++        } else {
++          "found=false" >> $env:GITHUB_OUTPUT
++          "## ARM64 build+test skipped`nNo ``toolchain-arm64-latest`` release on qcom-eng-691/msys2-cross-toolchain yet — run its **Toolchain (ARM64)** workflow once to publish it." >> $env:GITHUB_STEP_SUMMARY
++          Write-Host "::warning::toolchain-arm64-latest release not found; skipping ARM64 build+test until it is published."
++        }
++        # gh's non-zero exit (release missing) would otherwise become the step's
++        # exit via the pwsh wrapper's trailing `exit $LASTEXITCODE`; handled above.
++        exit 0
++
++    - name: Install published toolchain
++      if: steps.dl.outputs.found == 'true'
++      shell: msys2 {0}
++      run: |
++        set -eo pipefail
++        # The published release bundles several bootstrap stages
++        # (cross-msysarm64-newlib, -newlib-stage1, -runtime) that each carry the
++        # newlib archives (libc.a/libg.a/libm.a) under /usr/aarch64-pc-msys/lib,
++        # so a plain -U aborts with "exists in both" file conflicts. They are
++        # equivalent newlib archives, so let the last-installed package win.
++        # Scope --overwrite to the cross sysroot ONLY -- never a bare '*' -- so
++        # the emulated host x86_64 MSYS2 runtime can never be clobbered.
++        pacman -U --noconfirm --needed --overwrite '/usr/aarch64-pc-msys/*' /c/pkgs/*.pkg.tar.zst
++        aarch64-pc-msys-gcc --version | head -1
++
++    - name: Build runtime from THIS commit
++      if: steps.dl.outputs.found == 'true'
++      shell: msys2 {0}
++      env:
++        GH_TOKEN: ${{ secrets.CI_TOKEN || github.token }}
++      run: |
++        set -eo pipefail
++        # authenticate the private org clone (git is installed by now)
++        git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
++        git config --global --add safe.directory '*'
++        mkdir -p "$ROOT"
++        git clone https://github.com/qcom-eng-691/MSYS2-packages.git --branch ci/cross-runtime-packaging "$ROOT/MSYS2-packages"
++        HP="$HOME/MSYS2-packages"; rm -rf "$HP"; MSYS=winsymlinks:nativestrict ln -s "$ROOT/MSYS2-packages" "$HP"
++        RT2="$ROOT/MSYS2-packages/msys2-runtime-aarch64-stage-2"
++        # Build the runtime from the exact commit under test (git+file:// source override).
++        WS_URI="git+file://$(cygpath -m "$GITHUB_WORKSPACE")#commit=${GITHUB_SHA}"
++        for pb in "$RT2/PKGBUILD" "$RT2/newlib-pkgbuild/PKGBUILD"; do
++          sed -i "s|git+https://github.com/Multicorewareinc/msys2-runtime#branch=mcw/aarch64-port|${WS_URI}|" "$pb"
++        done
++        # build-msys.sh has makepkg clone the runtime source (git+file://) into
++        # newlib-pkgbuild/src/msys2-runtime. Under x86 emulation that checkout
++        # intermittently doesn't fully populate, so STEP 1 dies with
++        # "cd: src/msys2-runtime/newlib: No such file or directory". Retry the
++        # whole build up to 3x, wiping the stale src/ trees first so makepkg
++        # re-clones from scratch. The DLL-presence check below is the success gate.
++        for attempt in 1 2 3; do
++          if (( attempt > 1 )); then
++            echo "::warning::runtime build attempt $((attempt-1)) failed (likely incomplete source clone); wiping src/ and retrying"
++            rm -rf "$RT2"/src "$RT2"/newlib-pkgbuild/src "$RT2"/newlib-pkgbuild/msys2-runtime 2>/dev/null || true
++            sleep 5
++          fi
++          # '|| true' so a failed attempt does not abort the step under set -e
++          # (and so build-msys.sh's benign non-zero exit from the disabled
++          # package_*() is ignored); the DLL-presence check is the real gate.
++          ( cd "$RT2" && bash build-msys.sh ) 2>&1 | tee /c/winsup-build.log || true
++          if find "$RT2" -name msys-2.0.dll | grep -q .; then break; fi
++        done
++        find "$RT2" -name msys-2.0.dll | grep -q . || { echo "::error::no msys-2.0.dll produced after 3 attempts"; exit 1; }
++        # build-msys.sh stubs the compiler's bits/c++config.h to compile winsup;
++        # restore the real one so the toolchain can still compile normal C++.
++        REAL=/usr/lib/gcc/aarch64-pc-msys/15/include/c++/aarch64-pc-msys/bits/c++config.h
++        STUB=/usr/lib/gcc/aarch64-pc-msys/15/include/c++/bits/c++config.h
++        if [ -f "$REAL" ] && grep -q _GLIBCXX_USE_BUILTIN_TRAIT "$REAL"; then cp -f "$REAL" "$STUB"; fi
++        # crt0 workaround (owned/documented by msys2-cross-toolchain's
++        # apply-crt0-fix.sh): the stage-2 package_*() is disabled, so the real
++        # crt0.o (calls msys_crt0) never overwrites the bootstrap STUB crt0.o
++        # (mainCRTStartup == nop;ret) in the sysroot — with the stub every exe
++        # hangs at startup. Stage the real crt0.o/gcrt0.o the build produced.
++        CRT_SRC="$RT2/src/runtime-build/cygwin"
++        for o in crt0.o gcrt0.o; do
++          [ -f "$CRT_SRC/$o" ] && cp -f "$CRT_SRC/$o" /usr/aarch64-pc-msys/lib/"$o"
++        done
++        if aarch64-pc-msys-nm /usr/aarch64-pc-msys/lib/crt0.o 2>/dev/null | grep -q 'U msys_crt0'; then
++          echo "crt0 OK: sysroot crt0.o is the real one (U msys_crt0)"
++        else
++          echo "::warning::sysroot crt0.o does not reference msys_crt0 — exes may hang at startup"
++        fi
++        # Stage the runtime package + build log into the workspace for upload
++        # (upload-artifact@v4 rejects files outside GITHUB_WORKSPACE).
++        mkdir -p "$GITHUB_WORKSPACE/_artifacts"
++        cp -f "$RT2"/*.pkg.tar.zst "$GITHUB_WORKSPACE/_artifacts/" 2>/dev/null || true
++        cp -f /c/winsup-build.log  "$GITHUB_WORKSPACE/_artifacts/" 2>/dev/null || true
++
++    - name: Upload runtime package
++      uses: actions/upload-artifact@v4
++      if: ${{ steps.dl.outputs.found == 'true' && !cancelled() }}
++      with:
++        name: msys2-runtime-arm64
++        path: |
++          _artifacts/*.pkg.tar.zst
++          _artifacts/winsup-build.log
++        if-no-files-found: ignore
++
++    - name: Test (winsup testsuite)
++      # Non-gating. The ARM64 prep below is the counterpart of the x64 job's
++      # inline `cygserver + make check`; the extra steps exist because the
++      # runtime is freshly built (not installed from prebuilt cygwin packages):
++      #  - relink cygserver: build-msys.sh links it against the bootstrap STUB
++      #    crt0.o so it HANGS at startup; relink against the real crt0.o so the
++      #    SysV-IPC tests (msgtest/semtest/shmtest) work
++      #  - cygrun.exe (mingw-built launcher) + cygrun.sh tweaks for MSYS2
++      #  - devdsp -O0 stub (exit 77 = SKIP): devdsp.c wedges the GCC-15 optimizer
++      #  - drop cygload (not ported to AArch64) + map testinst/tmp -> tmp
++      #  - stage the native ARM64 msys-2.0.dll where the tests load it
++      if: ${{ steps.dl.outputs.found == 'true' && !cancelled() }}
++      shell: msys2 {0}
++      run: |
++        set -uo pipefail
++        export MSYS="winsymlinks:sys${MSYS:+ $MSYS}"   # real symlinks for the symlink/readlink/lstat tests
++        RT2="$ROOT/MSYS2-packages/msys2-runtime-aarch64-stage-2"
++        RB="$(find "$RT2/src" -type d -name runtime-build 2>/dev/null | head -1)"
++        [ -z "$RB" ] && { echo "::error::runtime-build dir not found"; exit 0; }
++        TS="$RB/testsuite"
++        SRC="$(dirname "$(find "$RT2/src" -path '*/winsup/testsuite/cygrun.c' 2>/dev/null | head -1)")"
++        [ -f "$TS/Makefile" ] || { echo "::error::testsuite not configured"; exit 0; }
++        # Prepend testinst/bin (which gets the NATIVE ARM64 msys-2.0.dll staged in
++        # step 4) to PATH. This serves TWO purposes that BOTH matter for SysV IPC:
++        #  (a) cygserver.exe is an ARM64 binary; without the ARM64 runtime on PATH
++        #      it would resolve the host x64 msys-2.0.dll from /usr/bin and exit
++        #      immediately (an ARM64 process cannot load an x64 DLL).
++        #  (b) cygserver AND every test client MUST load msys-2.0.dll from the SAME
++        #      path. The SysV-IPC NT namespace is keyed by installation_key, a hash
++        #      of the runtime's FULL DLL path (winsup/cygwin/mm/cygheap.cc
++        #      init_installation_root -> shared.cc get_shared_parent_dir). If the
++        #      daemon and the clients load the DLL from different directories they
++        #      land in DIFFERENT namespaces, so msgget/semget/shmget all fail even
++        #      though cygserver is "up". cygserver.exe's own directory has NO
++        #      msys-2.0.dll, so with testinst/bin on PATH it loads the SAME DLL the
++        #      clients do. (Do NOT copy the DLL next to cygserver.exe — Windows
++        #      searches the exe dir before PATH, which would re-introduce the split
++        #      namespace and break msgtest/semtest/shmtest.)
++        export runtime_root="$TS/testinst/bin"
++        export PATH="$runtime_root:$PATH"
++        # busybox for the LTP tests
++        dst=/usr/libexec/busybox/bin; mkdir -p "$dst"
++        [ -f "$dst/busybox.exe" ] || cp -f "$(command -v busybox)" "$dst/busybox.exe" 2>/dev/null || true
++        # 1. libcygwin.a -> libmsys-2.0.a so -lcygwin resolves
++        ( cd "$RB/cygwin" && { [ -e libcygwin.a ] || ln -s libmsys-2.0.a libcygwin.a; } ) || true
++        # 2. cygrun.exe via the mingw cross-gcc (Win32-only launcher, no runtime dep)
++        mkdir -p "$TS/mingw"
++        /opt/bin/aarch64-w64-mingw32-gcc "$SRC/cygrun.c" -o "$TS/mingw/cygrun.exe" -lkernel32 || echo "::warning::cygrun.exe build failed"
++        # 3. cygrun.sh: MSYS2 has no cygdrop; the dll is msys-2.0.dll
++        sed -i -e 's|cygdrop $cygrun $exe|$cygrun $exe|' -e 's|cygwin1\.dll|msys-2.0.dll|' "$SRC/cygrun.sh"
++        # 4. stage the native ARM64 DLL where tests load it
++        mkdir -p "$TS/testinst/bin"
++        DLL="$(find "$RB/cygwin" -maxdepth 1 \( -name new-msys-2.0.dll -o -name msys-2.0.dll \) 2>/dev/null | head -1)"
++        [ -n "$DLL" ] && cp -f "$DLL" "$TS/testinst/bin/msys-2.0.dll"
++        # 4b. Ensure the crt0.o gcc actually LINKS is the REAL one (calls msys_crt0),
++        #     not a bootstrap STUB (mainCRTStartup == `nop; ret`). Staging crt0.o into
++        #     the sysroot is NOT enough: gcc's startfile search hits its own libdir and
++        #     any -B build dir FIRST, so the cygserver relink below (and the test exes)
++        #     can still pick up a stub crt0 — which makes cygserver HANG at startup and
++        #     the SysV-IPC tests (msgtest/semtest/shmtest) fail. Overwrite crt0.o at
++        #     every path gcc could resolve it from with the verified-real build-tree one.
++        REAL_CRT0="$RB/cygwin/crt0.o"
++        if [ -f "$REAL_CRT0" ] && aarch64-pc-msys-nm "$REAL_CRT0" 2>/dev/null | grep -q 'U msys_crt0'; then
++          real_abs="$(cd "$(dirname "$REAL_CRT0")" && pwd)/crt0.o"
++          targets="$(aarch64-pc-msys-gcc -print-file-name=crt0.o) /usr/aarch64-pc-msys/lib/crt0.o"
++          targets="$targets $(find "$RT2/src" -name crt0.o 2>/dev/null)"
++          for t in $targets; do
++            [ -f "$t" ] || continue
++            [ "$(cd "$(dirname "$t")" && pwd)/$(basename "$t")" = "$real_abs" ] && continue
++            if ! aarch64-pc-msys-nm "$t" 2>/dev/null | grep -q 'U msys_crt0'; then
++              cp -f "$REAL_CRT0" "$t" && echo "crt0-fix: replaced STUB crt0.o at $t"
++            fi
++          done
++          gcc_crt0="$(aarch64-pc-msys-gcc -print-file-name=crt0.o)"
++          aarch64-pc-msys-nm "$gcc_crt0" 2>/dev/null | grep -q 'U msys_crt0' \
++            && echo "crt0-fix: OK, gcc links the REAL crt0.o ($gcc_crt0)" \
++            || echo "::warning::gcc-linked crt0.o still looks like a STUB ($gcc_crt0)"
++        else
++          echo "::warning::real crt0.o ($REAL_CRT0) missing or not real — cygserver/tests may hang"
++        fi
++        # 5. RELINK cygserver against the real crt0.o (else it hangs at startup)
++        ( cd "$RB/cygserver" && rm -f cygserver.exe && make OBJEXT=o ) 2>&1 | tail -3 || echo "::warning::cygserver relink failed"
++        # Make sure NO msys-2.0.dll sits next to cygserver.exe: Windows searches the
++        # exe dir before PATH, so a DLL here would put cygserver in a different IPC
++        # namespace than the clients (which load it from testinst/bin) and break
++        # msgtest/semtest/shmtest. Guards against a re-run tree where it was staged.
++        rm -f "$RB/cygserver/msys-2.0.dll"
++        # 6. start cygserver for the SysV IPC tests. It loads msys-2.0.dll from
++        #    testinst/bin (on PATH) — the SAME path the test clients use — so the
++        #    daemon and clients share one IPC namespace (see the PATH note above).
++        ps -W 2>/dev/null | grep -iq '[c]ygserver' || ( "$RB/cygserver/cygserver.exe" -d -e > /c/cygserver.log 2>&1 & )
++        sleep 2
++        if ps -W 2>/dev/null | grep -iq '[c]ygserver'; then
++          echo "cygserver up"
++        else
++          echo "::warning::cygserver not running (SysV IPC tests will fail)"
++          echo "----- /c/cygserver.log -----"; cat /c/cygserver.log 2>/dev/null || echo "(no cygserver.log)"
++        fi
++        # 7. devdsp: replace the GCC-15-wedging source with a trivial exit-77 (=SKIP) stub
++        [ -f "$SRC/winsup.api/devdsp.c" ] && printf 'int main(void){return 77;}\n' > "$SRC/winsup.api/devdsp.c"
++        # 8+9. drop cygload (unported) + devdsp -lwinmm + map testinst/tmp -> tmp, in the GENERATED Makefile
++        sed -i 's/^\(.*cygload.*\)$/# \1/'             "$TS/Makefile"
++        sed -i '/winsup_api_devdsp_LDADD/s/-lwinmm //' "$TS/Makefile"
++        sed -i 's#testinst/tmp#tmp#g'                  "$TS/Makefile"
++        mkdir -p "$TS/tmp"
++        # defeat automake maintainer-mode regen so the edits above survive make check
++        touch "$SRC/Makefile.am" "$SRC/Makefile.in" "$RB/config.status" "$TS/Makefile" 2>/dev/null || true
++        # run the suite (bounded so a wedged test can't exceed the job cap; partial *.trs still emitted)
++        ( cd "$TS" && timeout --kill-after=30s 60m make check AM_COLOR_TESTS=always ) || echo "::warning::make check returned non-zero (non-gating)"
++        # validity gate: sample-fail.c is `return 1` (listed XFAIL). If it is XPASS,
++        # exit codes are not propagating (startup/crt0 defect) and every PASS is
++        # false — surface it loudly instead of publishing a meaningless green.
++        SF="$(find "$TS" -name 'sample-fail.trs' 2>/dev/null | head -1)"
++        if [ -n "$SF" ] && grep -q '^:test-result: XPASS' "$SF"; then
++          echo "::error::INVALID: sample-fail canary (return 1) is XPASS — test exes are not returning their exit code; PASS counts are false."
++        fi
++        # stage logs into the workspace for upload
++        mkdir -p "$GITHUB_WORKSPACE/_artifacts/testlogs"
++        find "$RB/testsuite" \( -name '*.log' -o -name '*.trs' \) -exec cp -f {} "$GITHUB_WORKSPACE/_artifacts/testlogs/" \; 2>/dev/null || true
++
++    - name: Upload test logs
++      uses: actions/upload-artifact@v4
++      if: ${{ steps.dl.outputs.found == 'true' && !cancelled() }}
++      with:
++        name: testlogs-arm64
++        path: _artifacts/testlogs/**
++        if-no-files-found: ignore

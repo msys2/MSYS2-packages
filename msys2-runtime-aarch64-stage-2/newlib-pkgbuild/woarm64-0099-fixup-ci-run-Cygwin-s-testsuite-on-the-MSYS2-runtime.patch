@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Fri, 31 Jul 2026 00:57:06 +0530
+Subject: [PATCH 099/109] fixup! ci: run Cygwin's testsuite on the MSYS2
+ runtime
+
+Wait for cygserver to be running before invoking "make check".
+
+cygserver is started in the background, and the test harness immediately
+launches the suite with -j8, so the System V IPC tests (semtest, shmtest,
+msgtest) could run before cygserver had finished initializing and fail
+intermittently. Poll for the cygserver process (bounded to 60s) and add a
+short settle delay before starting the tests so their outcome no longer
+depends on winning a startup race.
+
+(cherry picked from commit 960c58cefe0080064ad5bfdfe09754a53bf6c9ab)
+(cherry picked from commit 51182856b756f91a283fcdf7fa3da0724bd2ab24)
+---
+ .github/workflows/build.yaml | 26 ++++++++++++++++----------
+ 1 file changed, 16 insertions(+), 10 deletions(-)
+
+diff --git a/.github/workflows/build.yaml b/.github/workflows/build.yaml
+index 43b006487..0ad354190 100644
+--- a/.github/workflows/build.yaml
++++ b/.github/workflows/build.yaml
+@@ -142,16 +142,22 @@ jobs:
+ 
+       - name: Run the test suite of Cygwin
+         shell: msys2 {0}
+-        run: >-
+-          export PATH=/usr/bin:$WINDIR/system32 &&
+-          export MAKEFLAGS=-j8 &&
+-          export MSYS=winsymlinks:nativestrict &&
+-          WINSUP=$PWD/x86_64-pc-cygwin/winsup &&
+-          cp $WINSUP/cygserver/cygserver.exe $WINSUP/testsuite/testinst/usr/bin/ &&
+-          (cd $WINSUP/testsuite/testinst/usr/bin &&
+-           PATH=$PWD:$WINDIR/system32
+-           "$WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe" -command '& .\cygserver.exe' &) &&
+-          (cd $WINSUP && make check AM_COLOR_TESTS=always)
++        run: |
++          export PATH=/usr/bin:$WINDIR/system32
++          export MAKEFLAGS=-j8
++          export MSYS=winsymlinks:nativestrict
++          WINSUP=$PWD/x86_64-pc-cygwin/winsup
++          cp $WINSUP/cygserver/cygserver.exe $WINSUP/testsuite/testinst/usr/bin/
++          ( cd $WINSUP/testsuite/testinst/usr/bin && PATH=$PWD:$WINDIR/system32 "$WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe" -command '& .\cygserver.exe' & )
++          # cygserver is launched asynchronously; wait for it to come up before
++          # running the SysV IPC tests (semtest/shmtest/msgtest) that depend on
++          # it, otherwise they race its startup and fail intermittently.
++          for i in $(seq 1 60); do
++            "$WINDIR/System32/tasklist.exe" //FI "IMAGENAME eq cygserver.exe" 2>/dev/null | grep -qi cygserver && break
++            sleep 1
++          done
++          sleep 5
++          cd $WINSUP && make check AM_COLOR_TESTS=always
+ 
+       - name: Upload testsuite logs
+         if: always()
