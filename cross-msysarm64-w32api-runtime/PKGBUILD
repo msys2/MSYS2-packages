@@ -1,0 +1,125 @@
+# Maintainer: Windows on ARM Experiments
+#
+# Win32 API import libs for the aarch64-pc-cygwin cross sysroot.
+#
+# This is the aarch64 counterpart of the x64 `msys2-w32api-runtime` package:
+# both build mingw-w64-crt with `--enable-w32api` and ship the resulting Win32
+# API import libraries (libkernel32/user32/advapi32/shell32/ntdll.a, ...) so
+# the runtime/toolchain can link against the Windows API.
+#
+# x64 installs them into the host sysroot (/usr/lib); the cross build installs
+# them into the cross sysroot (/usr/aarch64-pc-cygwin/lib) so the host x86_64
+# MSYS2 is never touched. Source + arm64 configure args mirror the existing
+# `mingw-w64-cross-mingwarm64-crt` package (same Windows-on-ARM fork, built the
+# same way), so the libs are identical to the ones previously hand-copied from
+# ${HOME}/.../mingw-w64-cross-mingwarm64-crt — this just packages them properly.
+
+pkgname="cross-msysarm64-w32api-runtime"
+pkgver=13.0.0
+pkgrel=2
+pkgdesc="Win32 API import libs for aarch64-pc-cygwin sysroot (WoA)"
+arch=('x86_64')
+url="https://www.mingw-w64.org/"
+license=('custom')
+options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
+depends=("cross-msysarm64-w32api-headers")
+makedepends=(
+  "git"
+  "autotools"
+  "mingw-w64-cross-mingwarm64-gcc"       # provides aarch64-w64-mingw32-gcc
+  "mingw-w64-cross-mingwarm64-binutils"  # provides aarch64-w64-mingw32-{ar,ld,...}
+  "mingw-w64-cross-mingwarm64-headers"   # mingw w32api headers in /opt/aarch64-w64-mingw32/include
+)
+# Official mingw-w64, pinned to the commit the Windows-on-ARM fork branched
+# from; the fork's AArch64 commits ride on top as an explicit patch series.
+_upstream_commit=5751d69c85816cfd42418ac3c668b4c96566f047
+source=(
+  "mingw-w64::git+https://github.com/mingw-w64/mingw-w64.git#commit=${_upstream_commit}"
+  woarm64-0001-Enable-cross-compiler-gcc-aarch64-pe-build.patch
+  woarm64-0002-Fix-formatting-of-floats-for-aarch64.patch
+  woarm64-0003-Fix-typo-in-winnt.h-2.patch
+  woarm64-0004-Fix-undefined-reference-to-_environ-for-libarm64-3.patch
+  woarm64-0005-Fix-reading-double-from-a-string-on-aarch64-4.patch
+  woarm64-0006-Fix-251fc7e1c3bd3509e291c1862ee745fce8550360-to-fix-.patch
+  woarm64-0007-Add-aarch64-pc-cygwin-target.patch
+  woarm64-0008-Fix-relocations-in-dynamic-linking-9.patch
+)
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP')
+
+_target=aarch64-pc-cygwin
+_mingw_host=aarch64-w64-mingw32
+_sysroot=/usr/${_target}
+
+prepare() {
+  cd "${srcdir}/mingw-w64"
+  # The Windows-on-ARM-Experiments/mingw-woarm64 commits on top of
+  # ${_upstream_commit}, applied here instead of cloning that fork's branch:
+  # a branch moves, so the build was not reproducible and the delta from
+  # upstream mingw-w64 was invisible without cloning the fork and diffing it.
+  local _p
+  for _p in "${srcdir}"/woarm64-*.patch; do
+    msg2 "Applying $(basename "${_p}")"
+    git apply "${_p}" || return 1
+  done
+
+  cd "${srcdir}/mingw-w64/mingw-w64-crt"
+  autoreconf -vfi
+}
+
+build() {
+  mkdir -p "${srcdir}/w32api-build"
+  cd "${srcdir}/w32api-build"
+
+  unset CC CXX
+
+  # --with-sysroot defaults to --prefix, which puts "-I${_sysroot}/include"
+  # ahead of the compiler's own headers.  That was harmless while the cygwin
+  # sysroot was still empty (this package runs before the runtime headers
+  # land), but once /usr/aarch64-pc-cygwin/include is populated its <string.h>
+  # shadows the mingw one and the build dies on `implicit declaration of
+  # _wcsicmp` in /opt/${_mingw_host}/include/stralign.h.  The CRT is compiled
+  # by aarch64-w64-mingw32-gcc and must see that toolchain's headers, not the
+  # cygwin target ones, so name its sysroot explicitly and make this build
+  # order-independent.
+  #
+  # Mirror mingw-w64-cross-mingwarm64-crt: aarch64 host, ucrt default, arm64-only
+  # libs, plus --enable-w32api (the x64 msys2-w32api-runtime switch) so the Win32
+  # API import libs are produced. Install prefix is the cross sysroot.
+  "${srcdir}/mingw-w64/mingw-w64-crt/configure" \
+    --prefix=${_sysroot} \
+    --build=${CHOST} \
+    --host=${_mingw_host} \
+    --with-sysroot=/opt/${_mingw_host} \
+    --enable-w32api \
+    --with-default-msvcrt=ucrt \
+    --disable-lib32 --disable-lib64 --disable-libarm32 --enable-libarm64 \
+    --disable-dependency-tracking
+
+  make
+}
+
+package() {
+  cd "${srcdir}/w32api-build"
+
+  # Lands the import libs (and the mingw CRT objects, as x64 does) under
+  # ${pkgdir}/usr/aarch64-pc-cygwin/lib — the cross-sysroot analogue of x64's /usr/lib.
+  make DESTDIR=${pkgdir} install
+
+  echo "--- cross-msysarm64-w32api-runtime check ---"
+  local _l
+  for _l in libkernel32.a libuser32.a libadvapi32.a libshell32.a libntdll.a; do
+    if [ -f "${pkgdir}${_sysroot}/lib/${_l}" ]; then
+      echo "  ${_l} OK"
+    else
+      echo "  WARNING: ${_l} MISSING from ${_sysroot}/lib"
+    fi
+  done
+}
