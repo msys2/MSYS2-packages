@@ -5,7 +5,7 @@ pkgver=1.19
 pkgrel=1
 pkgdesc='Libiconv is a conversion library'
 groups=('libraries')
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 makedepends=('autotools' 'gcc' 'gettext-devel')
 url='https://www.gnu.org/software/libiconv/'
 msys2_repository_url='https://git.savannah.gnu.org/gitweb/?p=libiconv.git'
@@ -44,12 +44,63 @@ prepare() {
 
   cp -f srcm4/* m4/
 
+  for _m4 in build-to-host.m4 codeset.m4 fcntl-o.m4 host-cpu-c-abi.m4 \
+             lib-ld.m4 relocatable.m4 relocatable-lib.m4 visibility.m4; do
+    cp -f "srcm4/${_m4}" "libcharset/m4/${_m4}"
+  done
+
   (cd libcharset && autoreconf -fiv)
   autoreconf -fiv
+
+  # gl_RELOCATABLE going unexpanded is only a runtime warning, so a broken
+  # macro dir would otherwise cost a full build to notice. Fail loudly here.
+  if grep -q '^gl_RELOCATABLE$' libcharset/configure; then
+    echo "==> ERROR: libcharset/configure still has an unexpanded gl_RELOCATABLE" >&2
+    echo "    -- libcharset/m4 is missing macros from srcm4 (see #42)." >&2
+    return 1
+  fi
+
+  # libtool 2.6.2-1 lost every `msys*` case label, so $host_os=msys matches no
+  # Windows branch and libtool silently refuses shared libraries. ltmain.sh is
+  # patched too (its `-lc` skip list lost *-*-msys*).
+  source "${startdir}/../.ci/fix-msys-libtool.sh"
+  fix_msys_libtool configure libcharset/configure
+  # ltmain.sh's location depends on where autoreconf puts the aux dir, so find
+  # it rather than assuming. Missing it entirely is NOT harmless -- that is the
+  # hunk that keeps the link from silently degrading to static (see #36), and a
+  # `[ -f ]` guard would skip it quietly. Require at least one.
+  _lt_found=0
+  while IFS= read -r lt; do
+    fix_msys_libtool "$lt"
+    _lt_found=1
+  done < <(find . -maxdepth 3 -name ltmain.sh -type f)
+  if [[ ${_lt_found} -eq 0 ]]; then
+    echo "==> ERROR: no ltmain.sh found -- libtool would link static-only (see #36)." >&2
+    return 1
+  fi
 }
 
 build() {
   cd ${srcdir}/${pkgname}-${pkgver}
+
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    ./configure \
+      --prefix=/usr \
+      --host=aarch64-pc-cygwin \
+      --build=${CHOST} \
+      --without-libintl-prefix \
+      --enable-static \
+      --enable-shared \
+      --enable-extra-encodings \
+      gl_cv_clean_version_stddef=yes \
+      am_cv_proto_iconv_arg1= \
+      am_cv_proto_iconv="extern size_t iconv (iconv_t cd, char * *inbuf, size_t *inbytesleft, char * *outbuf, size_t *outbytesleft);"
+    make lib/localcharset.h
+    make -C lib iconv.lo CFLAGS="-O1"
+    make
+    make DESTDIR=${srcdir}/dest install
+    return
+  fi
 
   ./configure \
     --prefix=/usr \
@@ -64,6 +115,8 @@ build() {
 }
 
 check() {
+  # target binaries can't run on the x64 (emulated) cross host
+  [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]] && return 0
   cd ${srcdir}/${pkgname}-${pkgver}
   make check
 }
