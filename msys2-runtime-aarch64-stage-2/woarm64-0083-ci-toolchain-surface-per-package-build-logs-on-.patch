@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:15:12 +0530
+Subject: [PATCH 083/109] ci(toolchain): surface per-package build logs
+ on failure
+
+(cherry picked from commit 6f7e6bbbb899988a8b6db9cfd449ba4f818b96eb)
+---
+ .github/workflows/toolchain.yml | 34 +++++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/.github/workflows/toolchain.yml b/.github/workflows/toolchain.yml
+index d01ff05f4..48a96cc7d 100644
+--- a/.github/workflows/toolchain.yml
++++ b/.github/workflows/toolchain.yml
+@@ -254,6 +254,23 @@ jobs:
+           # PKGS restored from arm64-mingw: steps 1-9 are already-built -> fast
+           # pacman -U (installs the mingw cross toolchain), then 10-13 build.
+           bash "$GITHUB_WORKSPACE/.github/arm64/build-msys2-woarm64-all.sh"
++      - name: Dump per-package build logs on failure
++        if: failure()
++        shell: bash
++        run: |
++          d="${{ github.workspace }}/woarm64-logs"
++          echo "== logs in $d =="; ls -lt "$d" 2>/dev/null || true
++          for f in $(ls -t "$d"/*.log 2>/dev/null | head -3); do
++            echo "===================== tail -200 $f ====================="
++            tail -200 "$f"
++          done
++      - name: Upload build logs
++        if: always()
++        uses: actions/upload-artifact@v4
++        with:
++          name: woarm64-logs-arm64-msys
++          path: ${{ github.workspace }}/woarm64-logs
++          if-no-files-found: ignore
+       - name: Prune build trees (keep built packages + PKGBUILDs)
+         shell: msys2 {0}
+         run: |
+@@ -326,6 +343,23 @@ jobs:
+           # PKGS restored from arm64-msys: steps 1-13 are already-built -> fast
+           # pacman -U (installs mingw + msys compiler), then 14-17 build.
+           bash "$GITHUB_WORKSPACE/.github/arm64/build-msys2-woarm64-all.sh"
++      - name: Dump per-package build logs on failure
++        if: failure()
++        shell: bash
++        run: |
++          d="${{ github.workspace }}/woarm64-logs"
++          echo "== logs in $d =="; ls -lt "$d" 2>/dev/null || true
++          for f in $(ls -t "$d"/*.log 2>/dev/null | head -3); do
++            echo "===================== tail -200 $f ====================="
++            tail -200 "$f"
++          done
++      - name: Upload build logs
++        if: always()
++        uses: actions/upload-artifact@v4
++        with:
++          name: woarm64-logs-arm64-runtime
++          path: ${{ github.workspace }}/woarm64-logs
++          if-no-files-found: ignore
+       - name: Collect toolchain packages
+         shell: msys2 {0}
+         run: |
