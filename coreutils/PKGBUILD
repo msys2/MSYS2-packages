@@ -4,7 +4,7 @@ pkgname=coreutils
 pkgver=8.32
 pkgrel=5
 pkgdesc="The basic file, shell and text manipulation utilities of the GNU operating system"
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 license=('spdx:GPL-3.0-or-later')
 url="https://www.gnu.org/software/coreutils"
 msys2_repository_url='https://cgit.git.savannah.gnu.org/cgit/coreutils.git'
@@ -13,7 +13,7 @@ msys2_references=(
 )
 depends=('gmp' 'libiconv' 'libintl')
 makedepends=('groff' 'gmp-devel' 'libiconv-devel' 'gettext-devel' 'help2man' 'autotools' 'gcc')
-source=(https://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig}
+source=(https://mirrors.kernel.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig}
         001-coreutils-8.30.patch
         002-coreutils-8.32-enable-stdbuf.patch
         003-coreutils-8.32-fix-test-cases.patch
@@ -35,8 +35,16 @@ prepare() {
 
   # https://github.com/msys2/MSYS2-packages/issues/3012
   patch -p1 -i ${srcdir}/004-msystem-osname-cygwin.patch
-
   autoreconf -fi
+  source "${startdir}/../.ci/fix-msys-libtool.sh"
+  fix_msys_libtool configure
+
+  if [[ -n $(find . -maxdepth 3 -name ltmain.sh -type f -print -quit) ]]; then
+    echo "==> ERROR: coreutils now ships an ltmain.sh -- it has become a libtool" >&2
+    echo "    consumer, so restore it to the fix_msys_libtool call above (#51/#36)." >&2
+    return 1
+  fi
+  echo "==> ok: coreutils uses no libtool; configure patched, no ltmain.sh expected (#51)"
 }
 
 build() {
@@ -44,6 +52,35 @@ build() {
   mkdir -p ${srcdir}/build-${CHOST} && cd ${srcdir}/build-${CHOST}
 
   export gl_cv_have_weak=no
+
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    ../${pkgname}-${pkgver}/configure \
+      --build=${CHOST} \
+      --host=aarch64-pc-cygwin \
+      --prefix=/usr \
+      --libexecdir=/usr/lib \
+      --sysconfdir=/etc \
+      --localstatedir=/var \
+      --program-transform-name=s/kill/gkill/ \
+      --without-libintl-prefix \
+      --without-libiconv-prefix \
+      --enable-install-program=arch,hostname \
+      --enable-no-install-program=uptime \
+      gl_cv_func_strtod_works=yes \
+      gl_cv_func_strtold_works=yes \
+      CFLAGS="-std=gnu17 -D_HAVE_LONG_DOUBLE -I/usr/aarch64-pc-cygwin/usr/include" \
+      LDFLAGS="${LDFLAGS} -L/usr/aarch64-pc-cygwin/usr/lib"
+
+    if [[ ! -s ../${pkgname}-${pkgver}/src/primes.h ]]; then
+      echo "==> ERROR: src/primes.h missing/empty." >&2
+      return 1
+    fi
+
+    local _to=45m _rc=0
+    timeout --foreground -k 30s ${_to} make V=1 -j1 \
+      CC="aarch64-pc-cygwin-gcc -no-integrated-cpp -C" || return 1
+    return 0
+  fi
 
   ../${pkgname}-${pkgver}/configure \
     --build=${CHOST} \
@@ -63,6 +100,8 @@ build() {
 }
 
 check() {
+  # target binaries can't run on the x64 (emulated) cross host
+  [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]] && return 0
   cd ${srcdir}/build-${CHOST}
   make check
 }
