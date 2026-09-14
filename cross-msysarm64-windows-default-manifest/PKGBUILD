@@ -1,0 +1,112 @@
+# Maintainer: Windows on ARM Experiments
+#
+# Default Windows application manifest for the aarch64-pc-cygwin cross sysroot.
+#
+# This is the aarch64 counterpart of the x64 `windows-default-manifest` package
+# (shipped upstream as msys/windows-default-manifest, which owns
+# /usr/lib/default-manifest.o). Both build the same upstream cygwin-apps source;
+# only the install prefix and the windres differ.
+#
+# GCC's built-in spec appends default-manifest.o to EVERY non-shared link:
+#
+#     %{!shared:%:if-exists(default-manifest.o%s)}
+#
+# The `if-exists` guard resolves the name against the compiler search path (%s),
+# but the bare filename is what reaches ld -- so when the file is absent from the
+# sysroot the guard still passes and every link dies with "ld: cannot find
+# default-manifest.o". Since autoconf's compiler probe both compiles and links,
+# that surfaces as the misleading "could not find a working compiler".
+#
+# The x64 target has always shipped this file. The aarch64 sysroot never packaged
+# it -- it was hand-placed during early bring-up, so a gcc rebuild stopped
+# inheriting the stale file and exposed the gap. Packaging it restores x64 parity;
+# the alternative of patching the spec to drop the reference would silently strip
+# the default manifest (asInvoker privileges, supportedOS GUIDs) from every ARM64
+# executable. The x64 object is not reusable: it is pe-x86-64 where the target
+# needs pe-aarch64-little.
+
+pkgname="cross-msysarm64-windows-default-manifest"
+pkgver=6.4
+pkgrel=1
+pkgdesc="Default Windows application manifest for aarch64-pc-cygwin sysroot (WoA)"
+arch=('x86_64')
+url='https://sourceware.org/git/cygwin-apps/windows-default-manifest.git'
+license=('BSD')
+options=('!strip' '!buildflags' '!emptydirs')
+# The cross binutils supplies aarch64-pc-cygwin-windres, which is the only tool
+# this build needs (upstream's Makefile is a single windres invocation).
+makedepends=(
+  "git"
+  "autotools"
+  "cross-msysarm64-binutils"
+)
+_GIT_TAG="release-${pkgver//\./_}"
+source=("git://sourceware.org/git/cygwin-apps/windows-default-manifest.git#tag=${_GIT_TAG}")
+sha256sums=('SKIP')
+msys2_references=(
+  'cygwin: windows-default-manifest'
+)
+
+_target=aarch64-pc-cygwin
+_sysroot=/usr/${_target}
+
+prepare() {
+  cd "${srcdir}/windows-default-manifest"
+
+  autoreconf -fiv
+}
+
+build() {
+  cd "${srcdir}/windows-default-manifest"
+
+  # Upstream's configure.ac hard-rejects any host that is not *-cygwin or
+  # *-mingw*. The aarch64-pc-cygwin triple matches *-cygwin directly, so no
+  # host spoofing is needed. WINDRES is still set explicitly to keep the tool
+  # choice unambiguous; AC_CHECK_TOOL honours an already-set value.
+  WINDRES=${_target}-windres \
+  ./configure \
+    --prefix=${_sysroot} \
+    --build=${CHOST} \
+    --host=${_target}
+
+  # RC_FLAGS carries a preprocessor override, and it is load-bearing. windres
+  # shells the .rc through a C preprocessor derived from its own tool prefix, so
+  # aarch64-pc-cygwin-windres runs aarch64-pc-cygwin-gcc -- which does not exist yet
+  # at this point in the bootstrap (this package precedes gcc-stage1, because the
+  # object must exist before that gcc links anything).
+  #
+  # Pointing windres at the host cpp is sound rather than a workaround:
+  # default-manifest.rc has no #include and no macros, so preprocessing is
+  # target-independent, and windres itself chooses the output format. Verified
+  # with the target gcc hidden from PATH: the object is byte-identical to one
+  # preprocessed by aarch64-pc-cygwin-gcc.
+  #
+  # No -F/--target: upstream only passes it for i?86/x86_64, and windres already
+  # emits pe-aarch64-little for this target.
+  make RC_FLAGS='--preprocessor=gcc --preprocessor-arg=-E --preprocessor-arg=-xc --preprocessor-arg=-DRC_INVOKED'
+}
+
+package() {
+  cd "${srcdir}/windows-default-manifest"
+
+  # Lands ${pkgdir}/usr/aarch64-pc-cygwin/lib/default-manifest.o -- the
+  # cross-sysroot analogue of x64's /usr/lib/default-manifest.o.
+  make DESTDIR="${pkgdir}" install
+
+  echo "--- cross-msysarm64-windows-default-manifest check ---"
+  local _o="${pkgdir}${_sysroot}/lib/default-manifest.o"
+  if [ ! -f "${_o}" ]; then
+    echo "  ERROR: default-manifest.o MISSING from ${_sysroot}/lib"
+    return 1
+  fi
+  echo "  default-manifest.o OK"
+  # Guard the arch explicitly: a host-windres slip would silently produce a
+  # pe-x86-64 object that ld would then reject on every ARM64 link.
+  if ${_target}-objdump -f "${_o}" 2>/dev/null | grep -q 'pe-aarch64-little'; then
+    echo "  format pe-aarch64-little OK"
+  else
+    echo "  ERROR: wrong object format:"
+    ${_target}-objdump -f "${_o}" 2>&1 | sed -n '2,3p'
+    return 1
+  fi
+}
