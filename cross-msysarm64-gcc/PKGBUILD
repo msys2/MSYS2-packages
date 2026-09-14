@@ -1,0 +1,383 @@
+# Maintainer: Windows on ARM Experiments
+
+_realname=gcc
+_target=aarch64-pc-cygwin
+pkgname="cross-msysarm64-${_realname}"
+pkgver=17.0.0
+pkgrel=1
+pkgdesc="Cross GCC stage2 for aarch64-pc-cygwin (with full runtime)"
+arch=('i686' 'x86_64')
+url="https://gcc.gnu.org"
+license=('GPL' 'LGPL' 'FDL')
+depends=("zlib" "mpc" "isl" "libzstd")
+makedepends=(
+  "gcc"
+  "lndir"
+  "gmp-devel"
+  "mpc-devel"
+  "zlib-devel"
+  "isl-devel"
+  "autotools"
+  "gperf"
+  "libzstd-devel"
+  "cross-msysarm64-binutils"
+  "cross-msysarm64-gcc-stage1"      # stage1 compiler
+  "cross-msysarm64-runtime-devel"   # real msys2-runtime headers + libcygwin.a
+  "cross-msysarm64-w32api-headers"
+  "git"
+)
+options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
+_upstream_commit=001f9af67f1adad05abcf9b3e83ecee163fa0f13
+source=(
+  # Upstream GCC, pinned to the commit our AArch64 series is based on.
+  # Our changes are the woarm64-*.patch series below, generated from
+  # gcc-woarm64 aarch64-on-latest with  git format-patch 001f9af67f1..HEAD
+  "${_realname}::git+https://gcc.gnu.org/git/gcc.git#commit=${_upstream_commit}"
+  woarm64-0001-aarch64-Bypass-some-warnings-in-MinGW.patch
+  woarm64-0002-aarch64-Add-stdcall-and-cdecl-attributes.patch
+  woarm64-0003-aarch64-Add-SEH-stack-unwinding-and-C-exceptions.patch
+  woarm64-0004-Support-SEH-for-fragmented-functions.patch
+  woarm64-0005-Fix-unwiding-code-for-a-floating-point-register-pair.patch
+  woarm64-0006-Fix-unwiding-codes-when-stack-probing-is-applied.patch
+  woarm64-0007-Rebase-woarm64-aarch64-pe-target-prototype.patch
+  woarm64-0008-Fix-undefined-reference-to-mingw-10.patch
+  woarm64-0009-Fix-missing-aarch64-opt.url-files-after-rebase.patch
+  woarm64-0010-Fix-undefined-references-to-__gthr_win32_-shared-lib.patch
+  woarm64-0011-Build-configuration-fixes-to-enable-native-aarch64-w.patch
+  woarm64-0012-Allow-some-warnings-when-building-libgcc-36.patch
+  woarm64-0013-Fix-build-of-winnt-d.cc-when-D-language-is-enabled.-.patch
+  woarm64-0014-0001-Cygwin-use-SysV-ABI-on-x86_64.patch.patch
+  woarm64-0015-0002-Cygwin-add-dummy-pthread-tsaware-and-large-addr.patch
+  woarm64-0016-0004-Cygwin-MinGW-skip-test.patch.patch
+  woarm64-0017-0005-Cygwin-define-RTS_CONTROL_ENABLE-and-DTR_CONTRO.patch
+  woarm64-0018-0007-Cygwin-__cxa-atexit.patch.patch
+  woarm64-0019-0008-Cygwin-libgomp-soname.patch.patch
+  woarm64-0020-0009-Cygwin-g-time.patch.patch
+  woarm64-0021-0010-Cygwin-newlib-ftm.patch.patch
+  woarm64-0022-0101-Cygwin-enable-libgccjit-not-just-for-MingW.patc.patch
+  woarm64-0023-0102-Cygwin-testsuite-fixes-for-libgccjit.patch.patch
+  woarm64-0024-Add-aarch64-pc-cygwin-target.patch
+  woarm64-0025-Add-support-for-shared-attribute-41.patch
+  woarm64-0026-mingw-use-mingw_pe_seh_emit_stackalloc-in-seh_patter.patch
+  woarm64-0027-aarch64-build-aarch64-abi-ms.o-for-the-cygwin-target.patch
+  woarm64-0028-libgcc-do-not-build-soft-fp-for-aarch64-pc-cygwin.patch
+  woarm64-0029-aarch64-mingw-emit-d-form-register-names-for-.seh_sa.patch
+  0012-Handle-spaces-in-path-for-default-manifest.patch
+  0014-gcc-9-branch-clone_function_name_1-Retain-any-stdcall-suffix.patch
+  0020-libgomp-Don-t-hard-code-MS-printf-attributes.patch
+  9997-msys-libtool-shared.patch
+  9999-msys-macro.patch
+  99995-msys-aarch64-pseudo-reloc.patch
+)
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP')
+
+apply_patch_with_msg() {
+  for _fname in "$@"; do
+    msg2 "Applying ${_fname}"
+    patch -Nbp1 -i "${srcdir}"/${_fname}
+  done
+}
+
+prepare() {
+  cd ${srcdir}/${_realname}
+
+  # apply_patch_with_msg \
+  #   0012-Handle-spaces-in-path-for-default-manifest.patch \
+  #   0014-gcc-9-branch-clone_function_name_1-Retain-any-stdcall-suffix.patch \
+  #   0020-libgomp-Don-t-hard-code-MS-printf-attributes.patch \
+  #   9999-msys-macro.patch
+  # The AArch64 port, as a patch series on top of upstream GCC.
+  # (Previously these lived as commits on gcc-woarm64 aarch64-on-latest.)
+  for _p in "${srcdir}"/woarm64-*.patch; do
+    msg2 "Applying $(basename "${_p}")"
+    git apply --whitespace=fix "${_p}" || return 1
+  done
+
+  git apply --whitespace=fix \
+    "${srcdir}"/0012-Handle-spaces-in-path-for-default-manifest.patch \
+    "${srcdir}"/0014-gcc-9-branch-clone_function_name_1-Retain-any-stdcall-suffix.patch \
+    "${srcdir}"/0020-libgomp-Don-t-hard-code-MS-printf-attributes.patch \
+    "${srcdir}"/9997-msys-libtool-shared.patch \
+    "${srcdir}"/9999-msys-macro.patch \
+    "${srcdir}"/99995-msys-aarch64-pseudo-reloc.patch
+  # --- Verify stage1 compiler is present ---
+  echo "--- Stage2 prerequisite check ---"
+  which aarch64-pc-cygwin-gcc || {
+    echo "FATAL: aarch64-pc-cygwin-gcc not found — install cross-msysarm64-gcc-stage1"
+    exit 1
+  }
+
+  # --- Stage the stage-1 runtime libs into the sysroot -
+  # Build order is: stage-1 runtime (loose files in src/) -> THIS stage-2 gcc ->
+  # stage-2 runtime package. The stage-2 cross-msysarm64-runtime PACKAGE is built
+  # AFTER gcc, so gcc cannot depend on it (circular). Stage-1 is intentionally
+  # bootstrap-only and ships no package, so we still read its libs from src/ here.
+  # What changed for #3: this used to copy silently; now we hard-verify the crt0
+  # is the REAL one (references msys_crt0), never the bootstrap STUB (nop;ret) that
+  # makes every exe hang at startup. A missing/stub artifact is a fatal error.
+  _rt1="$(dirname "${startdir}")/msys2-runtime-aarch64"
+  _rt1_rb="${_rt1}/src/runtime-build"
+  for _f in \
+    "${_rt1_rb}/cygwin/libmsys-2.0.a:libmsys-2.0.a" \
+    "${_rt1}/src/newlib/libc.a:libc.a" \
+    "${_rt1}/src/newlib/libm.a:libm.a"; do
+    _src="${_f%%:*}"; _dst="${_f##*:}"
+    if [ ! -f "${_src}" ]; then
+      echo "FATAL: stage-1 runtime artifact missing: ${_src}"
+      echo "       Build msys2-runtime-aarch64 (stage 1) before cross-msysarm64-gcc."
+      exit 1
+    fi
+    cp -f "${_src}" "/usr/aarch64-pc-cygwin/lib/${_dst}"
+  done
+
+  # The build system links stage-2 libstdc++ etc. with `-lcygwin`, but this MSYS2
+  # runtime names its import lib libmsys-2.0.a. Provide the libcygwin.a alias as a
+  # staged, verified artifact HERE rather than via an unexplained `ln -sf` at the
+  # top of build(). This build-time alias is needed because
+  # gcc stage-2 is built BEFORE the stage-2 cross-msysarm64-runtime package (the
+  # circular bootstrap), so the package-owned libcygwin.a that runtime package()
+  # ships (msys2-runtime-aarch64-stage-2: `ln -sf libmsys-2.0.a libcygwin.a`) does
+  # not exist in the sysroot yet. The FINAL installed toolchain gets libcygwin.a
+  # from that runtime package, not from this line.
+  ln -sf libmsys-2.0.a /usr/aarch64-pc-cygwin/lib/libcygwin.a
+  if [ ! -e /usr/aarch64-pc-cygwin/lib/libcygwin.a ]; then
+    echo "FATAL: failed to create libcygwin.a -> libmsys-2.0.a alias in sysroot"
+    exit 1
+  fi
+  echo "staged libcygwin.a alias -> libmsys-2.0.a (build-time; final copy is package-owned)"
+  # libg.a is a LEGACY "debug libc" that modern newlib often does not emit — stage
+  # it only if present (not fatal), matching the stage-2 runtime package.
+  if [ -f "${_rt1}/src/newlib/libg.a" ]; then
+    cp -f "${_rt1}/src/newlib/libg.a" /usr/aarch64-pc-cygwin/lib/libg.a
+  fi
+  echo "staged stage-1 runtime + newlib libs into sysroot"
+
+  # --- Stage the REAL crt0.o / gcrt0.o from the stage-1 build ---
+  # Step-14 (runtime stage 1) installs a bootstrap STUB crt0.o into the sysroot to
+  # break the circular link dep, then builds the REAL crt0.o at
+  # ${_rt1_rb}/cygwin/crt0.o but does NOT install it (stage-1 ships no package).
+  # On a fresh/CI box nothing stages the real one before this point, so the stub
+  # survives and the hard check below would (correctly) FATAL. Stage the real
+  # objects here from the stage-1 build tree, gated on the same symbols the stage-2
+  # runtime package() uses, so the sysroot has a real crt0 before gcc stage 2:
+  #   crt0.o  -> must reference msys_crt0   (nm 'U msys_crt0'); stub nop;ret has none
+  #   gcrt0.o -> the -pg startup, DEFINES _monstartup (nm 'T _monstartup'); optional
+  local _o _sym _grep _s
+  for _o in crt0.o gcrt0.o; do
+    if [ "${_o}" = "crt0.o" ]; then _sym="msys_crt0"; _grep="U msys_crt0"
+    else                            _sym="_monstartup"; _grep=" T _monstartup"; fi
+    _s="${_rt1_rb}/cygwin/${_o}"
+    if [ ! -f "${_s}" ]; then
+      if [ "${_o}" = "crt0.o" ]; then
+        echo "FATAL: real crt0.o not found at ${_s} — build msys2-runtime-aarch64 (stage 1) first."
+        exit 1
+      fi
+      echo "note: ${_o} not produced by stage-1 (optional) — skipping"
+      continue
+    fi
+    if ! aarch64-pc-cygwin-nm "${_s}" 2>/dev/null | grep -q "${_grep}"; then
+      echo "FATAL: ${_s} lacks '${_sym}' — looks like the bootstrap STUB; refusing to stage it."
+      exit 1
+    fi
+    cp -f "${_s}" "/usr/aarch64-pc-cygwin/lib/${_o}"
+    echo "staged real ${_o} into sysroot (has ${_sym})"
+  done
+
+  # --- Verify crt0.o is the real one (hard stub rejection) ---
+  # After the staging above the sysroot crt0.o must be the REAL one. Reject the
+  # bootstrap stub via its lack of an msys_crt0 reference rather than a fuzzy
+  # byte-size heuristic.
+  _crt0=/usr/aarch64-pc-cygwin/lib/crt0.o
+  if aarch64-pc-cygwin-nm "${_crt0}" 2>/dev/null | grep -q "U msys_crt0"; then
+    echo "crt0.o OK (real — references msys_crt0)"
+  else
+    echo "FATAL: ${_crt0} is missing or still the bootstrap STUB (no msys_crt0 ref)."
+    echo "       Stage the real crt0.o from the stage-1 runtime build first."
+    exit 1
+  fi
+
+  # --- Verify key headers ---
+  [ -f /usr/aarch64-pc-cygwin/include/stdio.h ] && \
+    echo "stdio.h OK" || \
+    echo "WARNING: stdio.h missing from sysroot"
+  grep -q "__aarch64__" /usr/aarch64-pc-cygwin/include/cygwin/signal.h 2>/dev/null && \
+    echo "signal.h aarch64 patch OK" || \
+    echo "WARNING: signal.h missing aarch64 defines"
+
+  # 9997 must have reached gcc/configure. We configure --host=x86_64-pc-msys, so
+  # host_os is "msys" whatever the target is; unpatched, it matches none of the
+  # PE/Win32 libtool arms and falls through to `*) dynamic_linker=no`, which
+  # yields enable_shared=no -> no -DENABLE_SHARED_LIBGCC -> no -lgcc_s -> the SEH
+  # unwinder is unreachable and libstdc++ fails on undefined _Unwind_Resume some
+  # 40 minutes later.
+  #
+  # Checked here on the patched source because it is a purely static property.
+  # Checking the generated gcc/Makefile instead would need gcc/configure to have
+  # run, which happens later under make.
+  local _gcfg="${srcdir}/${_realname}/gcc/configure"
+  if [ ! -f "${_gcfg}" ]; then
+    echo "==> ERROR: ${_gcfg} not found -- cannot verify 9997." >&2
+    return 1
+  fi
+  # Plain grep -c: it already prints 0 when there is no match, so a `|| echo 0`
+  # fallback would emit a second line and break the comparison below.
+  local _nmsys _ncyg
+  _nmsys=$(grep -c 'msys\*' "${_gcfg}")
+  _ncyg=$(grep -c 'cygwin\*' "${_gcfg}")
+  if [ "${_nmsys}" -lt 18 ]; then
+    echo "==> ERROR: gcc/configure has only ${_nmsys} msys* host_os arms (expected 18);" >&2
+    echo "    9997 did not apply and host_os=msys would fall through to" >&2
+    echo "    '*) dynamic_linker=no'." >&2
+    return 1
+  fi
+  # The patch is additive: it must not have replaced any cygwin* label.
+  # Baseline is 30 on both gcc 15 and gcc 17 upstream; 9997 leaves it untouched
+  # (verified: cygwin* 30 -> 30, msys* 0 -> 18).  The old constant of 31 never
+  # matched an unpatched tree.
+  if [ "${_ncyg}" -lt 30 ]; then
+    echo "==> ERROR: cygwin* arms dropped to ${_ncyg} (expected 30) -- 9997" >&2
+    echo "    replaced rather than added labels." >&2
+    return 1
+  fi
+  if ! grep -q '^msys\* | cygwin\* | mingw\* | pw32\* | cegcc\*)' "${_gcfg}"; then
+    echo "==> ERROR: the dynamic_linker host_os arm has no msys* label." >&2
+    return 1
+  fi
+  echo "==> ok: msys* present on the dynamic_linker arm; enable_shared will be yes"
+
+  # The C++23 "std" module hangs cc1plus for this cross target: the compile
+  # never returns, make/libtool retry it, and the build wedges with a pile of
+  # stuck xgcc processes.  The upstream rule falls back to empty.cc when the
+  # module fails to COMPILE, but a hang never reaches that branch, so take the
+  # fallback unconditionally.  The module is not needed to build the runtime.
+  for _mf in "${srcdir}/${_realname}"/libstdc++-v3/src/c++23/Makefile.am "${srcdir}/${_realname}"/libstdc++-v3/src/c++23/Makefile.in; do
+    [ -f "${_mf}" ] || continue
+    sed -i 's|MODULES_FLAGS) -c $< ; then|MODULES_FLAGS) -c empty.cc -o $@ ; then|' "${_mf}"
+  done
+  echo "==> C++23 std module replaced with empty.cc (hangs on this target)"
+}
+
+build() {
+  # NOTE: the libcygwin.a -> libmsys-2.0.a alias is now staged + verified in
+  # prepare(); the FINAL installed alias is owned by the
+  # stage-2 cross-msysarm64-runtime package.
+  export lt_cv_deplibs_check_method='pass_all'
+
+  mkdir -p ${srcdir}/gcc-build && cd ${srcdir}/gcc-build
+
+  # Use the stage1 compiler to build stage2
+  export CC_FOR_BUILD=gcc
+  export CXX_FOR_BUILD=g++
+
+  ../${_realname}/configure \
+    --prefix=/usr \
+    --build=x86_64-pc-msys \
+    --host=x86_64-pc-msys \
+    --target=${_target} \
+    --with-sysroot=/usr/${_target} \
+    --with-arch=armv8-a \
+    --with-tune=cortex-a53 \
+    --enable-languages=c,c++,lto \
+    --enable-shared-libgcc \
+    --enable-version-specific-runtime-libs \
+    --disable-__cxa_atexit \
+    --enable-threads=posix \
+    --enable-graphite \
+    --enable-libatomic \
+    --enable-libgomp \
+    --enable-libquadmath \
+    --enable-libquadmath-support \
+    --enable-libstdcxx-filesystem-ts \
+    --disable-libssp \
+    --disable-symvers \
+    --with-gcc-major-version-only \
+    --with-dwarf2 \
+    --with-system-zlib \
+    --with-default-libstdcxx-abi=gcc4-compatible \
+    --without-libiconv-prefix \
+    --without-libintl-prefix \
+    --disable-bootstrap \
+    --disable-multilib \
+    --disable-plugins \
+    --disable-nls \
+    --disable-werror \
+    --with-gnu-as \
+    --with-gnu-ld \
+    --with-{gmp,mpfr,mpc,isl}=/usr \
+    CFLAGS="-O0 -pipe" \
+    CXXFLAGS="-O0 -pipe" \
+    CFLAGS_FOR_TARGET="-O0 -pipe" \
+    CXXFLAGS_FOR_TARGET="-O0 -pipe"
+
+  make all-gcc
+
+  # SEH exception unwinder — handled structurally, no post-build hacks.
+  # Two pieces make this work:
+  #   * The SEH unwind sources (unwind-seh/sjlj/c) are selected by libgcc's own
+  #     config.host aarch64-*-cygwin* case -> tmake_eh_file=mingw/t-seh-eh, so
+  #     LIB2ADDEH already resolves to the SEH set.
+  #   * Patch 9997 teaches gcc/configure that host_os=msys is a shared-library
+  #     (PE/Win32) host, so libtool no longer forces enable_shared=no. This is a
+  #     HOST-side patch and is orthogonal to the target triple: we configure
+  #     --host=x86_64-pc-msys, so host_os stays "msys" even though the target is
+  #     aarch64-pc-cygwin. The driver is then compiled WITH
+  #     -DENABLE_SHARED_LIBGCC and emits "-lgcc_s -lgcc", so
+  #     _Unwind_*/__gcc_personality_seh0 resolve from the shared libgcc DLL.
+  #     This removes the need for the old Fix-2 (ar-merging EH objects into
+  #     libgcc.a) and Fix-3 (appending libkernel32.a to the libstdc++ libtool
+  #     postdeps). prepare() gates that the patch actually applied.
+  make LDFLAGS_FOR_TARGET="-L/usr/${_target}/lib" all-target-libgcc
+  make LDFLAGS_FOR_TARGET="-L/usr/${_target}/lib" all-target-libstdc++-v3
+  make LDFLAGS_FOR_TARGET="-L/usr/${_target}/lib" all-target-libgomp   || echo "WARNING: libgomp failed"
+}
+package() {
+ cd ${srcdir}/gcc-build
+
+  make -j1 DESTDIR=${pkgdir} install-gcc
+  make -j1 DESTDIR=${pkgdir} install-target-libgcc
+  make -j1 DESTDIR=${pkgdir} install-target-libstdc++-v3
+  make -j1 DESTDIR=${pkgdir} install-target-libgomp   || true
+
+ # Remove info/man pages — not needed in cross toolchain
+  rm -rf ${pkgdir}/usr/share
+
+  # Strip host binaries (the cross-compiler executables themselves)
+  find ${pkgdir}/usr/bin -name "*.exe" -exec strip -s {} \; 2>/dev/null || true
+
+#   # Do NOT strip target libraries — they need relocs for the target
+}

@@ -1,0 +1,43 @@
+Force the runtime-pseudo-reloc stub undef on aarch64-pc-cygwin shared links
+
+ld synthesises the runtime-pseudo-reloc stub (*_ertr*.o) only AFTER it has
+finished scanning archives, so the stub's fresh reference to
+_pei386_runtime_relocator has no archive pass left to satisfy it and
+pseudo-reloc-dummy.o is never pulled from libcygwin.a.  Every aarch64 shared
+library that reads a data symbol from another DLL therefore fails to link:
+
+  ld: liba_dll_ertr000001.o:(.rdata+0x0): undefined reference to
+      `_pei386_runtime_relocator'
+
+Placing the undef in the driver's LINK_SPEC makes the reference exist BEFORE
+the scan, so the archive member is pulled.  This is the same arrangement the
+native x86_64 target already gets (there via a .refptr resolved at link time).
+
+The undef is gated on %{shared|mdll}, so executable links are unaffected.
+
+This must go in gcc/config/aarch64/msys.h, NOT in i386/cygwin-w64.h:
+config.gcc lists aarch64/msys.h LAST in tm_file for this target and that
+header #undef's LINK_SPEC, so any LINK_SPEC written into cygwin-w64.h is
+discarded.  Verify with `aarch64-pc-cygwin-gcc -dumpspecs | grep pei386` on the
+built driver, not by reading the headers.
+
+diff --git a/gcc/config/aarch64/msys.h b/gcc/config/aarch64/msys.h
+index d104f34..237a023 100644
+--- a/gcc/config/aarch64/msys.h
++++ b/gcc/config/aarch64/msys.h
+@@ -25,6 +25,7 @@
+      - DLL entry symbol  : _cygwin_dll_entry -> _msys_dll_entry
+      - DLL search prefix : cyg              -> msys-
+      - runtime import lib: -lcygwin         -> -lmsys-2.0
++     - shared links additionally force the pseudo-reloc stub undef (see below)
+    The rest of the spec (subsystem, shared/dll, static/dynamic, -m aarch64pe via
+    the base header's target) is preserved verbatim.  */
+ 
+@@ -39,6 +40,7 @@
+   %{shared|mdll: %{!m32:-e _msys_dll_entry} %{m32:-e __msys_dll_entry@12} --enable-auto-image-base} \
+   %(shared_libgcc_undefs) \
+   --dll-search-prefix=msys- \
++  %{shared|mdll: -u _pei386_runtime_relocator} \
+   %{rdynamic: --export-all-symbols} \
+   %{!shared: %{!mdll: %{m32:--large-address-aware} --tsaware}}"
+ 
