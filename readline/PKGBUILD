@@ -7,7 +7,7 @@ _patchlevel=003 #prepare for some patches
 pkgver=${_basever}.${_patchlevel}
 pkgrel=1
 pkgdesc="GNU readline library"
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 url="https://tiswww.case.edu/php/chet/readline/rltop.html"
 msys2_repository_url="https://cgit.git.savannah.gnu.org/cgit/readline.git"
 msys2_references=(
@@ -17,7 +17,7 @@ msys2_references=(
 license=('spdx:GPL-3.0-or-later')
 makedepends=('ncurses-devel' 'autotools' 'gcc')
 options=('!emptydirs')
-source=(https://ftp.gnu.org/gnu/readline/readline-${_basever}.tar.gz{,.sig}
+source=(https://mirrors.kernel.org/gnu/readline/readline-${_basever}.tar.gz{,.sig}
         inputrc
         readline-7.0.3-3.clipboard.patch
         readline-7.0.3-3.src.patch
@@ -25,7 +25,7 @@ source=(https://ftp.gnu.org/gnu/readline/readline-${_basever}.tar.gz{,.sig}
         readline-6.3-paste-utf8.patch)
 if [ $_patchlevel -gt 0 ]; then
     for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
-        source=(${source[@]} https://ftp.gnu.org/gnu/readline/readline-${_basever}-patches/readline${_basever//./}-$(printf "%03d" $p){,.sig})
+        source=(${source[@]} https://mirrors.kernel.org/gnu/readline/readline-${_basever}-patches/readline${_basever//./}-$(printf "%03d" $p){,.sig})
     done
 fi
 sha256sums=('fe5383204467828cd495ee8d1d3c037a7eba1389c22bc6a041f627976f9061cc'
@@ -58,12 +58,25 @@ prepare() {
 build() {
   CFLAGS+=" -Wno-error=incompatible-pointer-types"
 
+  # Host triple + ncurses discovery for the aarch64-pc-cygwin cross build.
+  # ncurses (the prior seed package) is staged under the toolchain sysroot at
+  # /usr/aarch64-pc-cygwin/usr, and its widechar headers live in .../include/ncursesw.
+  local _host=${CHOST}
+  local _xcflags=""
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    _host=aarch64-pc-cygwin
+    # GCC-15 is too new for readline's sources; -std=gnu89 per ARM bring-up.
+    _xcflags=" -std=gnu89 -I/usr/aarch64-pc-cygwin/usr/include/ncursesw"
+    CFLAGS+="${_xcflags}"
+    LDFLAGS+=" -L/usr/aarch64-pc-cygwin/usr/lib"
+  fi
+
   mkdir -p ${srcdir}/build-static-${MSYSTEM} && cd ${srcdir}/build-static-${MSYSTEM}
 
   ../${pkgbase}-${_basever}/configure \
     --prefix=/usr \
     --build=${CHOST} \
-    --host=${CHOST} \
+    --host=${_host} \
     --with-curses \
     --disable-shared \
     --enable-static \
@@ -79,7 +92,7 @@ build() {
   ../${pkgbase}-${_basever}/configure \
     --prefix=/usr \
     --build=${CHOST} \
-    --host=${CHOST} \
+    --host=${_host} \
     --with-curses \
     --disable-static \
     --enable-shared \
@@ -100,6 +113,26 @@ package_libreadline() {
   cp -rf ${srcdir}/dest/usr/share ${pkgdir}/usr/
 
   install -Dm644 inputrc "${pkgdir}"/etc/inputrc
+
+  local _d _found
+  for _d in msys-readline8.dll msys-history8.dll; do
+    _found=""
+    for _cand in "${srcdir}/dest/usr/bin/${_d}" "${srcdir}/dest/usr/lib/${_d}"; do
+      [ -f "${_cand}" ] && { _found="${_cand}"; break; }
+    done
+    if [ -z "${_found}" ]; then
+      echo "::error::${_d} not found in dest/usr/{bin,lib} -- shared build did not emit it"
+      exit 1
+    fi
+    install -Dm755 "${_found}" "${pkgdir}/usr/bin/${_d}"
+  done
+  local _n
+  _n=$(find "${pkgdir}/usr/bin" -maxdepth 1 -name 'msys-*8.dll' | wc -l)
+  if [ "${_n}" -ne 2 ]; then
+    echo "::error::libreadline must ship 2 dlls in usr/bin, found ${_n} "
+    exit 1
+  fi
+  echo "==> ok: libreadline ships ${_n} ARM64 dlls in usr/bin"
 }
 
 package_libreadline-devel() {
@@ -111,4 +144,13 @@ package_libreadline-devel() {
   mkdir -p ${pkgdir}/usr
   cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/
   cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/
+
+  rm -f "${pkgdir}"/usr/lib/msys-readline8.dll "${pkgdir}"/usr/lib/msys-history8.dll
+  local _stray
+  _stray=$(find "${pkgdir}/usr/lib" -maxdepth 1 -name '*.dll' | wc -l)
+  if [ "${_stray}" -ne 0 ]; then
+    echo "::error::${_stray} stray .dll left in libreadline-devel usr/lib"
+    exit 1
+  fi
+  echo "==> ok: libreadline-devel ships no .dll in usr/lib"
 }
