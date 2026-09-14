@@ -1,0 +1,254 @@
+# Maintainer: Windows on ARM Experiments
+
+_realname=gcc
+_target=aarch64-pc-cygwin
+pkgname="cross-msysarm64-${_realname}-stage1"
+provides=("cross-msysarm64-${_realname}")
+_realver=17.0.0
+pkgver=17.0.0dev
+pkgrel=1
+pkgdesc="Cross GCC for aarch64-pc-cygwin (stage1)"
+arch=('i686' 'x86_64')
+url="https://gcc.gnu.org"
+license=('GPL' 'LGPL' 'FDL')
+depends=("zlib" "mpc" "isl" "libzstd")
+makedepends=(
+  "gcc"
+  "lndir"
+  "gmp-devel"
+  "mpc-devel"
+  "zlib-devel"
+  "isl-devel"
+  "autotools"
+  "gperf"
+  "libzstd-devel"
+  "cross-msysarm64-binutils"
+  "cross-msysarm64-runtime-devel"   # provides newlib + cygwin headers
+  "cross-msysarm64-w32api-headers"  # provides win32 API headers
+  "git"
+)
+options=('!strip' 'staticlibs' '!emptydirs' '!buildflags')
+_upstream_commit=001f9af67f1adad05abcf9b3e83ecee163fa0f13
+source=(
+  # Upstream GCC, pinned to the commit our AArch64 series is based on.
+  # Our changes are the woarm64-*.patch series below, generated from
+  # gcc-woarm64 aarch64-on-latest with  git format-patch 001f9af67f1..HEAD
+  "${_realname}::git+https://gcc.gnu.org/git/gcc.git#commit=${_upstream_commit}"
+  woarm64-0001-aarch64-Bypass-some-warnings-in-MinGW.patch
+  woarm64-0002-aarch64-Add-stdcall-and-cdecl-attributes.patch
+  woarm64-0003-aarch64-Add-SEH-stack-unwinding-and-C-exceptions.patch
+  woarm64-0004-Support-SEH-for-fragmented-functions.patch
+  woarm64-0005-Fix-unwiding-code-for-a-floating-point-register-pair.patch
+  woarm64-0006-Fix-unwiding-codes-when-stack-probing-is-applied.patch
+  woarm64-0007-Rebase-woarm64-aarch64-pe-target-prototype.patch
+  woarm64-0008-Fix-undefined-reference-to-mingw-10.patch
+  woarm64-0009-Fix-missing-aarch64-opt.url-files-after-rebase.patch
+  woarm64-0010-Fix-undefined-references-to-__gthr_win32_-shared-lib.patch
+  woarm64-0011-Build-configuration-fixes-to-enable-native-aarch64-w.patch
+  woarm64-0012-Allow-some-warnings-when-building-libgcc-36.patch
+  woarm64-0013-Fix-build-of-winnt-d.cc-when-D-language-is-enabled.-.patch
+  woarm64-0014-0001-Cygwin-use-SysV-ABI-on-x86_64.patch.patch
+  woarm64-0015-0002-Cygwin-add-dummy-pthread-tsaware-and-large-addr.patch
+  woarm64-0016-0004-Cygwin-MinGW-skip-test.patch.patch
+  woarm64-0017-0005-Cygwin-define-RTS_CONTROL_ENABLE-and-DTR_CONTRO.patch
+  woarm64-0018-0007-Cygwin-__cxa-atexit.patch.patch
+  woarm64-0019-0008-Cygwin-libgomp-soname.patch.patch
+  woarm64-0020-0009-Cygwin-g-time.patch.patch
+  woarm64-0021-0010-Cygwin-newlib-ftm.patch.patch
+  woarm64-0022-0101-Cygwin-enable-libgccjit-not-just-for-MingW.patc.patch
+  woarm64-0023-0102-Cygwin-testsuite-fixes-for-libgccjit.patch.patch
+  woarm64-0024-Add-aarch64-pc-cygwin-target.patch
+  woarm64-0025-Add-support-for-shared-attribute-41.patch
+  woarm64-0026-mingw-use-mingw_pe_seh_emit_stackalloc-in-seh_patter.patch
+  woarm64-0027-aarch64-build-aarch64-abi-ms.o-for-the-cygwin-target.patch
+  woarm64-0028-libgcc-do-not-build-soft-fp-for-aarch64-pc-cygwin.patch
+  woarm64-0029-aarch64-mingw-emit-d-form-register-names-for-.seh_sa.patch
+  0012-Handle-spaces-in-path-for-default-manifest.patch
+  0014-gcc-9-branch-clone_function_name_1-Retain-any-stdcall-suffix.patch
+  0020-libgomp-Don-t-hard-code-MS-printf-attributes.patch
+  9999-msys-macro.patch
+)
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP')
+
+apply_patch_with_msg() {
+  for _fname in "$@"; do
+    msg2 "Applying ${_fname}"
+    patch -Nbp1 -i "${srcdir}"/${_fname}
+  done
+}
+
+del_file_exists() {
+  for _fname in "$@"; do
+    if [ -f $_fname ] || [ -d $_fname ]; then
+      rm -rf $_fname
+    fi
+  done
+}
+
+prepare() {
+  cd ${srcdir}/${_realname}
+
+  del_file_exists libgomp/config/cygwin/plugin-suffix.h
+
+  # The AArch64 port, as a patch series on top of upstream GCC.
+  # (Previously these lived as commits on gcc-woarm64 aarch64-on-latest.)
+  for _p in "${srcdir}"/woarm64-*.patch; do
+    msg2 "Applying $(basename "${_p}")"
+    git apply --whitespace=fix "${_p}" || return 1
+  done
+
+  git apply --whitespace=fix \
+    "${srcdir}"/0012-Handle-spaces-in-path-for-default-manifest.patch \
+    "${srcdir}"/0014-gcc-9-branch-clone_function_name_1-Retain-any-stdcall-suffix.patch \
+    "${srcdir}"/0020-libgomp-Don-t-hard-code-MS-printf-attributes.patch \
+    "${srcdir}"/9999-msys-macro.patch
+
+  echo "--- GCC stage1 sysroot header check ---"
+  grep -c "__aarch64__" /usr/${_target}/sys-include/cygwin/signal.h && \
+    echo "cygwin/signal.h aarch64 OK" || \
+    echo "WARNING: sysroot missing aarch64 cygwin headers"
+
+  [ -f /usr/${_target}/sys-include/stdio.h ] && \
+    echo "newlib stdio.h OK" || \
+    echo "WARNING: newlib stdio.h MISSING from sysroot - check cross-msysarm64-runtime-devel"
+}
+
+build() {
+  export lt_cv_deplibs_check_method='pass_all'
+  mkdir -p ${srcdir}/gcc-build && cd ${srcdir}/gcc-build
+
+  ../${_realname}/configure \
+    --prefix=/usr \
+    --build=x86_64-pc-msys \
+    --host=x86_64-pc-msys \
+    --target=${_target} \
+    --with-sysroot=/usr/${_target} \
+    --with-arch=armv8-a \
+    --with-tune=cortex-a53 \
+    --enable-languages=c,c++,lto \
+    --disable-__cxa_atexit \
+    --enable-threads=posix \
+    --with-dwarf2 \
+    --disable-bootstrap \
+    --disable-shared \
+    --enable-static \
+    --disable-multilib \
+    --disable-plugins \
+    --disable-libatomic \
+    --disable-libgomp \
+    --disable-libquadmath \
+    --disable-libssp \
+    --disable-nls \
+    --disable-werror \
+    --disable-symvers \
+    --with-gnu-as \
+    --with-gnu-ld \
+    --without-headers \
+    --with-{gmp,mpfr,mpc,isl}=/usr \
+    --with-system-zlib \
+    CFLAGS="-O2 -pipe" \
+    CXXFLAGS="-O2 -pipe"
+
+  make all-gcc
+  make all-target-libgcc
+}
+
+package() {
+  cd ${srcdir}/gcc-build
+
+  make -j1 DESTDIR=${pkgdir} install-gcc
+  make -j1 DESTDIR=${pkgdir} install-target-libgcc
+
+  # Install libstdc++ headers from GCC source tree.
+  # We can't BUILD libstdc++ yet (needs msys2-runtime/cygwin1.dll),
+  # but the headers are arch-neutral templates needed to compile winsup.
+  _cxxdir=${pkgdir}/usr/lib/gcc/${_target}/${_realver}/include/c++
+  mkdir -p ${_cxxdir}/bits
+  cp -r ${srcdir}/${_realname}/libstdc++-v3/include/. ${_cxxdir}/
+  cp -r ${srcdir}/${_realname}/libstdc++-v3/libsupc++/new ${_cxxdir}/
+  cp -r ${srcdir}/${_realname}/libstdc++-v3/libsupc++/exception.h ${_cxxdir}/bits/
+
+  # Provide a minimal bits/c++config.h stub.
+  # This is intentionally minimal — it only needs to be sufficient to
+  # compile winsup (msys2-runtime). After msys2-runtime is built, a
+  # full gcc package will be built with real generated c++config.h.
+  cat > ${_cxxdir}/bits/c++config.h << 'CXXCONFIG'
+#ifndef _GLIBCXX_CXX_CONFIG_H
+#define _GLIBCXX_CXX_CONFIG_H 1
+
+#define __GLIBCXX__ 1
+
+// Exception / ABI macros
+#define _GLIBCXX_NOTHROW noexcept
+#define _GLIBCXX_USE_NOEXCEPT noexcept
+#define _GLIBCXX_THROW(...) noexcept
+#define _GLIBCXX_TXN_SAFE
+#define _GLIBCXX_TXN_SAFE_DYN
+#define _GLIBCXX_NODISCARD [[nodiscard]]
+
+// Visibility
+#define _GLIBCXX_VISIBILITY(V) __attribute__((__visibility__(#V)))
+#define _GLIBCXX_BEGIN_NAMESPACE_VERSION
+#define _GLIBCXX_END_NAMESPACE_VERSION
+
+// Feature flags
+#define _GLIBCXX_USE_C99_STDLIB 1
+#define _GLIBCXX_USE_C99_MATH 1
+#define _GLIBCXX_USE_WCHAR_T 1
+#define _GLIBCXX_HAS_GTHREADS 1
+
+namespace std {
+  typedef __SIZE_TYPE__ size_t;
+  typedef __PTRDIFF_TYPE__ ptrdiff_t;
+}
+#endif
+CXXCONFIG
+
+  # Remove any C header wrappers from libstdc++ that would shadow newlib headers.
+  # These wrappers assume a glibc environment and break newlib-based builds.
+  for f in fenv.h stdlib.h alloca.h unistd.h; do
+    _wrapper="${pkgdir}/usr/lib/gcc/${_target}/${_realver}/include/c++/${f}"
+    if [ -f "${_wrapper}" ]; then
+      mv "${_wrapper}" "${_wrapper}.bak"
+      echo "Moved shadowing header: ${f} → ${f}.bak"
+    fi
+  done
+
+  for _f in ${pkgdir}/usr/bin/*.exe; do
+    strip -s ${_f} 2>/dev/null || true
+  done
+  rm -rf ${pkgdir}/usr/share
+}
