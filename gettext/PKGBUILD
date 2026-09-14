@@ -2,10 +2,14 @@
 
 pkgbase=gettext
 pkgname=('gettext' 'gettext-devel' 'libgettextpo' 'libasprintf' 'libintl')
+# Cross seed only needs libintl; build just that sub-package for aarch64-pc-cygwin.
+if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+  pkgname=('libintl')
+fi
 pkgver=0.22.5
 pkgrel=1
 pkgdesc="GNU internationalization library"
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 url="https://www.gnu.org/software/gettext/"
 msys2_repository_url='https://cgit.git.savannah.gnu.org/cgit/gettext.git'
 msys2_references=(
@@ -14,7 +18,7 @@ msys2_references=(
 license=('spdx:GPL-3.0-or-later AND LGPL-2.1-or-later')
 makedepends=('groff' 'libiconv-devel' 'autotools' 'gcc')
 options=(!docs)
-source=(https://ftp.gnu.org/pub/gnu/gettext/${pkgname}-${pkgver}.tar.gz{,.sig}
+source=(https://mirrors.kernel.org/gnu/gettext/${pkgbase}-${pkgver}.tar.gz{,.sig}
         gettext-tools-tests-locale-ll-es.patch
         gettext-0.21.1-autopoint-V.patch
         gettext-0.21.1-cygwin-ftm.patch
@@ -54,8 +58,38 @@ sha256sums=('ec1705b1e969b83a9f073144ec806151db88127f5e40fe5a94cb6c8fa48996a0'
 validpgpkeys=('462225C3B46F34879FC8496CD605848ED7E69871'  # Daiki Ueno
               '9001B85AF9E1B83DF1BDA942F5BE8B267C6A406D') # Bruno Haible (Open Source Development)
 
+_fix_msys_libtool() {
+  local f n_composite n_labelled n_host n_comma
+  for f in "$@"; do
+    [[ -f $f ]] || { echo "_fix_msys_libtool: no such file: $f" >&2; return 1; }
+
+    # 1) composite Windows labels: add msys* alongside cygwin* (both shapes,
+    #    with and without pw32*).
+    sed -i -E 's/^([[:space:]]*)cygwin\* \| (mingw\* \| windows\*)/\1cygwin* | msys* | \2/' "$f"
+    sed -i -E '/^[[:space:]]*cygwin\*\)$/{
+      N
+      /func_win32_libid is a shell function|DLLs use .* prefix rather than/s/^([[:space:]]*)cygwin\*\)/\1cygwin* | msys*)/
+    }' "$f"
+
+    sed -i -E '/\*-\*-msys/!s/\*-\*-cygwin\* \| (\*-\*-mingw\*)/*-*-cygwin* | *-*-msys* | \1/g' "$f"
+    sed -i -E '/\*msys\*,\*lai/!s/(\*cygwin\*,\*lai,yes,no,\*\.dll) \|/\1 | *msys*,*lai,yes,no,*.dll |/' "$f"
+
+    n_composite=$(grep -cE '^[[:space:]]*cygwin\* \| msys\* \| mingw\*' "$f" || true)
+    n_labelled=$(grep -cE '^[[:space:]]*cygwin\* \| msys\*\)$' "$f" || true)
+    n_host=$(grep -cE '\*-\*-msys\*' "$f" || true)
+    n_comma=$(grep -cE '\*msys\*,\*lai,yes,no,\*\.dll' "$f" || true)
+    echo "_fix_msys_libtool: $f -> ${n_composite} composite + ${n_labelled} labelled + ${n_host} host + ${n_comma} comma"
+
+    if (( n_composite == 0 && n_labelled == 0 && n_host == 0 && n_comma == 0 )); then
+      echo "::warning::_fix_msys_libtool: no msys labels in $f" >&2
+    fi
+    bash -n "$f" || { echo "::error::_fix_msys_libtool: $f invalid shell after patching" >&2; return 1; }
+  done
+}
+
+
 prepare() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  cd "${srcdir}/${pkgbase}-${pkgver}"
 
   # Cygwin patches
   patch -p1 -i $srcdir/gettext-tools-tests-locale-ll-es.patch
@@ -90,10 +124,65 @@ prepare() {
 
   libtoolize --copy --force
   ./autogen.sh --skip-gnulib
+
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    local _lt_cfg=0 _lt_main=0 cfg
+    while IFS= read -r cfg; do
+      _fix_msys_libtool "$cfg"
+      if [[ ${cfg} == */ltmain.sh || ${cfg} == ltmain.sh ]]; then _lt_main=1; else _lt_cfg=1; fi
+    done < <(find . -maxdepth 4 \( -name configure -o -name ltmain.sh \) -type f)
+
+    if (( _lt_cfg == 0 || _lt_main == 0 )); then
+      echo "==> ERROR: expected both configure and ltmain.sh to patch" >&2
+      echo "    (configure=${_lt_cfg} ltmain=${_lt_main}); libtool would link static-only. See #36." >&2
+      return 1
+    fi
+  fi
 }
 
 build() {
-	cd "${srcdir}/${pkgname}-${pkgver}"
+	cd "${srcdir}/${pkgbase}-${pkgver}"
+
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # Cross-build for aarch64-pc-cygwin (see .ci/makepkg-aarch64-cross.conf).
+    # The seed only needs libintl (msys-intl-8.dll + libintl.h + import lib) to
+    # link bash/coreutils, so configure the full tree but build+install ONLY
+    # gettext-runtime/intl — matching the ARM Cygwin bring-up. The gettext-tools
+    # (msgfmt/xgettext) are not part of the seed and are not shipped here.
+    #
+    # The cross host triple is now aarch64-pc-cygwin (#48), so the native
+    # -msys->-cygwin sed below has nothing to do here: the host already ends
+    # in -cygwin and matches libtool's stock cygwin* arms directly. Before the
+    # retarget this had to stay -msys and relied on the installed libtool
+    # treating *-msys* as a Cygwin-family DLL platform. The msys- DLL prefix is
+    # unchanged either way -- it comes from the driver specs in msys.h, not the
+    # triple.
+    #
+    # gt_cv_func_printf_posix=yes: cross default is wrong and would inject
+    #   printf replacements into the libintl header.
+    ./configure \
+      --build=${CHOST} \
+      --host=aarch64-pc-cygwin \
+      --prefix=/usr \
+      --with-included-libcroco \
+      --with-included-libunistring \
+      --with-included-libxml \
+      --with-included-glib \
+      --with-included-gettext \
+      --without-emacs \
+      --enable-shared \
+      --enable-static \
+      --disable-java \
+      --disable-native-java \
+      --disable-csharp \
+      --disable-openmp \
+      gt_cv_func_printf_posix=yes
+
+    make -C gettext-runtime/intl
+    make -C gettext-runtime/intl DESTDIR="${srcdir}/dest" install
+    rm -f ${srcdir}/dest/usr/lib/charset.alias
+    return
+  fi
 
   local CHOST="$(echo "${CHOST}" | sed 's|-msys$|-cygwin|')"
 
@@ -121,7 +210,9 @@ build() {
 }
 
 check() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  # target binaries can't run on the x64 (emulated) cross host
+  [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]] && return 0
+  cd "${srcdir}/${pkgbase}-${pkgver}"
   make check
 }
 
@@ -166,6 +257,18 @@ package_libintl() {
   groups=('libraries')
   depends=('gcc-libs' 'libiconv')
   license=('spdx:LGPL-2.1-or-later')
+
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # Cross seed: only gettext-runtime/intl was built. Ship the full intl
+    # install (DLL + libintl.h + import/static libs) so bash/coreutils can
+    # both link against and run with it.
+    options=('staticlibs')
+    mkdir -p ${pkgdir}/usr
+    cp -rf ${srcdir}/dest/usr/bin ${pkgdir}/usr/ 2>/dev/null || true
+    cp -rf ${srcdir}/dest/usr/include ${pkgdir}/usr/ 2>/dev/null || true
+    cp -rf ${srcdir}/dest/usr/lib ${pkgdir}/usr/ 2>/dev/null || true
+    return
+  fi
 
   mkdir -p ${pkgdir}/usr/bin
   cp -f ${srcdir}/dest/usr/bin/msys-intl-8.dll ${pkgdir}/usr/bin/
