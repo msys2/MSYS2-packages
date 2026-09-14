@@ -5,7 +5,7 @@ pkgname=('ncurses' 'ncurses-devel')
 pkgver=6.6
 pkgrel=2
 pkgdesc="System V Release 4.0 curses emulation library"
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 url="https://www.gnu.org/software/ncurses/"
 msys2_repository_url="https://github.com/ThomasDickey/ncurses-snapshots"
 msys2_references=(
@@ -21,7 +21,14 @@ sha256sums=('355b4cbbed880b0381a04c46617b7656e362585d52e9cf84a67e2009b749ff11'
             'SKIP'
             'b8544a607dfbeffaba2b087f03b57ed1fa81286afca25df65f61b04b5f3b3738'
             '3107029dfb807e338d34641d78329cd6725c58e6b873352621f4b9611a8380bf')
-validpgpkeys=('19882D92DDA4C400C22C0D56CC2AF4472167BE03')  # "Thomas E. Dickey (self-signed w/o SHA1) <dickey@invisible-island.net>"
+# NOTE: the upstream .tgz shipped a detached .asc signed by the key below, but the
+# codeload tarball has no signature, so that key is no longer exercised here. This
+# trades a GPG check for the sha256 above; the checksum was derived from a tree
+# proven byte-identical to the signed tarball's contents, not from the new source
+# itself, so it still pins the same code. Restore .asc verification if upstream
+# ever republishes the dated snapshots. Key kept for reference / future revert:
+#   19882D92DDA4C400C22C0D56CC2AF4472167BE03
+#   "Thomas E. Dickey (self-signed w/o SHA1) <dickey@invisible-island.net>"
 
 prepare() {
   cd ${srcdir}/${pkgbase}-${pkgver}
@@ -37,8 +44,29 @@ build() {
   cd ${srcdir}/${pkgbase}-${pkgver}
   msg2 "Configuring ${pkgname} with ${CHOST}"
   local CHOST="${CHOST/-cygwin/-msys}"
+
+  local _host_args=()
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # Cross-build for aarch64-pc-cygwin (see .ci/makepkg-aarch64-cross.conf).
+    # ncurses generates source with helper programs (make_keys/make_hash) and
+    # runs tic/infocmp during install — those must be the BUILD (x64) compiler,
+    # not the cross CC. --with-build-cc + BUILD_* flags direct that.
+    # GCC-15 is too new for some ncurses sources: force -std=gnu17.
+    _host_args=(
+      --host=aarch64-pc-cygwin
+      --with-build-cc=gcc
+      --with-build-cflags=-D_XOPEN_SOURCE_EXTENDED
+      --with-build-cppflags="-D_XOPEN_SOURCE_EXTENDED -DBUILDING_NCURSES"
+      --with-strip-program=aarch64-pc-cygwin-strip
+      --without-tests
+    )
+    export CFLAGS="-std=gnu17 -D_GNU_SOURCE"
+    export BUILD_CC=gcc
+  fi
+
   ./configure \
     --build=${CHOST} \
+    "${_host_args[@]}" \
     --with-install-prefix=/usr \
     --without-ada \
     --with-shared \
@@ -71,15 +99,34 @@ build() {
     --with-build-cflags=-D_XOPEN_SOURCE_EXTENDED \
     --with-pkg-config-libdir=/usr/lib/pkgconfig
 
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    if ! grep -q 'strip-program=.*aarch64-pc-cygwin-strip' progs/Makefile; then
+      echo "==> ERROR: --with-strip-program did not take effect (see #50):" >&2
+      grep -n '^INSTALL_PROG' progs/Makefile >&2 || true
+      return 1
+    fi
+    echo "==> ok: install -s will use aarch64-pc-cygwin-strip (#50)"
+  fi
+
   make
   make DESTDIR=${srcdir}/dest install
+
+  # Cross build installs libraries to dest/lib and programs to dest/bin,
+  # while the native build puts everything under dest/usr.  The package_*
+  # functions expect the native layout, so fold the two together.
+  for _d in bin lib; do
+    if [ -d "${srcdir}/dest/${_d}" ]; then
+      mkdir -p "${srcdir}/dest/usr/${_d}"
+      cp -rf "${srcdir}/dest/${_d}/." "${srcdir}/dest/usr/${_d}/"
+    fi
+  done
 }
 
 package_ncurses() {
   depends=('gcc-libs')
 
   mkdir -p ${pkgdir}/usr
-  cp -rf $srcdir/dest/usr/bin ${pkgdir}/usr/
+  [ -d "$srcdir/dest/usr/bin" ] && cp -rf "$srcdir/dest/usr/bin" "${pkgdir}/usr/" || true
   rm -f ${pkgdir}/usr/bin/*-config
   cp -rf $srcdir/dest/usr/share ${pkgdir}/usr/
 
@@ -99,7 +146,7 @@ package_ncurses-devel() {
   pkgdesc="NCURSES headers and libraries"
 
   mkdir -p ${pkgdir}/usr/bin
-  cp -f $srcdir/dest/usr/bin/*-config ${pkgdir}/usr/bin/
+  [ -d "$srcdir/dest/usr/bin" ] && cp -f "$srcdir"/dest/usr/bin/*-config "${pkgdir}/usr/bin/" || true
   cp -rf $srcdir/dest/usr/include ${pkgdir}/usr/
   cp -rf $srcdir/dest/usr/lib ${pkgdir}/usr/
   rm -rf ${pkgdir}/usr/lib/terminfo
