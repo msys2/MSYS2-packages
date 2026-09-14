@@ -1,0 +1,337 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:36 +0530
+Subject: [PATCH 057/109] Add arm64 support for exceptions.cc
+
+(cherry picked from commit 06808dd83188e06f1617998fbb4b3f3ca0101944)
+---
+ winsup/cygwin/exceptions.cc | 242 +++++++++++++++++++++++++++++-------
+ 1 file changed, 200 insertions(+), 42 deletions(-)
+
+diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
+index 7af9f18ae..d136bffa4 100644
+--- a/winsup/cygwin/exceptions.cc
++++ b/winsup/cygwin/exceptions.cc
+@@ -1712,6 +1712,7 @@ done:
+ 
+ }
+ 
++#if defined(__x86_64__) || defined(__aarch64__)
+ static void
+ altstack_wrapper (int sig, siginfo_t *siginfo, ucontext_t *sigctx,
+ 		  void (*handler) (int, siginfo_t *, void *))
+@@ -1762,6 +1763,7 @@ altstack_wrapper (int sig, siginfo_t *siginfo, ucontext_t *sigctx,
+ 	teb->Tib.StackLimit = old_limit;
+     }
+ }
++#endif
+ 
+ int
+ _cygtls::call_signal_handler ()
+@@ -1902,7 +1904,7 @@ _cygtls::call_signal_handler ()
+ 
+ 	  /* In assembler: Save regs on new stack, move to alternate stack,
+ 	     call thisfunc, revert stack regs. */
+-#ifdef __x86_64__
++#if defined(__x86_64__)
+ 	  /* Clobbered regs: rcx, rdx, r8, r9, r10, r11, rbp, rsp */
+ 	  __asm__ ("\n\
+ 		   movq  %[NEW_SP], %%rax  # Load alt stack into rax	\n\
+@@ -1940,6 +1942,51 @@ _cygtls::call_signal_handler ()
+ 		       [FUNC]	"o" (thisfunc),
+ 		       [WRAPPER] "o" (altstack_wrapper)
+ 		   : "memory");
++#elif defined(__aarch64__)
++	  __asm__ ("\n\
++		   mov	x9, %[NEW_SP]		// Load alt stack into x9	\n\
++		   sub	x9, x9, #0x60		// Make room on alt stack	\n\
++						// for clobbered regs		\n\
++		   str	x0, [x9, #0x00]		// Save clobbered regs		\n\
++		   str	x1, [x9, #0x08]						\n\
++		   str	x2, [x9, #0x10]						\n\
++		   str	x3, [x9, #0x18]						\n\
++		   str	x4, [x9, #0x20]						\n\
++		   str	x5, [x9, #0x28]						\n\
++		   str	x6, [x9, #0x30]						\n\
++		   str	x7, [x9, #0x38]						\n\
++		   str	fp, [x9, #0x40]						\n\
++		   mov	x10, sp			// Copy sp into x10 for saving	\n\
++		   str	x10, [x9, #0x48]					\n\
++		   str	x30, [x9, #0x50]	// Save link register		\n\
++		   mov	x0, %[SIG]		// thissig to 1st arg reg	\n\
++		   mov	x1, %[SI]		// &thissi to 2nd arg reg	\n\
++		   mov	x2, %[CTX]		// thiscontext to 3rd arg reg	\n\
++		   mov	x3, %[FUNC]		// thisfunc to x3		\n\
++		   mov	x4, %[WRAPPER]		// wrapper address to x4	\n\
++		   mov	sp, x9			// Move alt stack into sp	\n\
++		   blr	x4			// Call wrapper			\n\
++		   mov	x9, sp			// Restore clobbered regs	\n\
++		   ldr	x30, [x9, #0x50]	// Restore link register	\n\
++		   ldr	x10, [x9, #0x48]					\n\
++		   ldr	fp,  [x9, #0x40]					\n\
++		   ldr	x7,  [x9, #0x38]					\n\
++		   ldr	x6,  [x9, #0x30]					\n\
++		   ldr	x5,  [x9, #0x28]					\n\
++		   ldr	x4,  [x9, #0x20]					\n\
++		   ldr	x3,  [x9, #0x18]					\n\
++		   ldr	x2,  [x9, #0x10]					\n\
++		   ldr	x1,  [x9, #0x08]					\n\
++		   ldr	x0,  [x9, #0x00]					\n\
++		   mov	sp,  x10		// Restore stack pointer	\n"
++		   : : [NEW_SP]	 "r" (new_sp),
++		       [SIG]	 "r" (thissig),
++		       [SI]	 "r" (&thissi),
++		       [CTX]	 "r" (thiscontext),
++		       [FUNC]	 "r" (thisfunc),
++		       [WRAPPER] "r" (altstack_wrapper)
++		   : "memory", "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
++		     "x9", "x10", "x29", "x30");
+ #else
+ #error unimplemented for this target
+ #endif
+@@ -2059,7 +2106,7 @@ swapcontext (ucontext_t *oucp, const ucontext_t *ucp)
+ /* Trampoline function to set the context to uc_link.  The pointer to the
+    address of uc_link is stored in a callee-saved register, referenced by
+    _MC_uclinkReg from the C code.  If uc_link is NULL, call exit. */
+-#ifdef __x86_64__
++#if defined(__x86_64__)
+ /* _MC_uclinkReg == %rbx */
+ __asm__ ("				\n\
+ 	.global	__cont_link_context	\n\
+@@ -2080,7 +2127,25 @@ __cont_link_context:			\n\
+ 	nop				\n\
+ 	.seh_endproc			\n\
+ 	");
+-
++#elif defined(__aarch64__)
++__asm__ ("					\n\
++	.global	__cont_link_context		\n\
++	.seh_proc __cont_link_context		\n\
++__cont_link_context:				\n\
++	.seh_endprologue			\n\
++	mov	sp, x19				\n\
++	ldr	x0, [sp]			\n\
++	mov	x4, sp				\n\
++	and	x4, x4, #0xfffffffffffffff0	\n\
++	mov	sp, x4				\n\
++	cbz	x0, 1f				\n\
++	bl	setcontext			\n\
++	mov	w0, #0xff			\n\
++1:						\n\
++	bl	cygwin_exit			\n\
++	nop					\n\
++	.seh_endproc				\n"
++	);
+ #else
+ #error unimplemented for this target
+ #endif
+@@ -2088,11 +2153,19 @@ __cont_link_context:			\n\
+ /* makecontext is modelled after GLibc's makecontext.  The stack from uc_stack
+    is prepared so that it starts with a pointer to the linked context uc_link,
+    followed by the arguments to func, and finally at the bottom the "return"
+-   address set to __cont_link_context.  In the ucp context, rbx/ebx is set to
+-   point to the stack address where the pointer to uc_link is stored.  The
+-   requirement to make this work is that rbx/ebx are callee-saved registers
+-   per the ABI.  If any function is called which doesn't follow the ABI
+-   conventions, e.g. assembler code, this method will break.  But that's ok. */
++   address set to __cont_link_context.
++
++   x86_64: In the ucp context, rbx is set to point to the stack address where
++   the pointer to uc_link is stored.  The requirement to make this work is that
++   rbx is a callee-saved register per the ABI.
++
++   ARM64: In the ucp context, x19 is set to point to the stack address where
++   the pointer to uc_link is stored.  The requirement is that x19 is a
++   callee-saved register per the ARM64 ABI.
++
++   If any function is called which doesn't follow the ABI conventions, e.g.
++   assembler code, this method will break.  But that's ok. */
++
+ extern "C" void
+ makecontext (ucontext_t *ucp, void (*func) (void), int argc, ...)
+ {
+@@ -2100,65 +2173,150 @@ makecontext (ucontext_t *ucp, void (*func) (void), int argc, ...)
+   uintptr_t *sp;
+   va_list ap;
+ 
++#if defined(__x86_64__)
++  /* x86_64: Arguments beyond the first 4 go on the stack.
++     However, we allocate shadow space for all args including register args. */
++  int stack_args = argc;
++
++#elif defined(__aarch64__)
++  /* ARM64: Arguments beyond the first 8 go on the stack.
++     We only allocate stack space for args beyond registers. */
++  int stack_args = (argc > 8) ? (argc - 8) : 0;
++
++#else
++#error unimplemented for this target
++#endif
++
+   /* Initialize sp to the top of the stack. */
+   sp = (uintptr_t *) ((uintptr_t) ucp->uc_stack.ss_sp + ucp->uc_stack.ss_size);
+-  /* Subtract slots required for arguments and the pointer to uc_link. */
+-  sp -= (argc + 1);
+-  /* Align. */
+-  sp = (uintptr_t *) ((uintptr_t) sp & ~0xf);
+-  /* Subtract one slot for setting the return address. */
++
++#if defined(__x86_64__)
++  /* x86_64: Subtract slots for all arguments + uc_link pointer
++     and return address.  */
++  sp -= (stack_args + 1);  /* argc + 1 for uc_link */
++  /* Align to 16 bytes. */
++  sp = (uintptr_t *) ((uintptr_t) sp & ~0xfUL);
++  /* Subtract one more slot for the return address. */
+   --sp;
+-  /* Set return address to the trampolin function __cont_link_context. */
++  /* Set return address to the trampoline function __cont_link_context. */
+   sp[0] = (uintptr_t) __cont_link_context;
+-  /* Fetch arguments and store them on the stack.
+ 
+-     x86_64:
++#elif defined(__aarch64__)
++  /* ARM64: Subtract slots for stack arguments + uc_link pointer. */
++  sp -= (stack_args + 1);  /* stack_args + 1 for uc_link */
++  /* ARM64 requires 16-byte alignment at public interfaces. */
++  sp = (uintptr_t *) ((uintptr_t) sp & ~0xfUL);
+ 
+-     - Store first four args in the AMD64 ABI arg registers.
++#endif
+ 
++  /* Fetch arguments and store them.
++     x86_64:
++     - Store first four args in the AMD64 ABI arg registers (rcx, rdx, r8, r9).
+      - Note that the stack is not short by these four register args.  The
+        reason is the shadow space for these regs required by the AMD64 ABI.
+-
+      - The definition of makecontext only allows for "int" sized arguments to
+        func, 32 bit, likely for historical reasons.  However, the argument
+        slots on x86_64 are 64 bit anyway, so we can fetch and store the args
+        as 64 bit values, and func can request 64 bit args without violating
+        the definition.  This potentially allows porting 32 bit applications
+-       providing pointer values to func without additional porting effort. */
++       providing pointer values to func without additional porting effort.
++
++     ARM64:
++     - Store first eight args in ARM64 ABI arg registers (x0-x7).
++     - Arguments beyond 8 go on the stack.
++     - Similar to x86_64, we store as uintptr_t for pointer compatibility. */
++
+   va_start (ap, argc);
+   for (int i = 0; i < argc; ++i)
+-#ifdef __x86_64__
+-    switch (i)
+-      {
+-      case 0:
+-	ucp->uc_mcontext.rcx = va_arg (ap, uintptr_t);
+-	break;
+-      case 1:
+-	ucp->uc_mcontext.rdx = va_arg (ap, uintptr_t);
+-	break;
+-      case 2:
+-	ucp->uc_mcontext.r8 = va_arg (ap, uintptr_t);
+-	break;
+-      case 3:
+-	ucp->uc_mcontext.r9 = va_arg (ap, uintptr_t);
+-	break;
+-      default:
+-	sp[i + 1] = va_arg (ap, uintptr_t);
+-	break;
+-      }
+-#else
+-#error unimplemented for this target
++    {
++#if defined(__x86_64__)
++      switch (i)
++        {
++        case 0:
++          ucp->uc_mcontext.rcx = va_arg (ap, uintptr_t);
++          break;
++        case 1:
++          ucp->uc_mcontext.rdx = va_arg (ap, uintptr_t);
++          break;
++        case 2:
++          ucp->uc_mcontext.r8 = va_arg (ap, uintptr_t);
++          break;
++        case 3:
++          ucp->uc_mcontext.r9 = va_arg (ap, uintptr_t);
++          break;
++        default:
++          /* Stack arguments start at sp[i + 1] because sp[0] is return address */
++          sp[i + 1] = va_arg (ap, uintptr_t);
++          break;
++        }
++
++#elif defined(__aarch64__)
++      switch (i)
++        {
++        case 0:
++          ucp->uc_mcontext.x0 = va_arg (ap, uintptr_t);
++          break;
++        case 1:
++          ucp->uc_mcontext.x1 = va_arg (ap, uintptr_t);
++          break;
++        case 2:
++          ucp->uc_mcontext.x2 = va_arg (ap, uintptr_t);
++          break;
++        case 3:
++          ucp->uc_mcontext.x3 = va_arg (ap, uintptr_t);
++          break;
++        case 4:
++          ucp->uc_mcontext.x4 = va_arg (ap, uintptr_t);
++          break;
++        case 5:
++          ucp->uc_mcontext.x5 = va_arg (ap, uintptr_t);
++          break;
++        case 6:
++          ucp->uc_mcontext.x6 = va_arg (ap, uintptr_t);
++          break;
++        case 7:
++          ucp->uc_mcontext.x7 = va_arg (ap, uintptr_t);
++          break;
++        default:
++          /* Stack arguments beyond the first 8 registers. */
++          sp[i - 8] = va_arg (ap, uintptr_t);
++          break;
++        }
+ #endif
++    }
+   va_end (ap);
+-  /* Store pointer to uc_link at the top of the stack. */
++
++#if defined(__x86_64__)
++  /* Store pointer to uc_link at sp[argc + 1], after return address
++     and args.  */
+   sp[argc + 1] = (uintptr_t) ucp->uc_link;
++
++#elif defined(__aarch64__)
++  /* Store pointer to uc_link at the top of our allocated area. */
++  sp[stack_args] = (uintptr_t) ucp->uc_link;
++
++#endif
++
+   /* Last but not least set the register in the context at ucp so that a
+      subsequent setcontext or swapcontext picks up the right values:
+      - Set instruction pointer to the target function.
+      - Set stack pointer to the just computed stack pointer value.
+      - Set Cygwin-specific uclink register to the address of the pointer
+-       to uc_link. */
++       to uc_link.
++
++     x86_64: uclink register is rbx (callee-saved)
++     ARM64:  uclink register is x19 (callee-saved) */
++
+   ucp->uc_mcontext._MC_instPtr = (uint64_t) func;
+   ucp->uc_mcontext._MC_stackPtr = (uint64_t) sp;
++
++#if defined(__x86_64__)
+   ucp->uc_mcontext._MC_uclinkReg = (uint64_t) (sp + argc + 1);
++
++#elif defined(__aarch64__)
++  /* Set LR to __cont_link_context for ARM64 (used as return address). */
++  ucp->uc_mcontext.lr = (uint64_t) __cont_link_context;
++  ucp->uc_mcontext._MC_uclinkReg = (uint64_t) (sp + stack_args);
++
++#endif
+ }
