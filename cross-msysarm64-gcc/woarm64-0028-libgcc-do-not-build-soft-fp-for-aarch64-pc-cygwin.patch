@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Sun, 30 Aug 2026 22:58:46 +0530
+Subject: [PATCH 28/29] libgcc: do not build soft-fp for aarch64-pc-cygwin
+
+aarch64/t-softfp is entirely TFmode (softfp_float_modes := tf).  Upstream
+b95bfa1ff2c ("aarch64: mingw: Disable _Float128 emulation") sets
+TARGET_LONG_DOUBLE_128 to 0 in aarch64-abi-ms.h, and upstream's
+aarch64_scalar_mode_supported_p then reports TFmode as unsupported.
+Building soft-fp against that fails:
+
+  libgcc/soft-fp/quad.h:69: error: unable to emulate 'TF'
+
+Upstream's own aarch64-*-mingw* libgcc block does not use t-softfp for
+exactly this reason; only the ELF aarch64 targets do.  Our cygwin block
+predates that and still asked for it.  Match the mingw block.
+
+Note this drops __float128 for the target, which is upstream's deliberate
+choice for the AArch64 MS ABI.  The alternative would be to restore the
+TFmode-enabling hunk from our old "Change long double to 64bit" commit,
+which contradicts that decision.
+---
+ libgcc/config.host | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libgcc/config.host b/libgcc/config.host
+index 0ae68b669f1..12d7e5f47d2 100644
+--- a/libgcc/config.host
++++ b/libgcc/config.host
+@@ -884,7 +884,7 @@ aarch64-*-cygwin*)
+ 	tmake_file="${tmake_file} i386/t-slibgcc-cygming i386/t-cygming i386/t-cygwin"
+ 	tmake_file="${tmake_file} ${cpu_type}/t-aarch64"
+ 	tmake_file="${tmake_file} ${cpu_type}/t-lse"
+-	tmake_file="${tmake_file} ${cpu_type}/t-softfp t-softfp t-crtfm"
++	tmake_file="${tmake_file} t-crtfm"
+ 	extra_parts="$extra_parts crtbegin.o crtbeginS.o crtend.o crtfastmath.o"
+ 	if test x$enable_vtable_verify = xyes; then
+ 		extra_parts="$extra_parts vtv_start.o vtv_end.o vtv_start_preinit.o vtv_end_preinit.o"

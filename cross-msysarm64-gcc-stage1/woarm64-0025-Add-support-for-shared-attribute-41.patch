@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: WhatAmISupposedToPutHere
+ <98837604+WhatAmISupposedToPutHere@users.noreply.github.com>
+Date: Fri, 13 Jun 2025 11:55:40 +0200
+Subject: [PATCH 25/29] Add support for shared attribute (#41)
+
+Cygwin uses shared secions, and gcc previously only recognized
+this attribute on x86
+
+Signed-off-by: Sasha Finkelstein <fnkl.kernel@gmail.com>
+(cherry picked from commit 5c06fd42eead8e3a631fb914fe6a7b41b53ade3c)
+---
+ gcc/config/aarch64/aarch64.cc   | 1 +
+ gcc/config/i386/i386-options.cc | 2 +-
+ gcc/config/i386/i386-protos.h   | 1 -
+ gcc/config/mingw/winnt.cc       | 4 ++--
+ gcc/config/mingw/winnt.h        | 1 +
+ 5 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/gcc/config/aarch64/aarch64.cc b/gcc/config/aarch64/aarch64.cc
+index 5afe5d12d54..2d08d1a1344 100644
+--- a/gcc/config/aarch64/aarch64.cc
++++ b/gcc/config/aarch64/aarch64.cc
+@@ -940,6 +940,7 @@ static const attribute_spec aarch64_gnu_attributes[] =
+ #if TARGET_DLLIMPORT_DECL_ATTRIBUTES
+   { "dllimport", 0, 0, false, false, false, false, handle_dll_attribute, NULL },
+   { "dllexport", 0, 0, false, false, false, false, handle_dll_attribute, NULL },
++  { "shared",    0, 0, true,  false, false, false, mingw_handle_shared_attribute, NULL },
+ #endif
+ #ifdef SUBTARGET_ATTRIBUTE_TABLE
+   SUBTARGET_ATTRIBUTE_TABLE
+diff --git a/gcc/config/i386/i386-options.cc b/gcc/config/i386/i386-options.cc
+index 6bb5e1a08d9..8cd5a88a8be 100644
+--- a/gcc/config/i386/i386-options.cc
++++ b/gcc/config/i386/i386-options.cc
+@@ -4207,7 +4207,7 @@ static const attribute_spec ix86_gnu_attributes[] =
+   { "dllexport", 0, 0, false, false, false, false, handle_dll_attribute,
+     NULL },
+   { "shared",    0, 0, true,  false, false, false,
+-    ix86_handle_shared_attribute, NULL },
++    mingw_handle_shared_attribute, NULL },
+ #endif
+   { "ms_struct", 0, 0, false, false,  false, false,
+     ix86_handle_struct_attribute, NULL },
+diff --git a/gcc/config/i386/i386-protos.h b/gcc/config/i386/i386-protos.h
+index 2687de646b0..c277bd981d6 100644
+--- a/gcc/config/i386/i386-protos.h
++++ b/gcc/config/i386/i386-protos.h
+@@ -281,7 +281,6 @@ extern unsigned int ix86_local_alignment (tree, machine_mode,
+ 					  unsigned int, bool = false);
+ extern unsigned int ix86_minimum_alignment (tree, machine_mode,
+ 					    unsigned int);
+-extern tree ix86_handle_shared_attribute (tree *, tree, tree, int, bool *);
+ extern int x86_field_alignment (tree, int);
+ extern tree ix86_valid_target_attribute_tree (tree, tree,
+ 					      struct gcc_options *,
+diff --git a/gcc/config/mingw/winnt.cc b/gcc/config/mingw/winnt.cc
+index dfd91aaa0bd..74ca1b44d94 100644
+--- a/gcc/config/mingw/winnt.cc
++++ b/gcc/config/mingw/winnt.cc
+@@ -55,8 +55,8 @@ along with GCC; see the file COPYING3.  If not see
+ /* Handle a "shared" attribute;
+    arguments as in struct attribute_spec.handler.  */
+ tree
+-ix86_handle_shared_attribute (tree *node, tree name, tree, int,
+-			      bool *no_add_attrs)
++mingw_handle_shared_attribute (tree *node, tree name, tree, int,
++			       bool *no_add_attrs)
+ {
+   if (TREE_CODE (*node) != VAR_DECL)
+     {
+diff --git a/gcc/config/mingw/winnt.h b/gcc/config/mingw/winnt.h
+index cc7490939d5..df501e0f08d 100644
+--- a/gcc/config/mingw/winnt.h
++++ b/gcc/config/mingw/winnt.h
+@@ -56,6 +56,7 @@ struct seh_frame_state
+ 
+ extern tree aarch64_handle_ms_abi_attribute (tree *, tree, tree, int, bool *);
+ extern tree mingw_handle_selectany_attribute (tree *, tree, tree, int, bool *);
++extern tree mingw_handle_shared_attribute (tree *, tree, tree, int, bool *);
+ 
+ extern void mingw_pe_asm_named_section (const char *, unsigned int, tree);
+ extern void mingw_pe_asm_lto_start (void);

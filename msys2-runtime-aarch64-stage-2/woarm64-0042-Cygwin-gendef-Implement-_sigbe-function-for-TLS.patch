@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:20 +0530
+Subject: [PATCH 042/109] Cygwin: gendef: Implement _sigbe function for
+ TLS stack management on AArch64
+
+(cherry picked from commit 51ac5092e4fab8bc3ba6edb6e35f55c65e585790)
+---
+ winsup/cygwin/scripts/gendef | 36 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 6d1dbb50f..a8c7c0072 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -425,7 +425,43 @@ _sigfe:
+     br      x9				// Branch to real function
+     .seh_endproc
+ 
++    .global _sigbe
++    .seh_proc _sigbe
+ _sigbe:
++    .seh_endprologue
++    ldr     x10, [x18, #0x8]		// Load TLS base into x10
++    mov     w9, #1			// Constant value 1 for lock acquisition
++3:  ldr     x11, =_cygtls.stacklock	// Load offset of stacklock
++    add     x12, x10, x11		// Compute final address of stacklock
++    ldaxr   w13, [x12]			// Load current stacklock value atomically
++    stlxr   w14, w9, [x12]		// Attempt to set stacklock atomically
++    cbnz    w14, 3b			// Retry if failed
++    cbz     w13, 4f			// If lock was free, continue
++    yield
++    b       3b				// Retry acquiring the lock
++4:
++    mov     x9, #-8			// Set stack pointer decrement value
++5:  ldr     x11, =_cygtls.stackptr	// Load offset of stack pointer
++    add     x12, x10, x11		// Compute final address of stack pointer
++    ldaxr   x13, [x12]			// Load current stack pointer atomically
++    add     x14, x13, x9		// Compute new stack pointer value
++    stlxr   w15, x14, [x12]		// Attempt to update stack pointer atomically
++    cbnz    w15, 5b			// Retry if atomic update failed
++    sub     x13, x13, #8               // Compute address where LR was saved
++    ldr     x30, [x13]                 // Restore saved LR
++    ldr     x11, =_cygtls.incyg	// Load offset of incyg
++    add     x12, x10, x11		// Compute final address of incyg
++    ldr     w9, [x12]			// Load current incyg value
++    sub     w9, w9, #1			// Decrement incyg
++    str     w9, [x12]			// Store updated incyg value
++    ldr     x11, =_cygtls.stacklock	// Load offset of stacklock
++    add     x12, x10, x11		// Compute final address of stacklock
++    ldr     w9, [x12]			// Load current stacklock value
++    sub     w9, w9, #1			// Decrement stacklock (release lock)
++    stlr    w9, [x12]			// Store stacklock
++    ret				// Return to caller using restored LR
++    .seh_endproc
++
+ 	.global	sigdelayed
+ sigdelayed:
+ _sigdelayed_end:

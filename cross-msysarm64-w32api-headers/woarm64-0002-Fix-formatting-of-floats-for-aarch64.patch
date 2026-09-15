@@ -1,0 +1,40 @@
+From 32e3f4b6f927d85341d627da45c536bd413b43c5 Mon Sep 17 00:00:00 2001
+From: Zac Walker <zac.walker@linaro.org>
+Date: Wed, 2 Aug 2023 17:01:29 +0200
+Subject: [PATCH 2/8] Fix formatting of floats for aarch64
+
+---
+ mingw-w64-crt/stdio/mingw_pformat.c | 19 +++++++++++++++++--
+ 1 file changed, 17 insertions(+), 2 deletions(-)
+
+diff --git a/mingw-w64-crt/stdio/mingw_pformat.c b/mingw-w64-crt/stdio/mingw_pformat.c
+index 4e41b4d82..945250153 100644
+--- a/mingw-w64-crt/stdio/mingw_pformat.c
++++ b/mingw-w64-crt/stdio/mingw_pformat.c
+@@ -1046,9 +1046,24 @@ typedef union
+ static __pformat_fpreg_t init_fpreg_ldouble( long double val )
+ {
+   __pformat_fpreg_t x;
+-  x.__pformat_fpreg_ldouble_t = val;
++  
++  int bit_count = sizeof( long double ) * 8;  
+ 
+-  if( sizeof( double ) == sizeof( long double ) )
++    if( bit_count == 64 || bit_count == 80)
++    {
++      x.__pformat_fpreg_ldouble_t = val;
++    }
++    else
++    {
++      /* Turns out that only 64 bit or 80 bit doubles are currently supported. 
++      * aarch64 supports 128 bit doubles and that seems to be broken 
++      * in gdtoa. Just use a 64bit double as a work around.
++      */
++      x.__pformat_fpreg_double_t = (double)val;
++      bit_count = 64;
++    }
++
++  if( bit_count == 64 )
+   {
+     /* Here, __pformat_fpreg_t expects to be initialized with a 80 bit long
+      * double, but this platform doesn't have long doubles that differ from

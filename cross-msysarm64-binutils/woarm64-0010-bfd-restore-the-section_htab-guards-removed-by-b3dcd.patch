@@ -1,0 +1,70 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Mon, 31 Aug 2026 11:39:47 +0530
+Subject: [PATCH 10/10] bfd: restore the section_htab guards removed by
+ b3dcdde51b0
+
+ld segfaults for aarch64-pc-cygwin in two places, both freeing a
+section hash whose objalloc has already been released:
+
+1. Every link.  Any -lfoo searches for a dynamic archive first; when
+   libfoo.dll.a is absent bfd_fopen takes its error path:
+      objalloc_free / bfd_hash_table_free / _bfd_delete_bfd
+      / bfd_fopen("libgcc.dll.a", fd=-1) / gldaarch64pe_open_dynamic_archive
+   _bfd_delete_bfd calls bfd_free_cached_info, which releases the
+   objalloc, then frees section_htab from it.
+
+2. Every --out-implib, i.e. every DLL build:
+      objalloc_free / bfd_hash_table_free / bfd_make_readable
+      / make_head / pep_dll_generate_implib / gldaarch64pe_finish
+   bfd_make_readable calls the target's _bfd_free_cached_info and then
+   the generic one, which frees section_htab a second time.
+
+Upstream removed both guards in b3dcdde51b0 ("BFD: Remove null pointer
+checks for 'bfd_hash_table_free' calls") because objalloc_free became a
+no-op for NULL.  That is true for NULL but not for a pointer left
+dangling by an earlier free, which is what both paths produce.
+
+Our stage-1 gcc is --disable-shared so libgcc.dll.a never exists and
+path 1 fires on every link; path 2 fires whenever a DLL is built, which
+the runtime needs.  binutils 2.44 predates b3dcdde51b0 and links the
+same inputs fine.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ bfd/opncls.c | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/bfd/opncls.c b/bfd/opncls.c
+index a8fa6ebbf17..7131a3c4ed4 100644
+--- a/bfd/opncls.c
++++ b/bfd/opncls.c
+@@ -150,8 +150,12 @@ _bfd_delete_bfd (bfd *abfd)
+   if (abfd->memory && abfd->xvec)
+     bfd_free_cached_info (abfd);
+ 
+-  /* The target _bfd_free_cached_info may not have done anything..  */
+-  bfd_hash_table_free (&abfd->section_htab);
++  /* The target _bfd_free_cached_info may not have done anything..
++     Guard the free: bfd_free_cached_info above may have released the
++     objalloc that section_htab.memory points into, leaving it dangling
++     rather than NULL, so objalloc_free's null check does not help.  */
++  if (abfd->section_htab.memory)
++    bfd_hash_table_free (&abfd->section_htab);
+   if (abfd->memory)
+     objalloc_free (abfd->memory);
+ 
+@@ -185,7 +189,12 @@ DESCRIPTION
+ bool
+ _bfd_free_cached_info (bfd *abfd)
+ {
+-  bfd_hash_table_free (&abfd->section_htab);
++  /* The target's _bfd_free_cached_info may already have released the
++     objalloc that section_htab.memory points into, leaving it dangling
++     rather than NULL (bfd_make_readable calls both in sequence), so
++     objalloc_free's null check does not help here.  */
++  if (abfd->section_htab.memory)
++    bfd_hash_table_free (&abfd->section_htab);
+ 
+   abfd->sections = NULL;
+   abfd->section_last = NULL;

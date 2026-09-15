@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:13:42 +0530
+Subject: [PATCH 007/109] Cygwin: obtain stack pointer on AArch64
+
+(cherry picked from commit 0f87ae725fdb901a1fd3ee8c8f09bf7a6e01328f)
+---
+ winsup/cygwin/fork.cc                 | 4 +++-
+ winsup/cygwin/local_includes/cygtls.h | 6 ++++++
+ 2 files changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/fork.cc b/winsup/cygwin/fork.cc
+index 2aa52737c..7156fc31d 100644
+--- a/winsup/cygwin/fork.cc
++++ b/winsup/cygwin/fork.cc
+@@ -665,8 +665,10 @@ dofork (void **proc, bool *with_forkables)
+     ischild = !!setjmp (grouped.ch.jmp);
+ 
+     volatile char * volatile stackp;
+-#ifdef __x86_64__
++#if defined(__x86_64__)
+     __asm__ volatile ("movq %%rsp,%0": "=r" (stackp));
++#elif defined(__aarch64__)
++    __asm__ volatile ("mov %0, sp" : "=r" (stackp));
+ #else
+ #error unimplemented for this target
+ #endif
+diff --git a/winsup/cygwin/local_includes/cygtls.h b/winsup/cygwin/local_includes/cygtls.h
+index 306497a33..786e39536 100644
+--- a/winsup/cygwin/local_includes/cygtls.h
++++ b/winsup/cygwin/local_includes/cygtls.h
+@@ -323,7 +323,13 @@ public:
+        address of the _except block to restore the context correctly.
+        See comment preceeding myfault_altstack_handler in exception.cc. */
+     ret = (DWORD64) _ret;
++#if defined(__x86_64__)
+     __asm__ volatile ("movq %%rsp,%0": "=o" (frame));
++#elif defined(__aarch64__)
++    __asm__ volatile ("mov %0, sp" : "=r" (frame));
++#else
++#error unimplemented for this target
++#endif
+   }
+   ~san () __attribute__ ((always_inline))
+   {
