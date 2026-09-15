@@ -1,28 +1,37 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
-pkgname=groff
+pkgname='groff'
 pkgver=1.24.1
 pkgrel=1
-pkgdesc="GNU troff text-formatting system"
+pkgdesc='GNU troff text-formatting system'
 arch=('i686' 'x86_64')
-url="https://www.gnu.org/software/groff/groff.html"
+url='https://www.gnu.org/software/groff/groff.html'
 msys2_repository_url='https://cgit.git.savannah.gnu.org/cgit/groff.git'
 msys2_references=(
-  "cpe: cpe:/a:gnu:groff"
+  'anitya: 1253'
+  'archlinux: groff'
+  'cpe: cpe:/a:gnu:groff'
+  'gentoo: sys-apps/groff'
 )
 license=('spdx:GPL-3.0-or-later')
-depends=('perl' 'gcc-libs')
-makedepends=('autotools' 'gcc')
-optdepends=()
-
-_patches=(
-  0001-fixes-for-building-with-gcc-15.patch
+depends=(
+  'gcc-libs'
+  'perl'
+)
+makedepends=(
+  'autotools'
+  'gcc'
 )
 
-source=(https://ftp.gnu.org/gnu/groff/groff-$pkgver.tar.gz{,.sig}
-        site.tmac
-        ${_patches[@]})
+_patches=(
+  '0001-fixes-for-building-with-gcc-15.patch'
+)
 options=('!docs' '!emptydirs' '!makeflags')
+source=(
+  "https://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.gz"{,.sig}
+  'site.tmac'
+  "${_patches[@]}"
+)
 sha256sums=('74e2819795b6aff431aeac983d63a9c8968eeaba2a2eba7df8ba4c7b41e7cfd8'
             'SKIP'
             'af59ecde597ce9f8189368a7739279a5f8a391139fe048ef6b4e493ed46e5f5f'
@@ -33,40 +42,41 @@ validpgpkeys=(
 )
 
 prepare() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${pkgname}-${pkgver}"
 
-  for patch in "${_patches[@]}"; do
-    msg2 "Patching with ${patch}"
-    patch -Nbp1 -i "${srcdir}/${patch}"
+  for _patch in "${_patches[@]}"; do
+    msg2 "Applying ${_patch}"
+    patch -Nbp1 -i "${srcdir}/${_patch}"
   done
 
   autoreconf -fvi -I m4
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${pkgname}-${pkgver}"
 
   ./configure \
-    --build=${CHOST} \
+    --build="${CHOST}" \
     --prefix=/usr
+
   make
 }
 
 check() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${pkgname}-${pkgver}"
+
   make check
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make DESTDIR=${pkgdir} install
+  cd "${pkgname}-${pkgver}"
 
-  rm -f ${pkgdir}/usr/lib/charset.alias
+  make "DESTDIR=${pkgdir}" install
+
+  rm -f "${pkgdir}/usr/lib/charset.alias"
 
   # FS33760 - TERMCAP variables not followed
   # TODO: everyone is doing this - find out why upstream does not...
-  cat ${srcdir}/site.tmac >> \
-    ${pkgdir}/usr/share/groff/site-tmac/man.local
-  cat ${srcdir}/site.tmac >> \
-    ${pkgdir}/usr/share/groff/site-tmac/mdoc.local
+  cat "${srcdir}/site.tmac" >> "${pkgdir}/usr/share/groff/site-tmac/man.local"
+  cat "${srcdir}/site.tmac" >> "${pkgdir}/usr/share/groff/site-tmac/mdoc.local"
 }
