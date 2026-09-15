@@ -35,16 +35,20 @@ prepare() {
 
   # https://github.com/msys2/MSYS2-packages/issues/3012
   patch -p1 -i ${srcdir}/004-msystem-osname-cygwin.patch
-  autoreconf -fi
-  source "${startdir}/../.ci/fix-msys-libtool.sh"
-  fix_msys_libtool configure
 
-  if [[ -n $(find . -maxdepth 3 -name ltmain.sh -type f -print -quit) ]]; then
-    echo "==> ERROR: coreutils now ships an ltmain.sh -- it has become a libtool" >&2
-    echo "    consumer, so restore it to the fix_msys_libtool call above (#51/#36)." >&2
-    return 1
+  autoreconf -fi
+
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    source "${startdir}/../.ci/fix-msys-libtool.sh"
+    fix_msys_libtool configure
+
+    if [[ -n $(find . -maxdepth 3 -name ltmain.sh -type f -print -quit) ]]; then
+      echo "==> ERROR: coreutils now ships an ltmain.sh -- it has become a libtool" >&2
+      echo "    consumer, so restore it to the fix_msys_libtool call above (#51/#36)." >&2
+      return 1
+    fi
+    echo "==> ok: coreutils uses no libtool; configure patched, no ltmain.sh expected (#51)"
   fi
-  echo "==> ok: coreutils uses no libtool; configure patched, no ltmain.sh expected (#51)"
 }
 
 build() {
