@@ -2,7 +2,12 @@
 # Contributor: Ray Donnelly <mingw.android@gmail.com>
 
 pkgbase=bash
-pkgname=('bash' 'bash-devel' 'bash-testsuite')
+pkgname=('bash' 'bash-devel')
+# The testsuite package exists to run bash's own tests against the freshly
+# cross-built ARM64 runtime; it is not part of the native package set.
+if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+  pkgname=('bash' 'bash-devel' 'bash-testsuite')
+fi
 _basever=5.3
 _patchlevel=015 #prepare for some patches
 pkgver=${_basever}.${_patchlevel}
@@ -17,7 +22,7 @@ msys2_references=(
 )
 validpgpkeys=('7C0135FB088AAF6C66C650B9BB5869F064EA74AB') # Chet Ramey
 makedepends=('gettext-devel' 'libreadline-devel>=7.0' 'ncurses-devel' 'autotools' 'gcc')
-source=(https://mirrors.kernel.org/gnu/bash/bash-${_basever}.tar.gz{,.sig}
+source=(https://ftp.gnu.org/gnu/bash/bash-${_basever}.tar.gz{,.sig}
         0001-bash-4.4-cygwin.patch
         0002-bash-4.3-msysize.patch
         0005-bash-4.3-msys2-fix-lineendings.patch
@@ -25,7 +30,7 @@ source=(https://mirrors.kernel.org/gnu/bash/bash-${_basever}.tar.gz{,.sig}
         0007-fix-static-build.patch)
 if [ $_patchlevel -gt 000 ]; then
   for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
-    source=(${source[@]} https://mirrors.kernel.org/gnu/bash/bash-${_basever}-patches/bash${_basever//./}-$(printf "%03d" $p){,.sig})
+    source=(${source[@]} https://ftp.gnu.org/gnu/bash/bash-${_basever}-patches/bash${_basever//./}-$(printf "%03d" $p){,.sig})
   done
 fi
 noextract=(${pkgbase}-${_basever}.tar.gz)
@@ -47,46 +52,48 @@ prepare() {
   patch -p1 -i ${srcdir}/0006-bash-4.3-add-pwd-W-option.patch
   patch -p1 -i ${srcdir}/0007-fix-static-build.patch
 
-  # environ is a DATA symbol exported by msys-2.0.dll.  A bare
-  #   extern char **environ;
-  # makes ld fall back to auto-import, and on AArch64 that pseudo-relocation is
-  # never applied: bash.exe ends up with 8 __fu*_environ thunks writing to a
-  # LOCAL copy.  bash keeps the C library environment in sync with
-  #   environ = export_env;      (variables.c)
-  # so with a broken auto-import the runtime never sees the new environment --
-  # "export TZ=..." has no effect on printf %()T in the same process, while a
-  # spawned child still works (export_env goes to execve directly).  That is
-  # the run-printf failure.  dllimport routes the assignment through
-  # __imp_environ, i.e. the DLL's real variable.
-  # support/printenv.c needs it for the same reason: it is one of the four
-  # testsuite helpers, and with auto-import it reads a bogus address, prints
-  # nothing and exits 1 -- silently costing the appendop, func, nameref and
-  # varenv groups, with no error anywhere pointing at printenv.
-  for _f in shell.c variables.c support/printenv.c; do
-    sed -i "s/^extern char \*\*environ;/__declspec(dllimport) extern char **environ;/" "${_f}"
-  done
-  if ! grep -q "dllimport) extern char " variables.c ||
-     ! grep -q "dllimport) extern char " support/printenv.c; then
-    echo "FATAL: environ dllimport patch did not apply" >&2
-    return 1
-  fi
-  echo "environ declared dllimport in shell.c and variables.c"
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # environ is a DATA symbol exported by msys-2.0.dll.  A bare
+    #   extern char **environ;
+    # makes ld fall back to auto-import, and on AArch64 that pseudo-relocation is
+    # never applied: bash.exe ends up with 8 __fu*_environ thunks writing to a
+    # LOCAL copy.  bash keeps the C library environment in sync with
+    #   environ = export_env;      (variables.c)
+    # so with a broken auto-import the runtime never sees the new environment --
+    # "export TZ=..." has no effect on printf %()T in the same process, while a
+    # spawned child still works (export_env goes to execve directly).  That is
+    # the run-printf failure.  dllimport routes the assignment through
+    # __imp_environ, i.e. the DLL's real variable.
+    # support/printenv.c needs it for the same reason: it is one of the four
+    # testsuite helpers, and with auto-import it reads a bogus address, prints
+    # nothing and exits 1 -- silently costing the appendop, func, nameref and
+    # varenv groups, with no error anywhere pointing at printenv.
+    for _f in shell.c variables.c support/printenv.c; do
+      sed -i "s/^extern char \*\*environ;/__declspec(dllimport) extern char **environ;/" "${_f}"
+    done
+    if ! grep -q "dllimport) extern char " variables.c ||
+       ! grep -q "dllimport) extern char " support/printenv.c; then
+      echo "FATAL: environ dllimport patch did not apply" >&2
+      return 1
+    fi
+    echo "environ declared dllimport in shell.c and variables.c"
 
-  # Same defect, different symbol: support/xcase.c redeclares
-  #   extern int optind;
-  # which overrides the correct __declspec(dllimport) declaration that
-  # <unistd.h> already provides.  optind is a DATA symbol in msys-2.0.dll, so
-  # the bare extern forces auto-import and on AArch64 the pseudo-relocation is
-  # never applied.  xcase then reads a garbage optind, "av += optind" walks off
-  # argv and "av[0][0]" segfaults -- unconditionally, with or without flags.
-  # That is the run-coproc segfault ("coproc xcase -n -u"), which also cost the
-  # two Bad-file-descriptor lines that followed it.
-  sed -i "s/^extern int optind;/__declspec(dllimport) extern int optind;/" support/xcase.c
-  if ! grep -q "dllimport) extern int optind" support/xcase.c; then
-    echo "FATAL: optind dllimport patch did not apply" >&2
-    return 1
+    # Same defect, different symbol: support/xcase.c redeclares
+    #   extern int optind;
+    # which overrides the correct __declspec(dllimport) declaration that
+    # <unistd.h> already provides.  optind is a DATA symbol in msys-2.0.dll, so
+    # the bare extern forces auto-import and on AArch64 the pseudo-relocation is
+    # never applied.  xcase then reads a garbage optind, "av += optind" walks off
+    # argv and "av[0][0]" segfaults -- unconditionally, with or without flags.
+    # That is the run-coproc segfault ("coproc xcase -n -u"), which also cost the
+    # two Bad-file-descriptor lines that followed it.
+    sed -i "s/^extern int optind;/__declspec(dllimport) extern int optind;/" support/xcase.c
+    if ! grep -q "dllimport) extern int optind" support/xcase.c; then
+      echo "FATAL: optind dllimport patch did not apply" >&2
+      return 1
+    fi
+    echo "optind declared dllimport in support/xcase.c"
   fi
-  echo "optind declared dllimport in support/xcase.c"
 
   autoconf
 }
@@ -210,10 +217,14 @@ package_bash() {
   provides=('sh')
 
   cd ${srcdir}/${pkgname}-$_basever
-  make DESTDIR=${pkgdir} \
-       HISTORY_LDFLAGS= \
-       READLINE_LDFLAGS= \
-       install
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    make DESTDIR=${pkgdir} \
+         HISTORY_LDFLAGS= \
+         READLINE_LDFLAGS= \
+         install
+  else
+    make DESTDIR=${pkgdir} install
+  fi
 
   cp -fp ${pkgdir}/usr/bin/{ba,}sh.exe
 
