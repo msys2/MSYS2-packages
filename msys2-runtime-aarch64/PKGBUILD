@@ -237,11 +237,16 @@ sha256sums=('SKIP'
 _target=aarch64-pc-cygwin
 _build=x86_64-pc-msys
 
-# Derive the gcc version dir from the compiler: it changes between gcc
-# releases (15.0.1 -> 17) and a stale hardcoded path silently breaks the
-# -nostdinc include set and the crt*.o copies.
-GCC_BASE="$(dirname "$(aarch64-pc-cygwin-gcc -print-libgcc-file-name)")"
 prepare() {
+  # Derive the gcc version dir from the compiler: it changes between gcc
+  # releases (15.0.1 -> 17) and a stale hardcoded path silently breaks the
+  # -nostdinc include set and the crt*.o copies.
+  #
+  # Derived here rather than at top level: makepkg sources the PKGBUILD just to
+  # read its metadata (.ci/ci-get-build-order.py does exactly that), and at that
+  # point the cross toolchain need not be installed, so a top-level call printed
+  # "aarch64-pc-cygwin-gcc: command not found" on every CI run.
+  GCC_BASE="$(dirname "$(aarch64-pc-cygwin-gcc -print-libgcc-file-name)")"
 
   # The AArch64 port, as a patch series on top of upstream msys2-runtime.
   # (Previously these were commits on runtime-upstream-9-sep-nomsys.)
@@ -389,6 +394,14 @@ CEOF
 }
 
 build() {
+  # Re-derived here so build() does not depend on prepare() having run in the
+  # same shell (mirrors msys2-runtime-aarch64-stage-2).
+  GCC_BASE="$(dirname "$(aarch64-pc-cygwin-gcc -print-libgcc-file-name)")"
+  [ -f "${GCC_BASE}/include/stddef.h" ] || {
+    echo "FATAL: gcc include dir not found under ${GCC_BASE}/include (no stddef.h)"
+    return 1
+  }
+
   unset CFLAGS CXXFLAGS LDFLAGS CPPFLAGS
   export CONFIG_SITE=/dev/null
   export CCACHE_DISABLE=1
