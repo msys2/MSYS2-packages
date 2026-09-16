@@ -26,6 +26,10 @@ makedepends=(
   "cocom"                             # provides: osfmk tool for mach interface generation
   "git"
   "autotools"
+  "gcc"                               # native host compiler for the in-tree
+                                      # newlib build (CC=gcc, host tools)
+  "binutils"                          # native ar/ranlib/nm/objdump/strip
+  "file"                              # ARM64 PE checks gate on `file` output
 )
 _upstream_commit=da84778cbc92590c1996c02c68c5a3d3c49e00af
 source=(
@@ -391,6 +395,28 @@ CEOF
 
   cd ${srcdir}/${_realname}/winsup
   ./autogen.sh || autoreconf -fvi || true
+
+  # --- private source copy for the in-package newlib build ----------------
+  # The newlib build regenerates every Makefile.in under newlib/ and merges
+  # the winsup headers into newlib/libc/include; winsup cannot be built from a
+  # tree in that state.  That is why this was a second PKGBUILD
+  # (newlib_pkgbuild/) driven by build_msys.sh -- which a plain `makepkg`
+  # never runs, so build() always died on "newlib build tree not found".
+  if [ ! -d "${srcdir}/newlib-src" ]; then
+    cp -a "${srcdir}/${_realname}" "${srcdir}/newlib-src"
+    (
+      cd "${srcdir}/newlib-src/newlib" || exit 1
+      find . -name Makefile.in -delete
+      find . -name Makefile -delete
+      autoreconf -fvi
+    ) || return 1
+    # getopt.h is saved and restored around the merge: the winsup copy would
+    # otherwise shadow newlib's own, which newlib itself needs.
+    cp -f "${srcdir}/newlib-src/newlib/libc/include/getopt.h" "${srcdir}/newlib-src/getopt.h"
+    cp -rf "${srcdir}/newlib-src"/winsup/cygwin/include/* "${srcdir}/newlib-src/newlib/libc/include/"
+    cp -f "${srcdir}/newlib-src/getopt.h" "${srcdir}/newlib-src/newlib/libc/include/getopt.h"
+    echo "newlib source copy prepared at ${srcdir}/newlib-src"
+  fi
 }
 
 build() {
@@ -484,6 +510,75 @@ build() {
   # uses the underscore form too; the hyphen was a copy-paste from the stage-2
   # recipe and made this check fail with "newlib build tree not found".
   _nlbuild="${startdir}/newlib_pkgbuild/src/runtime-build/${_target}/newlib"
+  if [ -d "${_nlbuild}" ]; then
+    echo "newlib: using pre-built tree from newlib_pkgbuild"
+  else
+    _nlbuild="${srcdir}/newlib-build/${_target}/newlib"
+    if [ ! -d "${_nlbuild}" ]; then
+      echo "newlib: no pre-built tree; building in-tree"
+      (
+        # Subshell: this configure builds and RUNS native host tools, so it
+        # must not inherit the cross CC/CXX/... exports build() set up.
+        unset CC CXX AS LD AR RANLIB NM OBJDUMP OBJCOPY STRIP WINDRES DLLTOOL
+        unset CFLAGS CXXFLAGS LDFLAGS CPPFLAGS
+        export CONFIG_SITE=/dev/null
+        export CCACHE_DISABLE=1
+        export ac_cv_header_rpc_xdr_h=yes
+        export ac_cv_func_xdrmem_create=yes
+        export newlib_cv_xdr_dir=yes
+        # AC_NO_EXECUTABLES forbids the AC_CHECK_LIB link probes that
+        # configure-target-winsup runs; pre-seed them (we link neither).
+        export ac_cv_lib_sframe_sframe_decode=no
+        export ac_cv_lib_zstd_ZSTD_isError=no
+
+        _gcc_base="$(dirname "$(aarch64-pc-cygwin-gcc -print-libgcc-file-name)")"
+        [ -f "${_gcc_base}/include/stddef.h" ] || {
+          echo "FATAL: no stddef.h under ${_gcc_base}/include" >&2; exit 1; }
+        _sysroot_inc=/usr/aarch64-pc-cygwin/include
+        # Only through *_FOR_TARGET: leaking -nostdinc into plain CFLAGS breaks
+        # the top-level native probe, which compiles AND RUNS an x86_64 conftest.
+        _tcflags="-nostdinc -isystem ${_gcc_base}/include -isystem ${_gcc_base}/include-fixed -isystem ${_sysroot_inc} -isystem ${_sysroot_inc}/w32api -D_MB_CAPABLE=1"
+        export CFLAGS_FOR_TARGET="${_tcflags}"
+        export CPPFLAGS_FOR_TARGET="${_tcflags}"
+
+        mkdir -p "${srcdir}/newlib-build"
+        cd "${srcdir}/newlib-build" || exit 1
+        CXXFLAGS_FOR_TARGET="-Wno-error -Wno-narrowing" \
+        "${srcdir}/newlib-src/configure" \
+          --prefix=/usr \
+          --build=${_build} \
+          --host=${_build} \
+          --target=${_target} \
+          --with-cross-bootstrap \
+          --disable-libgloss \
+          --enable-shared --enable-static \
+          --disable-doc --disable-dumper --disable-cygserver --disable-utils \
+          --without-mingw-progs --without-headers \
+          CC=gcc CXX=g++ AR=ar RANLIB=ranlib NM=nm OBJDUMP=objdump STRIP=strip \
+          CC_FOR_TARGET=aarch64-pc-cygwin-gcc \
+          CXX_FOR_TARGET=aarch64-pc-cygwin-g++ \
+          GCC_FOR_TARGET=aarch64-pc-cygwin-gcc \
+          AR_FOR_TARGET=aarch64-pc-cygwin-ar \
+          RANLIB_FOR_TARGET=aarch64-pc-cygwin-ranlib \
+          NM_FOR_TARGET=aarch64-pc-cygwin-nm \
+          OBJCOPY_FOR_TARGET=aarch64-pc-cygwin-objcopy \
+          OBJDUMP_FOR_TARGET=aarch64-pc-cygwin-objdump \
+          DLLTOOL_FOR_TARGET=aarch64-pc-cygwin-dlltool \
+          WINDRES_FOR_TARGET=aarch64-pc-cygwin-windres \
+          WINDMC_FOR_TARGET=aarch64-pc-cygwin-windmc \
+          LD_FOR_TARGET=aarch64-pc-cygwin-ld \
+          AS_FOR_TARGET=aarch64-pc-cygwin-as \
+          STRIP_FOR_TARGET=aarch64-pc-cygwin-strip \
+          MINGW_CXX=aarch64-w64-mingw32-g++ \
+          MINGW_CC=aarch64-w64-mingw32-gcc \
+          CFLAGS="-O2 -pipe -D_MB_CAPABLE=1" \
+          CXXFLAGS="-O2 -pipe -D_MB_CAPABLE=1"
+        # newlib only: a bare `make` would also build all-target-winsup,
+        # without the workarounds build() applies below.
+        make -j$(nproc) all-target-newlib
+      ) || { echo "FATAL: in-tree newlib build failed" >&2; return 1; }
+    fi
+  fi
   if [ ! -d "${_nlbuild}" ]; then
     echo "FATAL: newlib build tree not found at ${_nlbuild}" >&2; return 1
   fi
