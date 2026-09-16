@@ -734,10 +734,16 @@ EOF
 # is the one rebuilt with stage-2 GCC and packaged by msys2-runtime-aarch64-stage-2,
 # whose package() is the real, strict one (rejects a stub crt0, ships newlib libs).
 #
-# Therefore package_*() here stays disabled on purpose: enabling it would create a
-# second, stage-1-compiler-built runtime package that must NOT be installed over
-# the stage-2 one, and would require wiring an extra build+install step into the
-# orchestrator (build-msys2-woarm64-all.sh). That is deferred.
+# It nevertheless needs a package(): makepkg refuses a recipe without one, and CI
+# runs makepkg directly, so the recipe aborted with "Missing package() function"
+# before building anything.  The concern that kept it disabled -- a second,
+# stage-1-compiler-built runtime installing over the stage-2 one -- is handled by
+# shipping the bootstrap artifacts under lib/bootstrap-stage1/ instead of the
+# sysroot paths the stage-2 package owns, so the two cannot file-conflict and
+# stage-1 can never shadow the shippable runtime.
+#
+# The package_msys2-runtime*() templates below stay commented out; those WOULD
+# produce a competing runtime.
 #
 # package_msys2-runtime() {
 #   pkgdesc="Cygwin POSIX emulation engine (aarch64-pc-cygwin)"
@@ -768,3 +774,52 @@ EOF
 # }
 
 
+
+package() {
+  # This is the stage-1 bootstrap runtime.  Its output is consumed by
+  # cross-msysarm64-gcc and by the stage-2 runtime, both of which read it
+  # straight out of this package's srcdir, so the recipe never had a package()
+  # at all.  build_msys.sh gets away with that because it never runs a full
+  # makepkg -- CI does, and aborts before building anything:
+  #
+  #   ==> ERROR: Missing package() function in .../msys2-runtime-aarch64/PKGBUILD
+  #
+  # Ship the bootstrap artifacts so this is a real package.  They go under
+  # lib/bootstrap-stage1/ rather than directly into the sysroot lib/, because
+  # the stage-2 runtime installs libmsys-2.0.a, libg.a and friends at exactly
+  # those paths and the two packages would file-conflict.
+  #
+  # Consumers still read the srcdir copies; pointing them at installed paths
+  # instead is the right cleanup, but it is a bigger change than making the
+  # recipe packageable.
+  pkgdesc="aarch64-pc-cygwin stage-1 bootstrap runtime artifacts (sysroot staging)"
+
+  local _d="${pkgdir}/usr/aarch64-pc-cygwin/lib/bootstrap-stage1"
+  install -d "${_d}"
+
+  # Required: these three are what cross-msysarm64-gcc hard-verifies.
+  local _f
+  for _f in \
+    "${srcdir}/runtime-build/cygwin/libmsys-2.0.a" \
+    "${srcdir}/newlib/libc.a" \
+    "${srcdir}/newlib/libm.a"; do
+    if [ ! -f "${_f}" ]; then
+      echo "FATAL: stage-1 artifact missing: ${_f}" >&2
+      return 1
+    fi
+    install -m644 "${_f}" "${_d}/$(basename "${_f}")"
+    echo "packaged $(basename "${_f}")"
+  done
+
+  # Optional: present in a full bootstrap, absent in some partial builds.
+  for _f in \
+    "${srcdir}/runtime-build/cygwin/crt0.o" \
+    "${srcdir}/newlib/libg.a"; do
+    if [ -f "${_f}" ]; then
+      install -m644 "${_f}" "${_d}/$(basename "${_f}")"
+      echo "packaged $(basename "${_f}")"
+    else
+      echo "note: optional stage-1 artifact not present: $(basename "${_f}")"
+    fi
+  done
+}
