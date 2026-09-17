@@ -635,6 +635,14 @@ cat >> cygwin/Makefile << 'EOF'
 devices.o: CXXFLAGS += -mno-early-ldp-fusion
 fhandler/netdrive.o: CXXFLAGS += -Wno-misleading-indentation
 libc/minires-os-if.o: CFLAGS += -no-integrated-cpp
+#  fhandler/disk_file.o: GCC-17 ICE (SIGABRT) "during IPA pass: inline", reported against
+#                        cygerrno.h:34 in fhandler_disk_file::ioctl.  Appeared with the move
+#                        to upstream GCC 17; GCC 15 built this TU fine.  It is the optimizer,
+#                        not the source: -O0 compiles clean, -O1 (the build level) aborts.
+#                        Not parallelism - it reproduces at -j1.  -O0 for this one TU only.
+#                        Same rule the stage-2 recipe already carries; stage 1 needs it too
+#                        because it is built by the stage-1 compiler, which has the same bug.
+fhandler/disk_file.o: CXXFLAGS += -O0
 EOF
 # (w32api/ mirror no longer needed: cross-msysarm64-w32api-headers now installs
 # the Win32 headers under include/w32api/ via --enable-w32api.)
