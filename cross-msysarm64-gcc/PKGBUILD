@@ -377,8 +377,28 @@ build() {
   #     This removes the need for the old Fix-2 (ar-merging EH objects into
   #     libgcc.a) and Fix-3 (appending libkernel32.a to the libstdc++ libtool
   #     postdeps). prepare() gates that the patch actually applied.
-  make LDFLAGS_FOR_TARGET="-L/usr/${_target}/lib" all-target-libgcc
-  make LDFLAGS_FOR_TARGET="-L/usr/${_target}/lib" all-target-libstdc++-v3
+  # A target-library configure that cannot link fails with nothing but
+  #   configure: error: C compiler cannot create executables
+  # and the reason -- the actual ld diagnostic -- is only ever written to that
+  # directory's config.log, which CI never shows.  Surface it, otherwise every
+  # diagnosis costs a two-hour round trip and is guesswork.
+  _dump_failed_config_logs() {
+    local _f _n=0
+    while IFS= read -r _f; do
+      echo "===== ${_f} ====="
+      # The link test and its error land near "checking whether the C compiler
+      # works"; 120 lines from there covers the command and ld output.
+      sed -n "/checking whether the C compiler works/,+120p" "${_f}" || tail -n 120 "${_f}"
+      _n=$((_n + 1))
+    done < <(grep -rl "cannot create executables" "${srcdir}/gcc-build" --include=config.log 2>/dev/null)
+    [ "${_n}" -eq 0 ] && echo "(no config.log mentions a failed link test)"
+    return 0
+  }
+
+  make LDFLAGS_FOR_TARGET="-L/usr/${_target}/lib" all-target-libgcc \
+    || { _dump_failed_config_logs; return 1; }
+  make LDFLAGS_FOR_TARGET="-L/usr/${_target}/lib" all-target-libstdc++-v3 \
+    || { _dump_failed_config_logs; return 1; }
   make LDFLAGS_FOR_TARGET="-L/usr/${_target}/lib" all-target-libgomp   || echo "WARNING: libgomp failed"
 }
 package() {
