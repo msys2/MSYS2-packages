@@ -1078,6 +1078,36 @@ package() {
   if [ -n "${_partb_missing}" ]; then
     echo "  not built:${_partb_missing}"
   fi
+
+  # --- drop build-time sysroot staging -----------------------------------
+  # The bootstrap writes scaffolding copies of crt0.o, libc.a, libmsys-2.0.a
+  # and friends straight into the live sysroot from prepare(), outside
+  # ${pkgdir}: cross-msysarm64-gcc stages them so its target libraries can
+  # link, and this recipe needs them to link the DLL.  They belong to no
+  # package, so when CI installs the result with `pacman -U` it refuses:
+  #
+  #   error: failed to commit transaction (conflicting files)
+  #   cross-msysarm64-runtime: /usr/aarch64-pc-cygwin/lib/crt0.o exists in filesystem
+  #
+  # Remove the untracked copy of every path this package is about to own.
+  # Anything pacman already owns is left alone -- that would be a genuine
+  # conflict between two packages and should be reported, not papered over.
+  #
+  # Staging outside pkgdir is the underlying problem; having the build write
+  # only into ${srcdir} and passing -L there would remove the need for this.
+  # That is a larger change than making the package installable.
+  local _staged _live _dropped=0
+  while IFS= read -r _staged; do
+    _live="/${_staged#${pkgdir}/}"
+    [ -e "${_live}" ] || continue
+    if pacman -Qo "${_live}" >/dev/null 2>&1; then
+      echo "note: ${_live} is owned by a package; leaving it"
+      continue
+    fi
+    rm -f "${_live}" && _dropped=$((_dropped + 1))
+  done < <(find "${pkgdir}/usr/aarch64-pc-cygwin" -type f 2>/dev/null)
+  echo "dropped ${_dropped} untracked sysroot file(s) staged during the build"
+
   return 0
 }
 
