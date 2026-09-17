@@ -1,0 +1,57 @@
+# Contributer: Alexander Bruines <alexander.bruines@gmail.com>
+
+pkgbase=djgpp-pthreads
+pkgname=('djgpp-pthreads' 'djgpp-pthreads-i586' 'djgpp-pthreads-i686')
+pkgver=3.0
+pkgrel=1
+license=('spdx:GPL-2.0-only')
+url="https://pthread-djgpp.sourceforge.io/"
+arch=('x86_64')
+depends=
+makedepends=('autoconf' 'autoconf2.69' 'automake' 'automake1.15' 'bison'
+ 'cmake' 'flex' 'gcc' 'gmp-devel' 'groff' 'make' 'mpc-devel' 'mpfr-devel'
+ 'ninja' 'patch' 'sed' 'tar' 'texinfo' 'unzip' 'xz' 'zip' 'zlib' 'zstd' )
+options=('!buildflags' '!strip')
+source=("https://sourceforge.net/projects/pthread-djgpp/files/djgpp-builder-v${pkgver}/djgpp-builder-v${pkgver}.tar.gz"
+        '0000-msys2-makepkg-fixups.patch')
+sha256sums=('2b3e49e0a8b7c4a589e3ba24800a715be5a5e55c3f816922226f0e6d41180b77'
+            'a5ccf7ee3fd316c46704a41894446827409f79a49eb798fe96919e6350fe4873')
+
+prepare() {
+  # Extract source
+  tar -xzf "${srcdir}/djgpp-builder-v${pkgver}.tar.gz" -C "${srcdir}"
+  # Small fixup for building the project using makepkg.
+  cd "${srcdir}" && patch -f -N -p1 -i "${source[1]}"
+}
+
+build() {
+  # Build DJGPP for i586 target
+  cmake -G Ninja -S "${srcdir}" -B "${srcdir}/build-i586" \
+    -DDJGPP_MARCH=i586 -DDJGPP_MTUNE=i586 -DHAVE_STATIC=ON -DHAVE_WATT32=OFF \
+    -DPTHREAD_SIMULATE_PIPE=OFF -DCMAKE_INSTALL_PREFIX=/opt
+  CC= CXX= CONFIG_SITE=/dev/null WANT_AUTOCONF='2.69' \
+    cmake --build "${srcdir}/build-i586"
+  # Build DJGPP for i686 target
+  cmake -G Ninja -S "${srcdir}" -B "${srcdir}/build-i686" \
+    -DDJGPP_MARCH=i686 -DDJGPP_MTUNE=i686 -DHAVE_STATIC=ON -DHAVE_WATT32=OFF \
+    -DPTHREAD_SIMULATE_PIPE=OFF -DCMAKE_INSTALL_PREFIX=/opt
+  CC= CXX= CONFIG_SITE=/dev/null WANT_AUTOCONF='2.69' \
+    cmake --build "${srcdir}/build-i686"
+}
+
+package_djgpp-pthreads() {
+  pkgdesc="DJGPP cross-compiler with POSIX threads and std::thread (i586+i686)"
+  depends=('djgpp-pthreads-i586' 'djgpp-pthreads-i686')
+}
+
+package_djgpp-pthreads-i586() {
+  pkgdesc="DJGPP cross-compiler with POSIX threads and std::thread (i586)"
+  tar -C "${pkgdir}" -xf "${srcdir}/build-i586/djgpp205-i586_gcc-16.2.0-pthread.tar.xz"
+}
+
+package_djgpp-pthreads-i686() {
+  pkgdesc="DJGPP cross-compiler with POSIX threads and std::thread (i686)"
+  tar -C "${pkgdir}" -xf "${srcdir}/build-i686/djgpp205-i686_gcc-16.2.0-pthread.tar.xz"
+}
+
+# ex:set ft=sh
