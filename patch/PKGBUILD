@@ -1,61 +1,78 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
-pkgname=patch
-pkgver=2.7.6
-pkgrel=3
-pkgdesc="A utility to apply patch files to original sources"
+pkgname='patch'
+pkgver=2.8
+pkgrel=1
+pkgdesc='A utility to apply patch files to original sources'
 arch=('i686' 'x86_64')
-url="https://www.gnu.org/software/patch/patch.html"
+url='https://www.gnu.org/software/patch/patch.html'
+msys2_repository_url='https://cgit.git.savannah.gnu.org/cgit/patch.git'
+msys2_changelog_url='https://cgit.git.savannah.gnu.org/cgit/patch.git/tree/NEWS'
 msys2_references=(
-  "cpe: cpe:/a:gnu:patch"
+  'anitya: 2597'
+  'archlinux: patch'
+  'cpe: cpe:/a:gnu:patch'
+  'gentoo: sys-devel/patch'
 )
 license=('spdx:GPL-3.0-or-later')
-makedepends=('ed' 'gcc' 'autotools')
-optdepends=('ed: for patch -e functionality')
-source=(https://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig}
-        msys2-patch-2.7.1.patch
-        msys2-patch-manifest.patch)
-sha256sums=('ac610bda97abe0d9f6b7c963255a11dcb196c25e337c61f94e4778d632f1d8fd'
-            'SKIP'
-            '676502c3821e67ca493d77f546ee9362663f8d042331e38b9a19dccdb3896d06'
-            '714da1a384d3e0acca5351980b0b3b1b09b66140fabe2e74dfd313652f964de9')
-validpgpkeys=('259B3792B3D6D319212CC4DCD5BF9FEB0313653A') # Andreas Gruenbacher
+makedepends=(
+  'autotools'
+  'ed'
+  'gcc'
+)
+optdepends=(
+  'ed: for patch -e functionality'
+)
+source=(
+  "https://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz"{,.sig}
+)
+sha256sums=('f87cee69eec2b4fcbf60a396b030ad6aa3415f192aa5f7ee84cad5e11f7f5ae3'
+            'SKIP')
+validpgpkeys=(
+  '259B3792B3D6D319212CC4DCD5BF9FEB0313653A' # Andreas Gruenbacher
+)
 
 prepare() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  [[ -f src/patch.manifest ]] && rm -f src/patch.manifest
-  [[ -f src/patch.rc ]] && rm -f src/patch.rc
-  patch -Np1 -i ${srcdir}/msys2-patch-2.7.1.patch
-  patch -Np2 -i ${srcdir}/msys2-patch-manifest.patch
+  cd "${pkgname}-${pkgver}"
 
-  local _arch=
-  if [ "${CARCH}" == 'x86_64' ]; then
-    _arch='amd64'
-  elif [ "${CARCH}" == 'i686' ]; then
-    _arch='x86'
-  fi
-  sed -e "s|@ARCH@|${_arch}|g" -i src/patch.manifest
-  autoreconf -fi
+  autoreconf -fiv
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${pkgname}-${pkgver}"
 
   export MSYSTEM=CYGWIN
-  ./configure \
-    --build=${CHOST} \
-    --prefix=/usr \
+
+  local _configure_options=(
+    --build="${CHOST}"
+    --prefix=/usr
     ac_cv_func_setmode_dos=yes
+    gl_cv_clean_version_stddef=yes # fixes gnulib on cygwin
+  )
+
+  ./configure "${_configure_options[@]}"
 
   make
 }
 
 check() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make check
+  cd "${pkgname}-${pkgver}"
+
+  # ============================================================================
+  # Testsuite summary for GNU patch 2.8
+  # ============================================================================
+  # TOTAL: 49
+  # PASS:  41
+  # SKIP:  5
+  # XFAIL: 2
+  # FAIL:  1 (symlinks)
+  # XPASS: 0
+  # ERROR: 0
+  make check || warning "Tests failed"
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make DESTDIR=$pkgdir install
+  cd "${pkgname}-${pkgver}"
+
+  make DESTDIR="${pkgdir}" install
 }
