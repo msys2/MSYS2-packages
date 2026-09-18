@@ -204,8 +204,37 @@ package() {
   _cxxdir=${pkgdir}/usr/lib/gcc/${_target}/${_realver}/include/c++
   mkdir -p ${_cxxdir}/bits
   cp -r ${srcdir}/${_realname}/libstdc++-v3/include/. ${_cxxdir}/
-  cp -r ${srcdir}/${_realname}/libstdc++-v3/libsupc++/new ${_cxxdir}/
-  cp -r ${srcdir}/${_realname}/libstdc++-v3/libsupc++/exception.h ${_cxxdir}/bits/
+
+  # libsupc++ headers are NOT under libstdc++-v3/include, so they have to be
+  # copied separately.  Copying only `new` and `exception.h` left winsup
+  # failing to compile cxx.cc:
+  #
+  #   include/c++/bits/new_except.h:38:10: fatal error:
+  #     bits/exception_defines.h: No such file or directory
+  #
+  # This stays invisible on a machine that already has the stage-2 gcc
+  # installed, because its libstdc++ headers are complete.  Copy the sets
+  # GCC itself installs (libstdc++-v3/libsupc++/Makefile.am, std_HEADERS and
+  # bits_HEADERS) so a clean bootstrap has them all.
+  _supcxx=${srcdir}/${_realname}/libstdc++-v3/libsupc++
+  local _h
+  for _h in cxxabi.h exception initializer_list new typeinfo; do
+    [ -e "${_supcxx}/${_h}" ] && cp -rf "${_supcxx}/${_h}" "${_cxxdir}/"
+  done
+  for _h in atomic_lockfree_defines.h cxxabi_forced.h cxxabi_init_exception.h \
+            exception.h exception_defines.h exception_ptr.h hash_bytes.h \
+            nested_exception.h; do
+    [ -e "${_supcxx}/${_h}" ] && cp -rf "${_supcxx}/${_h}" "${_cxxdir}/bits/"
+  done
+
+  # The one the failure named is mandatory: without it every C++ translation
+  # unit in winsup fails, and it is cheap to assert here rather than discover
+  # two hours into a CI run.
+  if [ ! -f "${_cxxdir}/bits/exception_defines.h" ]; then
+    echo "FATAL: libsupc++ exception_defines.h not installed into ${_cxxdir}/bits" >&2
+    ls -la "${_supcxx}" 2>/dev/null | head -20 >&2
+    return 1
+  fi
 
   # Provide a minimal bits/c++config.h stub.
   # This is intentionally minimal — it only needs to be sufficient to
@@ -240,6 +269,52 @@ namespace std {
   typedef __SIZE_TYPE__ size_t;
   typedef __PTRDIFF_TYPE__ ptrdiff_t;
 }
+
+// Version-gated macros used by the GCC 17 libstdc++ headers.  bits/exception.h
+// and bits/new_except.h annotate their special member functions with these, so
+// without them every C++ translation unit in winsup fails with
+//   error: '_GLIBCXX26_CONSTEXPR' does not name a type
+// These mirror the stub build-msys.sh writes, which is why the local flow
+// never hit this: that script overwrites this file before building winsup.
+#ifndef _GLIBCXX_CONSTEXPR
+#  define _GLIBCXX_CONSTEXPR constexpr
+#endif
+#ifndef _GLIBCXX_USE_CONSTEXPR
+#  define _GLIBCXX_USE_CONSTEXPR constexpr
+#endif
+#ifndef _GLIBCXX14_CONSTEXPR
+#  define _GLIBCXX14_CONSTEXPR constexpr
+#endif
+#ifndef _GLIBCXX17_CONSTEXPR
+#  define _GLIBCXX17_CONSTEXPR constexpr
+#endif
+#ifndef _GLIBCXX20_CONSTEXPR
+#  define _GLIBCXX20_CONSTEXPR constexpr
+#endif
+#ifndef _GLIBCXX23_CONSTEXPR
+#  define _GLIBCXX23_CONSTEXPR constexpr
+#endif
+#ifndef _GLIBCXX26_CONSTEXPR
+#  define _GLIBCXX26_CONSTEXPR constexpr
+#endif
+#ifndef _GLIBCXX_NOEXCEPT
+#  define _GLIBCXX_NOEXCEPT noexcept
+#endif
+#ifndef _GLIBCXX_NOEXCEPT_IF
+#  define _GLIBCXX_NOEXCEPT_IF(X) noexcept(X)
+#endif
+#ifndef _GLIBCXX_PURE
+#  define _GLIBCXX_PURE
+#endif
+#ifndef _GLIBCXX_CONST
+#  define _GLIBCXX_CONST
+#endif
+#ifndef _GLIBCXX_DEPRECATED
+#  define _GLIBCXX_DEPRECATED
+#endif
+#ifndef _GLIBCXX_ABI_TAG_CXX11
+#  define _GLIBCXX_ABI_TAG_CXX11
+#endif
 #endif
 CXXCONFIG
 
