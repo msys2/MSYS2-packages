@@ -1,18 +1,18 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 #
-# NOTE: Since grep 3.1 support for handling Windows line endings was removed by: 
+# Preserve the DOS text handling removed upstream in grep 3.1:
 # https://git.savannah.gnu.org/cgit/grep.git/commit/?h=v3.1&id=5ac3d87a69122d45a837840914c2f9e66b5bb8d4
 # https://git.savannah.gnu.org/cgit/grep.git/commit/?h=v3.1&id=c4485ac49a977d666187db4c5c25045215976577
-# Removing it lead for MSYS2 broken configure tests for MINGW packages that use autotools.
-# See next issues before do grep update:
+# MSYS2 configure and libtool consumers rely on it.
+# Keep the compatibility patches and CRLF check when updating grep.
 # https://github.com/msys2/MSYS2-packages/issues/1353
 # https://github.com/msys2/MSYS2-packages/pull/2163
 # https://github.com/msys2/MINGW-packages/issues/9771
 
 
 pkgname=grep
-pkgver=3.0
-pkgrel=7
+pkgver=3.12
+pkgrel=1
 epoch=1
 pkgdesc="A string search utility"
 arch=('i686' 'x86_64')
@@ -22,29 +22,39 @@ msys2_repository_url='https://cgit.git.savannah.gnu.org/cgit/grep.git'
 msys2_references=(
   "cpe: cpe:/a:gnu:grep"
 )
-depends=('libiconv' 'libintl' 'libpcre' 'sh')
-makedepends=('texinfo' 'gettext-devel' 'libiconv-devel' 'pcre-devel' 'autotools' 'gcc')
+depends=('libiconv' 'libintl' 'libpcre2_8' 'sh')
+makedepends=('texinfo' 'gettext-devel' 'libiconv-devel' 'pcre2-devel' 'autotools' 'gcc')
 source=(https://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig}
-        grep-3.0-2.src.patch)
-sha256sums=('e2c81db5056e3e8c5995f0bb5d0d0e1cad1f6f45c3b2fc77b6e81435aed48ab5'
+        0001-Restore-DOS-text-handling-for-MSYS2.patch
+        0002-doc-describe-the-restored-MSYS2-DOS-text-contract.patch
+        0003-tests-guard-against-regressions-in-MSYS2-DOS-text-ha.patch
+        0004-tests-preserve-C-locale-byte-coverage-under-DOS-text.patch)
+sha256sums=('2649b27c0e90e632eadcd757be06c6e9a4f48d941de51e7c0f83ff76408a07b9'
             'SKIP'
-            '0b2e7e54eb4d5b13257c1b4b43bcb234be02ded8fd04dfbbb73a92346e8b2db2')
+            '94c124642837856f086945a73e293532739422404e0fc14e6a71fef546d7b924'
+            'a3069be0a5db92b132da1b19241c3ed0551034477c774ef10bba1dcaae412790'
+            '1304f8ece276f5f70b0b26772cb88b3bdc685d1b4c0696e813467f8dfd46bc4c'
+            '07943132e43003e9c2a2769a713834300a1b2aed2e4afa06245ccae2ce26b5b2')
 validpgpkeys=('155D3FC500C834486D1EEA677FD9FCCB000BEEEE')  # Jim Meyering
 
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
 
-  # Once this will be commit upstream we need revert it
-  #patch -p2 -R -i ${srcdir}/grep-3.0-2.src.patch
+  patch -p1 -i "${srcdir}/0001-Restore-DOS-text-handling-for-MSYS2.patch"
+  patch -p1 -i "${srcdir}/0002-doc-describe-the-restored-MSYS2-DOS-text-contract.patch"
+  patch -p1 -i "${srcdir}/0003-tests-guard-against-regressions-in-MSYS2-DOS-text-ha.patch"
+  patch -p1 -i "${srcdir}/0004-tests-preserve-C-locale-byte-coverage-under-DOS-text.patch"
 
   #make test cases work
-  sed -i "s|case \$perms in drwx--\[-S\]---\*|case \$perms in drwx\*|" tests/init.sh
+  sed -i "s|case \$perms in drwx--\[-S\]---\*|case \$perms in drwx\*|" tests/init.sh gnulib-tests/init.sh
 
-  autoreconf -fi
+  AUTOPOINT=true autoreconf -fi
 }
 
 build() {
   cd ${srcdir}/${pkgname}-${pkgver}
+
+  CFLAGS+=" -std=gnu17"
 
   export gl_cv_have_weak=no
 
@@ -53,13 +63,19 @@ build() {
       --build=${CHOST} \
       --prefix=/usr \
       --without-libiconv-prefix \
-      --without-libintl-prefix
+      --without-libintl-prefix \
+      CPP='gcc -std=gnu17 -E'
   make
 }
 
 check() {
   cd ${srcdir}/${pkgname}-${pkgver}
-  make check
+
+  printf 'crlf\n' > msys2-crlf.expected || return 1
+  printf 'crlf\r\n' | src/grep -Fx crlf > msys2-crlf.actual || return 1
+  cmp msys2-crlf.expected msys2-crlf.actual || return 1
+
+  MSYS=winsymlinks:sys make check
 }
 
 package() {

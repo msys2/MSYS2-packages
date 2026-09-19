@@ -1,0 +1,449 @@
+From cd0eda512f28e171819e1c852c21a43dac5bbaf7 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 15 Sep 2026 16:45:21 +0200
+Subject: [PATCH 1/N] Restore DOS text handling for MSYS2
+
+MSYS2 build tooling relies on CR removal from native Windows tool output,
+behavior that GNU grep lost on purpose in their upstream commit
+https://cgit.git.savannah.gnu.org/cgit/grep.git/commit/?id=5ac3d87a (Simplify
+-U on MS-Windows by removing guesswork, 2017-02-14).
+
+Restore that compatibility while retaining -U as the raw-input escape hatch.
+
+Note: Using O_TEXT instead would not be equivalent: it lacks the initial
+NUL-based binary classification, preserves embedded lone CRs, and makes -b
+count normalized rather than original bytes even without -u. Correct raw-byte
+accounting is also necessary for -m resumption on seekable stdin, including
+when CR runs cross buffer boundaries.
+
+Assisted-by: GPT-6
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ src/Makefile.am |   2 +-
+ src/dosbuf.c    | 233 ++++++++++++++++++++++++++++++++++++++++++++++++
+ src/grep.c      |  59 ++++++++----
+ 3 files changed, 278 insertions(+), 16 deletions(-)
+ create mode 100644 src/dosbuf.c
+
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 19abf42c..606ebaad 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -51,7 +51,7 @@ grep_LDADD = $(LDADD) $(PCRE_LIBS) $(LIBCSTACK)
+ localedir = $(datadir)/locale
+ AM_CPPFLAGS = -I$(top_builddir)/lib -I$(top_srcdir)/lib
+ 
+-EXTRA_DIST = egrep.sh
++EXTRA_DIST = dosbuf.c egrep.sh
+ 
+ egrep fgrep: egrep.sh Makefile
+ 	$(AM_V_GEN)grep=`echo grep | sed -e '$(transform)'` &&		\
+diff --git a/src/dosbuf.c b/src/dosbuf.c
+new file mode 100644
+index 00000000..c11b3577
+--- /dev/null
++++ b/src/dosbuf.c
+@@ -0,0 +1,233 @@
++/* dosbuf.c
++   Copyright (C) 1992, 1997-2002, 2004-2017 Free Software Foundation, Inc.
++
++   This program is free software; you can redistribute it and/or modify
++   it under the terms of the GNU General Public License as published by
++   the Free Software Foundation; either version 3, or (at your option)
++   any later version.
++
++   This program is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++   GNU General Public License for more details.
++
++   You should have received a copy of the GNU General Public License
++   along with this program; if not, write to the Free Software
++   Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
++   02110-1301, USA.  */
++
++/* Messy DOS-specific code for correctly treating binary, Unix text
++   and DOS text files.
++
++   This has several aspects:
++
++     * Guessing the file type (unless the user tells us);
++     * Stripping CR characters from DOS text files (otherwise regex
++       functions won't work correctly);
++     * Reporting correct byte count with -b for any kind of file.
++
++*/
++
++#include <config.h>
++
++typedef enum {
++  UNKNOWN, DOS_BINARY, DOS_TEXT, UNIX_TEXT
++} File_type;
++
++struct dos_map {
++  off_t pos;	/* position in buffer passed to matcher */
++  off_t add;	/* how much to add when reporting char position */
++  bool after_newline; /* whether the CRs belong to the preceding line */
++};
++
++static int       dos_report_unix_offset = 0;
++
++static File_type dos_file_type     = UNKNOWN;
++static File_type dos_use_file_type = UNKNOWN;
++static off_t     dos_stripped_crs  = 0;
++static struct dos_map *dos_pos_map;
++static idx_t     dos_pos_map_size  = 0;
++static idx_t     dos_pos_map_used  = 0;
++static idx_t     inp_map_idx = 0, out_map_idx = 1;
++static bool      dos_map_needed;
++static bool      dos_pending_cr;
++
++/* Set default DOS file type to binary.  */
++static void
++dos_binary (void)
++{
++  if (O_BINARY)
++    dos_use_file_type = DOS_BINARY;
++}
++
++/* Tell DOS routines to report Unix offset.  */
++static void
++dos_unix_byte_offsets (void)
++{
++  if (O_BINARY)
++    dos_report_unix_offset = 1;
++}
++
++/* Guess DOS file type by looking at its contents.  */
++static File_type
++guess_type (char *buf, size_t buflen)
++{
++  int crlf_seen = 0;
++  char *bp = buf;
++
++  while (buflen--)
++    {
++      /* Treat a file as binary if it has a NUL character.  */
++      if (!*bp)
++        return DOS_BINARY;
++
++      /* CR before LF means DOS text file (unless we later see
++         binary characters).  */
++      else if (*bp == '\r' && buflen && bp[1] == '\n')
++        crlf_seen = 1;
++
++      bp++;
++    }
++
++  return crlf_seen ? DOS_TEXT : UNIX_TEXT;
++}
++
++/* Convert external DOS file representation to internal.
++   Return the count of bytes left in the buffer.
++   Build table to map character positions when reporting byte counts.  */
++static size_t
++undossify_input (char *buf, size_t buflen)
++{
++  if (! O_BINARY)
++    return buflen;
++
++  size_t bytes_left = 0;
++
++  /* Guess if this file is binary, unless we already know that.  */
++  if (dos_file_type == UNKNOWN)
++    dos_file_type = guess_type (buf, buflen);
++
++  /* If this file is to be treated as DOS Text, strip the CR characters
++     and maybe build the table for character position mapping on output.  */
++  if (dos_file_type == DOS_TEXT)
++    {
++      char   *destp   = buf;
++
++      /* Resolve a CR run that ended at the previous read boundary.  */
++      if (dos_map_needed && dos_pending_cr && buflen)
++        {
++          if (*buf == '\r')
++            inp_map_idx--;
++          else if (*buf != '\n')
++            {
++              dos_pos_map[inp_map_idx - 1].pos--;
++              dos_pos_map[inp_map_idx - 1].after_newline = false;
++            }
++          dos_pending_cr = false;
++        }
++
++      while (buflen--)
++        {
++          if (*buf != '\r')
++            {
++              *destp++ = *buf++;
++              bytes_left++;
++            }
++          else
++            {
++              buf++;
++              if (dos_map_needed)
++                {
++                  dos_stripped_crs++;
++                  while (buflen && *buf == '\r')
++                    {
++                      dos_stripped_crs++;
++                      buflen--;
++                      buf++;
++                    }
++                  if (inp_map_idx >= dos_pos_map_size - 1)
++                    dos_pos_map = xpalloc (dos_pos_map, &dos_pos_map_size,
++                                           3, -1, sizeof *dos_pos_map);
++
++                  if (!inp_map_idx)
++                    {
++                      /* Add sentinel entry.  */
++                      dos_pos_map[inp_map_idx].pos = 0;
++                      dos_pos_map[inp_map_idx++].add = 0;
++
++                      /* Initialize first real entry.  */
++                      dos_pos_map[inp_map_idx].add = 0;
++                    }
++
++                  /* Put the new entry.  If the stripped CR characters
++                     precede a Newline (the usual case), pretend that
++                     they were found *after* the Newline.  This makes
++                     displayed byte offsets more reasonable in some
++                     cases, and fits better the intuitive notion that
++                     the line ends *before* the CR, not *after* it.  */
++                  inp_map_idx++;
++                  bool after_newline = !buflen || *buf == '\n';
++                  dos_pos_map[inp_map_idx-1].pos =
++                    (after_newline ? destp + 1 : destp) - bufbeg + totalcc;
++                  dos_pos_map[inp_map_idx-1].after_newline = after_newline;
++                  dos_pos_map[inp_map_idx].add = dos_stripped_crs;
++                  dos_pos_map_used = inp_map_idx;
++                  dos_pending_cr = !buflen;
++
++                  /* The following will be updated on the next pass.  */
++                  dos_pos_map[inp_map_idx].pos = destp - bufbeg + totalcc + 1;
++                }
++            }
++        }
++
++      return bytes_left;
++    }
++
++  return buflen;
++}
++
++/* Convert internal byte count into external.  At an END_OF_LINE boundary,
++   leave any leading CRs of the next line for the next reader.  */
++static off_t
++dossified_pos (off_t byteno, bool end_of_line)
++{
++  if (! O_BINARY)
++    return byteno;
++
++  off_t pos_lo;
++  off_t pos_hi;
++
++  if (dos_file_type != DOS_TEXT || !dos_map_needed)
++    return byteno;
++
++  /* Optimization: usually the file will be scanned sequentially.
++     So in most cases, this byte position will be found in the
++     table near the previous one, as recorded in 'out_map_idx'.  */
++  pos_lo = dos_pos_map[out_map_idx-1].pos;
++  pos_hi = dos_pos_map[out_map_idx].pos;
++
++  /* If the initial guess failed, search up or down, as
++     appropriate, beginning with the previous place.  */
++  if (byteno >= pos_hi && out_map_idx < dos_pos_map_used)
++    {
++      out_map_idx++;
++      while (out_map_idx < dos_pos_map_used
++             && byteno >= dos_pos_map[out_map_idx].pos)
++        out_map_idx++;
++    }
++
++  else if (byteno < pos_lo)
++    {
++      out_map_idx--;
++      while (out_map_idx > 1 && byteno < dos_pos_map[out_map_idx-1].pos)
++        out_map_idx--;
++    }
++
++  idx_t map_idx = out_map_idx;
++  if (end_of_line)
++    while (1 < map_idx && dos_pos_map[map_idx - 1].pos == byteno
++           && !dos_pos_map[map_idx - 1].after_newline)
++      map_idx--;
++
++  return byteno + dos_pos_map[map_idx].add;
++}
+diff --git a/src/grep.c b/src/grep.c
+index f6576071..ce74c403 100644
+--- a/src/grep.c
++++ b/src/grep.c
+@@ -552,6 +552,7 @@ static struct option const long_options[] =
+   {"silent", no_argument, nullptr, 'q'},
+   {"text", no_argument, nullptr, 'a'},
+   {"binary", no_argument, nullptr, 'U'},
++  {"unix-byte-offsets", no_argument, nullptr, 'u'},
+   {"version", no_argument, nullptr, 'V'},
+   {"with-filename", no_argument, nullptr, 'H'},
+   {"word-regexp", no_argument, nullptr, 'w'},
+@@ -948,6 +949,8 @@ reset (int fd, struct stat const *st)
+   return true;
+ }
+ 
++static size_t undossify_input (char *, size_t);
++
+ /* Read new stuff into the buffer, saving the specified
+    amount of old stuff.  When we're done, 'bufbeg' points
+    to the beginning of the buffer contents, and 'buflim'
+@@ -1025,6 +1028,13 @@ fillbuf (idx_t save, struct stat const *st)
+         }
+       bufoffset += fillsize;
+ 
++      if (fillsize)
++        {
++          fillsize = undossify_input (readbuf, fillsize);
++          if (!fillsize)
++            continue;
++        }
++
+       if (((fillsize == 0) | !skip_nuls) || !all_zeros (readbuf, fillsize))
+         break;
+       totalnl = add_count (totalnl, fillsize);
+@@ -1108,7 +1118,8 @@ static intmax_t pending;	/* Pending lines of output.
+ static bool done_on_match;	/* Stop scanning file on first match.  */
+ static bool exit_on_match;	/* Exit on first match.  */
+ static bool dev_null_output;	/* Stdout is known to be /dev/null.  */
+-static bool binary;		/* Use binary rather than text I/O.  */
++
++#include "dosbuf.c"
+ 
+ static void
+ nlscan (char const *lim)
+@@ -1200,6 +1211,8 @@ print_line_head (char *beg, idx_t len, char const *lim, char sep)
+   if (out_byte)
+     {
+       intmax_t pos = add_count (totalcc, beg - bufbeg);
++      if (!dos_report_unix_offset)
++        pos = dossified_pos (pos, false);
+       print_offset (pos, byte_num_color);
+       print_sep (sep);
+     }
+@@ -1433,6 +1446,12 @@ prtext (char *beg, char *lim)
+     }
+ 
+   after_last_match = bufoffset - (buflim - p);
++  if (dos_map_needed && dos_file_type == DOS_TEXT)
++    {
++      /* bufoffset is raw, but p and buflim address CR-stripped data.  */
++      off_t pos = add_count (totalcc, p - bufbeg);
++      after_last_match -= dos_stripped_crs - (dossified_pos (pos, true) - pos);
++    }
+   pending = out_quiet ? 0 : MAX (0, out_after);
+   used = true;
+   outleft -= n;
+@@ -1528,6 +1547,16 @@ grep (int fd, struct stat const *st, bool *ineof)
+     return 0;
+ 
+   totalcc = 0;
++  inp_map_idx = 0;
++  out_map_idx = 1;
++  dos_pos_map_used = 0;
++  dos_stripped_crs = 0;
++  dos_file_type = dos_use_file_type;
++  dos_pending_cr = false;
++  dos_map_needed = (O_BINARY
++                    && ((out_byte && !dos_report_unix_offset)
++                        || (fd == STDIN_FILENO && !seek_failed
++                            && max_count != INTMAX_MAX)));
+   lastout = 0;
+   totalnl = 0;
+   outleft = max_count;
+@@ -1628,7 +1657,7 @@ grep (int fd, struct stat const *st, bool *ineof)
+ 
+       /* Handle some details and read more data to scan.  */
+       save = residue + lim - beg;
+-      if (out_byte)
++      if (out_byte || dos_map_needed)
+         totalcc = add_count (totalcc, buflim - bufbeg - save);
+       if (out_line)
+         nlscan (beg);
+@@ -1757,8 +1786,6 @@ static bool
+ grepfile (int dirdesc, char const *name, bool follow, bool command_line)
+ {
+   int oflag = (O_RDONLY | O_NOCTTY
+-               | (IGNORE_DUPLICATE_BRANCH_WARNING
+-                  (binary ? O_BINARY : 0))
+                | (follow ? 0 : O_NOFOLLOW)
+                | (skip_devices (command_line) ? O_NONBLOCK : 0));
+   int desc = openat_safer (dirdesc, name, oflag);
+@@ -1916,6 +1943,9 @@ grepdesc (int desc, bool command_line)
+       goto closeout;
+     }
+ 
++  if (O_BINARY && !isatty (desc))
++    xset_binary_mode (desc, O_BINARY);
++
+   count = grep (desc, &st, &ineof);
+   if (count_matches)
+     {
+@@ -1956,8 +1986,6 @@ grep_command_line_arg (char const *arg)
+   if (STREQ (arg, "-"))
+     {
+       filename = label;
+-      if (binary)
+-        xset_binary_mode (STDIN_FILENO, O_BINARY);
+       return grepdesc (STDIN_FILENO, true);
+     }
+   else
+@@ -2063,6 +2091,8 @@ Context control:\n\
+       --colour[=WHEN]       use markers to highlight the matching strings;\n\
+                             WHEN is 'always', 'never', or 'auto'\n\
+   -U, --binary              do not strip CR characters at EOL (MSDOS/Windows)\n\
++  -u, --unix-byte-offsets   report offsets as if CRs were not there\n\
++                            (MSDOS/Windows)\n\
+ \n"));
+       printf (_("\
+ When FILE is '-', read standard input.  If no FILE is given, read standard\n\
+@@ -2574,8 +2604,11 @@ main (int argc, char **argv)
+         break;
+ 
+       case 'U':
+-        if (O_BINARY)
+-          binary = true;
++        dos_binary ();
++        break;
++
++      case 'u':
++        dos_unix_byte_offsets ();
+         break;
+ 
+       case 'V':
+@@ -2616,14 +2649,10 @@ main (int argc, char **argv)
+       case 'f':
+         {
+           if (STREQ (optarg, "-"))
+-            {
+-              if (binary)
+-                xset_binary_mode (STDIN_FILENO, O_BINARY);
+-              fp = stdin;
+-            }
++            fp = stdin;
+           else
+             {
+-              fp = fopen (optarg, binary ? "rb" : "r");
++              fp = fopen (optarg, O_TEXT ? "rt" : "r");
+               if (!fp)
+                 die (EXIT_TROUBLE, errno, "%s", optarg);
+             }
+@@ -2991,7 +3020,7 @@ main (int argc, char **argv)
+               ? - (directories == RECURSE_DIRECTORIES)
+               : 0 <= filename_option);
+ 
+-  if (binary)
++  if (O_BINARY && !isatty (STDOUT_FILENO))
+     xset_binary_mode (STDOUT_FILENO, O_BINARY);
+ 
+   /* Prefer sysconf for page size, as getpagesize typically returns int.  */
