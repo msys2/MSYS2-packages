@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:15:02 +0530
+Subject: [PATCH 076/109] Cygwin: Fix SEH and signal handling on AArch64
+
+(cherry picked from commit bb6deceb7afff0d0150eafd997227185c148df74)
+---
+ winsup/cygwin/dcrt0.cc                   |  6 ++++++
+ winsup/cygwin/local_includes/exception.h | 13 ++++++++-----
+ 2 files changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/winsup/cygwin/dcrt0.cc b/winsup/cygwin/dcrt0.cc
+index e47686bcc..588ea09ed 100644
+--- a/winsup/cygwin/dcrt0.cc
++++ b/winsup/cygwin/dcrt0.cc
+@@ -1074,6 +1074,12 @@ _dll_crt0 ()
+   fesetenv (FE_DFL_ENV);
+   _main_tls = &_my_tls;
+   _main_tls->call ((DWORD (*) (void *, void *)) dll_crt0_1, NULL);
++  #if defined(__aarch64__)
++  /* Add a compiler barrier to prevent the epilogue from appearing before
++     _main_tls->call. The epilogue optimization should not be applied after
++     the stack replacement.  */
++  __asm__ ("");
++#endif
+ }
+ 
+ void
+diff --git a/winsup/cygwin/local_includes/exception.h b/winsup/cygwin/local_includes/exception.h
+index cf81220d7..be1a95f23 100644
+--- a/winsup/cygwin/local_includes/exception.h
++++ b/winsup/cygwin/local_includes/exception.h
+@@ -10,9 +10,13 @@ details. */
+ 
+ #if defined (__aarch64__)
+ #define EXCEPTION_HANDLE_REF "_ZN9exception6handleEP17_EXCEPTION_RECORDPvP8_CONTEXTP25_DISPATCHER_CONTEXT_ARM64"
+-#define EXCEPTION_HANDLER_DATA
+-#else
++/* An SEH directive that switches back to the code section.  */
++#define SEH_CODE ".text"
++#elif defined(__x86_64__)
+ #define EXCEPTION_HANDLE_REF "_ZN9exception6handleEP17_EXCEPTION_RECORDPvP8_CONTEXTP19_DISPATCHER_CONTEXT"
++#define SEH_CODE ".seh_code"
++#endif
++
+ #define EXCEPTION_HANDLER_DATA \
+   asm volatile ("\n\
+   1:									\n\
+@@ -21,9 +25,8 @@ details. */
+       @except								\n\
+     .seh_handlerdata							\n\
+     .long 1								\n\
+-    .rva 1b, 2f, 2f, 2f							\n\
+-    .seh_code								\n")
+-#endif
++    .rva 1b, 2f, 2f, 2f							\n"\
++     SEH_CODE "								\n")
+ class exception
+ {
+   static EXCEPTION_DISPOSITION myfault (EXCEPTION_RECORD *, exception_list *,

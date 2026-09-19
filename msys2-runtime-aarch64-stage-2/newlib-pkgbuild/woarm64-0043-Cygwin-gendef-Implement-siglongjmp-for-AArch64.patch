@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:21 +0530
+Subject: [PATCH 043/109] Cygwin: gendef: Implement siglongjmp for
+ AArch64
+
+(cherry picked from commit c371fd0b67aaa4f5f4b0a82423ddd26ce8f264e7)
+---
+ winsup/cygwin/scripts/gendef | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index a8c7c0072..03ea0dd31 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -613,7 +613,33 @@ sigsetjmp:
+ 	.globl  setjmp
+ setjmp:
+ 	.globl	siglongjmp
++	.seh_proc siglongjmp
+ siglongjmp:
++	// prologue
++	stp	fp, lr, [sp, #-0x10]!		// save FP and LR registers
++	mov	fp, sp				// set FP to current SP
++	.seh_endprologue
++	mov x19, x1				// save val
++	mov x20, x0				// save buf
++	ldr     w8, [x20, #0x100]       	// w8 = buf->savemask
++	cbz     w8, 1f                  	// if savemask == 0, skip
++	sub	sp, sp, #32			// allocate 32 bytes on stack
++	mov     x0, #0                  	// SIG_SETMASK
++	mov     x1, xzr                 	// newmask = NULL
++	add     x2, x20, #0x108         	// &buf->sigmask
++	bl      pthread_sigmask
++
++	add     sp, sp, #32			// call frame
++1:
++	mov	x0, x20				//buf
++	mov	x1, x19				//val
++	bl longjmp
++
++	// epilogue
++	ldp	fp, lr, [sp], #0x10		// restore saved FP and LR registers
++	ret
++	.seh_endproc
++
+ 	.globl  longjmp
+ longjmp:
+ EOF

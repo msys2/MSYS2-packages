@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Sun, 30 Aug 2026 21:57:58 +0530
+Subject: [PATCH 27/29] aarch64: build aarch64-abi-ms.o for the cygwin target
+
+Upstream c40c67095a9 implements the AArch64 MS variadic ABI in a new
+file, gcc/config/aarch64/aarch64-abi-ms.cc, built via the makefile
+fragment aarch64/t-aarch64-mingw and linked in through extra_objs.
+Upstream wires both into the aarch64-*-mingw* block only.
+
+Our aarch64-*-cygwin* block predates that file.  It already includes
+aarch64/aarch64-abi-ms.h and sets TARGET_AARCH64_MS_ABI=1, so aarch64.cc
+references the MS-ABI hooks, but nothing built or linked their
+definitions:
+
+  aarch64.o: undefined reference to `aarch64_ms_variadic_abi_...'
+  aarch64.o: undefined reference to `aarch64_arg_partial_bytes(...)'
+
+Add the same tmake_file fragment and extra_objs entry the mingw block
+uses.
+---
+ gcc/config.gcc | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/gcc/config.gcc b/gcc/config.gcc
+index 31b1d74bb37..8d376fdbf97 100644
+--- a/gcc/config.gcc
++++ b/gcc/config.gcc
+@@ -1325,11 +1325,12 @@ aarch64-*-cygwin*)
+ 	tm_file="${tm_file} mingw/winnt-dll.h"
+ 	xm_file=i386/xm-cygwin.h
+ 	tmake_file="${tmake_file} aarch64/t-aarch64"
++	tmake_file="${tmake_file} aarch64/t-aarch64-mingw"
+ 	tmake_file="${tmake_file} mingw/t-cygming t-slibgcc"
+ 	target_gtfiles="$target_gtfiles \$(srcdir)/config/mingw/winnt.cc"
+ 	target_gtfiles="$target_gtfiles \$(srcdir)/config/mingw/winnt-dll.cc"
+ 	extra_options="${extra_options} mingw/cygming.opt i386/cygwin.opt"
+-	extra_objs="${extra_objs} winnt.o winnt-dll.o"
++	extra_objs="${extra_objs} aarch64-abi-ms.o winnt.o winnt-dll.o"
+ 	c_target_objs="${c_target_objs} msformat-c.o"
+ 	cxx_target_objs="${cxx_target_objs} winnt-cxx.o msformat-c.o"
+ 	d_target_objs="${d_target_objs} cygwin-d.o"
