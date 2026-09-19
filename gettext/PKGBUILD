@@ -58,36 +58,6 @@ sha256sums=('ec1705b1e969b83a9f073144ec806151db88127f5e40fe5a94cb6c8fa48996a0'
 validpgpkeys=('462225C3B46F34879FC8496CD605848ED7E69871'  # Daiki Ueno
               '9001B85AF9E1B83DF1BDA942F5BE8B267C6A406D') # Bruno Haible (Open Source Development)
 
-_fix_msys_libtool() {
-  local f n_composite n_labelled n_host n_comma
-  for f in "$@"; do
-    [[ -f $f ]] || { echo "_fix_msys_libtool: no such file: $f" >&2; return 1; }
-
-    # 1) composite Windows labels: add msys* alongside cygwin* (both shapes,
-    #    with and without pw32*).
-    sed -i -E 's/^([[:space:]]*)cygwin\* \| (mingw\* \| windows\*)/\1cygwin* | msys* | \2/' "$f"
-    sed -i -E '/^[[:space:]]*cygwin\*\)$/{
-      N
-      /func_win32_libid is a shell function|DLLs use .* prefix rather than/s/^([[:space:]]*)cygwin\*\)/\1cygwin* | msys*)/
-    }' "$f"
-
-    sed -i -E '/\*-\*-msys/!s/\*-\*-cygwin\* \| (\*-\*-mingw\*)/*-*-cygwin* | *-*-msys* | \1/g' "$f"
-    sed -i -E '/\*msys\*,\*lai/!s/(\*cygwin\*,\*lai,yes,no,\*\.dll) \|/\1 | *msys*,*lai,yes,no,*.dll |/' "$f"
-
-    n_composite=$(grep -cE '^[[:space:]]*cygwin\* \| msys\* \| mingw\*' "$f" || true)
-    n_labelled=$(grep -cE '^[[:space:]]*cygwin\* \| msys\*\)$' "$f" || true)
-    n_host=$(grep -cE '\*-\*-msys\*' "$f" || true)
-    n_comma=$(grep -cE '\*msys\*,\*lai,yes,no,\*\.dll' "$f" || true)
-    echo "_fix_msys_libtool: $f -> ${n_composite} composite + ${n_labelled} labelled + ${n_host} host + ${n_comma} comma"
-
-    if (( n_composite == 0 && n_labelled == 0 && n_host == 0 && n_comma == 0 )); then
-      echo "::warning::_fix_msys_libtool: no msys labels in $f" >&2
-    fi
-    bash -n "$f" || { echo "::error::_fix_msys_libtool: $f invalid shell after patching" >&2; return 1; }
-  done
-}
-
-
 prepare() {
   cd "${srcdir}/${pkgbase}-${pkgver}"
 
@@ -124,20 +94,6 @@ prepare() {
 
   libtoolize --copy --force
   ./autogen.sh --skip-gnulib
-
-  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
-    local _lt_cfg=0 _lt_main=0 cfg
-    while IFS= read -r cfg; do
-      _fix_msys_libtool "$cfg"
-      if [[ ${cfg} == */ltmain.sh || ${cfg} == ltmain.sh ]]; then _lt_main=1; else _lt_cfg=1; fi
-    done < <(find . -maxdepth 4 \( -name configure -o -name ltmain.sh \) -type f)
-
-    if (( _lt_cfg == 0 || _lt_main == 0 )); then
-      echo "==> ERROR: expected both configure and ltmain.sh to patch" >&2
-      echo "    (configure=${_lt_cfg} ltmain=${_lt_main}); libtool would link static-only. See #36." >&2
-      return 1
-    fi
-  fi
 }
 
 build() {
@@ -234,7 +190,6 @@ package_gettext() {
   cp -rf ${srcdir}/dest/usr/share/info ${pkgdir}/usr/share/
   cp -rf ${srcdir}/dest/usr/share/locale ${pkgdir}/usr/share/
   cp -rf ${srcdir}/dest/usr/share/man ${pkgdir}/usr/share/
-
 }
 
 package_gettext-devel() {
