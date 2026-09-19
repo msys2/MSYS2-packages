@@ -1,67 +1,78 @@
 # Maintainer: Yasuhiro MATSUMOTO <mattn.jp@gmail.com>
 
-pkgname=znc
-pkgver=1.10.2
+pkgname='znc'
+pkgver=1.10.3
 pkgrel=1
 pkgdesc='An IRC bouncer with modules & scripts support'
+arch=('i686' 'x86_64')
 url='https://znc.in/'
-msys2_repository_url="https://github.com/znc/znc"
+msys2_repository_url='https://github.com/znc/znc'
 msys2_references=(
-  "cpe: cpe:/a:znc:znc"
+  'anitya: 5305'
+  'archlinux: znc'
+  'aur:' # ignore znc-git
+  'cpe: cpe:/a:znc:znc'
+  'gentoo: net-irc/znc'
 )
 license=('spdx:Apache-2.0')
-arch=('i686' 'x86_64')
-replaces=('znc-git')
+depends=(
+  'icu'
+  'openssl'
+)
+makedepends=(
+  'cmake'
+  'cyrus-sasl'
+  'gcc'
+  'gettext-devel'
+  'git'
+  'icu-devel'
+  'libsasl-devel'
+  'ninja'
+  'perl'
+  'python'
+  'swig'
+)
+optdepends=(
+  'cyrus-sasl: cyrusauth module'
+  'perl: modperl module'
+  'python: modpython module'
+  'tcl: modtcl module'
+)
 conflicts=('znc-git')
-depends=('openssl' 'icu')
-makedepends=('cmake'
-             'cyrus-sasl'
-             'gettext-devel'
-             'git'
-             'icu-devel'
-             'libsasl-devel'
-             'perl'
-             'python'
-             'swig'
-             'gcc'
-             #'tcl'
-             'ninja'
-             )
-optdepends=('tcl: modtcl module'
-            'python: modpython module'
-            'perl: modperl module'
-            'cyrus-sasl: cyrusauth module')
-source=(znc-${pkgver}::git+https://github.com/znc/znc.git#tag=znc-${pkgver})
-sha256sums=('3a3b7b70731bda939849e9975f041989282e3a7a721fce4341f374aa5c33b61b')
+replaces=('znc-git')
+source=("${pkgname}-${pkgver}::git+https://github.com/znc/znc.git#tag=znc-${pkgver}")
+sha256sums=('fe5a24c385dc2093c84d8397585c6ee24714024f6f1be38e7fb8c5394144e67c')
 
 prepare() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  cd "${pkgname}-${pkgver}"
 
   git submodule update --init --recursive
 }
 
 build() {
-  [[ -d "${srcdir}/build-${CARCH}" ]] && rm -rf "${srcdir}/build-${CARCH}"
-  mkdir -p "${srcdir}/build-${CARCH}" && cd "${srcdir}/build-${CARCH}"
+  local _cmake_options=(
+    -B "build-${CARCH}"
+    -G Ninja
+    -D BUILD_SHARED_LIBS=OFF
+    -D CMAKE_BUILD_TYPE=Release
+    -D CMAKE_INSTALL_PREFIX=/usr
+    -D WANT_CYRUS=ON
+    -D WANT_I18N=OFF
+    -D WANT_PERL=ON
+    -D WANT_PYTHON=ON
+    -S "${pkgname}-${pkgver}"
+  )
 
-  cmake \
-    -GNinja \
-    -DCMAKE_INSTALL_PREFIX=/usr \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DWANT_CYRUS=ON \
-    -DWANT_PERL=ON \
-    -DWANT_PYTHON=ON \
-    -DWANT_I18N=OFF \
-    ../${pkgname}-${pkgver}
-  cmake --build .
+  cmake "${_cmake_options[@]}"
+  cmake --build "build-${CARCH}"
 }
 
 package() {
-  cd "${srcdir}/build-${CARCH}"
-  DESTDIR="${pkgdir}" cmake --install .
+  DESTDIR="${pkgdir}" cmake --install "build-${CARCH}"
 
-  python3 -m compileall -o 0 -o 1 -s "${pkgdir}" "${pkgdir}/usr/lib/znc"
+  python -m compileall -o 0 -o 1 -s "${pkgdir}" "${pkgdir}/usr/lib/znc"
 
-  install -Dm644 ${srcdir}/${pkgname}-${pkgver}/LICENSE ${pkgdir}/usr/share/licenses/${_pkgname}/LICENSE
+  cd "${pkgname}-${pkgver}"
+
+  install -Dm644 LICENSE -t "${pkgdir}/usr/share/licenses/${pkgname}"
 }
