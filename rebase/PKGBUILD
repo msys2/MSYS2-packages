@@ -1,29 +1,42 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
-pkgname=rebase
+pkgname='rebase'
 pkgver=4.5.0
+_ver="${pkgver//./-}"
 pkgrel=5
-pkgdesc="The Cygwin rebase distribution contains four utilities, rebase, rebaseall, peflags, and peflagsall"
+pkgdesc='The Cygwin rebase distribution contains four utilities, rebase, rebaseall, peflags, and peflagsall'
 arch=('i686' 'x86_64')
-license=('spdx:LicenseRef-Cygwin-rebase')
-url="https://www.cygwin.com/"
+url='https://www.cygwin.com/'
 msys2_references=(
   'archlinux:' # ignore
   'aur:' # ignore
   'cygwin: rebase'
   'gentoo:' # ignore sci-biology/rebase
 )
-depends=('dash')
-makedepends=('coreutils' 'git' 'grep' 'gzip' 'sed' 'autotools' 'gcc')
+license=('spdx:LicenseRef-Cygwin-rebase')
+depends=(
+  'dash'
+)
+makedepends=(
+  'autotools'
+  'coreutils'
+  'gcc'
+  'git'
+  'grep'
+  'gzip'
+  'sed'
+)
 # options=('debug' '!strip')
-source=(${pkgname}-${pkgver}::git://sourceware.org/git/cygwin-apps/rebase.git#tag=${pkgname}-${pkgver//./-}
-        '001-rebase-4.4.1-msys2.patch'
-        '002-rebaseall-add-python-exts.patch'
-        '003-allow-non-database-mode-when-__CYGWIN__-__MSYS__.patch'
-        '004-msys2-usr.patch'
-        '005-peflags-add-support-for-IMAGE_DLLCHARACTERISTICS_GUA.patch'
-        'autorebase.bat'
-        'rebase.hook')
+source=(
+  "${pkgname}-${pkgver}::git://sourceware.org/git/cygwin-apps/rebase.git#tag=${pkgname}-${_ver}"
+  '001-rebase-4.4.1-msys2.patch'
+  '002-rebaseall-add-python-exts.patch'
+  '003-allow-non-database-mode-when-__CYGWIN__-__MSYS__.patch'
+  '004-msys2-usr.patch'
+  '005-peflags-add-support-for-IMAGE_DLLCHARACTERISTICS_GUA.patch'
+  'autorebase.bat'
+  'rebase.hook'
+)
 sha256sums=('f8ebc4dec0aeceecad2ed96662c83c7da5dfc3c88fddd1579ac4055756a418f9'
             '36531bb3ddae6ad4b2db88560e0a7f62848096374696f9e07d04782f8c610bc7'
             'b06d561d82e7c32573082cf0207ca80275bab241c61debf2d3d8cc10cf79e31b'
@@ -34,40 +47,45 @@ sha256sums=('f8ebc4dec0aeceecad2ed96662c83c7da5dfc3c88fddd1579ac4055756a418f9'
             'a50a8bfdb28c47c1742f400287a8a7ba65f9893dee74c109aad517d46afed2a1')
 
 prepare() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  cd "${pkgname}-${pkgver}"
 
-  patch -p1 -i ${srcdir}/001-rebase-4.4.1-msys2.patch
-  patch -p1 -i ${srcdir}/002-rebaseall-add-python-exts.patch
-  patch -p1 -i ${srcdir}/003-allow-non-database-mode-when-__CYGWIN__-__MSYS__.patch
-  patch -p1 -i ${srcdir}/004-msys2-usr.patch
+  patch -Np1 -i "${srcdir}/001-rebase-4.4.1-msys2.patch"
+  patch -Np1 -i "${srcdir}/002-rebaseall-add-python-exts.patch"
+  patch -Np1 -i "${srcdir}/003-allow-non-database-mode-when-__CYGWIN__-__MSYS__.patch"
+  patch -Np1 -i "${srcdir}/004-msys2-usr.patch"
   # https://cygwin.com/pipermail/cygwin-apps/2023-April/042816.html
-  patch -p1 -i "${srcdir}/005-peflags-add-support-for-IMAGE_DLLCHARACTERISTICS_GUA.patch"
+  patch -Np1 -i "${srcdir}/005-peflags-add-support-for-IMAGE_DLLCHARACTERISTICS_GUA.patch"
 
-  if check_option "strip" "n"; then
-    sed -i "s/ -s//g" Makefile.in
+  if check_option 'strip' 'n'; then
+    sed -i 's/ -s//g' Makefile.in
   fi
+
   autoreconf -fi
 }
 
 build() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  cd "${pkgname}-${pkgver}"
 
-  ./configure --build=${CHOST} --prefix=/usr \
+  ./configure \
+    --build="${CHOST}" \
+    --prefix=/usr \
     --sysconfdir=/etc \
     --with-posix-shell=/usr/bin/dash \
-    CXXFLAGS="${CXXFLAGS} -static -static-libgcc -static-libstdc++" \
-    CFLAGS="${CFLAGS} -static -static-libgcc"
+    CFLAGS="${CFLAGS} -static -static-libgcc" \
+    CXXFLAGS="${CXXFLAGS} -static -static-libgcc -static-libstdc++"
 
   make
 }
 
 package() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  cd "${pkgname}-${pkgver}"
 
-  make DESTDIR=${pkgdir} install
-  cp -f ${srcdir}/autorebase.bat ${pkgdir}
-  if [ "${CARCH}" == "i686" ]; then
-    mkdir -p ${pkgdir}/usr/share/libalpm/hooks
-    cp -f ${srcdir}/rebase.hook ${pkgdir}/usr/share/libalpm/hooks
+  make DESTDIR="${pkgdir}" install
+
+  cp -f "${srcdir}/autorebase.bat" "${pkgdir}/"
+
+  if [[ "${CARCH}" == 'i686' ]]; then
+    install -dm755 "${pkgdir}/usr/share/libalpm/hooks"
+    cp -f "${srcdir}/rebase.hook" "${pkgdir}/usr/share/libalpm/hooks/"
   fi
 }
