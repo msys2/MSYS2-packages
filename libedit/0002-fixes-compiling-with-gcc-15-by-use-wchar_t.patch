@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Yonggang Luo <luoyonggang@gmail.com>
+Date: Sun, 29 Jun 2026 00:00:00 +0800
+Subject: [PATCH] fixes compiling with gcc 15 by use wchar_t
+
+On Cygwin, wchar_t is 16-bit and wint_t is 32-bit. libedit stores display
+buffers as wint_t but treats them as wchar_t in several places, which breaks
+line editing (e.g. openssh sftp prompt). GCC 15 rejects the incomplete
+el.h-only workaround with -Wincompatible-pointer-types; switch the display
+buffer types and helpers consistently to wchar_t.
+
+---
+--- a/src/el.h	2026-05-09 03:40:44.000000000 +0800
++++ b/src/el.h	2026-06-29 23:29:46.955524000 +0800
+@@ -119,8 +119,8 @@ struct editline {
+ 	int		  el_errfd;	/* Error file descriptor	*/
+ 	int		  el_flags;	/* Various flags.		*/
+ 	coord_t		  el_cursor;	/* Cursor location		*/
+-	wint_t		**el_display;	/* Real screen image = what is there */
+-	wint_t		**el_vdisplay;	/* Virtual screen image = what we see */
++	wchar_t		**el_display;	/* Real screen image = what is there */
++	wchar_t		**el_vdisplay;	/* Virtual screen image = what we see */
+ 	void		 *el_data;	/* Client data			*/
+ 	el_line_t	  el_line;	/* The current line information	*/
+ 	el_state_t	  el_state;	/* Current editor state		*/
+
+--- a/src/refresh.c	2026-05-09 03:40:44.000000000 +0800
++++ b/src/refresh.c	2026-06-29 23:29:47.007095300 +0800
+@@ -105,7 +105,7 @@ re_nextline(EditLine *el)
+ 	 */
+ 	if (el->el_refresh.r_cursor.v + 1 >= el->el_terminal.t_size.v) {
+ 		int i, lins = el->el_terminal.t_size.v;
+-		wint_t *firstline = el->el_vdisplay[0];
++		wchar_t *firstline = el->el_vdisplay[0];
+ 
+ 		for(i = 1; i < lins; i++)
+ 			el->el_vdisplay[i - 1] = el->el_vdisplay[i];
+@@ -1094,7 +1094,7 @@ re_refresh_cursor(EditLine *el)
+ static void
+ re_fastputc(EditLine *el, wint_t c)
+ {
+-	wint_t *lastline;
++	wchar_t *lastline;
+ 	int w;
+ 
+ 	w = wcwidth(c);
+
+--- a/src/terminal.c	2026-05-09 03:40:44.000000000 +0800
++++ b/src/terminal.c	2026-06-29 23:29:47.115153000 +0800
+@@ -413,10 +413,10 @@ terminal_rebuffer_display(EditLine *el)
+ 	return 0;
+ }
+ 
+-static wint_t **
++static wchar_t **
+ terminal_alloc_buffer(EditLine *el)
+ {
+-	wint_t **b;
++	wchar_t **b;
+ 	coord_t *c = &el->el_terminal.t_size;
+ 	int i;
+ 
+@@ -437,10 +437,10 @@ terminal_alloc_buffer(EditLine *el)
+ }
+ 
+ static void
+-terminal_free_buffer(wint_t ***bp)
++terminal_free_buffer(wchar_t ***bp)
+ {
+-	wint_t **b;
+-	wint_t **bufp;
++	wchar_t **b;
++	wchar_t **bufp;
+ 
+ 	if (*bp == NULL)
+ 		return;
+--
+2.52.0.windows.1
+
