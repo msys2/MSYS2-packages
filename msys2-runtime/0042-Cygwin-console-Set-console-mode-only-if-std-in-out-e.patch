@@ -1,0 +1,121 @@
+From c892dfe93ec1f5a82d299efca8c0297ff7ade794 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Thu, 3 Jul 2025 09:06:22 +0900
+Subject: [PATCH 42/N] Cygwin: console: Set console mode only if
+ std{in,out,err} is console
+
+Currently, when cygwin app is launched, the console input mode is
+set to tty::cygwin, even if the stdin is not a console. However,
+it is not necessary because the cygwin app does not use stdin.
+This also applies to stdout and stderr.
+
+With this patch, the console mode is set only when std{in,out,err}
+is a console for the cygwin app for better coexistence with non-
+cygwin apps.
+
+This is a prerequisite for the experimental backport of Takashi Yano's
+v15 console-mode patch to msys2-3.6.10. The release branch's later,
+already-applied suspension-before-mode ordering is preserved.
+
+(cherry picked from commit bbd3710fc83451426e3a58e5032437ca535fa444)
+Assisted-by: GPT-6
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/dtable.cc           |  6 +-----
+ winsup/cygwin/fhandler/console.cc | 36 ++++++++++++++++++++++---------
+ 2 files changed, 27 insertions(+), 15 deletions(-)
+
+diff --git a/winsup/cygwin/dtable.cc b/winsup/cygwin/dtable.cc
+index 6ccc19a..e4cd3bd 100644
+--- a/winsup/cygwin/dtable.cc
++++ b/winsup/cygwin/dtable.cc
+@@ -326,11 +326,7 @@ dtable::init_std_file_from_handle (int fd, HANDLE handle)
+       if (CTTY_IS_VALID (myself->ctty))
+ 	dev.parse (myself->ctty);
+       else
+-	{
+-	  dev.parse (FH_CONSOLE);
+-	  CloseHandle (handle);
+-	  handle = INVALID_HANDLE_VALUE;
+-	}
++	dev.parse (FH_CONSOLE);
+     }
+   else if (GetCommState (handle, &dcb))
+     /* FIXME: Not right - assumes ttyS0 */
+diff --git a/winsup/cygwin/fhandler/console.cc b/winsup/cygwin/fhandler/console.cc
+index 857485c..e19e124 100644
+--- a/winsup/cygwin/fhandler/console.cc
++++ b/winsup/cygwin/fhandler/console.cc
+@@ -953,8 +953,10 @@ fhandler_console::cleanup_for_non_cygwin_app (handle_set_t *p)
+   /* conmode can be tty::restore when non-cygwin app is
+      exec'ed from login shell. */
+   tty::cons_mode conmode = cons_mode_on_close (p);
+-  set_output_mode (conmode, ti, p);
+-  set_input_mode (conmode, ti, p);
++  if (con.curr_output_mode != conmode)
++    set_output_mode (conmode, ti, p);
++  if (con.curr_input_mode != conmode)
++    set_input_mode (conmode, ti, p);
+ }
+ 
+ /* Return the tty structure associated with a given tty number.  If the
+@@ -1947,13 +1949,24 @@ fhandler_console::open (int flags, mode_t)
+ 	setenv ("TERM", "cygwin", 1);
+     }
+ 
+-  if (con.curr_input_mode != tty::cygwin)
++  HANDLE h_in = GetStdHandle (STD_INPUT_HANDLE);
++  HANDLE h_out = GetStdHandle (STD_OUTPUT_HANDLE);
++  HANDLE h_err = GetStdHandle (STD_ERROR_HANDLE);
++
++  DWORD dummy;
++  bool in_is_console = GetConsoleMode (h_in, &dummy);
++  bool out_is_console =
++    GetConsoleMode (h_out, &dummy) || GetConsoleMode (h_err, &dummy);
++  if (in_is_console)
++    CloseHandle (h_in);
++
++  if (in_is_console && con.curr_input_mode != tty::cygwin)
+     {
+       prev_input_mode_backup = con.prev_input_mode;
+       GetConsoleMode (get_handle (), &con.prev_input_mode);
+       set_input_mode (tty::cygwin, &get_ttyp ()->ti, &handle_set);
+     }
+-  if (con.curr_output_mode != tty::cygwin)
++  if (out_is_console && con.curr_output_mode != tty::cygwin)
+     {
+       prev_output_mode_backup = con.prev_output_mode;
+       GetConsoleMode (get_output_handle (), &con.prev_output_mode);
+@@ -2069,13 +2082,14 @@ fhandler_console::close (int flag)
+ 
+   acquire_output_mutex (mutex_timeout);
+ 
+-  if (shared_console_info[unit] && con.curr_input_mode != tty::restore
+-      && (dev_t) myself->ctty == get_device ()
++  if (shared_console_info[unit] && (dev_t) myself->ctty == get_device ()
+       && cons_mode_on_close (&handle_set) == tty::restore)
+     {
+       set_disable_master_thread (true, this);
+-      set_output_mode (tty::restore, &get_ttyp ()->ti, &handle_set);
+-      set_input_mode (tty::restore, &get_ttyp ()->ti, &handle_set);
++      if (con.curr_output_mode != tty::restore)
++	set_output_mode (tty::restore, &get_ttyp ()->ti, &handle_set);
++      if (con.curr_input_mode != tty::restore)
++	set_input_mode (tty::restore, &get_ttyp ()->ti, &handle_set);
+     }
+ 
+   if (shared_console_info[unit] && con.owner == GetCurrentProcessId ())
+@@ -2296,8 +2310,10 @@ int
+ fhandler_console::tcsetattr (int a, struct termios const *t)
+ {
+   get_ttyp ()->ti = *t;
+-  set_input_mode (tty::cygwin, t, &handle_set);
+-  set_output_mode (tty::cygwin, t, &handle_set);
++  if (con.curr_input_mode == tty::cygwin)
++    set_input_mode (tty::cygwin, t, &handle_set);
++  if (con.curr_output_mode == tty::cygwin)
++    set_output_mode (tty::cygwin, t, &handle_set);
+   return 0;
+ }
+ 

@@ -1,0 +1,165 @@
+From c770e1b9fa537fff9287c1fd40ebc84ac498fcb6 Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Thu, 24 Sep 2026 07:32:22 +0900
+Subject: [PATCH 44/N] Cygwin: console: Abort setting disable_master_thread
+ when no con.owner
+
+With the commit 733d5a953fa9 ("Cygwin: console: Ensure the master
+thread runs only when it is supposed to"), the process which calls
+set_disable_master_thread() hangs if the con.owner already exited,
+because set_disable_master_thread() waits for cons_master_thread
+accepting the status change and reflecting the current status to
+master_thread_suspended. With this patch, set_disable_master_thread()
+is aborted if the owner process no longer exists to avoid this
+hang.
+
+Backport the complete upstream v5 patch unchanged after v18:
+https://inbox.sourceware.org/cygwin-patches/20260923223230.3504-1-takashi.yano@nifty.ne.jp/
+
+Addresses: https://cygwin.com/pipermail/cygwin/2026-September/260037.html
+Fixes: 733d5a953fa9 ("Cygwin: console: Ensure the master thread runs only when it is supposed to")
+Reported-by: Jay Libove Alzina <libove@felines.org>
+Co-authored-by: Johannes Schindelin <Johannes.Schindelin@gmx.de>
+Reviewed-by: Johannes Schindelin <Johannes.Schindelin@gmx.de>
+Assisted-by: GPT-6
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/fhandler/console.cc       | 57 +++++++++++++++++++++----
+ winsup/cygwin/local_includes/fhandler.h |  3 +-
+ 2 files changed, 51 insertions(+), 9 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler/console.cc b/winsup/cygwin/fhandler/console.cc
+index 9e87ff5..77786a1 100644
+--- a/winsup/cygwin/fhandler/console.cc
++++ b/winsup/cygwin/fhandler/console.cc
+@@ -858,7 +858,7 @@ fhandler_console::fix_input_mode_if_necessary ()
+     }
+   bool need_processed_input =
+     con.master_thread_suspended || con.disable_master_thread
+-    || con.need_win32_input_mode_fix;
++    || con.need_win32_input_mode_fix || master_thread_unavailable (unit);
+   if (need_processed_input == con.is_processed_input)
+     {
+       ReleaseMutex (cons_mode_mutex);
+@@ -873,8 +873,11 @@ fhandler_console::fix_input_mode_if_necessary ()
+     flags |= ENABLE_PROCESSED_INPUT;
+   else
+     flags &= ~ENABLE_PROCESSED_INPUT;
+-  con.is_processed_input = need_processed_input;
++  if (need_processed_input)
++    con.is_processed_input = true;
+   SetConsoleMode (get_handle (), flags);
++  if (!need_processed_input)
++    con.is_processed_input = false;
+   detach_console (resume_pid, con.owner);
+   release_attach_mutex ();
+   ReleaseMutex (input_mutex);
+@@ -889,6 +892,7 @@ fhandler_console::set_input_mode (tty::cons_mode m, const termios *t,
+ {
+   const _minor_t unit = p->unit;
+   DWORD oflags;
++  bool need_processed_input = false;
+   WaitForSingleObject (p->input_mutex, mutex_timeout);
+   acquire_attach_mutex (mutex_timeout);
+   DWORD resume_pid = attach_console (con.owner);
+@@ -903,10 +907,10 @@ fhandler_console::set_input_mode (tty::cons_mode m, const termios *t,
+       break;
+     case tty::cygwin:
+       flags |= ENABLE_WINDOW_INPUT;
+-      con.is_processed_input =
++      need_processed_input =
+ 	con.master_thread_suspended || con.disable_master_thread
+-	|| con.need_win32_input_mode_fix;
+-      if (con.is_processed_input)
++	|| con.need_win32_input_mode_fix || master_thread_unavailable (unit);
++      if (need_processed_input)
+ 	flags |= ENABLE_PROCESSED_INPUT;
+       if (wincap.has_con_24bit_colors () && !con_is_legacy)
+ 	flags |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+@@ -927,8 +931,11 @@ fhandler_console::set_input_mode (tty::cons_mode m, const termios *t,
+       break;
+     }
+   con.curr_input_mode = m;
++  if (flags & ENABLE_PROCESSED_INPUT)
++    con.is_processed_input = true;
+   SetConsoleMode (p->input_handle, flags);
+-  con.is_processed_input = (flags & ENABLE_PROCESSED_INPUT) != 0;
++  if (!(flags & ENABLE_PROCESSED_INPUT))
++    con.is_processed_input = false;
+   if (!(oflags & ENABLE_VIRTUAL_TERMINAL_INPUT)
+       && (flags & ENABLE_VIRTUAL_TERMINAL_INPUT)
+       && con.cursor_key_app_mode)
+@@ -4933,7 +4940,37 @@ fhandler_console::close_handle_set (handle_set_t *p)
+ bool
+ fhandler_console::need_console_handler ()
+ {
+-  return con.disable_master_thread || con.master_thread_suspended;
++  return con.is_processed_input;
++}
++
++bool
++fhandler_console::master_thread_unavailable (_minor_t unit)
++{
++  DWORD owner = con.owner;
++  if (owner == (DWORD) -1) /* About to exit, however still alive */
++    return false;
++  if (owner == 0)
++    return true;
++  bool exited = false;
++  DWORD error = ERROR_SUCCESS;
++  HANDLE process = OpenProcess (SYNCHRONIZE, FALSE, owner);
++  if (process)
++    {
++      DWORD res = WaitForSingleObject (process, 0);
++      if (res == WAIT_FAILED)
++	error = GetLastError ();
++      exited = (res == WAIT_OBJECT_0);
++      CloseHandle (process);
++    }
++  else
++    {
++      error = GetLastError ();
++      exited = (error == ERROR_INVALID_PARAMETER);
++    }
++  if (error && !exited)
++    system_printf ("Cannot query console owner %u, error %u", owner, error);
++
++  return (exited || error) && con.owner == owner;
+ }
+ 
+ void
+@@ -4951,7 +4988,11 @@ fhandler_console::set_disable_master_thread (bool x, fhandler_console *cons)
+   con.disable_master_thread = x;
+   cons->release_input_mutex ();
+   while (con.master_thread_suspended != x)
+-    Sleep (1);
++    { /* Wait for the responce from the cons_master_thread. */
++      if (master_thread_unavailable (unit))
++	return; /* Abort */
++      Sleep (1);
++    }
+ }
+ 
+ int
+diff --git a/winsup/cygwin/local_includes/fhandler.h b/winsup/cygwin/local_includes/fhandler.h
+index d7edf03..f048f17 100644
+--- a/winsup/cygwin/local_includes/fhandler.h
++++ b/winsup/cygwin/local_includes/fhandler.h
+@@ -2159,7 +2159,7 @@ class dev_console
+   int num_processed; /* Number of input events in the current input buffer
+ 			already processed by cons_master_thread(). */
+   bool need_win32_input_mode_fix;
+-  bool is_processed_input;
++  volatile bool is_processed_input;
+ 
+   inline UINT get_console_cp ();
+   DWORD con_to_str (char *d, int dlen, WCHAR w);
+@@ -2361,6 +2361,7 @@ private:
+   static void cleanup_for_non_cygwin_app (handle_set_t *p);
+   static void set_console_mode_to_native ();
+   bool need_console_handler ();
++  static bool master_thread_unavailable (_minor_t unit);
+   static void set_disable_master_thread (bool x, fhandler_console *cons = NULL);
+   static DWORD attach_console (DWORD, bool *err = NULL);
+   static void detach_console (DWORD, DWORD);
