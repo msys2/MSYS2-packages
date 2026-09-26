@@ -1,44 +1,65 @@
 # Maintainer: LoveSy <shana@zju.edu.cn>
 
-pkgname="openbsd-netcat"
-pkgver=1.234_2
+pkgname='openbsd-netcat'
+pkgver=1.238_1
+_ver="${pkgver/_/-}"
 pkgrel=1
-pkgdesc="TCP/IP swiss army knife. OpenBSD variant."
+pkgdesc='TCP/IP swiss army knife. OpenBSD variant.'
 arch=('i686' 'x86_64')
-url="https://packages.debian.org/sid/netcat-openbsd"
+url='https://packages.debian.org/sid/netcat-openbsd'
+msys2_references=(
+  'anitya: 21534'
+  'archlinux: openbsd-netcat'
+  'aur:' # ignore gnu-netcat
+  'cygwin: openbsd-netcat'
+  'gentoo: net-analyzer/openbsd-netcat'
+)
 license=('spdx:BSD-2-Clause AND BSD-3-Clause')
-depends=('libbsd')
-makedepends=('make' 'gcc' 'pkgconf')
+depends=(
+  'libbsd'
+)
+makedepends=(
+  'gcc'
+  'make'
+  'pkgconf'
+)
 provides=('netcat')
 conflicts=('gnu-netcat')
-source=("https://salsa.debian.org/debian/netcat-openbsd/-/archive/debian/${pkgver/_/-}/netcat-openbsd-debian-${pkgver/_/-}.tar.gz"
-        "001-msys2-build-fix.patch")
-sha256sums=('11a00e7cfb37dfd41ef6228ad4757efb45553f21f0f8709a676eb18e6f01b5ef'
+source=(
+  "https://salsa.debian.org/debian/netcat-openbsd/-/archive/debian/${_ver}/netcat-openbsd-debian-${_ver}.tar.gz"
+  '001-msys2-build-fix.patch'
+)
+sha256sums=('ca2fed5e3e0e9841af812bd7ad2ed9e094f5c4cb72817e91323c75e14858af4a'
             '60d725e13cebeb3b40574d41f0218f89c4fe2982118fb80c4ecc9c19b3df9892')
 
 prepare() {
-  cd netcat-openbsd-debian-${pkgver/_/-}
-  for i in `cat debian/patches/series`; do
-    echo "** patch $i" 1>&2
-    cat "debian/patches/$i"
-  done | patch -p1
+  cd "netcat-openbsd-debian-${_ver}"
 
-  patch -p1 -i "${srcdir}/001-msys2-build-fix.patch"
+  while read -r _patch _; do
+    [[ -z "${_patch}" || "${_patch}" =~ ^# ]] && continue
+    patch -Np1 -i "debian/patches/${_patch}"
+  done < debian/patches/series
+
+  patch -Np1 -i "${srcdir}/001-msys2-build-fix.patch"
 }
 
 build() {
-  cd netcat-openbsd-debian-${pkgver/_/-}
+  cd "netcat-openbsd-debian-${_ver}"
 
   make \
-    CFLAGS="$CFLAGS -DDEBIAN_VERSION=\"\\\"${pkgrel}\\\"\"" \
-    LDFLAGS="$LDFLAGS -lbsd"
+    CFLAGS="${CFLAGS} -DDEBIAN_VERSION=\"\\\"${pkgrel}\\\"\"" \
+    LDFLAGS="${LDFLAGS} -lbsd"
 }
 
 package() {
-  cd netcat-openbsd-debian-${pkgver/_/-}
-  install -Dm0755 nc "$pkgdir"/usr/bin/nc
-  ln -s nc "$pkgdir"/usr/bin/netcat
-  install -Dm0644 nc.1 "$pkgdir"/usr/share/man/man1/nc.1
-  install -dm0755 "$pkgdir"/usr/share/licenses/$pkgname/
-  head -n28 netcat.c | tail -n+2 >"$pkgdir"/usr/share/licenses/$pkgname/LICENSE
+  cd "netcat-openbsd-debian-${_ver}"
+
+  install -Dm755 nc "${pkgdir}/usr/bin/nc"
+
+  ln -s nc "${pkgdir}/usr/bin/netcat"
+
+  install -Dm644 nc.1 "${pkgdir}/usr/share/man/man1/nc.1"
+  install -dm755 "${pkgdir}/usr/share/licenses/${pkgname}"
+
+  head -n28 netcat.c | tail -n+2 > "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
