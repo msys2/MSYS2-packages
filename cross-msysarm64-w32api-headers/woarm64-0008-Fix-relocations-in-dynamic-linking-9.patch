@@ -1,0 +1,57 @@
+From 92e63a665c6f217a41401feb69b4662928d370ba Mon Sep 17 00:00:00 2001
+From: Evgeny Karpov <eukarpov@gmail.com>
+Date: Thu, 25 Sep 2025 10:45:16 +0200
+Subject: [PATCH 8/8] Fix relocations in dynamic linking (#9)
+
+The patch implements the required changes to support runtime relocations in MinGW.
+For 26-bit relocations, the linker generates a jump stub, as a single opcode is not sufficient for relocation.
+
+Co-authored-by: Evgeny Karpov <evgeny@kmaps.co>
+---
+ mingw-w64-crt/crt/pseudo-reloc.c | 27 ++++++++++++++++-----------
+ 1 file changed, 16 insertions(+), 11 deletions(-)
+
+diff --git a/mingw-w64-crt/crt/pseudo-reloc.c b/mingw-w64-crt/crt/pseudo-reloc.c
+index fa860ae57..fa08a1a92 100644
+--- a/mingw-w64-crt/crt/pseudo-reloc.c
++++ b/mingw-w64-crt/crt/pseudo-reloc.c
+@@ -507,23 +507,28 @@ do_pseudo_reloc (void * start, void * end, void * base)
+ 	   break;
+ #ifdef __aarch64__
+ 	 case 12:
+-           reldata = reldata & 0xfff;
+-           opcode &= 0xffc003ff;
+-           opcode |= reldata << 10;
++	   /* Replace add Xn, Xn, :lo12:label with ldr Xn, [Xn, :lo12:__imp__func].
++	      That loads the address of _func into Xn.  */
++	   opcode = 0xf9400000 | (opcode & 0x3ff); // ldr
++	   reldata = ((ptrdiff_t) base + r->sym) & ((1 << 12) - 1);
++	   reldata >>= 3;
++	   opcode |= reldata << 10;
+            __write_memory ((void *) reloc_target, &opcode, 4);
+ 	   break;
+ 	 case 21:
++	   /* Replace adrp Xn, label with adrp Xn, __imp__func.  */
+ 	   opcode &= 0x9f00001f;
+-           reldata >>= 12;
+-	   opcode |= (reldata & 0x3) << 29;
+-	   opcode |= (reldata & 0x1ffffc) << 3;
+-           __write_memory ((void *) reloc_target, &opcode, 4);
+-	   break;
+-	 case 26:
+-	   opcode &= 0xfc000000;
+-	   opcode |= (reldata >> 2) & 0x3ffffff;
++	   reldata = (((ptrdiff_t) base + r->sym) >> 12)
++		     - (((ptrdiff_t) base + r->target) >> 12);
++	   reldata &= (1 << 21) - 1;
++	   opcode |= (reldata & 3) << 29;
++	   reldata >>= 2;
++	   opcode |= reldata << 5;
+            __write_memory ((void *) reloc_target, &opcode, 4);
+ 	   break;
++	 /* A note regarding 26 bits relocation.
++	    A single opcode is not sufficient for 26 bits relocation in dynamic linking.
++	    The linker generates a jump stub instead.  */
+ #endif
+ 	 case 32:
+            __write_memory ((void *) reloc_target, &reldata, 4);

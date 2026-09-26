@@ -3,12 +3,17 @@
 
 pkgbase=bash
 pkgname=('bash' 'bash-devel')
+# The testsuite package exists to run bash's own tests against the freshly
+# cross-built ARM64 runtime; it is not part of the native package set.
+if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+  pkgname=('bash' 'bash-devel' 'bash-testsuite')
+fi
 _basever=5.3
 _patchlevel=020 #prepare for some patches
 pkgver=${_basever}.${_patchlevel}
-pkgrel=1
+pkgrel=2
 pkgdesc="The GNU Bourne Again shell"
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 license=('spdx:GPL-3.0-or-later')
 url="https://www.gnu.org/software/bash/bash.html"
 msys2_repository_url="https://cgit.git.savannah.gnu.org/cgit/bash.git"
@@ -54,6 +59,49 @@ prepare() {
   patch -p1 -i ${srcdir}/0006-bash-4.3-add-pwd-W-option.patch
   patch -p1 -i ${srcdir}/0007-fix-static-build.patch
 
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # environ is a DATA symbol exported by msys-2.0.dll.  A bare
+    #   extern char **environ;
+    # makes ld fall back to auto-import, and on AArch64 that pseudo-relocation is
+    # never applied: bash.exe ends up with 8 __fu*_environ thunks writing to a
+    # LOCAL copy.  bash keeps the C library environment in sync with
+    #   environ = export_env;      (variables.c)
+    # so with a broken auto-import the runtime never sees the new environment --
+    # "export TZ=..." has no effect on printf %()T in the same process, while a
+    # spawned child still works (export_env goes to execve directly).  That is
+    # the run-printf failure.  dllimport routes the assignment through
+    # __imp_environ, i.e. the DLL's real variable.
+    # support/printenv.c needs it for the same reason: it is one of the four
+    # testsuite helpers, and with auto-import it reads a bogus address, prints
+    # nothing and exits 1 -- silently costing the appendop, func, nameref and
+    # varenv groups, with no error anywhere pointing at printenv.
+    for _f in shell.c variables.c support/printenv.c; do
+      sed -i "s/^extern char \*\*environ;/__declspec(dllimport) extern char **environ;/" "${_f}"
+    done
+    if ! grep -q "dllimport) extern char " variables.c ||
+       ! grep -q "dllimport) extern char " support/printenv.c; then
+      echo "FATAL: environ dllimport patch did not apply" >&2
+      return 1
+    fi
+    echo "environ declared dllimport in shell.c and variables.c"
+
+    # Same defect, different symbol: support/xcase.c redeclares
+    #   extern int optind;
+    # which overrides the correct __declspec(dllimport) declaration that
+    # <unistd.h> already provides.  optind is a DATA symbol in msys-2.0.dll, so
+    # the bare extern forces auto-import and on AArch64 the pseudo-relocation is
+    # never applied.  xcase then reads a garbage optind, "av += optind" walks off
+    # argv and "av[0][0]" segfaults -- unconditionally, with or without flags.
+    # That is the run-coproc segfault ("coproc xcase -n -u"), which also cost the
+    # two Bad-file-descriptor lines that followed it.
+    sed -i "s/^extern int optind;/__declspec(dllimport) extern int optind;/" support/xcase.c
+    if ! grep -q "dllimport) extern int optind" support/xcase.c; then
+      echo "FATAL: optind dllimport patch did not apply" >&2
+      return 1
+    fi
+    echo "optind declared dllimport in support/xcase.c"
+  fi
+
   autoconf
 }
 
@@ -61,6 +109,85 @@ build() {
   cd ${srcdir}/${pkgname}-$_basever
 
   export MSYSTEM=CYGWIN
+
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # Cross-build for aarch64-pc-cygwin.
+    # Uses the seed readline/ncurses/libintl/libiconv staged under the toolchain
+    # sysroot at /usr/aarch64-pc-cygwin/usr.
+    #   - GCC-15 too new for bash sources: -std=gnu89 (build + target).
+    #   - bash_cv_* : cross defaults for these AC_TRY_RUN probes are wrong.
+    #   - CFLAGS_FOR_BUILD -fcommon: build-host helpers (mkbuiltins etc.) need it
+    #     under GCC-15's default -fno-common.
+    ./configure --build=${CHOST} \
+      --host=aarch64-pc-cygwin \
+      --prefix=/usr \
+      --sysconfdir=/etc \
+      --localstatedir=/var \
+      --enable-static-link \
+      --enable-readline \
+      --without-libintl-prefix \
+      --without-libiconv-prefix \
+      --with-installed-readline \
+      --without-bash-malloc \
+      --with-curses \
+      bash_cv_dev_stdin=present \
+      bash_cv_dev_fd=standard \
+      bash_cv_wexitstatus_offset=8 \
+      bash_cv_termcap_lib=libncurses \
+      CFLAGS="-O1 -std=gnu89 -I/usr/aarch64-pc-cygwin/usr/include -I/usr/aarch64-pc-cygwin/usr/include/ncursesw" \
+      CFLAGS_FOR_BUILD="-fcommon -std=gnu89" \
+      LDFLAGS="${LDFLAGS} -L/usr/aarch64-pc-cygwin/usr/lib"
+
+    expr ${pkgrel} > .build || :
+
+    # CC_FOR_BUILD must stay the BUILD compiler here: `all` builds genuine build
+    # tools (mksyntax, mksignames, bashversion, buildversion) that have to run on
+    # this x64 host. Overriding it globally cross-builds those too and the build
+    # dies trying to execute an ARM64 mksyntax.
+    make CPPFLAGS=-DWORDEXP_OPTION \
+         HISTORY_LDFLAGS= \
+         READLINE_LDFLAGS= \
+         CC_FOR_BUILD=gcc \
+         LOCAL_LDFLAGS='-Wl,--export-all,--out-implib,lib$(@:.exe=.dll.a)'
+    rm -f recho.exe zecho.exe printenv.exe xcase.exe
+
+    make CPPFLAGS=-DWORDEXP_OPTION \
+         HISTORY_LDFLAGS= \
+         READLINE_LDFLAGS= \
+         CC_FOR_BUILD="${CC:-aarch64-pc-cygwin-gcc}" \
+         CFLAGS_FOR_BUILD="-O1 -std=gnu89 -I/usr/aarch64-pc-cygwin/usr/include" \
+         LDFLAGS_FOR_BUILD="-L/usr/aarch64-pc-cygwin/usr/lib -Wl,--disable-high-entropy-va" \
+         recho.exe zecho.exe printenv.exe xcase.exe
+
+    # Gate: each helper must be an ARM64 PE. `file` is the discriminator -- mere
+    # existence proves nothing, since the x64 `all` pass creates the same names.
+    for h in recho zecho printenv xcase; do
+      [ -f "$h.exe" ] || { echo "ERROR: testsuite helper $h.exe was not built"; exit 1; }
+      case "$(file "$h.exe")" in
+        *ARM64*|*Aarch64*|*aarch64*) echo "HELPER_ARM64_OK:$h" ;;
+        *) echo "ERROR: $h.exe is not an ARM64 PE: $(file "$h.exe")"; exit 1 ;;
+      esac
+      # HIGH_ENTROPY_VA (0x20) must be OFF.  It lets the loader place
+      # allocations anywhere in the 128TB space, including inside the 8GiB the
+      # cygheap must reserve at 0x800000000; fork in the child then fails with
+      #   child_copy: cygheap read copy failed, 0x0..
+      # bash.exe gets -Wl,--disable-high-entropy-va from LDFLAGS in the cross
+      # config, but these helpers are a SEPARATE make invocation that only sees
+      # LDFLAGS_FOR_BUILD, so the flag has to be set there too.  Checked here
+      # because the symptom appears only much later, as scattered testsuite
+      # failures in whichever groups happen to use the helpers.
+      _dc=$(aarch64-pc-cygwin-objdump -p "$h.exe" 2>/dev/null               | awk '/DllCharacteristics/{print $2; exit}')
+      if [ -n "${_dc}" ] && [ $(( 0x${_dc} & 0x20 )) -ne 0 ]; then
+        echo "ERROR: $h.exe has HIGH_ENTROPY_VA set (DllCharacteristics=0x${_dc})."
+        echo "       fork will fail in the testsuite; add"
+        echo "       -Wl,--disable-high-entropy-va to LDFLAGS_FOR_BUILD."
+        exit 1
+      fi
+      echo "HELPER_NO_HIGH_ENTROPY_OK:$h"
+    done
+    return
+  fi
+
   ./configure --build=${CHOST} \
     --prefix=/usr \
     --sysconfdir=/etc \
@@ -87,6 +214,8 @@ build() {
 }
 
 check() {
+  # target binaries can't run on the x64 (emulated) cross host
+  [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]] && return 0
   cd ${srcdir}/${pkgname}-$_basever
   make check
 }
@@ -95,7 +224,14 @@ package_bash() {
   provides=('sh')
 
   cd ${srcdir}/${pkgname}-$_basever
-  make DESTDIR=${pkgdir} install
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    make DESTDIR=${pkgdir} \
+         HISTORY_LDFLAGS= \
+         READLINE_LDFLAGS= \
+         install
+  else
+    make DESTDIR=${pkgdir} install
+  fi
 
   cp -fp ${pkgdir}/usr/bin/{ba,}sh.exe
 
@@ -112,6 +248,18 @@ package_bash() {
     unset until wait while [ ; do
     cp -fp alias.1.gz $f.1.gz
   done
+}
+
+package_bash-testsuite() {
+ pkgdesc="Bash's own test suite (bash/tests/run-all) plus its target-built helpers"
+ options=('!strip')
+ cd ${srcdir}/${pkgbase}-$_basever
+ install -d ${pkgdir}/usr/share/bash/tests
+ cp -a tests/. ${pkgdir}/usr/share/bash/tests/
+ for h in recho zecho printenv xcase; do
+   [ -f "$h.exe" ] || { echo "ERROR: $h.exe missing -- build() should have made it"; exit 1; }
+   install -m755 "$h.exe" ${pkgdir}/usr/share/bash/tests/
+ done
 }
 
 package_bash-devel() {
@@ -133,7 +281,7 @@ package_bash-devel() {
 
 sha256sums=('0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba'
             'SKIP'
-            'd46e6b06167af61cc8639236948daf6fd57db418893330bef728efd4acc40430'
+            'a2103803aead69d6513a6efef4db8edb32f9bd96747dbff8fa71fc849dcb7a49'
             '16584e119db9418030912171f89aecae319858ecd357d3e56c95eba83667dae7'
             '696e38540a9abfbf217d6dd17b2c6ffe274b9383815c5db76ce118fdddabd777'
             '500c75c64593a70276585345a55c807226c0cc220d08b7cccece2ab005b3bcea'

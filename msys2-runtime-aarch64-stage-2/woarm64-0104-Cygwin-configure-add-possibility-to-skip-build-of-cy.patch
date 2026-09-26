@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Radek=20Barto=C5=88?= <radek.barton@microsoft.com>
+Date: Sat, 21 Jun 2025 22:56:58 +0200
+Subject: [PATCH 104/109] Cygwin: configure: add possibility to skip build of
+ cygserver and utils
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This patch adds configure options allowing to disable build of cygserver
+and Cygwin utilities. This is useful when one needs to build only
+cygwin1.dll and crt0.o with stage1 compiler that is not yet capable of
+linking executables as it is missing cygwin1.dll and crt0.o.
+
+Signed-off-by: Radek Bartoň <radek.barton@microsoft.com>
+(cherry picked from commit daeb65bd35e3e81379be66bc7b25c944ef9626b2)
+(cherry picked from commit c50ededdf8e1a4a67957ec6af1d1e9131f4ac23f)
+---
+ winsup/configure.ac            | 10 ----------
+ winsup/cygserver/Makefile.am   |  2 ++
+ winsup/doc/faq-programming.xml | 17 ++++++++++++++++-
+ 3 files changed, 18 insertions(+), 11 deletions(-)
+
+diff --git a/winsup/configure.ac b/winsup/configure.ac
+index ca005f870..9e745582c 100644
+--- a/winsup/configure.ac
++++ b/winsup/configure.ac
+@@ -130,16 +130,6 @@ AC_ARG_ENABLE(utils,
+ 	      [AS_HELP_STRING([--disable-utils], [do not build utils])],,
+ 	      enable_utils=yes)
+ AM_CONDITIONAL(BUILD_UTILS, [test $enable_utils != "no"])
+-# --enable-mingw-utils: opt-in to build only the MinGW *host* tools in
+-# utils/mingw (e.g. cygwin-console-helper) without the cygwin-linked utils in
+-# utils/ (which stay behind --disable-utils).  Used by the ARM64 cross build to
+-# ship individual MinGW utilities the same way the native x86_64 build does
+-# (via `make`, not a hand-written compile line), while the ~26 cygwin-linked
+-# utils remain deferred.  Default off => a no-op for every existing config.
+-AC_ARG_ENABLE(mingw-utils,
+-	      [AS_HELP_STRING([--enable-mingw-utils], [build the MinGW host tools in utils/mingw (e.g. cygwin-console-helper) without the cygwin-linked utils])],,
+-	      enable_mingw_utils=no)
+-AM_CONDITIONAL(BUILD_MINGW_UTILS, [test "x$enable_mingw_utils" = "xyes"])
+ 
+ AC_CHECK_PROGS([DOCBOOK2XTEXI], [docbook2x-texi db2x_docbook2texi])
+ if test -z "$DOCBOOK2XTEXI" ; then
+diff --git a/winsup/cygserver/Makefile.am b/winsup/cygserver/Makefile.am
+index d83001510..9954ebe5d 100644
+--- a/winsup/cygserver/Makefile.am
++++ b/winsup/cygserver/Makefile.am
+@@ -12,7 +12,9 @@ cygserver_flags=$(cxxflags_common) -Wimplicit-fallthrough=5 -Werror -DSYSCONFDIR
+ AM_CXXFLAGS = $(CFLAGS)
+ 
+ noinst_LIBRARIES = libcygserver.a
++if BUILD_CYGSERVER
+ sbin_PROGRAMS = cygserver
++endif
+ bin_SCRIPTS = cygserver-config
+ 
+ cygserver_SOURCES = \
+diff --git a/winsup/doc/faq-programming.xml b/winsup/doc/faq-programming.xml
+index a83429859..c295aa649 100644
+--- a/winsup/doc/faq-programming.xml
++++ b/winsup/doc/faq-programming.xml
+@@ -697,8 +697,23 @@ Building these programs can be disabled with the <literal>--without-cross-bootst
+ option to <literal>configure</literal>.
+ </para>
+ 
++<para>
++Build of <literal>cygserver</literal> can be skipped with
++<literal>--disable-cygserver</literal> and build of other Cygwin utilities with
++<literal>--disable-utils</literal>.
++</para>
++
++<para>
++In combination, <literal>--disable-cygserver</literal>,
++<literal>--disable-dumper</literal>, <literal>--disable-utils</literal>
++and  <literal>--without-cross-bootstrap</literal> allow building of just
++<literal>cygwin1.dll</literal> and <literal>crt0.o</literal> for a stage2
++compiler, when being built with stage1 compiler which does not support linking
++executables yet (because those files are missing).
++</para>
++
+ <!-- If you want to run the tests <literal>busybox</literal> and
+-     <literal>cygutils-extra<literal> are also required. -->
++     <literal>cygutils-extra</literal> are also required. -->
+ 
+ <para>
+ Building the documentation also requires the <literal>dblatex</literal>,

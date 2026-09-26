@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:32 +0530
+Subject: [PATCH 053/109] Cygwin: gendef: Implement longjmp for AArch64
+
+(cherry picked from commit 67e57dd2d6601f24af5b3e481cdfa975630dcd88)
+---
+ winsup/cygwin/scripts/gendef | 64 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 64 insertions(+)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 87f64009d..d6c9552fd 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -951,7 +951,71 @@ siglongjmp:
+ 	.seh_endproc
+ 
+ 	.globl  longjmp
++	.seh_proc longjmp
+ longjmp:
++	// prologue
++	stp	fp, lr, [sp, #-0x20]!			// save FP and LR registers, allocate additional 16 bytes for function arguments
++	stp	x0, x1, [sp, #0x10]			// save function arguments (jump buffer and return value)
++	mov	fp, sp					// establishing frame chain
++	.seh_endprologue
++1:
++	bl	stabilize_sig_stack			// call stabilize_sig_stack which returns TLS pointer in x0
++	ldr	x2, [sp, #0x10]				// get jump buffer pointer from stack
++	ldr	x10, [x2]				// get old signal stack from jump buffer
++
++	// restore stack pointer in TLS
++	ldr	x11, =_cygtls.stackptr
++	add	x11, x0, x11
++	str	x10, [x11]
++
++	// release lock by decrementing counter
++	ldr	x11, =_cygtls.stacklock
++	add	x11, x0, x11
++	ldr	w12, [x11]
++	sub	w12, w12, #1
++	str	w12, [x11]
++
++	// we're not in cygwin anymore, clear "in cygwin" flag
++	ldr	x11, =_cygtls.incyg
++	add	x11, x0, x11
++	mov	w12, #0
++	str	w12, [x11]
++
++	// get saved return value before SP is restored
++	ldr	x0, [sp, #0x10]
++
++	// restore callee-saved registers from jump buffer
++	ldp	x19, x20, [x2, #0x08]			// restore x19, x20
++	ldp	x21, x22, [x2, #0x18]			// restore x21, x22
++	ldp	x23, x24, [x2, #0x28]			// restore x23, x24
++	ldp	x25, x26, [x2, #0x38]			// restore x25, x26
++	ldp	x27, x28, [x2, #0x48]			// restore x27, x28
++	ldp	fp, lr, [x2, #0x58]			// restore x29 (frame pointer) and x30 (link register)
++	ldr	x10, [x2, #0x68]			// get saved stack pointer
++	mov	sp, x10					// restore stack pointer
++	ldr	x10, [x2, #0x70]			// load floating-point control register
++	msr	fpcr, x10				// restore FPCR
++	ldr	x10, [x2, #0x78]			// load floating-point status register
++	msr	fpsr, x10				// restore FPSR
++
++	// restore floating-point registers (d8-d15)
++	ldp	d8, d9, [x2, #0x80]
++	ldp	d10, d11, [x2, #0x90]
++	ldp	d12, d13, [x2, #0xA0]
++	ldp	d14, d15, [x2, #0xB0]
++
++	// restore TLS stack pointer
++	ldr	x1, [x0, #0xB8]
++	str	x1, [sp]
++
++	// ensure return value is non-zero (C standard requirement)
++	cbnz	x0, 0f
++	mov	x0, #1
++0:
++	// epilogue
++	add	sp, sp, #0x10				// FP and LR are already restored, just restore SP as it would be popped
++	ret
++	.seh_endproc
+ EOF
+     }
+ }
