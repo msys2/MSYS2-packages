@@ -1,0 +1,60 @@
+From: Jon Turney <jon.turney@dronecode.org.uk>
+Subject: ld: Don't emit a reference to _pei386_runtime_relocator for PE+
+
+ld synthesises a reference to _pei386_runtime_relocator to satisfy a
+non-functional stub in the Cygwin runtime.  The MinGW runtime still has real
+code there and calls it explicitly at startup; the Cygwin stub exists only to
+satisfy this linker-generated reference.
+
+Stop emitting the reference on PE+ targets, so the stub can be dropped on new
+architectures such as aarch64 where there is nothing to stay compatible with.
+i386 keeps the existing behaviour out of an abundance of caution.
+
+Taken from the patch posted to binutils@ on 2026-07-02:
+https://sourceware.org/pipermail/binutils/2026-July/149962.html
+Not yet merged upstream; drop this once it is.
+
+--- a/ld/pe-dll.c
++++ b/ld/pe-dll.c
+@@ -170,7 +170,9 @@
+ static unsigned char *edata_d, *reloc_d;
+ static unsigned char *reloc_d = NULL;
+ static size_t edata_sz, reloc_sz = 0;
++#ifndef pe_use_plus
+ static int runtime_pseudo_relocs_created = 0;
++#endif
+ static bool runtime_pseudp_reloc_v2_init = false;
+ 
+ typedef struct
+@@ -2803,6 +2805,7 @@
+   return abfd;
+ }
+ 
++#ifndef pe_use_plus
+ /*	.section	.rdata
+ 	.rva		__pei386_runtime_relocator  */
+ 
+@@ -2846,6 +2849,7 @@
+   bfd_make_readable (abfd);
+   return abfd;
+ }
++#endif
+ 
+ #if defined (COFF_WITH_peAArch64)
+ static void
+@@ -2975,11 +2979,15 @@
+ 				     link_info.output_bfd);
+       add_bfd_to_link (b, bfd_get_filename (b), &link_info);
+ 
++#ifndef pe_use_plus
++      /* We think this is entirely useless, but retain it for i386 out of
++         an abundance of caution.  */
+       if (runtime_pseudo_relocs_created++ == 0)
+ 	{
+ 	  b = pe_create_runtime_relocator_reference (link_info.output_bfd);
+ 	  add_bfd_to_link (b, bfd_get_filename (b), &link_info);
+ 	}
++#endif
+     }
+ 
+   else if (addend != 0)
