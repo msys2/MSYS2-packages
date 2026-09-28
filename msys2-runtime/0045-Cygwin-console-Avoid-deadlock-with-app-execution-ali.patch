@@ -1,0 +1,113 @@
+From 3ea87a506e64e841dc0b8ee50ed61999c8fed26c Mon Sep 17 00:00:00 2001
+From: Christoph Reiter <reiter.christoph@gmail.com>
+Date: Mon, 28 Sep 2026 06:41:37 +0200
+Subject: [PATCH 45/N] Cygwin: console: Avoid deadlock with app execution
+ aliases
+
+Calling `winget.exe` through its app execution alias from an interactive
+MSYS2 shell can leave the shell hanging after `winget.exe` exits. This
+affects all app execution aliases, not only `winget.exe`.
+
+App execution alias handling was introduced in 0631c6644e (Cygwin: Treat
+Windows Store's "app execution aliases" as symbolic links, 2021-03-22),
+and 6c3d26961d (Cygwin: termios: Handle app execution alias in
+is_console_app(), 2025-12-10) taught `is_console_app()` to follow
+aliases using another `path_conv`, which allocates cygheap memory.
+
+618eb90fc2 (Cygwin: console: Fix undesired mode change at exit of
+non-cygwin apps, 2026-09-19) added a second `is_console_app()` call from
+`wait_for_resume_if_necessary()`. Unfortunately, at that point,
+`child_info_spawn::worker()` already holds the non-recursive
+`cygheap_protect`, so following an alias tries to acquire the same lock
+recursively and deadlocks.
+
+Let's avoid running `is_console_app()` under that lock by instead
+classifying the executable _once_, in `spawn_worker::setup()`, before
+acquiring the cygheap lock, then cache and reuse the result for both PTY
+setup and the post-resume wait.
+
+Addresses: https://github.com/msys2/msys2-runtime/issues/372
+Fixes: 618eb90fc2 (Cygwin: console: Fix undesired mode change at exit
+ of non-cygwin apps, 2026-09-19)
+Signed-off-by: Christoph Reiter <reiter.christoph@gmail.com>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/fhandler/termios.cc       | 10 +++++++---
+ winsup/cygwin/local_includes/fhandler.h |  5 +++--
+ winsup/cygwin/spawn.cc                  |  2 +-
+ 3 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler/termios.cc b/winsup/cygwin/fhandler/termios.cc
+index 423ca9e..8f01a8b 100644
+--- a/winsup/cygwin/fhandler/termios.cc
++++ b/winsup/cygwin/fhandler/termios.cc
+@@ -779,6 +779,10 @@ fhandler_termios::spawn_worker::setup (bool iscygwin, HANDLE h_stdin,
+   fhandler_pty_slave *ptys_primary = NULL;
+   fhandler_console *cons_native = NULL;
+ 
++  /* This may resolve an app execution alias, which allocates cygheap memory.
++     Do it before child_info_spawn::worker() acquires the cygheap lock. */
++  console_app = !iscygwin && is_console_app (pc);
++
+   for (int i = 0; i < 3; i ++)
+     {
+       const int chk_order[] = {1, 0, 2};
+@@ -811,7 +815,7 @@ fhandler_termios::spawn_worker::setup (bool iscygwin, HANDLE h_stdin,
+ 	    ptys->setup_locale ();
+ 	  }
+     }
+-  if (!iscygwin && ptys_primary && is_console_app (pc))
++  if (ptys_primary && console_app)
+     {
+       if (h_stdin == ptys_primary->get_handle_nat ())
+ 	stdin_is_ptys = true;
+@@ -852,9 +856,9 @@ fhandler_termios::spawn_worker::is_attaching (DWORD pid)
+ 
+ void
+ fhandler_termios::spawn_worker::wait_for_resume_if_necessary
+-			      (path_conv &pc, PROCESS_INFORMATION &pi)
++			      (PROCESS_INFORMATION &pi)
+ {
+-  if (is_attaching (myself->dwProcessId) && is_console_app (pc))
++  if (is_attaching (myself->dwProcessId) && console_app)
+     {
+       DWORD t0 = GetTickCount ();
+       while (GetTickCount () - t0 < 40 && !is_attaching (pi.dwProcessId)
+diff --git a/winsup/cygwin/local_includes/fhandler.h b/winsup/cygwin/local_includes/fhandler.h
+index f048f17..9611979 100644
+--- a/winsup/cygwin/local_includes/fhandler.h
++++ b/winsup/cygwin/local_includes/fhandler.h
+@@ -2033,17 +2033,18 @@ class fhandler_termios: public fhandler_base
+     bool ptys_need_cleanup;
+     bool cons_need_cleanup;
+     bool stdin_is_ptys;
++    bool console_app;
+     tty *ptys_ttyp;
+   public:
+     spawn_worker () :
+       ptys_need_cleanup (false), cons_need_cleanup (false),
+-      stdin_is_ptys (false), ptys_ttyp (NULL) {}
++      stdin_is_ptys (false), console_app (false), ptys_ttyp (NULL) {}
+     void setup (bool iscygwin, HANDLE h_stdin, path_conv &pc,
+ 		bool nopcon, bool reset_sendsig, const WCHAR *envblock);
+     bool need_cleanup () { return ptys_need_cleanup || cons_need_cleanup; }
+     void cleanup ();
+     bool is_attaching (DWORD pid);
+-    void wait_for_resume_if_necessary (path_conv &, PROCESS_INFORMATION &);
++    void wait_for_resume_if_necessary (PROCESS_INFORMATION &);
+   };
+ };
+ 
+diff --git a/winsup/cygwin/spawn.cc b/winsup/cygwin/spawn.cc
+index 7fcc33f..15a121a 100644
+--- a/winsup/cygwin/spawn.cc
++++ b/winsup/cygwin/spawn.cc
+@@ -792,7 +792,7 @@ child_info_spawn::worker (const char *prog_arg, const char *const *argv,
+ 	  DuplicateHandle (GetCurrentProcess (), wr_proc_pipe, pi.hProcess,
+ 			   NULL, 0, false, DUPLICATE_SAME_ACCESS);
+ 	  ResumeThread (pi.hThread);
+-	  term_spawn_worker.wait_for_resume_if_necessary (real_path, pi);
++	  term_spawn_worker.wait_for_resume_if_necessary (pi);
+ 	}
+ 
+       if (mode == _P_OVERLAY)
