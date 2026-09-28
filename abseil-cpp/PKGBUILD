@@ -1,0 +1,83 @@
+pkgbase=abseil-cpp
+pkgname=('abseil-cpp' 'abseil-cpp-devel')
+pkgver=20260817.0
+pkgrel=1
+pkgdesc="Abseil Common Libraries (C++) from Google"
+arch=('i686' 'x86_64')
+url="https://abseil.io"
+msys2_repository_url="https://github.com/abseil/abseil-cpp"
+msys2_references=(
+  "cpe: cpe:/a:google:abseil"
+)
+license=('spdx:Apache-2.0')
+groups=('libraries')
+depends=(
+  'gcc-libs'
+)
+makedepends=(
+  'cmake'
+  'gcc'
+  'ninja'
+)
+source=("https://github.com/abseil/abseil-cpp/releases/download/${pkgver}/${pkgbase}-${pkgver}.tar.gz")
+sha256sums=('f7e05179df39c45434cad433f5783840bb3788ef322976f9138bc6b72b3a107d')
+
+build() {
+  msg2 "Building shared libraries"
+  cmake -B build-shared -S "${pkgbase}-${pkgver}" \
+    -GNinja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_SHARED_LIBS=ON \
+    -DCMAKE_DLL_NAME_WITH_SOVERSION=ON \
+    -DABSL_PROPAGATE_CXX_STD=ON \
+    -DCMAKE_CXX_STANDARD=17
+
+  cmake --build build-shared
+  DESTDIR="${srcdir}/dest" cmake --install build-shared
+
+  msg2 "Building static libraries"
+  cmake -B build-static -S "${pkgbase}-${pkgver}" \
+    -GNinja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DABSL_PROPAGATE_CXX_STD=ON \
+    -DCMAKE_CXX_STANDARD=17
+
+  cmake --build build-static
+  DESTDIR="${srcdir}/dest" cmake --install build-static
+}
+
+check() {
+  ctest --test-dir build-shared --output-on-failure
+}
+
+package_abseil-cpp() {
+  mkdir -p "${pkgdir}/usr/bin"
+
+  cp -f "${srcdir}/dest/usr/bin/"*.dll "${pkgdir}/usr/bin/"
+
+  install -Dm644 "${srcdir}/${pkgbase}-${pkgver}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
+
+package_abseil-cpp-devel() {
+  pkgdesc="Abseil C++ headers and development libraries"
+  groups=('development')
+  depends=(
+    "abseil-cpp=${pkgver}"
+  )
+
+  mkdir -p "${pkgdir}/usr"
+  cp -rf "${srcdir}/dest/usr/include" "${pkgdir}/usr/"
+  cp -rf "${srcdir}/dest/usr/lib" "${pkgdir}/usr/"
+
+  if ls "${srcdir}/dest/usr/bin/"*.exe >/dev/null 2>&1; then
+    mkdir -p "${pkgdir}/usr/bin"
+    cp -f "${srcdir}/dest/usr/bin/"*.exe "${pkgdir}/usr/bin/"
+  fi
+
+  if [ -d "${srcdir}/dest/usr/share" ]; then
+    cp -rf "${srcdir}/dest/usr/share" "${pkgdir}/usr/"
+  fi
+}
