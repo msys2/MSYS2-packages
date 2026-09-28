@@ -1,0 +1,43 @@
+diff --git a/rsync.c b/rsync.c
+--- a/rsync.c
++++ b/rsync.c
+@@ -810,6 +810,11 @@ int set_file_attrs(const char *fname, struct file_struct *file, stat_x *sxp,
+ 			: op_refuse ? (errno = ELOOP, -1)
+ 			: dfd >= 0 && !S_ISLNK(new_mode) ? do_chmod_atfd(dfd, leaf, new_mode)
+ 			: do_chmod_at(fname, new_mode);
++#ifdef __CYGWIN__
++		/* Retry noacl chmod through the no-follow path if the pin is read-only. */
++		if (ret < 0 && errno == EACCES && op_leaf_fd >= 0)
++			ret = do_chmod_at(fname, new_mode);
++#endif
+ 		if (ret < 0) {
+ 			rsyserr(FERROR_XFER, errno,
+ 				"failed to set permissions on %s",
+diff --git a/syscall.c b/syscall.c
+--- a/syscall.c
++++ b/syscall.c
+@@ -1827,7 +1827,24 @@ static int do_fchmodat_nofollow(int dfd, const char *name, mode_t mode)
+ 			fd = openat(dfd, name, oflags);
+ 			if (fd >= 0) {
+ 				int r = fchmod(fd, mode), e = errno;
++				/* noacl fchmod needs a handle with FILE_WRITE_ATTRIBUTES. */
++#  ifdef __CYGWIN__
++				if (r < 0 && e == EACCES) {
++					int wfd = openat(dfd, name, (oflags & ~O_ACCMODE) | O_RDWR);
++					if (wfd >= 0) {
++						r = fchmod(wfd, mode);
++						e = errno;
++						close(wfd);
++					} else if (errno == EISDIR || errno == EACCES || errno == EROFS) {
++						/* O_RDWR fails for directories and read-only files.
++						 * Cygwin's no-follow fchmodat check is not atomic. */
++						r = fchmodat(dfd, name, mode, AT_SYMLINK_NOFOLLOW);
++						e = errno;
++					} else
++						e = errno;
++				}
++#  endif
+ 				close(fd);
+ 				errno = e;
+ 				return r;
+ 			}
