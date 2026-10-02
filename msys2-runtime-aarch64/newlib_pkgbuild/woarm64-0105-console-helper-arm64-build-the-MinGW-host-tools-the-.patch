@@ -1,0 +1,252 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mayank Agrawal <mayagr@qti.qualcomm.com>
+Date: Tue, 28 Jul 2026 14:35:56 +0530
+Subject: [PATCH 105/109] console-helper(arm64): build the MinGW host tools the
+ x86_64 way
+
+The ARM64 runtime shipped zero winsup utils because it configures
+--disable-utils --without-mingw-progs --with-cross-bootstrap, which skips the
+entire utils/ tree (including the utils/mingw/ MinGW host tools). This adds a
+scoped opt-in so the cross build produces the MinGW host tools through automake,
+exactly as the native x86_64 build does -- no hand-written compile line -- while
+the ~26 cygwin-linked utils in utils/ stay deferred.
+
+winsup/configure.ac:
+  - new --enable-mingw-utils (default off) => AM_CONDITIONAL(BUILD_MINGW_UTILS)
+  - enter the MinGW probe block when --enable-mingw-utils is given even under
+    --without-mingw-progs, so @MINGW_CXX@ resolves (the PKGBUILD overrides it to
+    aarch64-w64-mingw32-g++)
+  - the i686/x86_64 MinGW compilers become optional under the opt-in (they are
+    absent on the ARM64 box); add HAVE_MINGW32_CC / HAVE_MINGW64_CC, mirroring
+    the existing HAVE_MINGWARM64_CC
+
+winsup/Makefile.am: enter utils/ under BUILD_MINGW_UTILS as well as BUILD_UTILS.
+
+winsup/utils/Makefile.am: build the cygwin-linked bin_PROGRAMS only under
+  BUILD_UTILS (unchanged for x86_64); descend into mingw/ under CROSS_BOOTSTRAP
+  or BUILD_MINGW_UTILS.
+
+winsup/utils/mingw/Makefile.am: in mingw-utils-only mode build just
+  cygwin-console-helper and ldh; build getprocaddr32/64/arm64 each only when its
+  compiler is present.
+
+Default off => a strict no-op for every existing configuration.
+
+(cherry picked from commit 01c53d1919280a748adad2185d842a35181e2d30)
+(cherry picked from commit 3f0404195b4a247d4fdf34a15d98b652d28c76b2)
+---
+ winsup/Makefile.am             | 10 ++++++++
+ winsup/configure.ac            | 22 +++++++++--------
+ winsup/utils/Makefile.am       | 19 ++++++++++++---
+ winsup/utils/mingw/Makefile.am | 44 +++++++++++++++++++++++++++-------
+ 4 files changed, 74 insertions(+), 21 deletions(-)
+
+diff --git a/winsup/Makefile.am b/winsup/Makefile.am
+index 877c4e6b9..0a97dfb28 100644
+--- a/winsup/Makefile.am
++++ b/winsup/Makefile.am
+@@ -22,6 +22,12 @@ endif
+ 
+ if BUILD_UTILS
+ SUBDIRS += utils
++else
++# Enter utils/ for the MinGW host-tool subset even when the cygwin-linked utils
++# are disabled (--enable-mingw-utils; utils/Makefile.am descends only into mingw).
++if BUILD_MINGW_UTILS
++SUBDIRS += utils
++endif
+ endif
+ 
+ if BUILD_DOC
+@@ -36,4 +42,8 @@ endif
+ 
+ if BUILD_UTILS
+ utils: cygwin
++else
++if BUILD_MINGW_UTILS
++utils: cygwin
++endif
+ endif
+diff --git a/winsup/configure.ac b/winsup/configure.ac
+index 9e745582c..fbfa61814 100644
+--- a/winsup/configure.ac
++++ b/winsup/configure.ac
+@@ -130,6 +130,16 @@ AC_ARG_ENABLE(utils,
+ 	      [AS_HELP_STRING([--disable-utils], [do not build utils])],,
+ 	      enable_utils=yes)
+ AM_CONDITIONAL(BUILD_UTILS, [test $enable_utils != "no"])
++# --enable-mingw-utils: opt-in to build only the MinGW *host* tools in
++# utils/mingw (e.g. cygwin-console-helper) without the cygwin-linked utils in
++# utils/ (which stay behind --disable-utils).  Used by the ARM64 cross build to
++# ship individual MinGW utilities the same way the native x86_64 build does
++# (via `make`, not a hand-written compile line), while the ~26 cygwin-linked
++# utils remain deferred.  Default off => a no-op for every existing config.
++AC_ARG_ENABLE(mingw-utils,
++	      [AS_HELP_STRING([--enable-mingw-utils], [build the MinGW host tools in utils/mingw (e.g. cygwin-console-helper) without the cygwin-linked utils])],,
++	      enable_mingw_utils=no)
++AM_CONDITIONAL(BUILD_MINGW_UTILS, [test "x$enable_mingw_utils" = "xyes"])
+ 
+ AC_CHECK_PROGS([DOCBOOK2XTEXI], [docbook2x-texi db2x_docbook2texi])
+ if test -z "$DOCBOOK2XTEXI" ; then
+@@ -150,8 +160,8 @@ if test -z "$XMLTO"; then
+     fi
+ fi
+ 
+-if test "x$with_mingw_progs" != "xno" || test "x$enable_mingw_utils" = "xyes"; then
+-    AC_CHECK_PROGS(MINGW_CXX, ${build_cpu}-w64-mingw32-g++)
++if test "x$with_cross_bootstrap" != "xyes" || test "x$enable_mingw_utils" = "xyes"; then
++    AC_CHECK_PROGS(MINGW_CXX, ${target_cpu}-w64-mingw32-g++)
+     test -n "$MINGW_CXX" || AC_MSG_ERROR([no acceptable MinGW g++ found in \$PATH])
+     AC_CHECK_PROGS(MINGW_CC, ${build_cpu}-w64-mingw32-gcc)
+     test -n "$MINGW_CC" || AC_MSG_ERROR([no acceptable MinGW gcc found in \$PATH])
+@@ -167,18 +177,10 @@ if test "x$with_mingw_progs" != "xno" || test "x$enable_mingw_utils" = "xyes"; t
+ 	test -n "$MINGW32_CC" || AC_MSG_ERROR([no acceptable mingw32 gcc found in \$PATH])
+ 	test -n "$MINGW64_CC" || AC_MSG_ERROR([no acceptable mingw64 gcc found in \$PATH])
+     fi
+-
+-    # The ARM64 (aarch64) MinGW compiler is optional: it is only present on
+-    # Windows-on-ARM build hosts.  When available we build the matching
+-    # getprocaddrarm64 helper so that gentle console-Ctrl kill of native ARM64
+-    # (PID_NOTCYGWIN) processes works (see cygwin/include/cygwin/exit_process.h).
+-    # Do *not* error out when it is missing, so x86 build hosts are unaffected.
+-    AC_CHECK_PROGS(MINGWARM64_CC, aarch64-w64-mingw32-gcc)
+ fi
+ AM_CONDITIONAL(CROSS_BOOTSTRAP, [test "x$with_cross_bootstrap" != "xyes"])
+ AM_CONDITIONAL(HAVE_MINGW32_CC, [test -n "$MINGW32_CC"])
+ AM_CONDITIONAL(HAVE_MINGW64_CC, [test -n "$MINGW64_CC"])
+-AM_CONDITIONAL(HAVE_MINGWARM64_CC, [test -n "$MINGWARM64_CC"])
+ 
+ # Optional aarch64 MinGW compiler (present only on Windows-on-ARM hosts).
+ # When available, build getprocaddrarm64 for gentle kill of native ARM64
+diff --git a/winsup/utils/Makefile.am b/winsup/utils/Makefile.am
+index 5adb3695e..0f73dbda9 100644
+--- a/winsup/utils/Makefile.am
++++ b/winsup/utils/Makefile.am
+@@ -13,8 +13,15 @@ AM_CFLAGS=$(cflags_common) $(CFLAGS_COMMON)
+ AM_CXXFLAGS=$(cxxflags_common) $(CFLAGS_COMMON)
+ AM_CXXFLAGS += $(CFLAGS)
+ 
++# Rename cygps to ps at install time (inert unless cygps is built below)
++transform = s/cygps/ps/; $(program_transform_name)
++
+ # Note that we call ps cygps here, so as not to collide with the
+ # autogenerated texinfo rule with the name 'ps'...
++# The cygwin-linked utilities are built only when --disable-utils is not given.
++# The MinGW host tools in mingw/ are built independently (see the mingw descent
++# at the bottom, gated on CROSS_BOOTSTRAP or --enable-mingw-utils).
++if BUILD_UTILS
+ bin_PROGRAMS = \
+ 	chattr \
+ 	cygpath \
+@@ -42,9 +49,6 @@ bin_PROGRAMS = \
+ 	tzset \
+ 	umount
+ 
+-# Rename cygps to ps at install time
+-transform = s/cygps/ps/; $(program_transform_name)
+-
+ # dumper is only built if libbfd.a available
+ if BUILD_DUMPER
+ bin_PROGRAMS += dumper
+@@ -89,7 +93,16 @@ profiler_CXXFLAGS = -I$(srcdir) -idirafter ${top_srcdir}/cygwin/local_includes -
+ profiler_LDADD = $(LDADD) -lntdll
+ cygps_LDADD = $(LDADD) -lpsapi -lntdll
+ newgrp_LDADD = $(LDADD) -luserenv
++endif
+ 
++# Descend into mingw/ for the MinGW host tools when cross-bootstrapping (as
++# before) or when only the MinGW host-tool subset was requested via
++# --enable-mingw-utils (ARM64 cross build; utils/ was entered but BUILD_UTILS
++# is off).
+ if CROSS_BOOTSTRAP
+ SUBDIRS = mingw
++else
++if BUILD_MINGW_UTILS
++SUBDIRS = mingw
++endif
+ endif
+diff --git a/winsup/utils/mingw/Makefile.am b/winsup/utils/mingw/Makefile.am
+index 13ea1574f..e2b4aebbe 100644
+--- a/winsup/utils/mingw/Makefile.am
++++ b/winsup/utils/mingw/Makefile.am
+@@ -20,13 +20,33 @@ AM_CXXFLAGS=-fno-exceptions -fno-rtti -fno-use-cxa-atexit $(flags_common) $(CFLA
+ 
+ AM_LDFLAGS = -static
+ 
++if BUILD_MINGW_UTILS
++# --enable-mingw-utils: build only the MinGW host-tool subset that has been
++# ported/validated for the ARM64 cross build (cygwin-console-helper, ldh).
++# cygcheck and strace are added here as they migrate onto this path; until then
++# they are built by their own recipe.  The cygwin-linked utils in ../ stay
++# disabled.
++bin_PROGRAMS = \
++	cygwin-console-helper \
++	ldh
++else
+ bin_PROGRAMS = \
+ 	cygcheck \
+ 	cygwin-console-helper \
+ 	ldh \
+ 	strace
++endif
+ 
+-libexec_PROGRAMS = getprocaddr32 getprocaddr64
++# The x86 getprocaddr helpers require the i686/x86_64 MinGW compilers; the ARM64
++# helper requires the aarch64 one.  Build each only when its compiler is present
++# so a host lacking some of them (e.g. the ARM64 cross build) still configures.
++libexec_PROGRAMS =
++if HAVE_MINGW32_CC
++libexec_PROGRAMS += getprocaddr32
++endif
++if HAVE_MINGW64_CC
++libexec_PROGRAMS += getprocaddr64
++endif
+ if HAVE_MINGWARM64_CC
+ libexec_PROGRAMS += getprocaddrarm64
+ endif
+@@ -44,14 +64,26 @@ getprocaddr64.o: %64.o: %.c
+ getprocaddr64.exe: %.exe: %.o
+ 	$(MINGW64_CC) -o $@ $^ -static -ldbghelp
+ 
+-# Native ARM64 helper for gentle kill of PID_NOTCYGWIN processes; only built
+-# when the aarch64 MinGW compiler is present (HAVE_MINGWARM64_CC).
++# Native ARM64 helper, used to gently kill native ARM64 (PID_NOTCYGWIN)
++# processes on Windows-on-ARM.  Only built when the aarch64 MinGW compiler is
++# available (HAVE_MINGWARM64_CC, see configure.ac).
+ getprocaddrarm64.o: %arm64.o: %.c
+ 	$(MINGWARM64_CC) -c -o $@ $<
+ 
+ getprocaddrarm64.exe: %.exe: %.o
+ 	$(MINGWARM64_CC) -o $@ $^ -static -ldbghelp
+ 
++# cygwin-console-helper and ldh are in the mingw-utils subset, so their
++# sources/flags are defined unconditionally (built in both modes).
++cygwin_console_helper_SOURCES = cygwin-console-helper.cc
++
++ldh_SOURCES = ldh.cc
++ldh_LDFLAGS = ${AM_LDFLAGS} -Wl,--disable-high-entropy-va
++
++# The following targets and their per-target flags are only defined when the
++# full MinGW host-tool set is built (not the --enable-mingw-utils subset), so
++# automake does not warn about per-target flags for programs that are not built.
++if !BUILD_MINGW_UTILS
+ cygcheck_SOURCES = \
+ 	bloda.cc \
+ 	cygcheck.cc \
+@@ -61,11 +93,6 @@ cygcheck_CPPFLAGS=-I$(srcdir)/.. -idirafter ${top_srcdir}/cygwin/include
+ cygcheck_LDFLAGS = ${AM_LDFLAGS} -Wl,--disable-high-entropy-va
+ cygcheck_LDADD = -lz -lwininet -lshlwapi -lpsapi -lntdll
+ 
+-cygwin_console_helper_SOURCES = cygwin-console-helper.cc
+-
+-ldh_SOURCES = ldh.cc
+-ldh_LDFLAGS = ${AM_LDFLAGS} -Wl,--disable-high-entropy-va
+-
+ strace_SOURCES = \
+ 	path.cc \
+ 	strace.cc
+@@ -82,3 +109,4 @@ path_testsuite_CPPFLAGS=-I$(srcdir)/.. -idirafter ${top_srcdir}/cygwin/include
+ path_testsuite_CXXFLAGS = -DTESTSUITE
+ 
+ TESTS = path-testsuite
++endif

@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Thu, 30 Jul 2026 00:47:03 +0200
+Subject: [PATCH 094/109] ci: run Cygwin's testsuite on the MSYS2 runtime
+
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+(cherry picked from commit edfa4c7ad5195ef26bbd8a0f6d3635617b363eb5)
+(cherry picked from commit 0dc13276130a8066df1a547c19b0ab6c398b9938)
+---
+ .github/workflows/build.yaml | 59 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 59 insertions(+)
+
+diff --git a/.github/workflows/build.yaml b/.github/workflows/build.yaml
+index 3b2de7352..fe50f7b75 100644
+--- a/.github/workflows/build.yaml
++++ b/.github/workflows/build.yaml
+@@ -49,6 +49,22 @@ jobs:
+           name: install
+           path: _dest/
+ 
++      - name: Build test programs
++        shell: msys2 {0}
++        run: |
++          make -C x86_64-pc-cygwin/winsup/testsuite -j8 \
++            CFLAGS="-O2 -pipe -ggdb -std=gnu89 -w" check_programs
++
++      - name: Bundle up worktree
++        shell: msys2 {0}
++        run: $WINDIR/system32/tar.exe -czf wt.tgz --exclude _dest --exclude .git --exclude wt.tgz .
++
++      - name: Upload worktree archive
++        uses: actions/upload-artifact@v7
++        with:
++          name: wt.tgz
++          path: wt.tgz
++
+   generate-msys2-tests-matrix:
+     runs-on: ubuntu-latest
+     outputs:
+@@ -103,3 +119,46 @@ jobs:
+ 
+       - name: Run tests
+         uses: msys2/msys2-tests@main
++
++  cygwin-tests:
++    needs: [build]
++    runs-on: windows-latest
++    steps:
++      - name: setup-msys2
++        uses: msys2/setup-msys2@v2
++        with:
++          msystem: MSYS
++          update: true
++          install: msys2-devel base-devel diffutils make perl busybox cygutils
++
++      - name: Download worktree archive
++        uses: actions/download-artifact@v7
++        with:
++          name: wt.tgz
++          path: wt.tgz
++
++      - name: Extract worktree
++        shell: msys2 {0}
++        run: $WINDIR/system32/tar.exe -xzf wt.tgz
++
++      - name: Run the test suite of Cygwin
++        shell: msys2 {0}
++        run: >-
++          export PATH=/usr/bin:$WINDIR/system32 &&
++          export MAKEFLAGS=-j8 &&
++          export MSYS=winsymlinks:nativestrict &&
++          WINSUP=$PWD/x86_64-pc-cygwin/winsup &&
++          cp $WINSUP/cygserver/cygserver.exe $WINSUP/testsuite/testinst/usr/bin/ &&
++          (cd $WINSUP/testsuite/testinst/usr/bin &&
++           PATH=$PWD:$WINDIR/system32
++           pwsh -command '& .\cygserver.exe' &) &&
++          (cd $WINSUP && make check AM_COLOR_TESTS=always)
++
++      - name: Upload testsuite logs
++        if: always()
++        uses: actions/upload-artifact@v7
++        with:
++          name: cygwin-testsuite-logs
++          path: |
++            x86_64-pc-cygwin/winsup/testsuite/**/*.log
++            x86_64-pc-cygwin/winsup/testsuite/**/*.trs

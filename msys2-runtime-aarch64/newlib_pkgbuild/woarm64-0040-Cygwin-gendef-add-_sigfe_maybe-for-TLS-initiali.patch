@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:18 +0530
+Subject: [PATCH 040/109] Cygwin: gendef: add _sigfe_maybe for TLS
+ initialization checks on AArch64
+
+(cherry picked from commit a94145c6f3dc25c7619c31cfa29eaaf4b29ffa0a)
+---
+ winsup/cygwin/scripts/gendef | 20 ++++++++++++++++++--
+ 1 file changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 6b5317a27..bd6e22d64 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -369,8 +369,24 @@ EOF
+ 	.include "tlsoffsets"
+ 	.text
+ 
+-_sigfe_maybe:
+-	.global _sigbe
++	.seh_proc _sigfe_maybe
++_sigfe_maybe:					# stack is aligned on entry!
++	.seh_endprologue
++	ldr     x10, [x18, #0x8]		// Load TEB pointer in x10
++	ldr     x11, =_cygtls.initialized	// Load relative offset of _cygtls.initialized
++	add     x11, x10, x11                  	// compute absolute address and store in x11
++	cmp     sp, x11				// Compare current stack pointer with TLS location
++	b.hs    0f                             	// if sp >= tls, skip TLS logic
++	ldr     w12, [x11]                    	// Load the value at _cygtls.initialized (32-bit)
++	movz    w13, #0xc763			// Prepare magic value(0xc763173f) lower 16 bits
++	movk    w13, #0x173f, lsl #16		// Add upper 16 bits, full value now in w13
++	cmp     w12, w13			// Compare loaded value with magic
++	b.ne    0f                              // If not equal, not initialized, skip TLS logic
++	ret
++0:
++	ret
++	.seh_endproc
++
+ _sigfe:
+ _sigbe:
+ 	.global	sigdelayed

@@ -1,0 +1,70 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:50 +0530
+Subject: [PATCH 068/109] Cygwin: SEH: Fix crash and handle second unwind
+ phase on AArch64
+
+(cherry picked from commit 2f5cc22f3a9684f7db7da1c1611cfa182f5a23e6)
+---
+ winsup/cygwin/dcrt0.cc                |  2 +-
+ winsup/cygwin/exceptions.cc           | 12 ++++++++----
+ winsup/cygwin/local_includes/cygtls.h |  9 ++++++++-
+ 3 files changed, 17 insertions(+), 6 deletions(-)
+
+diff --git a/winsup/cygwin/dcrt0.cc b/winsup/cygwin/dcrt0.cc
+index 4e2778742..e47686bcc 100644
+--- a/winsup/cygwin/dcrt0.cc
++++ b/winsup/cygwin/dcrt0.cc
+@@ -779,7 +779,7 @@ dll_crt0_0 ()
+     sigproc_init ();
+ 
+   /* See comment preceeding myfault_altstack_handler in exception.cc. */
+-//   AddVectoredContinueHandler (0, myfault_altstack_handler);
++   AddVectoredContinueHandler (0, myfault_altstack_handler);
+ 
+   debug_printf ("finished dll_crt0_0 initialization");
+ }
+diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
+index d136bffa4..859ee1a3d 100644
+--- a/winsup/cygwin/exceptions.cc
++++ b/winsup/cygwin/exceptions.cc
+@@ -619,11 +619,15 @@ EXCEPTION_DISPOSITION
+ exception::myfault (EXCEPTION_RECORD *e, exception_list *frame, CONTEXT *in,
+ 		    PDISPATCHER_CONTEXT dispatch)
+ {
++  if (IS_UNWINDING(e->ExceptionFlags)) {
++    return ExceptionContinueSearch;
++  }
++  
+   PSCOPE_TABLE table = (PSCOPE_TABLE) dispatch->HandlerData;
+-  RtlUnwindEx (frame,
+-	       (char *) dispatch->ImageBase + table->ScopeRecord[0].JumpTarget,
+-	       e, 0, in, dispatch->HistoryTable);
+-  /* NOTREACHED, make gcc happy. */
++  void *jump_target = ((char *) dispatch->ImageBase) + table->ScopeRecord[0].JumpTarget;
++  
++  CONTEXT c;
++  RtlUnwindEx (frame, jump_target, e, 0, &c, dispatch->HistoryTable);
+   return ExceptionContinueSearch;
+ }
+ 
+diff --git a/winsup/cygwin/local_includes/cygtls.h b/winsup/cygwin/local_includes/cygtls.h
+index a07e143c7..557719cdf 100644
+--- a/winsup/cygwin/local_includes/cygtls.h
++++ b/winsup/cygwin/local_includes/cygtls.h
+@@ -346,7 +346,14 @@ public:
+ 
+ #if defined (__aarch64__)
+ #define EXCEPTION_MYFAULT_REF "_ZN9exception7myfaultEP17_EXCEPTION_RECORDPvP8_CONTEXTP25_DISPATCHER_CONTEXT_ARM64"
+-#define TRY_HANDLER_DATA (void) &&__l_try;
++#define TRY_HANDLER_DATA \
++  __asm__ goto ("\n" \
++  "  .seh_handler " EXCEPTION_MYFAULT_REF ", @except                \n" \
++  "  .seh_handlerdata                 \n" \
++  "  .long 1                    \n" \
++  "  .rva %l[__l_try],%l[__l_endtry],%l[__l_except],%l[__l_except]  \n" \
++  "  .text                   \n" \
++  : : : : __l_try, __l_endtry, __l_except)
+ #else
+ #define EXCEPTION_MYFAULT_REF "_ZN9exception7myfaultEP17_EXCEPTION_RECORDPvP8_CONTEXTP19_DISPATCHER_CONTEXT"
+ #define TRY_HANDLER_DATA \

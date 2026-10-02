@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Thirumalai Nagalingam <thirumalai.nagalingam@multicorewareinc.com>
+Date: Wed, 7 Jan 2026 15:24:53 +0530
+Subject: [PATCH 07/10] PE/COFF AArch64: avoid ADRP for ABS small constants
+
+Implement ABS fix for small ABS constants using MOVZ + add combo.
+
+(cherry picked from commit fcda2a945dd165598773856fa129ef47bfcce573)
+---
+ bfd/coff-aarch64.c | 31 +++++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/bfd/coff-aarch64.c b/bfd/coff-aarch64.c
+index c05b12840f8..291a1cc281e 100644
+--- a/bfd/coff-aarch64.c
++++ b/bfd/coff-aarch64.c
+@@ -711,6 +711,37 @@ coff_pe_aarch64_relocate_section (bfd *output_bfd,
+ 	    if (addend & 0x100000)
+ 	      addend |= 0xffffffffffe00000;
+ 
++  /* ---- ABS fix: small ABS constants must not use ADRP ----
++       Only do this for the usual ADRP+ADD pair:
++         adrp xD, sym
++         add  xD, xD, :lo12:sym
++       For ABS sym < 4096 and ADRP-addend==0 pages, rewrite ADRP -> MOVZ #0.
++       Then PAGEOFFSET_12A will patch the ADD immediate to become the constant. */
++if (bfd_is_abs_section (sec)
++    && dest_vma < COFF_PAGE_SIZE
++    && addend == 0
++    && rel + 1 < relend
++    && (rel + 1)->r_type == IMAGE_REL_ARM64_PAGEOFFSET_12A
++    && (rel + 1)->r_symndx == rel->r_symndx
++    && (rel + 1)->r_vaddr == rel->r_vaddr + 4)
++  {
++    uint32_t next = bfd_getl32 (contents + (rel + 1)->r_vaddr);
++
++    unsigned rd  = opcode & 0x1f;        /* ADRP destination register */
++    unsigned rn2 = (next >> 5) & 0x1f;   /* ADD source register */
++    unsigned rd2 = next & 0x1f;          /* ADD destination register */
++
++    if (rd == rn2 && rd == rd2)
++      {
++        /* MOVZ Xd, #0 (64-bit). */
++        bfd_putl32 (0xD2800000 | rd,
++                    contents + rel->r_vaddr);
++
++        /* Mark this reloc handled so generic relocation won't touch it. */
++        rel->r_vaddr = (bfd_vma) -1;
++        break;
++      }
++  } 
+ 	    dest_vma += addend;
+ 	    cur_vma = input_section->output_section->vma
+ 		      + input_section->output_offset

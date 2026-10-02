@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:09 +0530
+Subject: [PATCH 032/109] newlib: libc: return back support for
+ AArch64 ILP32
+
+(cherry picked from commit 0dc67bfc1a5d3a7b71c679a6db8d4426a3d4a38c)
+---
+ newlib/libc/machine/aarch64/asmdefs.h | 48 +++++++++++++++++++++------
+ 1 file changed, 38 insertions(+), 10 deletions(-)
+
+diff --git a/newlib/libc/machine/aarch64/asmdefs.h b/newlib/libc/machine/aarch64/asmdefs.h
+index 6c99fa704..2aaa459ee 100644
+--- a/newlib/libc/machine/aarch64/asmdefs.h
++++ b/newlib/libc/machine/aarch64/asmdefs.h
+@@ -30,18 +30,32 @@
+ #define FEATURE_1_PAC 2
+ 
+ /* Add a NT_GNU_PROPERTY_TYPE_0 note.  */
++#ifdef __ILP32__
+ #define GNU_PROPERTY(type, value)	\
+-  .section .note.gnu.property, "a"  SEP \
+-  .p2align 3			    SEP \
+-  .word 4			    SEP \
+-  .word 16			    SEP \
+-  .word 5			    SEP \
+-  .asciz "GNU"			    SEP \
+-  .word type			    SEP \
+-  .word 4			    SEP \
+-  .word value			    SEP \
+-  .word 0			    SEP \
++  .section .note.gnu.property, "a";	\
++  .p2align 2;				\
++  .word 4;				\
++  .word 12;				\
++  .word 5;				\
++  .asciz "GNU";				\
++  .word type;				\
++  .word 4;				\
++  .word value;				\
+   .text
++#else
++#define GNU_PROPERTY(type, value)	\
++  .section .note.gnu.property, "a";	\
++  .p2align 3;				\
++  .word 4;				\
++  .word 16;				\
++  .word 5;				\
++  .asciz "GNU";				\
++  .word type;				\
++  .word 4;				\
++  .word value;				\
++  .word 0;				\
++  .text
++#endif
+ 
+ /* If set then the GNU Property Note section will be added to
+    mark objects to support BTI and PAC-RET.  */
+@@ -88,4 +102,18 @@ GNU_PROPERTY (FEATURE_1_AND, FEATURE_1_BTI|FEATURE_1_PAC)
+ 
+ #define L(l) .L ## l
+ 
++#ifdef __ILP32__
++  /* Sanitize padding bits of pointer arguments as per aapcs64 */
++#define PTR_ARG(n)  mov w##n, w##n
++#else
++#define PTR_ARG(n)
++#endif
++
++#ifdef __ILP32__
++  /* Sanitize padding bits of size arguments as per aapcs64 */
++#define SIZE_ARG(n)  mov w##n, w##n
++#else
++#define SIZE_ARG(n)
++#endif
++
+ #endif

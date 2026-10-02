@@ -1,0 +1,248 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Radek=20Barto=C5=88?= <radek.barton@microsoft.com>
+Date: Tue, 3 Dec 2024 15:07:05 +0100
+Subject: [PATCH 24/29] Add `aarch64-pc-cygwin` target
+
+Co-authored-by: Evgeny Karpov <eukarpov@gmail.com>
+(cherry picked from commit f7c91f8df62ff122fee96c353c7f70728e7857da)
+---
+ config.guess                 |  3 +++
+ gcc/config.build             |  2 +-
+ gcc/config.gcc               | 30 ++++++++++++++++++++++++++++++
+ gcc/config.host              |  2 +-
+ gcc/config/aarch64/cygming.h |  9 +--------
+ gcc/config/i386/cygwin-w64.h |  4 ++++
+ gcc/config/mingw/mingw32.h   |  8 +++++++-
+ gcc/configure                |  2 +-
+ gcc/configure.ac             |  2 +-
+ libgcc/config.host           | 24 ++++++++++++++++++++++++
+ libitm/libitm.h              |  4 ++++
+ 11 files changed, 77 insertions(+), 13 deletions(-)
+
+diff --git a/config.guess b/config.guess
+index 1972fda8eb0..f7c9844b882 100755
+--- a/config.guess
++++ b/config.guess
+@@ -911,6 +911,9 @@ EOF
+     i*:UWIN*:*)
+ 	echo "$UNAME_MACHINE"-pc-uwin
+ 	exit ;;
++    aarch64:CYGWIN*:*:*)
++	echo aarch64-pc-cygwin
++	exit ;;
+     amd64:CYGWIN*:*:* | x86_64:CYGWIN*:*:*)
+ 	echo x86_64-pc-cygwin
+ 	exit ;;
+diff --git a/gcc/config.build b/gcc/config.build
+index a238012e539..f10e359dde3 100644
+--- a/gcc/config.build
++++ b/gcc/config.build
+@@ -53,7 +53,7 @@ case $build in
+   hppa*64*-*-hpux11* )
+     build_install_headers_dir=install-headers-cpio
+     ;;
+-  i[34567]86-*-cygwin* | x86_64-*-cygwin* )
++  i[34567]86-*-cygwin* | x86_64-*-cygwin* | aarch64-*-cygwin*)
+     build_xm_file=i386/xm-cygwin.h
+     build_exeext=.exe
+     ;;
+diff --git a/gcc/config.gcc b/gcc/config.gcc
+index 8989a4d0872..31b1d74bb37 100644
+--- a/gcc/config.gcc
++++ b/gcc/config.gcc
+@@ -1314,6 +1314,36 @@ aarch64*-*-gnu*)
+         tmake_file="${tmake_file} aarch64/t-aarch64"
+         tm_defines="${tm_defines}  TARGET_DEFAULT_ASYNC_UNWIND_TABLES=1"
+ 	;;
++aarch64-*-cygwin*)
++	tm_file="${tm_file} aarch64/aarch64-abi-ms.h"
++	tm_file="${tm_file} aarch64/aarch64-coff.h"
++	tm_file="${tm_file} aarch64/cygming.h"
++	tm_file="${tm_file} i386/cygwin.h"
++	tm_file="${tm_file} i386/cygwin-w64.h"
++	tm_file="${tm_file} i386/cygwin-stdint.h"
++	tm_file="${tm_file} mingw/winnt.h"
++	tm_file="${tm_file} mingw/winnt-dll.h"
++	xm_file=i386/xm-cygwin.h
++	tmake_file="${tmake_file} aarch64/t-aarch64"
++	tmake_file="${tmake_file} mingw/t-cygming t-slibgcc"
++	target_gtfiles="$target_gtfiles \$(srcdir)/config/mingw/winnt.cc"
++	target_gtfiles="$target_gtfiles \$(srcdir)/config/mingw/winnt-dll.cc"
++	extra_options="${extra_options} mingw/cygming.opt i386/cygwin.opt"
++	extra_objs="${extra_objs} winnt.o winnt-dll.o"
++	c_target_objs="${c_target_objs} msformat-c.o"
++	cxx_target_objs="${cxx_target_objs} winnt-cxx.o msformat-c.o"
++	d_target_objs="${d_target_objs} cygwin-d.o"
++	target_has_targetdm="yes"
++	aarch64_multilibs="llp64"
++	if test x$enable_threads = xyes; then
++		thread_file='posix'
++	fi
++	default_use_cxa_atexit=yes
++	use_gcc_stdint=wrap
++	tm_defines="${tm_defines} TARGET_64BIT=1 TARGET_CYGWIN64=1 TARGET_64BIT_MS_ABI=1 TARGET_AARCH64_MS_ABI=1"
++	TM_MULTILIB_CONFIG="${TM_MULTILIB_CONFIG},llp64"
++	TM_MULTILIB_CONFIG=`echo $TM_MULTILIB_CONFIG | sed 's/^,//'`
++	;;
+ aarch64-*-mingw*)
+ 	tm_file="${tm_file} aarch64/aarch64-abi-ms.h"
+ 	tm_file="${tm_file} aarch64/aarch64-coff.h"
+diff --git a/gcc/config.host b/gcc/config.host
+index 516d654a25e..e33a6625554 100644
+--- a/gcc/config.host
++++ b/gcc/config.host
+@@ -232,7 +232,7 @@ case ${host} in
+         ;;
+     esac
+     ;;
+-  i[34567]86-*-cygwin* | x86_64-*-cygwin*)
++  i[34567]86-*-cygwin* | x86_64-*-cygwin* | aarch64-*-cygwin*)
+     host_xm_file=i386/xm-cygwin.h
+     out_host_hook_obj=host-cygwin.o
+     host_xmake_file="${host_xmake_file} i386/x-cygwin"
+diff --git a/gcc/config/aarch64/cygming.h b/gcc/config/aarch64/cygming.h
+index 52be7adad2f..014132a35bc 100644
+--- a/gcc/config/aarch64/cygming.h
++++ b/gcc/config/aarch64/cygming.h
+@@ -140,21 +140,14 @@ still needed for compilation.  */
+ #define TARGET_OS_CPP_BUILTINS()					\
+   do									\
+     {									\
+-      builtin_define ("__MSVCRT__");					\
+-      builtin_define ("__MINGW32__");					\
+-      builtin_define ("_WIN32");					\
+       builtin_define ("__SEH__");					\
+-      builtin_define_std ("WIN32");					\
+-      builtin_define_std ("WINNT");					\
+       builtin_define_with_int_value ("_INTEGRAL_MAX_BITS",		\
+ 				TYPE_PRECISION (intmax_type_node));	\
+-      builtin_define ("__MINGW64__");					\
+-      builtin_define_std ("WIN64");					\
+-      builtin_define ("_WIN64");					\
+       builtin_define ("__stdcall=__attribute__((__stdcall__))");	\
+       builtin_define ("__fastcall=__attribute__((__fastcall__))");	\
+       builtin_define ("__thiscall=__attribute__((__thiscall__))");	\
+       builtin_define ("__cdecl=__attribute__((__cdecl__))");		\
++      EXTRA_OS_CPP_BUILTINS ();						\
+     }									\
+   while (0)
+ 
+diff --git a/gcc/config/i386/cygwin-w64.h b/gcc/config/i386/cygwin-w64.h
+index 5293201f747..ac6b4858d96 100644
+--- a/gcc/config/i386/cygwin-w64.h
++++ b/gcc/config/i386/cygwin-w64.h
+@@ -50,7 +50,11 @@ along with GCC; see the file COPYING3.  If not see
+ 
+ #undef SUB_LINK_SPEC
+ #undef SUB_LINK_ENTRY
++#if defined(TARGET_AARCH64_MS_ABI)
++#define SUB_LINK_SPEC "-m aarch64pe"
++#else
+ #define SUB_LINK_SPEC "%{" SPEC_64 ":-m i386pep} %{" SPEC_32 ":-m i386pe}"
++#endif
+ #define SUB_LINK_ENTRY "%{" SPEC_64 ":" SUB_LINK_ENTRY64 "} %{" SPEC_32 ":" SUB_LINK_ENTRY32 "}"
+ 
+ #undef MULTILIB_DEFAULTS
+diff --git a/gcc/config/mingw/mingw32.h b/gcc/config/mingw/mingw32.h
+index 1d319b77bf8..40606006f66 100644
+--- a/gcc/config/mingw/mingw32.h
++++ b/gcc/config/mingw/mingw32.h
+@@ -42,6 +42,12 @@ along with GCC; see the file COPYING3.  If not see
+ #define DEFINE_THREAD_MODEL
+ #endif
+ 
++#if defined (TARGET_AARCH64_MS_ABI)
++# define ENABLE_TARGET_64BIT_BUILTINS 1
++#else
++# define ENABLE_TARGET_64BIT_BUILTINS (TARGET_64BIT && ix86_abi == MS_ABI)
++#endif
++
+ /* See i386/crtdll.h for an alternative definition. _INTEGRAL_MAX_BITS
+    is for compatibility with native compiler.  */
+ #define EXTRA_OS_CPP_BUILTINS()					\
+@@ -54,7 +60,7 @@ along with GCC; see the file COPYING3.  If not see
+       builtin_define_std ("WINNT");				\
+       builtin_define_with_int_value ("_INTEGRAL_MAX_BITS",	\
+ 				     TYPE_PRECISION (intmax_type_node));\
+-      if (TARGET_64BIT && ix86_abi == MS_ABI)			\
++      if (ENABLE_TARGET_64BIT_BUILTINS)				\
+ 	{							\
+ 	  builtin_define ("__MINGW64__");			\
+ 	  builtin_define_std ("WIN64");				\
+diff --git a/gcc/configure b/gcc/configure
+index 43ca45144b8..24453f71b77 100755
+--- a/gcc/configure
++++ b/gcc/configure
+@@ -29455,7 +29455,7 @@ fi
+ 
+     ;;
+ 
+-  i[34567]86-*-* | x86_64-*-*)
++  i[34567]86-*-* | x86_64-*-* | aarch64-*-*)
+     case $target_os in
+       cygwin*)
+ 	# Full C++ conformance when using a shared libstdc++-v3 requires some
+diff --git a/gcc/configure.ac b/gcc/configure.ac
+index 075b6b68ffa..030f8f129ce 100644
+--- a/gcc/configure.ac
++++ b/gcc/configure.ac
+@@ -4860,7 +4860,7 @@ EOF
+     ;;
+ 
+ changequote(,)dnl
+-  i[34567]86-*-* | x86_64-*-*)
++  i[34567]86-*-* | x86_64-*-* | aarch64-*-*)
+ changequote([,])dnl
+     case $target_os in
+       cygwin*)
+diff --git a/libgcc/config.host b/libgcc/config.host
+index ab1799108b4..0ae68b669f1 100644
+--- a/libgcc/config.host
++++ b/libgcc/config.host
+@@ -866,6 +866,30 @@ i[34567]86-*-solaris2* | x86_64-*-solaris2*)
+ 	;;
+ i[4567]86-wrs-vxworks*|x86_64-wrs-vxworks*)
+ 	;;
++aarch64-*-cygwin*)
++	# This has to match the logic for DWARF2_UNWIND_INFO in gcc/config/aarch64/cygming.h
++	if test x$ac_cv_sjlj_exceptions = xyes; then
++		tmake_eh_file="i386/t-sjlj-eh"
++	else
++		tmake_eh_file="mingw/t-seh-eh"
++	fi
++	# Shared libgcc DLL install dir depends on cross/native build.
++	if test x${build} = x${host} ; then
++		tmake_dlldir_file="i386/t-dlldir"
++	else
++		tmake_dlldir_file="i386/t-dlldir-x"
++	fi
++	tmake_file="${tmake_file} ${tmake_eh_file} ${tmake_dlldir_file}"
++	tmake_file="${tmake_file} t-dfprules"
++	tmake_file="${tmake_file} i386/t-slibgcc-cygming i386/t-cygming i386/t-cygwin"
++	tmake_file="${tmake_file} ${cpu_type}/t-aarch64"
++	tmake_file="${tmake_file} ${cpu_type}/t-lse"
++	tmake_file="${tmake_file} ${cpu_type}/t-softfp t-softfp t-crtfm"
++	extra_parts="$extra_parts crtbegin.o crtbeginS.o crtend.o crtfastmath.o"
++	if test x$enable_vtable_verify = xyes; then
++		extra_parts="$extra_parts vtv_start.o vtv_end.o vtv_start_preinit.o vtv_end_preinit.o"
++	fi
++	;;
+ i[34567]86-*-cygwin*)
+ 	extra_parts="crtbegin.o crtbeginS.o crtend.o crtfastmath.o"
+ 	if test x$enable_vtable_verify = xyes; then
+diff --git a/libitm/libitm.h b/libitm/libitm.h
+index aabaf9db8bb..915530e4831 100644
+--- a/libitm/libitm.h
++++ b/libitm/libitm.h
+@@ -45,7 +45,11 @@ extern "C" {
+ 
+ #define ITM_NORETURN	__attribute__((noreturn))
+ #define ITM_PURE __attribute__((transaction_pure))
++#if defined(__i386__) || defined(__x86_64__)
+ #define ITM_SYSV __attribute__((sysv_abi))
++#else
++#define ITM_SYSV
++#endif
+ #ifdef _GLIBCXX_NOTHROW
+ # define _ITM_NOTHROW _GLIBCXX_NOTHROW
+ #elif !defined (__cplusplus)

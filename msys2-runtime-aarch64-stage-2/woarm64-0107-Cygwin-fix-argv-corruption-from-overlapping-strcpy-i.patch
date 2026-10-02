@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: mayankag-qti <mayagr@qti.qualcomm.com>
+Date: Tue, 25 Aug 2026 12:40:01 +0530
+Subject: [PATCH 107/109] Cygwin: fix argv corruption from overlapping strcpy
+ in quoted()
+
+quoted() deletes an in-place quote with strcpy (cmd, cmd + 1), where source
+and destination overlap.  That is undefined, and only works by accident on
+implementations that copy a byte at a time.
+
+The AArch64 SIMD strcpy rounds the source pointer down to a 16-byte boundary
+and loads that entire block, so storing it back one byte lower duplicates
+bytes inside the block while keeping the string length.  Command lines from a
+native parent such as cmd.exe therefore arrived mangled, with the damage
+depending on where the string happened to sit in memory.
+
+Use memmove, which is defined for overlapping buffers, in both places.
+
+(cherry picked from commit 95233e16b70469d9ad1c84c97e0401e2c64ad7bf)
+(cherry picked from commit 79f3c876eb642e3bdcf4bf44521eb65240d5ddfd)
+---
+ winsup/cygwin/dcrt0.cc | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/dcrt0.cc b/winsup/cygwin/dcrt0.cc
+index 588ea09ed..cd1093dc5 100644
+--- a/winsup/cygwin/dcrt0.cc
++++ b/winsup/cygwin/dcrt0.cc
+@@ -162,9 +162,18 @@ quoted (char *cmd, int winshell, int glob)
+   if (!winshell || !glob)
+     {
+       char *p;
+-      strcpy (cmd, cmd + 1);
++      /* These two copies delete a quote in place, so source and destination
++	 overlap.  strcpy is undefined for overlapping buffers: it only happens
++	 to work for dst < src when the implementation copies one byte at a
++	 time.  The AArch64 strcpy is SIMD -- it rounds the source pointer down
++	 to a 16-byte boundary and loads the whole block, so storing it back
++	 one byte lower duplicates bytes within the block while preserving the
++	 total length.  The result is a mangled command line whenever a native
++	 (non-Cygwin) parent such as cmd.exe launches us.  memmove is defined
++	 for overlap and is the correct call in both places.  */
++      memmove (cmd, cmd + 1, strlen (cmd + 1) + 1);
+       if (*(p = strchrnul (cmd, quote)))
+-	strcpy (p, p + 1);
++	memmove (p, p + 1, strlen (p + 1) + 1);
+       return p;
+     }
+ 

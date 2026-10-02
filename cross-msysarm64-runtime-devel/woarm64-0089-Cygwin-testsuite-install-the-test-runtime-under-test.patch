@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 29 Jul 2026 15:27:40 +0530
+Subject: [PATCH 089/109] Cygwin: testsuite: install the test runtime under
+ testinst/usr/bin
+
+Mirror the real MSYS2 layout so init_installation_root() resolves to testinst.
+MSYS2 strips three levels from the DLL path (<root>/usr/bin/msys-2.0.dll -> <root>);
+with the DLL and helpers under testinst/bin the extra strip overshot the root to
+${builddir}, so /tmp resolved to ${builddir}/tmp instead of testinst/tmp.  Put the
+test DLL and the sh/sleep/ls helpers under testinst/usr/bin and point runtime_root
+there; / -> testinst, /bin and /usr/bin -> testinst/usr/bin, /tmp stays testinst/tmp.
+
+(cherry picked from commit b3059f23efb87f30549a5392022ed79b71fb8685)
+(cherry picked from commit 6713aadde0c7903f06e8ba9c53e09e431bd48cf2)
+---
+ winsup/cygwin/Makefile.am    | 4 ++--
+ winsup/testsuite/Makefile.am | 9 ++++-----
+ 2 files changed, 6 insertions(+), 7 deletions(-)
+
+diff --git a/winsup/cygwin/Makefile.am b/winsup/cygwin/Makefile.am
+index b1f54345d..52bd78b3f 100644
+--- a/winsup/cygwin/Makefile.am
++++ b/winsup/cygwin/Makefile.am
+@@ -641,8 +641,8 @@ $(NEW_DLL_NAME): $(LDSCRIPT) libdll.a $(VERSION_OFILES) $(LIBSERVER)\
+ 	$(newlib_build)/libm.a \
+ 	$(newlib_build)/libc.a \
+ 	-lgcc -lkernel32 -lntdll -Wl,-Map,msys.map
+-	@$(MKDIR_P) ${target_builddir}/winsup/testsuite/testinst/bin/
+-	$(AM_V_at)$(INSTALL_PROGRAM) $(NEW_DLL_NAME) ${target_builddir}/winsup/testsuite/testinst/bin/$(DLL_NAME)
++	@$(MKDIR_P) ${target_builddir}/winsup/testsuite/testinst/usr/bin/
++	$(AM_V_at)$(INSTALL_PROGRAM) $(NEW_DLL_NAME) ${target_builddir}/winsup/testsuite/testinst/usr/bin/$(DLL_NAME)
+ 
+ # msys-2.0 import library
+ toolopts=--cpu=@target_cpu@ --ar=@AR@ --as=@AS@ --nm=@NM@ --objcopy=@OBJCOPY@
+diff --git a/winsup/testsuite/Makefile.am b/winsup/testsuite/Makefile.am
+index 37eb9caef..7e0ea2fe0 100644
+--- a/winsup/testsuite/Makefile.am
++++ b/winsup/testsuite/Makefile.am
+@@ -350,7 +350,7 @@ XFAIL_TESTS = \
+ # cygrun.sh test-runner script, and variables used by it:
+ LOG_COMPILER = $(srcdir)/cygrun.sh
+ 
+-export runtime_root=$(abs_builddir)/testinst/bin
++export runtime_root=$(abs_builddir)/testinst/usr/bin
+ export cygrun=$(builddir)/mingw/cygrun
+ 
+ # Set up things in the Cygwin 'installation' at testsuite/testinst/ to provide
+@@ -372,10 +372,9 @@ export cygrun=$(builddir)/mingw/cygrun
+ 
+ check-local:
+ 	$(MKDIR_P) ${builddir}/testinst/tmp
+-	$(MKDIR_P) ${builddir}/usr/bin
+-	cd ${builddir}/usr/bin && cp /usr/bin/busybox.exe sh.exe
+-	cd ${builddir}/usr/bin && cp /usr/bin/busybox.exe sleep.exe
+-	cd ${builddir}/usr/bin && cp /usr/bin/busybox.exe ls.exe
++	cd ${builddir}/testinst/usr/bin && cp /usr/libexec/busybox/bin/busybox.exe sh.exe
++	cd ${builddir}/testinst/usr/bin && cp /usr/libexec/busybox/bin/busybox.exe sleep.exe
++	cd ${builddir}/testinst/usr/bin && cp /usr/libexec/busybox/bin/busybox.exe ls.exe
+ 
+ # target to build all the programs needed by check, without running check
+ check_programs: $(check_PROGRAMS)

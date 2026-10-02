@@ -1,0 +1,181 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:29 +0530
+Subject: [PATCH 050/109] Cygwin: signal: Implement sigdelayed assembly
+ function for AArch64
+
+(cherry picked from commit 27389a0cfae4fbc4b600dd8ffefe46eeddc1ac1e)
+---
+ winsup/cygwin/scripts/gendef | 158 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 158 insertions(+)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 618898a17..fea246d1c 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -463,7 +463,165 @@ _sigbe:
+     .seh_endproc
+ 
+ 	.global	sigdelayed
++	.seh_proc sigdelayed
+ sigdelayed:
++	stp	x0,  x1,  [sp, #-16]!
++	stp	x2,  x3,  [sp, #-16]!
++	stp	x4,  x5,  [sp, #-16]!
++	stp	x6,  x7,  [sp, #-16]!
++	stp	x8,  x9,  [sp, #-16]!
++	stp	x10, x11, [sp, #-16]!
++	stp	x12, x13, [sp, #-16]!
++	stp	x14, x15, [sp, #-16]!
++	stp	x16, x17, [sp, #-16]!
++	stp	x18, x19, [sp, #-16]!
++	.seh_stackalloc 160
++	.seh_save_reg x19, 152
++	stp	x20, x21, [sp, #-16]!
++	.seh_save_regp_x x20, 16
++	stp	x22, x23, [sp, #-16]!
++	.seh_save_regp_x x22, 16
++	stp	x24, x25, [sp, #-16]!
++	.seh_save_regp_x x24, 16
++	stp	x26, x27, [sp, #-16]!
++	.seh_save_regp_x x26, 16
++	stp	x28, x29, [sp, #-16]!
++	.seh_save_regp_x x28, 16
++
++	mov	x1, sp
++	str	x1, [sp, #-16]!
++
++	stp	q0,  q1,  [sp, #-32]!
++	stp	q2,  q3,  [sp, #-32]!
++	stp	q4,  q5,  [sp, #-32]!
++	stp	q6,  q7,  [sp, #-32]!
++	stp	q8,  q9,  [sp, #-32]!
++	stp	q10, q11, [sp, #-32]!
++	stp	q12, q13, [sp, #-32]!
++	stp	q14, q15, [sp, #-32]!
++	stp	q16, q17, [sp, #-32]!
++	stp	q18, q19, [sp, #-32]!
++	stp	q20, q21, [sp, #-32]!
++	stp	q22, q23, [sp, #-32]!
++	stp	q24, q25, [sp, #-32]!
++	stp	q26, q27, [sp, #-32]!
++	stp	q28, q29, [sp, #-32]!
++	stp	q30, q31, [sp, #-32]!
++
++	mrs	x1, fpcr
++	mrs	x2, fpsr
++	stp	x1, x2, [sp, #-16]!
++
++	.seh_stackalloc 544
++
++	.seh_endprologue
++
++	ldr	x12, [x18, #8]			// get TLS pointer
++	ldr	x13, =_cygtls.saved_errno	// get offset to saved_errno
++	add	x13, x12, x13			// set x13 to &TLS.saved_errno
++	ldr	w19, [x13]			// preserve saved_errno in w19
++
++	ldr	x13, =_cygtls.start_offset	// get offset to beginning of TLS block
++	add	x0, x12, x13			// store offset as first arg to method
++	bl	_ZN7_cygtls19call_signal_handlerEv	// call handler
++	ldr	x12, [x18, #8]			// restore clobbered TLS pointer
++
++	mov	w11, #1				// set w11 to 1 (locked)
++	ldr	x13, =_cygtls.stacklock		// get offset to stacklock
++	add	x13, x12, x13			// set x13 to &TLS.stacklock
++1:
++	ldaxr	w14, [x13]			// read lock value with acquire
++	cbnz	w14, 2f				// wait if already locked
++	stxr	w14, w11, [x13]			// attempt to store 1
++	cbnz	w14, 1b				// retry if locking not succeeded
++	b	3f				// continue to critical region
++2:
++	yield					// hint to CPU (spin-wait)
++	b	1b				// try again
++
++3:
++	tst	w19, w19			// was saved_errno < 0
++	blt	4f				// if yes, ignore it
++	ldr	x13, =_cygtls.errno_addr	// get offset to errno_addr
++	add	x13, x12, x13			// set x13 to &TLS.errno_addr
++	ldr	x11, [x13]			// set x11 to TLS->errno_addr
++	str	w19, [x11]			// store saved_errno to errno_addr
++
++4:
++	ldr	x13, =_cygtls.stackptr		// get offset to stackptr
++	add	x13, x12, x13			// set x13 to &TLS.stackptr
++5:
++	ldxr	x11, [x13]			// get aux stack address
++	sub	x11, x11, #8			// decrement aux stack address
++	stxr	w14, x11, [x13]			// attempt to store decremented value
++	cbnz	w14, 5b				// retry if not succeeded
++
++6:
++	ldxr	x30, [x11]			// get return address from signal stack
++	stxr	w14, xzr, [x11]			// attempt to clear return address
++	cbnz	w14, 6b				// retry if not succeeded
++
++	ldr	x13, =_cygtls.incyg		// get offset to incyg
++	add	x13, x12, x13			// set x13 to &TLS.incyg
++	str	wzr, [x13]			// set TLS.incyg to 0 (not in cygwin)
++	ldr	x13, =_cygtls.stacklock		// get offset to stacklock
++	add	x13, x12, x13			// set x13 to &TLS.stacklock
++	stlr	wzr, [x13]			// release lock
++
++	.seh_startepilogue
++
++	.seh_stackalloc 544
++
++	ldp	x1, x2, [sp], #16
++	msr	fpcr, x1
++	msr	fpsr, x2
++
++	ldp	q30, q31, [sp], #32
++	ldp	q28, q29, [sp], #32
++	ldp	q26, q27, [sp], #32
++	ldp	q24, q25, [sp], #32
++	ldp	q22, q23, [sp], #32
++	ldp	q20, q21, [sp], #32
++	ldp	q18, q19, [sp], #32
++	ldp	q16, q17, [sp], #32
++	ldp	q14, q15, [sp], #32
++	ldp	q12, q13, [sp], #32
++	ldp	q10, q11, [sp], #32
++	ldp	q8,  q9,  [sp], #32
++	ldp	q6,  q7,  [sp], #32
++	ldp	q4,  q5,  [sp], #32
++	ldp	q2,  q3,  [sp], #32
++	ldp	q0,  q1,  [sp], #32
++
++	ldr	x1, [sp], #16
++	mov	sp, x1
++
++	ldp	x28, x29, [sp], #16
++	.seh_save_regp_x x28, 16
++	ldp	x26, x27, [sp], #16
++	.seh_save_regp_x x26, 16
++	ldp	x24, x25, [sp], #16
++	.seh_save_regp_x x24, 16
++	ldp	x22, x23, [sp], #16
++	.seh_save_regp_x x22, 16
++	ldp	x20, x21, [sp], #16
++	.seh_save_regp_x x20, 16
++	ldp	x18, x19, [sp], #16
++	.seh_save_reg x19, 152
++	.seh_stackalloc 160
++	ldp	x16, x17, [sp], #16
++	ldp	x14, x15, [sp], #16
++	ldp	x12, x13, [sp], #16
++	ldp	x10, x11, [sp], #16
++	ldp	x8,  x9,  [sp], #16
++	ldp	x6,  x7,  [sp], #16
++	ldp	x4,  x5,  [sp], #16
++	ldp	x2,  x3,  [sp], #16
++	ldp	x0,  x1,  [sp], #16
++
++	.seh_endepilogue
++	ret
++	.seh_endproc
+ _sigdelayed_end:
+ 	.global _sigdelayed_end
+ stabilize_sig_stack:
