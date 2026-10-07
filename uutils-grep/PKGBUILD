@@ -1,0 +1,41 @@
+
+
+_realname=grep
+pkgname="uutils-${_realname}"
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="Rust rewrite of GNU grep"
+arch=('any')
+url='https://github.com/uutils/grep'
+msys2_repository_url="${url}"
+license=('spdx:MIT')
+depends=("gcc-libs"
+         "oniguruma")
+makedepends=("rust" "pkgconf")
+# provides=("${_realname}")
+# conflicts=("${_realname}")
+source=("${url}/archive/${pkgver}/${_realname}-${pkgver}.tar.gz")
+sha256sums=('aabb48c5f14aa46befa4b0b2848889d3ca2ff819d5855acfab590f7f47d223b9')
+
+prepare() {
+  cd "${_realname}-${pkgver}"
+  cargo fetch --locked --target "${RUST_CHOST}"
+}
+
+build() {
+  cd "${_realname}-${pkgver}"
+  export RUSTONIG_DYNAMIC_LIBONIG=1
+  # https://github.com/uutils/grep/pull/137
+  export CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 CARGO_PROFILE_RELEASE_PANIC=abort
+
+  cargo build --release --frozen
+}
+
+package() {
+  cd "${_realname}-${pkgver}"
+
+  install -Dm755 "target/release/${_realname}" "${pkgdir}/usr/bin/uu-${_realname}"
+  #install -Dm755 $(echo -e '!#/bin/sh'"\nexec grep -F "'"$@"') "${pkgdir}/usr/bin/fgrep"
+  #install -Dm755 $(echo -e '!#/bin/sh'"\nexec grep -E "'"$@"') "${pkgdir}/usr/bin/egrep"
+  install -Dm644 LICENSE -t "${pkgdir}/usr/share/licenses/${pkgname}"
+}
