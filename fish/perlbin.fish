@@ -5,7 +5,7 @@
 
 function __addpath
 	set -l p $argv[1]
-	if test -d $p
+	if test -d $p; and not contains $p $PATH
 		set PATH $PATH $p
 	end
 end
