@@ -1,0 +1,107 @@
+From e0c179b8c65488e916ed05a3ddebc3810cc15cd2 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Thu, 8 Oct 2026 15:06:44 +0200
+Subject: [PATCH 47/N] Cygwin: testsuite: cover console mode preservation with
+ redirected stdio
+
+When stdout and stderr are redirected but stdin remains attached to the
+console, starting a Cygwin child via a native launcher must not clear
+ENABLE_PROCESSED_OUTPUT.
+
+Protect the behavior restored by 717d7aac57 (Cygwin: console: Preserve
+saved modes with redirected stdio) against future regressions.
+
+Addresses: https://github.com/msys2/msys2-runtime/issues/379
+Assisted-by: GPT-6.1
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+(cherry picked from commit bff49354caeae98b20fa7ca307bfe6e2649ff490)
+---
+ winsup/testsuite/Makefile.am               |  1 +
+ winsup/testsuite/winsup.api/console-mode.c | 66 ++++++++++++++++++++++
+ 2 files changed, 67 insertions(+)
+ create mode 100644 winsup/testsuite/winsup.api/console-mode.c
+
+diff --git a/winsup/testsuite/Makefile.am b/winsup/testsuite/Makefile.am
+index 8f2967a..2ae38f8 100644
+--- a/winsup/testsuite/Makefile.am
++++ b/winsup/testsuite/Makefile.am
+@@ -33,6 +33,7 @@ libltp_a_SOURCES = \
+ 
+ check_PROGRAMS = \
+ 	winsup.api/checksignal \
++	winsup.api/console-mode \
+ 	winsup.api/crlf \
+ 	winsup.api/devdsp \
+ 	winsup.api/devzero \
+diff --git a/winsup/testsuite/winsup.api/console-mode.c b/winsup/testsuite/winsup.api/console-mode.c
+new file mode 100644
+index 0000000..08537de
+--- /dev/null
++++ b/winsup/testsuite/winsup.api/console-mode.c
+@@ -0,0 +1,66 @@
++/* Check console-mode restoration with redirected standard handles.
++
++   This file is part of Cygwin.
++
++   This software is a copyrighted work licensed under the terms of the
++   Cygwin license.  Please consult the file "CYGWIN_LICENSE" for details. */
++
++#include <assert.h>
++#include <fcntl.h>
++#include <process.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++#include <windows.h>
++
++int
++main (int argc, char **argv)
++{
++  char exe[MAX_PATH], command[MAX_PATH + 32];
++  DWORD mode, result;
++  HANDLE output;
++  int fd;
++
++  if (argc > 1 && strcmp (argv[1], "child") == 0)
++    return 0;
++
++  result = GetModuleFileNameA (NULL, exe, sizeof (exe));
++  assert (result > 0 && result < sizeof (exe));
++  if (argc == 1)
++    {
++      STARTUPINFOA startup = { .cb = sizeof (startup),
++			      .dwFlags = STARTF_USESHOWWINDOW,
++			      .wShowWindow = SW_HIDE };
++      PROCESS_INFORMATION process;
++      snprintf (command, sizeof (command), "\"%s\" worker", exe);
++      assert (CreateProcessA (exe, command, NULL, NULL, FALSE,
++			     CREATE_NEW_CONSOLE, NULL, NULL,
++			     &startup, &process));
++      assert (WaitForSingleObject (process.hProcess, INFINITE)
++	      == WAIT_OBJECT_0);
++      assert (GetExitCodeProcess (process.hProcess, &result));
++      assert (CloseHandle (process.hThread));
++      assert (CloseHandle (process.hProcess));
++      if (result)
++	fprintf (stderr, "Console-mode worker failed: %lu\n", result);
++      return result != 0;
++    }
++
++  output = GetStdHandle (STD_OUTPUT_HANDLE);
++  assert (GetConsoleMode (output, &mode));
++  assert (mode & ENABLE_PROCESSED_OUTPUT);
++  fd = open ("/dev/null", O_RDWR);
++  assert (fd >= 0);
++  assert (dup2 (fd, STDOUT_FILENO) == STDOUT_FILENO);
++  assert (dup2 (fd, STDERR_FILENO) == STDERR_FILENO);
++  assert (close (fd) == 0);
++  snprintf (command, sizeof (command), "\"%s\" child", exe);
++  const char *arguments[] = { "cygrun", "-notimeout", command, NULL };
++  assert (getenv ("cygrun"));
++  /* cygrun starts the child without Cygwin's spawn bookkeeping. */
++  for (int i = 0; i < 2; ++i)
++    assert (spawnv (_P_WAIT, getenv ("cygrun"), arguments) == 0);
++  assert (GetConsoleMode (output, &mode));
++  return !(mode & ENABLE_PROCESSED_OUTPUT);
++}

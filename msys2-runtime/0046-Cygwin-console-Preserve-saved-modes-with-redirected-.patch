@@ -1,0 +1,49 @@
+From acfe4b49cb32d7ccaa5c5934718ac3208a510513 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Thu, 8 Oct 2026 10:15:28 +0200
+Subject: [PATCH 46/N] Cygwin: console: Preserve saved modes with redirected
+ stdio
+
+With console stdin but captured stdout and stderr, a runtime child can
+replace the shared saved output mode with zero. A later invocation
+restores that value, rendering CR/LF as glyphs instead of line breaks.
+Redirected stdin with console output exposes the corresponding
+input-mode omission.
+
+Console handlers restore both modes on close, even with redirected
+stdio. Keep their backups valid regardless of whether opening the
+handler needs to switch either mode.
+
+Addresses: https://github.com/msys2/msys2-runtime/issues/379
+Fixes: bbd3710fc834 ("Cygwin: console: Set console mode only if
+  std{in,out,err} is console")
+Assisted-by: GPT-6.1
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+(cherry picked from commit 717d7aac57eddbfc2ddb011b249ffe8d87148729)
+---
+ winsup/cygwin/fhandler/console.cc | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/fhandler/console.cc b/winsup/cygwin/fhandler/console.cc
+index 77786a1..0b84aa8 100644
+--- a/winsup/cygwin/fhandler/console.cc
++++ b/winsup/cygwin/fhandler/console.cc
+@@ -2124,15 +2124,16 @@ fhandler_console::open (int flags, mode_t)
+     }
+ 
+   WaitForSingleObject (cons_mode_mutex, mutex_timeout);
++  /* close() restores both modes even when stdio is redirected. */
++  prev_input_mode_backup = con.prev_input_mode;
++  prev_output_mode_backup = con.prev_output_mode;
+   if (in_is_console && con.curr_input_mode != tty::cygwin)
+     {
+-      prev_input_mode_backup = con.prev_input_mode;
+       GetConsoleMode (get_handle (), &con.prev_input_mode);
+       set_input_mode (tty::cygwin, &get_ttyp ()->ti, &handle_set);
+     }
+   if (out_is_console && con.curr_output_mode != tty::cygwin)
+     {
+-      prev_output_mode_backup = con.prev_output_mode;
+       GetConsoleMode (get_output_handle (), &con.prev_output_mode);
+       set_output_mode (tty::cygwin, &get_ttyp ()->ti, &handle_set);
+     }
