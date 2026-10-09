@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:48 +0530
+Subject: [PATCH 066/109] Cygwin: Adapt math functions to use 64bit long
+ double on aarch64
+
+(cherry picked from commit 02fe481a65f19e1040a1c40261cf7e74be670a9d)
+---
+ winsup/cygwin/math/cephes_mconf.h | 4 ++--
+ winsup/cygwin/math/lgammal.c      | 4 ++--
+ winsup/cygwin/math/nextafterl.c   | 4 ++++
+ winsup/cygwin/math/rintl.c        | 2 +-
+ 4 files changed, 9 insertions(+), 5 deletions(-)
+
+diff --git a/winsup/cygwin/math/cephes_mconf.h b/winsup/cygwin/math/cephes_mconf.h
+index 832fae0df..654de88bf 100644
+--- a/winsup/cygwin/math/cephes_mconf.h
++++ b/winsup/cygwin/math/cephes_mconf.h
+@@ -66,7 +66,7 @@ extern double __QNAN;
+ #endif
+ 
+ /*long double*/
+-#if defined(__arm__) || defined(_ARM_)
++#if defined(__arm__) || defined(_ARM_) || defined(__aarch64__)
+ #define MAXNUML	1.7976931348623158E308
+ #define MAXLOGL	7.09782712893383996843E2
+ #define MINLOGL	-7.08396418532264106224E2
+@@ -84,7 +84,7 @@ extern double __QNAN;
+ #define PIL	3.1415926535897932384626L
+ #define PIO2L	1.5707963267948966192313L
+ #define PIO4L	7.8539816339744830961566E-1L
+-#endif /* defined(__arm__) || defined(_ARM_) */
++#endif /* defined(__arm__) || defined(_ARM_)  || defined(__aarch64__) */
+ 
+ #define isfinitel isfinite
+ #define isinfl isinf
+diff --git a/winsup/cygwin/math/lgammal.c b/winsup/cygwin/math/lgammal.c
+index 022a16acf..961eec280 100644
+--- a/winsup/cygwin/math/lgammal.c
++++ b/winsup/cygwin/math/lgammal.c
+@@ -198,11 +198,11 @@ static uLD C[] = {
+ 
+ /* log( sqrt( 2*pi ) ) */
+ static const long double LS2PI  =  0.91893853320467274178L;
+-#if defined(__arm__) || defined(_ARM_)
++#if defined(__arm__) || defined(_ARM_) || defined(__aarch64__)
+ #define MAXLGM 2.035093e36
+ #else
+ #define MAXLGM 1.04848146839019521116e+4928L
+-#endif /* defined(__arm__) || defined(_ARM_) */
++#endif /* defined(__arm__) || defined(_ARM_) || defined(__aarch64__) */
+ 
+ /* Logarithm of gamma function */
+ /* Reentrant version */
+diff --git a/winsup/cygwin/math/nextafterl.c b/winsup/cygwin/math/nextafterl.c
+index b1e479a95..80c9c3c4d 100644
+--- a/winsup/cygwin/math/nextafterl.c
++++ b/winsup/cygwin/math/nextafterl.c
+@@ -16,6 +16,9 @@
+ long double
+ nextafterl (long double x, long double y)
+ {
++#if defined(__aarch64__) && (LDBL_MANT_DIG == DBL_MANT_DIG)
++  return (long double) nexttoward (x, y);
++# else
+   union {
+       long double ld;
+       struct {
+@@ -63,6 +66,7 @@ nextafterl (long double x, long double y)
+     u.parts.mantissa |=  normal_bit;
+ 
+   return u.ld;
++# endif /* defined(__aarch64__) */
+ }
+ 
+ /* nexttowardl is the same function with a different name.  */
+diff --git a/winsup/cygwin/math/rintl.c b/winsup/cygwin/math/rintl.c
+index 9ec159d17..1e30de069 100644
+--- a/winsup/cygwin/math/rintl.c
++++ b/winsup/cygwin/math/rintl.c
+@@ -9,7 +9,7 @@ long double rintl (long double x) {
+   long double retval = 0.0L;
+ #if defined(_AMD64_) || defined(__x86_64__) || defined(_X86_) || defined(__i386__)
+   __asm__ __volatile__ ("frndint;": "=t" (retval) : "0" (x));
+-#elif defined(__arm__) || defined(_ARM_)
++#elif defined(__arm__) || defined(_ARM_)|| defined(__aarch64__)
+     retval = rint(x);
+ #endif
+   return retval;

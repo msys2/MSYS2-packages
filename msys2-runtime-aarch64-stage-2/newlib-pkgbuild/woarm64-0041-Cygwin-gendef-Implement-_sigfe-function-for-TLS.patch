@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:19 +0530
+Subject: [PATCH 041/109] Cygwin: gendef: Implement _sigfe function for
+ TLS handling on AArch64
+
+(cherry picked from commit b9660128256c36585af5754b2a1651f3ac54fdb1)
+---
+ winsup/cygwin/scripts/gendef | 37 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index bd6e22d64..6d1dbb50f 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -387,7 +387,44 @@ _sigfe_maybe:					# stack is aligned on entry!
+ 	ret
+ 	.seh_endproc
+ 
++    .seh_proc _sigfe
+ _sigfe:
++    .seh_endprologue
++    ldr     x10, [x18, #0x8]		// Load TLS base into x10
++    mov     w9, #1			// constant value for lock acquisition
++0:  ldr     x11, =_cygtls.stacklock	// Load offset of stacklock
++    add     x12, x10, x11		// Compute final address of stacklock
++    ldaxr   w13, [x12]			// Load current stacklock value atomically
++    stlxr   w14, w9, [x12]		// Attempt to store 1 to stacklock atomically
++    cbnz    w14, 0b			// Retry if atomic store failed
++    cbz     w13, 1f			// If lock was free, proceed
++    yield
++    b       0b				// Retry acquiring the lock
++1:
++    ldr     x11, =_cygtls.incyg	// Load offset of incyg
++    add     x12, x10, x11		// Compute final address of incyg
++    ldr     w9, [x12]			// Load current incyg value
++    add     w9, w9, #1			// Increment incyg
++    str     w9, [x12]			// Store updated incyg value
++    mov     x9, #8			// Set stack frame size increment (8 bytes)
++2:  ldr     x11, =_cygtls.stackptr	// Load offset of stack pointer
++    add     x12, x10, x11		// Compute final address of stack pointer
++    ldaxr   x13, [x12]			// Atomically load current stack pointer
++    add     x14, x13, x9		// Compute new stack pointer value
++    stlxr   w15, x14, [x12]		// Attempt to update stack pointer atomically
++    cbnz    w15, 2b			// Retry if atomic update failed
++    str     x30, [x13]                 // Save LR(return address) on stack
++    adr     x11, _sigbe		// Load address of _sigbe
++    mov     x30, x11                   // Set LR = _sigbe
++    ldr     x11, =_cygtls.stacklock	// Load offset of stacklock TLS variable
++    add     x12, x10, x11		// Compute final address of stacklock
++    ldr     w9, [x12]			// Load current stacklock value
++    sub     w9, w9, #1			// Decrement stacklock to release lock
++    stlr    w9, [x12]			// Store stacklock value (release lock)
++    ldr     x9, [sp], #16              // Pop real func address from stack
++    br      x9				// Branch to real function
++    .seh_endproc
++
+ _sigbe:
+ 	.global	sigdelayed
+ sigdelayed:

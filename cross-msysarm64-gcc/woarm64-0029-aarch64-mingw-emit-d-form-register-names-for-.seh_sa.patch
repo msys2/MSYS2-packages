@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Mon, 31 Aug 2026 17:07:35 +0530
+Subject: [PATCH 29/29] aarch64: mingw: emit d-form register names for
+ .seh_save_freg
+
+seh_emit_save printed the FP register with aarch64_print_reg, which
+renders it from the RTL mode and so produces the v-form ("v15").  The
+SEH directives take d-form names: upstream gas keys .seh_save_freg on
+.reg_type = 'd' with .reg_addend = 8, matching the Microsoft ARM64
+unwind spec where SAVE_FREG covers d8-d15.
+
+winnt.cc was already inconsistent with itself -- seh_pattern_emit prints
+"d%ld" for the paired .seh_save_fregp variants while seh_emit_save
+printed the v-form for the single-register case.
+
+This never surfaced before because our own gas accepted either spelling:
+it read the register number and ignored the letter, so v15 and d15
+assembled to byte-identical unwind data.  Upstream's SEH rewrite
+(17afc47d8bc), which supersedes our gas SEH commits, validates the letter
+and rejects the v-form:
+
+  {standard input}:30556: Error: unexpected register name
+
+Building libstdc++ hits it in floating_to_chars.cc and floating_from_chars.cc.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ gcc/config/mingw/winnt.cc | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/gcc/config/mingw/winnt.cc b/gcc/config/mingw/winnt.cc
+index 5b728fa405b..742d46358dd 100644
+--- a/gcc/config/mingw/winnt.cc
++++ b/gcc/config/mingw/winnt.cc
+@@ -1084,7 +1084,12 @@ seh_emit_save (FILE *f, struct seh_frame_state *seh,
+   fputs ((FP_REGNUM_P (regno) ? " \t.seh_save_freg\t"
+ 	 : GP_REGNUM_P (regno) ?  " \t.seh_save_reg\t"
+ 	 : (gcc_unreachable (), "")), f);
+-  aarch64_print_reg (reg, 0, f);
++  /* SEH takes d-form names for FP regs (d8-d15), not the mode-derived
++     v-form; seh_pattern_emit below already prints "d%ld".  */
++  if (FP_REGNUM_P (regno))
++    fprintf (f, "d%d", regno - V0_REGNUM);
++  else
++    aarch64_print_reg (reg, 0, f);
+   fprintf (f, ", " HOST_WIDE_INT_PRINT_DEC " \n", abs (cfa_offset));
+   return;
+ #endif

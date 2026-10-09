@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:17 +0530
+Subject: [PATCH 039/109] Cygwin: gendef: add ARM64 stub for $fe in
+ gendef
+
+(cherry picked from commit 858fdf11ad86266d3f9f1c70885c6123808d51f8)
+---
+ winsup/cygwin/scripts/gendef | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 2dc9bce53..6b5317a27 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -115,7 +115,18 @@ EOF
+ 	$res = <<EOF;
+ 	.extern $func
+ 	.global $fe
++	.seh_proc $fe
+ $fe:
++	sub sp, sp, 16			// allocate stack, 16-byte alligned
++	.seh_stackalloc 16		// SEH: describe stack allocation
++	.seh_endprologue		// end of prologue for unwinder
++	adrp x9, $func			// load page address of func
++	add x9, x9, :lo12:$func		// compute full address of func
++	str x9, [sp, 0]			// store func pointer on stack
++	adrp x9, $sigfe_func		// load page address of sigfe_func
++	add x9, x9, :lo12:$sigfe_func	// compute final address of sigfe_func
++	br x9				// branch to x9
++	.seh_endproc
+ EOF
+     }
+ 
