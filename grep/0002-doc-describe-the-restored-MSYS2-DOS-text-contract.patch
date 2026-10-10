@@ -1,0 +1,130 @@
+From f3c72001223bba431297b5f7c7eecb9ce3b6a782 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 15 Sep 2026 16:53:31 +0200
+Subject: [PATCH 2/N] doc: describe the restored MSYS2 DOS text contract
+
+The Texinfo manual's post-3.1 description of runtime-selected text I/O no
+longer matches MSYS2 DOS text handling, and the man page omits -u.
+
+Users need consistent guidance in both manuals on physical (-b) versus Unix
+(-u) byte offsets and on bypassing CR conversion with -U.
+
+Assisted-by: GPT-6
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ doc/grep.in.1 | 18 ++++++++++++++++++
+ doc/grep.texi | 51 ++++++++++++++++++++++++++++++++-------------------
+ 2 files changed, 50 insertions(+), 19 deletions(-)
+
+diff --git a/doc/grep.in.1 b/doc/grep.in.1
+index 1150b5da..386c2531 100644
+--- a/doc/grep.in.1
++++ b/doc/grep.in.1
+@@ -389,6 +389,13 @@ If
+ .RB ( \-\^\-only\-matching )
+ is specified,
+ print the offset of the matching part itself.
++When
++.B grep
++runs on MS-DOS or MS-Windows, the printed byte offsets depend on whether
++the
++.B \-u
++.RB ( \-\^\-unix\-byte\-offsets )
++option is used; see below.
+ .TP
+ .BR \-H ", " \-\^\-with\-filename
+ Print the file name for each match.
+@@ -427,6 +434,17 @@ from a single file will all start at the same column,
+ this also causes the line number and byte offset (if present)
+ to be printed in a minimum size field width.
+ .TP
++.BR \-u ", " \-\^\-unix\-byte\-offsets
++Report Unix-style byte offsets.
++This option causes
++.B grep
++to report byte offsets as if the file were a Unix-style text file,
++i.e., the byte offsets ignore carriage returns that were stripped.
++This option has no effect unless the
++.B \-b
++option is also used; it has no effect on platforms other than
++MS-DOS and MS-Windows.
++.TP
+ .BR \-Z ", " \-\^\-null
+ Output a zero byte (the ASCII
+ .B NUL
+diff --git a/doc/grep.texi b/doc/grep.texi
+index f65c9d96..2f4221a1 100644
+--- a/doc/grep.texi
++++ b/doc/grep.texi
+@@ -450,6 +450,10 @@ Print the 0-based byte offset within the input file
+ before each line of output.
+ If @option{-o} (@option{--only-matching}) is specified,
+ print the offset of the matching part itself.
++When @command{grep} runs on MS-DOS or MS-Windows,
++the printed byte offsets depend on whether
++the @option{-u} (@option{--unix-byte-offsets}) option is used;
++see below.
+ 
+ @item -H
+ @itemx --with-filename
+@@ -500,6 +504,21 @@ This is useful with options that prefix their output to the actual content:
+ This may also prepend spaces to output line numbers and byte offsets
+ so that lines from a single file all start at the same column.
+ 
++@item -u
++@itemx --unix-byte-offsets
++@opindex -u
++@opindex --unix-byte-offsets
++@cindex MS-DOS/MS-Windows byte offsets
++@cindex byte offsets, on MS-DOS/MS-Windows
++Report Unix-style byte offsets.
++This option causes @command{grep} to report byte offsets
++as if the file were a Unix-style text file,
++i.e., the byte offsets ignore carriage returns that were stripped.
++This will produce results identical
++to running @command{grep} on a Unix machine.
++This option has no effect unless the @option{-b} option is also used;
++it has no effect on platforms other than MS-DOS and MS-Windows.
++
+ @item -Z
+ @itemx --null
+ @opindex -Z
+@@ -808,25 +827,19 @@ flushed after every output line.  The buffer size is system dependent.
+ @opindex --binary
+ @cindex MS-Windows binary I/O
+ @cindex binary I/O
+-On platforms that distinguish between text and binary I/O,
+-use the latter when reading and writing files other
+-than the user's terminal, so that all input bytes are read and written
+-as-is.  This overrides the default behavior where @command{grep}
+-follows the operating system's advice whether to use text or binary
+-I/O@.  On MS-Windows when @command{grep} uses text I/O it reads a
+-carriage return--newline pair as a newline and a Control-Z as
+-end-of-file, and it writes a newline as a carriage return--newline
+-pair.
+-
+-When using text I/O @option{--byte-offset} (@option{-b}) counts and
+-@option{--binary-files} heuristics apply to input data after text-I/O
+-processing.  Also, the @option{--binary-files} heuristics need not agree
+-with the @option{--binary} option; that is, they may treat the data as
+-text even if @option{--binary} is given, or vice versa.
+-@xref{File and Directory Selection}.
+-
+-This option has no effect on GNU and other POSIX-compatible platforms,
+-which do not distinguish text from binary I/O.
++Treat the file(s) as binary.
++By default, under MS-DOS and MS-Windows,
++@command{grep} guesses whether a file is text or binary
++as described for the @option{--binary-files} option.
++If @command{grep} decides the file is a text file,
++it strips carriage returns from the original file contents
++(to make regular expressions with @code{^} and @code{$} work correctly).
++Specifying @option{-U} overrules this guesswork,
++causing all files to be read and passed to the matching mechanism verbatim;
++if the file is a text file with @code{CR/LF} pairs at the end of each line,
++this will cause some regular expressions to fail.
++This option has no effect
++on platforms other than MS-DOS and MS-Windows.
+ 
+ @item -z
+ @itemx --null-data
