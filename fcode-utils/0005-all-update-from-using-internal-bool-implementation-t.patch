@@ -1,0 +1,3874 @@
+From e6b09345174d80942cab61c87a80cb7ef6d7805f Mon Sep 17 00:00:00 2001
+From: Mark Cave-Ayland <mark.cave-ayland@ilande.co.uk>
+Date: Fri, 20 Jun 2025 13:37:16 +0100
+Subject: [PATCH 5/6] all: update from using internal bool implementation to
+ stdbool
+
+Since the bool type was included in the C99 standard nearly 30 years ago, it
+is fairly safe to say that all modern compilers contain support for stdbool.
+
+Remove the internal bool implementation from shared/types.h and then switch
+over to using stdbool instead. The changes are fairly simple: change TRUE
+and FALSE to lower case, and then remove the BOOLVAL() and INVERSE() macros
+which are now no longer required.
+
+Signed-off-by: Mark Cave-Ayland <mark.cave-ayland@ilande.co.uk>
+---
+ detok/addfcodes.c       |  20 +--
+ detok/decode.c          |  36 ++--
+ detok/detok.c           |  30 ++--
+ detok/dictionary.c      |   2 +-
+ detok/pcihdr.c          |   4 +-
+ detok/stream.c          |  12 +-
+ romheaders/romheaders.c |   4 +-
+ shared/types.h          |  35 +---
+ toke/clflags.c          |  74 ++++----
+ toke/conditl.c          |  40 ++---
+ toke/devnode.c          |  24 +--
+ toke/dictionary.c       |  42 ++---
+ toke/emit.c             |  16 +-
+ toke/errhandler.c       |  56 +++---
+ toke/flowcontrol.c      |  70 ++++----
+ toke/macros.c           |  16 +-
+ toke/nextfcode.c        |  32 ++--
+ toke/parselocals.c      |  32 ++--
+ toke/scanner.c          | 376 ++++++++++++++++++++--------------------
+ toke/stack.c            |  12 +-
+ toke/stream.c           |  60 +++----
+ toke/strsubvocab.c      |   4 +-
+ toke/ticvocab.c         |  14 +-
+ toke/ticvocab.h         |  18 +-
+ toke/toke.c             |  28 +--
+ toke/tokzesc.c          |  20 +--
+ toke/tracesyms.c        |  18 +-
+ toke/usersymbols.c      |   4 +-
+ 28 files changed, 533 insertions(+), 566 deletions(-)
+
+diff --git a/detok/addfcodes.c b/detok/addfcodes.c
+index 35f1656..4575ac3 100644
+--- a/detok/addfcodes.c
++++ b/detok/addfcodes.c
+@@ -171,7 +171,7 @@ static void skip_whitespace(char **string_line_ptr)
+ 
+ static bool get_next_vfc_line(void)
+ {
+-	bool retval = FALSE;	/*  TRUE = not at end yet  */
++	bool retval = false;	/*  TRUE = not at end yet  */
+ 	while (vfc_remainder < vfc_buf_end) {
+ 		current_vfc_line = (char *)vfc_remainder;
+ 		vfc_remainder = (u8 *)strchr((const char *)current_vfc_line, '\n');
+@@ -185,7 +185,7 @@ static bool get_next_vfc_line(void)
+ 			continue;	/*  Comment  */
+ 		if (*current_vfc_line == '\\')
+ 			continue;	/*  Comment  */
+-		retval = TRUE;
++		retval = true;
+ 		break;		/*  Found something  */
+ 	}
+ 	return (retval);
+@@ -212,7 +212,7 @@ static bool get_next_vfc_line(void)
+  *             "Splash" message...
+  *
+  **************************************************************************** */
+-static bool did_not_splash = TRUE;
++static bool did_not_splash = true;
+ static void vfc_splash(char *vf_file_name)
+ {
+ 	if (did_not_splash) {
+@@ -224,7 +224,7 @@ static void vfc_splash(char *vf_file_name)
+ 			vf_file_name);
+ 		printremark(strbfr);
+ 		free(strbfr);
+-		did_not_splash = FALSE;
++		did_not_splash = false;
+ 	}
+ }
+ 
+@@ -286,9 +286,9 @@ static void vfc_splash(char *vf_file_name)
+ 
+ bool add_fcodes_from_list(char *vf_file_name)
+ {
+-	bool retval = FALSE;
++	bool retval = false;
+ 	int added_fc_count = 0;
+-	check_tok_seq = FALSE;
++	check_tok_seq = false;
+ 
+ 	if (verbose)
+ 		vfc_splash(vf_file_name);
+@@ -369,12 +369,12 @@ bool add_fcodes_from_list(char *vf_file_name)
+ 
+ 		/*    Check if the name is on the "Special Functions List"  */
+ 		{
+-			bool found_spf = FALSE;
++			bool found_spf = false;
+ 			int indx;
+ 			for (indx = 0; indx < spcl_func_count; indx++) {
+ 				if ( strcmp( vs_fc_name, spcl_func_list[indx].name) == 0 ) {
+ 					char strbuf[64];
+-					found_spf = TRUE;
++					found_spf = true;
+ 					spcl_func_list[indx].fcode = vs_fc_number;
+ 					link_token( &spcl_func_list[indx]);
+ 					added_fc_count++;
+@@ -393,7 +393,7 @@ bool add_fcodes_from_list(char *vf_file_name)
+ 		fc_name_cpy = strdup(vs_fc_name);
+ 		add_token((u16) vs_fc_number, fc_name_cpy);
+ 		added_fc_count++;
+-		retval = TRUE;
++		retval = true;
+ 	}
+ 
+ 	if (verbose) {
+@@ -404,6 +404,6 @@ bool add_fcodes_from_list(char *vf_file_name)
+ 	}
+ 
+ 	close_stream();
+-	check_tok_seq = TRUE;
++	check_tok_seq = true;
+ 	return (retval);
+ }
+diff --git a/detok/decode.c b/detok/decode.c
+index 39a52de..ff2aace 100644
+--- a/detok/decode.c
++++ b/detok/decode.c
+@@ -54,11 +54,11 @@ static int indent;		/*  Current level of indentation   */
+  *
+  **************************************************************************** */
+ 
+-static bool ended_okay = TRUE;	/*  FALSE if finished prematurely  */
++static bool ended_okay = true;	/*  FALSE if finished prematurely  */
+ 
+-bool offs16 = TRUE;
++bool offs16 = true;
+ unsigned int linenum;
+-bool end_found = FALSE;
++bool end_found = false;
+ unsigned int token_streampos;	/*  Streampos() of currently-gotten token  */
+ u16 last_defined_token = 0;
+ 
+@@ -86,7 +86,7 @@ static void pretty_print_string(void)
+ 	u8 len;
+ 	u8 *strptr;
+ 	int indx;
+-	bool in_parens = FALSE;	/*  Are we already inside parentheses?  */
++	bool in_parens = false;	/*  Are we already inside parentheses?  */
+ 
+ 	strptr = get_string(&len);
+ 
+@@ -104,7 +104,7 @@ static void pretty_print_string(void)
+ 		if (isprint(c)) {
+ 			if (in_parens) {
+ 				printf(" )");
+-				in_parens = FALSE;
++				in_parens = false;
+ 			}
+ 			printf("%c", c);
+ 			/*  Quote-mark must escape itself  */
+@@ -113,7 +113,7 @@ static void pretty_print_string(void)
+ 		} else {
+ 			if (!in_parens) {
+ 				printf("\"(");
+-				in_parens = TRUE;
++				in_parens = true;
+ 			}
+ 			printf(" %02x", c);
+ 		}
+@@ -308,7 +308,7 @@ static s16 decode_offset(void)
+ 	 *      theoretically possible, so we'll treat it as valid.
+ 	 *  An offset of zero is also, of course, invalid.
+ 	 */
+-	invalid_dest = BOOLVAL((dest <= 0)
++	invalid_dest = ((dest <= 0)
+ 			       || (dest > stream_max)
+ 			       || (offs == 0));
+ 
+@@ -399,7 +399,7 @@ static void double_length_literal(void)
+ static void offset16(void)
+ {
+ 	decode_default();
+-	offs16 = TRUE;
++	offs16 = true;
+ }
+ 
+ static void decode_branch(void)
+@@ -482,7 +482,7 @@ static void decode_start(void)
+ 
+ static void decode_token(u16 token)
+ {
+-	bool handy_flag = TRUE;
++	bool handy_flag = true;
+ 	switch (token) {
+ 	case 0x0b5:
+ 		new_token();
+@@ -533,7 +533,7 @@ static void decode_token(u16 token)
+ 		decode_two();
+ 		break;
+ 	case 0x0fd:		/* version1 */
+-		handy_flag = FALSE;
++		handy_flag = false;
+ 	case 0x0f0:		/* start0 */
+ 	case 0x0f1:		/* start1 */
+ 	case 0x0f2:		/* start2 */
+@@ -545,7 +545,7 @@ static void decode_token(u16 token)
+ 		break;
+ 	case 0:		/* end0  */
+ 	case 0xff:		/* end1  */
+-		end_found = TRUE;
++		end_found = true;
+ 		decode_default();
+ 		break;
+ 
+@@ -611,7 +611,7 @@ static void decode_fcode_header(void)
+ {
+ 	long err_pos;
+ 	u16 token;
+-	bool new_offs16 = TRUE;
++	bool new_offs16 = true;
+ 
+ 	err_pos = get_streampos();
+ 	indent = 0;
+@@ -619,7 +619,7 @@ static void decode_fcode_header(void)
+ 
+ 	switch (token) {
+ 	case 0x0fd:		/* version1 */
+-		new_offs16 = FALSE;
++		new_offs16 = false;
+ 	case 0x0f0:		/* start0 */
+ 	case 0x0f1:		/* start1 */
+ 	case 0x0f2:		/* start2 */
+@@ -685,7 +685,7 @@ static void decode_fcode_block(void)
+ 	unsigned int fc_block_start;
+ 	unsigned int fc_block_end;
+ 
+-	end_found = FALSE;
++	end_found = false;
+ 	fc_block_start = get_streampos();
+ 
+ 	decode_fcode_header();
+@@ -714,7 +714,7 @@ static void decode_fcode_block(void)
+ 				"Detokenization finished prematurely after %d of %d bytes.",
+ 				get_streampos() - fc_block_start,
+ 				fc_block_end - fc_block_start);
+-			ended_okay = FALSE;
++			ended_okay = false;
+ 		}
+ 		printremark(temp_bufr);
+ 	}
+@@ -750,7 +750,7 @@ static void decode_fcode_block(void)
+ 
+ static bool another_fcode_block(void)
+ {
+-	bool retval = FALSE;
++	bool retval = false;
+ 	u16 token;
+ 
+ 	token = next_token();
+@@ -762,7 +762,7 @@ static bool another_fcode_block(void)
+ 	case 0x0f1:		/* start1 */
+ 	case 0x0f2:		/* start2 */
+ 	case 0x0f3:		/* start4 */
+-		retval = TRUE;
++		retval = true;
+ 		printremark
+ 		    ("Subsequent FCode Block detected.  Detokenizing.");
+ 		break;
+@@ -799,7 +799,7 @@ void detokenize(void)
+ 			if (ended_okay) {
+ 				init_fcode_block();
+ 			}
+-			ended_okay = TRUE;
++			ended_okay = true;
+ 
+ 			adjust_for_pci_header();
+ 
+diff --git a/detok/detok.c b/detok/detok.c
+index a3d39f1..c3b5fb6 100644
+--- a/detok/detok.c
++++ b/detok/detok.c
+@@ -51,10 +51,10 @@
+ 		     "(C) Copyright 2006 coresystems GmbH"
+ #define IBM_COPYR    "(C) Copyright 2005 IBM Corporation.  All Rights Reserved."
+ 
+-bool verbose = FALSE;
+-bool decode_all = FALSE;
+-bool show_linenumbers = FALSE;
+-bool show_offsets = FALSE;
++bool verbose = false;
++bool decode_all = false;
++bool show_linenumbers = false;
++bool show_offsets = false;
+ 
+ /*   Param is FALSE when beginning to detokenize,
+  *       TRUE preceding error-exit   */
+@@ -93,7 +93,7 @@ int main(int argc, char **argv)
+ 	int c;
+ 	const char *optstring = "vhanof:?";
+ 	int linenumbers = 0;
+-	bool add_vfcodes = FALSE;
++	bool add_vfcodes = false;
+ 	char *vfc_filnam = NULL;
+ 
+ 	while (1) {
+@@ -119,31 +119,31 @@ int main(int argc, char **argv)
+ 
+ 		switch (c) {
+ 		case 'v':
+-			verbose = TRUE;
++			verbose = true;
+ 			break;
+ 		case 'a':
+-			decode_all = TRUE;
++			decode_all = true;
+ 			break;
+ 		case 'n':
+ 			linenumbers |= 1;
+-			show_linenumbers = TRUE;
++			show_linenumbers = true;
+ 			break;
+ 		case 'o':
+ 			linenumbers |= 2;
+-			show_linenumbers = TRUE;
+-			show_offsets = TRUE;
++			show_linenumbers = true;
++			show_offsets = true;
+ 			break;
+ 		case 'f':
+-			add_vfcodes = TRUE;
++			add_vfcodes = true;
+ 			vfc_filnam = optarg;
+ 			break;
+ 		case 'h':
+ 		case '?':
+-			print_copyright(TRUE);
++			print_copyright(true);
+ 			usage(argv[0]);
+ 			return 0;
+ 		default:
+-			print_copyright(TRUE);
++			print_copyright(true);
+ 			printf("%s: unknown option.\n", argv[0]);
+ 			usage(argv[0]);
+ 			return 1;
+@@ -151,14 +151,14 @@ int main(int argc, char **argv)
+ 	}
+ 
+ 	if (verbose)
+-		print_copyright(FALSE);
++		print_copyright(false);
+ 
+ 	if (linenumbers > 2)
+ 		printremark
+ 		    ("Line numbers will be disabled in favour of offsets.\n");
+ 
+ 	if (optind >= argc) {
+-		print_copyright(TRUE);
++		print_copyright(true);
+ 		printf("%s: filename missing.\n", argv[0]);
+ 		usage(argv[0]);
+ 		return 1;
+diff --git a/detok/dictionary.c b/detok/dictionary.c
+index a753130..8140e15 100644
+--- a/detok/dictionary.c
++++ b/detok/dictionary.c
+@@ -36,7 +36,7 @@
+ 
+ #include "detok.h"
+ 
+-bool check_tok_seq = TRUE;
++bool check_tok_seq = true;
+ static token_t *dictionary;	/*  Initialize dynamically to accommodate AIX  */
+ 
+ static char *fcerror = "ferror";
+diff --git a/detok/pcihdr.c b/detok/pcihdr.c
+index 5cfa94b..5c5bbb7 100644
+--- a/detok/pcihdr.c
++++ b/detok/pcihdr.c
+@@ -443,7 +443,7 @@ void handle_pci_filler(u8 * filler_ptr)
+ 	u8 *scan_ptr;
+ 	int filler_len;
+ 	char temp_buf[80];
+-	bool all_zero = TRUE;
++	bool all_zero = true;
+ 	u8 filler_byte = *filler_ptr;
+ 
+ 	filler_len = pci_image_end - filler_ptr;
+@@ -451,7 +451,7 @@ void handle_pci_filler(u8 * filler_ptr)
+ 	for (scan_ptr = filler_ptr;
+ 	     scan_ptr < pci_image_end; filler_byte = *(++scan_ptr)) {
+ 		if (filler_byte != 0) {
+-			all_zero = FALSE;
++			all_zero = false;
+ 			break;
+ 		}
+ 	}
+diff --git a/detok/stream.c b/detok/stream.c
+index 22466b0..1c2c8a7 100644
+--- a/detok/stream.c
++++ b/detok/stream.c
+@@ -75,7 +75,7 @@ u8 *max;
+  **************************************************************************** */
+ u8 *indata;
+ static u8 *fc_start;
+-static bool pci_image_found = FALSE;
++static bool pci_image_found = false;
+ 
+ 
+ int init_stream(char *name)
+@@ -230,10 +230,10 @@ static u8 *get_bytes(int nbytes)
+ {
+ 	u8 *retval = pc;
+ 	if (pc == max) {
+-		throw_eof(FALSE);
++		throw_eof(false);
+ 	}
+ 	if (pc + nbytes > max) {
+-		throw_eof(TRUE);
++		throw_eof(true);
+ 	}
+ 	pc += nbytes;
+ 	return retval;
+@@ -251,7 +251,7 @@ static u8 *get_bytes(int nbytes)
+ bool more_to_go(void)
+ {
+ 	bool retval;
+-	retval = INVERSE(pc == max);
++	retval = !(pc == max);
+ 	return retval;
+ }
+ 
+@@ -505,7 +505,7 @@ void adjust_for_pci_header(void)
+ 	int pci_header_size;
+ 
+ 	pci_header_size = handle_pci_header(pc);
+-	pci_image_found = pci_header_size > 0 ? TRUE : FALSE;
++	pci_image_found = pci_header_size > 0 ? true : false;
+ 	pc += pci_header_size;
+ 	fc_start += pci_header_size;
+ 	last_defined_token = 0;
+@@ -543,6 +543,6 @@ void adjust_for_pci_filler(void)
+ 		pci_filler_len = pci_image_end - pc;
+ 		pci_filler_ptr = get_bytes(pci_filler_len);
+ 		handle_pci_filler(pci_filler_ptr);
+-		pci_image_found = FALSE;
++		pci_image_found = false;
+ 	}
+ }
+diff --git a/romheaders/romheaders.c b/romheaders/romheaders.c
+index ebabdcd..4256e7d 100644
+--- a/romheaders/romheaders.c
++++ b/romheaders/romheaders.c
+@@ -78,7 +78,7 @@ static bool dump_rom_header(rom_header_t *data)
+ 	printf ("\n  Pointer to PCI Data Structure: 0x%04x\n\n",
+ 				LITTLE_ENDIAN_WORD_FETCH(data->data_ptr));
+ 
+-	return (BOOLVAL(sig == pci_header_signature) );
++	return ( (sig == pci_header_signature) );
+ }
+ 
+ static bool dump_pci_data(pci_data_t *data)
+@@ -113,7 +113,7 @@ static bool dump_pci_data(pci_data_t *data)
+ 			data->last_image_flag&0x80?"":"not ");
+ 	printf("  Reserved: 0x%04x\n\n", little_word(data->reserved_2));
+ 
+-	return (BOOLVAL(sig==PCI_DATA_HDR) );
++	return ( (sig==PCI_DATA_HDR) );
+ }
+ 
+ static void dump_platform_extensions(u8 type, rom_header_t *data)
+diff --git a/shared/types.h b/shared/types.h
+index 0ff64bc..4563327 100644
+--- a/shared/types.h
++++ b/shared/types.h
+@@ -40,7 +40,7 @@
+  **************************************************************************** */
+ 
+ #include <stdint.h>
+-
++#include <stdbool.h>
+ 
+ typedef int8_t s8;
+ typedef uint8_t u8;
+@@ -54,39 +54,6 @@ typedef uint32_t u32;
+ typedef int64_t s64;
+ typedef uint64_t u64;
+ 
+-
+-#ifdef FALSE            /*  Hack for AIX.     */
+-#undef FALSE
+-#undef TRUE
+-#endif                  /*  Hack for AIX.     */
+-
+-typedef  enum boolean  {  FALSE = 0 ,  TRUE = -1 } bool ;
+-
+-
+-/* **************************************************************************
+- *          Macro Name:    BOOLVAL
+- *                        Convert the supplied variable or expression to
+- *                            a formal boolean.
+- *   Argument:
+- *       x        (bool)           Variable or expression, operand.
+- *
+- **************************************************************************** */
+-
+-#define BOOLVAL(x)   (x ? TRUE : FALSE)
+-
+-
+-/* **************************************************************************
+- *          Macro Name:    INVERSE
+- *                        Return the logical inversion of the
+- *                            supplied boolean variable or expression.
+- *   Argument:
+- *       x        (bool)           Variable or expression, operand.
+- *
+- **************************************************************************** */
+-
+-#define INVERSE(x)   (x ? FALSE : TRUE)
+-
+-
+ /* **************************************************************************
+ *
+  *          Some hacks stuck in for systems w/ incomplete includes
+diff --git a/toke/clflags.c b/toke/clflags.c
+index 0fd6d15..9d22562 100644
+--- a/toke/clflags.c
++++ b/toke/clflags.c
+@@ -89,26 +89,26 @@
+  *
+  **************************************************************************** */
+ 
+-bool ibm_locals = FALSE ;
+-bool ibm_locals_legacy_separator = TRUE ;
+-bool ibm_legacy_separator_message = TRUE ;
+-bool enable_abort_quote = TRUE ;
+-bool sun_style_abort_quote = TRUE ;
+-bool sun_style_checksum = FALSE ;
+-bool abort_quote_throw = TRUE ;
+-bool string_remark_escape = TRUE ;
+-bool hex_remark_escape = TRUE ;
+-bool c_style_string_escape = TRUE ;
+-bool always_headers = FALSE ;
+-bool always_external = FALSE ;
+-bool verbose_dup_warning = TRUE ;
+-bool obso_fcode_warning = TRUE ;
+-bool trace_conditionals = FALSE ;
+-bool big_end_pci_image_rev = FALSE ;
+-bool allow_ret_stk_interp = TRUE ;
++bool ibm_locals = false;
++bool ibm_locals_legacy_separator = true;
++bool ibm_legacy_separator_message = true;
++bool enable_abort_quote = true;
++bool sun_style_abort_quote = true;
++bool sun_style_checksum = false;
++bool abort_quote_throw = true;
++bool string_remark_escape = true;
++bool hex_remark_escape = true;
++bool c_style_string_escape = true;
++bool always_headers = false;
++bool always_external = false;
++bool verbose_dup_warning = true;
++bool obso_fcode_warning = true;
++bool trace_conditionals = false;
++bool big_end_pci_image_rev = false;
++bool allow_ret_stk_interp = true;
+ 
+ /*  And one to trigger a "help" message  */
+-bool clflag_help = FALSE;
++bool clflag_help = false;
+ 
+ /* **************************************************************************
+  *
+@@ -118,8 +118,8 @@ bool clflag_help = FALSE;
+  *
+  **************************************************************************** */
+ 
+-bool force_tokens_case       = FALSE ;
+-bool force_lower_case_tokens = FALSE ;
++bool force_tokens_case       = false;
++bool force_lower_case_tokens = false;
+ 
+ /* **************************************************************************
+  *
+@@ -127,10 +127,10 @@ bool force_lower_case_tokens = FALSE ;
+  *         and keep two more to detect when a change is made...
+  *
+  **************************************************************************** */
+-static bool upper_case_tokens = FALSE ;
+-static bool lower_case_tokens = FALSE ;
+-static bool was_upper_case_tk = FALSE ;
+-static bool was_lower_case_tk = FALSE ;
++static bool upper_case_tokens = false;
++static bool lower_case_tokens = false;
++static bool was_upper_case_tk = false;
++static bool was_lower_case_tk = false;
+ 
+ /* **************************************************************************
+  *
+@@ -141,7 +141,7 @@ static bool was_lower_case_tk = FALSE ;
+  *
+  **************************************************************************** */
+ 
+-static bool cl_flag_change = FALSE;
++static bool cl_flag_change = false;
+ 
+ static const cl_flag_t cl_flags_list[] = {
+   /*  The clflag_tabs field takes at least one tab.
+@@ -342,12 +342,12 @@ static void adjust_case_flags( void)
+ 	    if ( *(case_tokens[the_one]) )
+ 	    {
+ 	        /*  If it has gone to TRUE, force the other to FALSE.  */
+-		*(case_tokens[the_other]) = FALSE;
++		*(case_tokens[the_other]) = false;
+ 	        /*      and set  force_tokens_case  to TRUE  */
+-		force_tokens_case = TRUE;
++		force_tokens_case = true;
+ 	    }else{
+ 		/*  If it has gone to FALSE turn  force_tokens_case FALSE  */
+-		force_tokens_case = FALSE;
++		force_tokens_case = false;
+ 	    }
+ 	    if ( force_tokens_case )
+ 	    {
+@@ -408,10 +408,10 @@ static void adjust_case_flags( void)
+  *          Adjust the "upper/lower-case-tokens" flags if one has changed.
+  *
+  **************************************************************************** */
+-static bool first_err_msg = TRUE;  /*  Need extra carr-ret for first err msg  */
++static bool first_err_msg = true;  /*  Need extra carr-ret for first err msg  */
+ bool set_cl_flag(char *flag_name, bool from_src)
+ {
+-    bool retval = TRUE;
++    bool retval = true;
+ 
+     was_upper_case_tk = upper_case_tokens;
+     was_lower_case_tk = lower_case_tokens;
+@@ -419,25 +419,25 @@ bool set_cl_flag(char *flag_name, bool from_src)
+     if ( strlen(flag_name) > 3 )
+     {
+ 	int indx;
+-	bool flagval = TRUE;
++	bool flagval = true;
+ 	char *compar = flag_name;
+ 
+ 	if ( strncasecmp( flag_name, "no", 2) == 0 )
+ 	{
+-	    flagval = FALSE;
++	    flagval = false;
+ 	    compar += 2;
+ 	}
+ 	for ( indx = 0 ; indx < number_of_cl_flags ; indx++ )
+ 	{
+ 	    if ( strcasecmp( compar, cl_flags_list[indx].clflag_name ) == 0 )
+ 	    {
+-		retval = FALSE;
++		retval = false;
+ 		*(cl_flags_list[indx].flag_var) = flagval;
+ 
+ 		/*  The "help" flag is the last one in the list  */
+ 		if ( indx != number_of_cl_flags - 1 )
+ 		{
+-		    cl_flag_change = TRUE;
++		    cl_flag_change = true;
+ 		}
+ 		if ( from_src )
+ 		{
+@@ -460,7 +460,7 @@ bool set_cl_flag(char *flag_name, bool from_src)
+ 	   if ( first_err_msg )
+ 	   {
+ 	       printf( "\n");
+-	       first_err_msg = FALSE;
++	       first_err_msg = false;
+ 	   }
+ 	   printf( msg_txt, flag_name);
+        }
+@@ -556,7 +556,7 @@ void list_cl_flag_settings(void)
+ 
+     if ( cl_flag_change )
+     {
+-	show_all_cl_flag_settings( FALSE);
++	show_all_cl_flag_settings( false);
+     }
+ }
+ 
+@@ -735,7 +735,7 @@ void reset_cl_flags(void)
+     for ( indx = 0 ; indx < (number_of_cl_flags - 1) ; indx++ )
+     {
+ 	*(cl_flags_list[indx].flag_var) =
+-	    BOOLVAL( cl_flags_bit_map & moving_bit) ;
++	    ( cl_flags_bit_map & moving_bit) ;
+ 	moving_bit <<= 1;
+     }
+ }
+diff --git a/toke/conditl.c b/toke/conditl.c
+index 062291b..b491310 100644
+--- a/toke/conditl.c
++++ b/toke/conditl.c
+@@ -131,11 +131,11 @@
+ 
+ static bool is_a_type( char *tname, fwtoken fw_type)
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     tic_fwt_hdr_t *found = (tic_fwt_hdr_t *)lookup_shared_f_exec_word( tname );
+     if ( found != NULL )
+     {
+-        if ( found->pfield.fw_token == fw_type )  retval = TRUE;
++        if ( found->pfield.fw_token == fw_type )  retval = true;
+     }
+     return ( retval );
+ }
+@@ -162,7 +162,7 @@ static bool is_an_else( char *a_word)
+  *
+  **************************************************************************** */
+ 
+-static bool already_ignoring = FALSE;
++static bool already_ignoring = false;
+ 
+ /* **************************************************************************
+  *
+@@ -327,7 +327,7 @@ static void ignore_one_word( char *tname)
+         if ( found->ign_func != NULL )
+ 	{
+ 	    bool save_already_ignoring = already_ignoring;
+-	    already_ignoring = TRUE ;
++	    already_ignoring = true ;
+ 	    tic_found = (tic_hdr_t *)found;
+ 
+ 	    found->ign_func( found->pfield);
+@@ -433,12 +433,12 @@ static void conditionally_tokenize( bool cond, bool alr_ign )
+      *     (aka "a nested call").
+      */
+     bool ignoring;
+-    bool first_else = TRUE;  /*  The "else" we see is the first.  */
+-    bool not_done = TRUE;
++    bool first_else = true;  /*  The "else" we see is the first.  */
++    bool not_done = true;
+     unsigned int cond_strt_lineno = lineno;
+     char *cond_strt_ifile_nam = strdup( iname);
+ 
+-    ignoring = BOOLVAL( ( cond == FALSE ) || ( alr_ign != FALSE ) );
++    ignoring = ( cond == false ) || ( alr_ign != false ) ;
+ 
+     if ( trace_conditionals )
+     {
+@@ -463,7 +463,7 @@ static void conditionally_tokenize( bool cond, bool alr_ign )
+ 	    tokenization_error( TKERROR,
+ 	        "Conditional without conclusion; started");
+ 	    just_where_started( cond_strt_ifile_nam, cond_strt_lineno);
+-	    not_done = FALSE ;
++	    not_done = false ;
+ 	    continue;
+ 	}
+ 
+@@ -475,7 +475,7 @@ static void conditionally_tokenize( bool cond, bool alr_ign )
+ 		    "Concluding Conditional");
+ 		just_started_at( cond_strt_ifile_nam, cond_strt_lineno);
+ 	    }
+-	    not_done = FALSE ;
++	    not_done = false ;
+ 	    continue;
+ 	}
+ 
+@@ -485,7 +485,7 @@ static void conditionally_tokenize( bool cond, bool alr_ign )
+ 	    {
+ 		if ( first_else )
+ 		{
+-		    ignoring = INVERSE( ignoring);
++		    ignoring = !ignoring;
+ 		}
+ 	    }
+ 
+@@ -498,7 +498,7 @@ static void conditionally_tokenize( bool cond, bool alr_ign )
+ 			 strupr(statbuf), the_scop);
+ 		just_started_at( cond_strt_ifile_nam, cond_strt_lineno);
+ 	    }else{
+-		first_else = FALSE;
++		first_else = false;
+ 		if ( trace_conditionals )
+ 		{
+ 		    char *when_enc = alr_ign ? "While already" : "Now" ;
+@@ -598,11 +598,11 @@ static void conditional_word_in_line( bool alr_ign,
+ {
+     if ( get_word_in_line( statbuf) )
+     {
+-    	bool cond = FALSE;
+-	if ( INVERSE( alr_ign) )
++	bool cond = false;
++	if ( !alr_ign )
+ 	{
+ 	    bool exists = exist_funct( statbuf);
+-	    cond = BOOLVAL( exists == exist_test);
++	    cond = ( exists == exist_test);
+ 	}
+ 	conditionally_tokenize( cond, alr_ign );
+     }
+@@ -627,7 +627,7 @@ static void conditional_word_in_line( bool alr_ign,
+ static void if_exists( tic_param_t pfield )
+ {
+     bool alr_ign = *pfield.bool_ptr;
+-    conditional_word_in_line( alr_ign, TRUE, exists_in_current );
++    conditional_word_in_line( alr_ign, true, exists_in_current );
+ }
+ 
+ /* **************************************************************************
+@@ -649,7 +649,7 @@ static void if_exists( tic_param_t pfield )
+ static void if_not_exist( tic_bool_param_t pfield )
+ {
+     bool alr_ign = *pfield.bool_ptr;
+-    conditional_word_in_line( alr_ign, FALSE, exists_in_current );
++    conditional_word_in_line( alr_ign, false, exists_in_current );
+ }
+ 
+ /* **************************************************************************
+@@ -666,7 +666,7 @@ static void if_not_exist( tic_bool_param_t pfield )
+ static void if_defined( tic_bool_param_t pfield )
+ {
+     bool alr_ign = *pfield.bool_ptr;
+-    conditional_word_in_line( alr_ign, TRUE, exists_as_user_symbol );
++    conditional_word_in_line( alr_ign, true, exists_as_user_symbol );
+ }
+ 
+ /* **************************************************************************
+@@ -683,7 +683,7 @@ static void if_defined( tic_bool_param_t pfield )
+ static void if_not_defined( tic_bool_param_t pfield )
+ {
+     bool alr_ign = *pfield.bool_ptr;
+-    conditional_word_in_line( alr_ign, FALSE, exists_as_user_symbol );
++    conditional_word_in_line( alr_ign, false, exists_as_user_symbol );
+ }
+ 
+ 
+@@ -707,14 +707,14 @@ static void if_not_defined( tic_bool_param_t pfield )
+ static void if_from_stack( tic_bool_param_t pfield )
+ {
+     bool alr_ign = *pfield.bool_ptr;
+-    bool cond = FALSE;
++    bool cond = false;
+ 
+     if ( ! alr_ign )
+     {
+         long num = dpop();
+ 	if (num != 0)
+ 	{
+-	    cond = TRUE;
++	    cond = true;
+ 	}
+     }
+     conditionally_tokenize( cond, alr_ign );
+diff --git a/toke/devnode.c b/toke/devnode.c
+index 835574f..d24f247 100644
+--- a/toke/devnode.c
++++ b/toke/devnode.c
+@@ -141,7 +141,7 @@ tic_hdr_t **current_definitions = &(top_level_dev_node.tokens_vocab);
+  **************************************************************************** */
+ 
+ static char in_what_buffr[50];   /*  Ought to be more than enough.  */
+-static bool show_where = FALSE;
++static bool show_where = false;
+ static bool show_which;
+ static int in_what_line;
+ static char *in_what_file;
+@@ -356,7 +356,7 @@ void finish_device_vocab( void )
+      *       so we need to test whether we're about to.
+      */
+ 
+-    at_top_level = BOOLVAL( current_device_node == &top_level_dev_node );
++    at_top_level = ( current_device_node == &top_level_dev_node );
+     if ( at_top_level )
+     {
+         tokenization_error( TKERROR,
+@@ -377,7 +377,7 @@ void finish_device_vocab( void )
+     /*   Did we just get to the top-level device-node vocabulary
+      *       when we weren't before?
+      */
+-    if ( INVERSE(at_top_level) )
++    if ( !at_top_level )
+     {
+ 	if ( current_device_node == &top_level_dev_node )
+ 	{
+@@ -456,18 +456,18 @@ void finish_device_vocab( void )
+ 
+ char *in_what_node(device_node_t *the_node)
+ {
+-    bool top_node    = BOOLVAL( the_node == &top_level_dev_node);
+-    bool curr_node   = BOOLVAL( the_node == current_device_node);
+-    bool known_node  = BOOLVAL( top_node || curr_node );
+-    bool no_line     = BOOLVAL( the_node->line_no == 0);
++    bool top_node    = ( the_node == &top_level_dev_node);
++    bool curr_node   = ( the_node == current_device_node);
++    bool known_node  = ( top_node || curr_node );
++    bool no_line     = ( the_node->line_no == 0);
+ 
+-    show_where   = INVERSE( no_line  );
++    show_where   = !no_line;
+     show_which   = known_node;
+     in_what_line = the_node->line_no;
+     in_what_file = the_node->ifile_name;
+ 
+     sprintf( in_what_buffr, "in the%s device-node%s",
+-	INVERSE( known_node )  ? ""
++	!known_node            ? ""
+ 	        :  top_node    ?    " top-level"   :  " current" ,
+ 	
+ 	no_line                ?  ".\n"
+@@ -520,7 +520,7 @@ void show_node_start( void)
+ 	}else{
+ 	    just_started_at( in_what_file, in_what_line);
+ 	}
+-	show_where = FALSE;
++	show_where = false;
+     }
+ }
+ 
+@@ -562,7 +562,7 @@ void show_node_start( void)
+ bool exists_in_ancestor( char *m_name)
+ {
+     tic_hdr_t *found;
+-    bool retval = FALSE;
++    bool retval = false;
+     if ( current_device_node != NULL )
+     {
+ 	device_node_t *grandpa = current_device_node->parent_node;
+@@ -574,7 +574,7 @@ bool exists_in_ancestor( char *m_name)
+ 	    found = lookup_tic_entry( m_name, grandpa->tokens_vocab);
+ 	    if ( found != NULL )
+ 	    {
+-		retval = TRUE;
++		retval = true;
+ 		break;
+ 	    }
+ 	}
+diff --git a/toke/dictionary.c b/toke/dictionary.c
+index eed5389..a06a37a 100644
+--- a/toke/dictionary.c
++++ b/toke/dictionary.c
+@@ -117,8 +117,8 @@
+  *
+  **************************************************************************** */
+ 
+-bool scope_is_global = FALSE;
+-bool define_token = TRUE;      /*    TRUE = Normal definition process;
++bool scope_is_global = false;
++bool define_token = true;      /*    TRUE = Normal definition process;
+                                 *        FALSE when definition is an Error.
+                                 *        We enter definition state anyway,
+                                 *            but must still suppress:
+@@ -319,20 +319,20 @@ static void emit_fc_token( tic_param_t pfield)
+ #define FC_TOKEN_FUNC  emit_fc_token
+ 
+ #define BUILTIN_FCODE( tok, nam)   \
+-     VALPARAM_TIC(nam, FC_TOKEN_FUNC, tok , UNSPECIFIED, TRUE )
++     VALPARAM_TIC(nam, FC_TOKEN_FUNC, tok , UNSPECIFIED, true )
+ 
+ /*  Built-in FCodes with known definers:  */
+ #define BI_FCODE_VALUE( tok, nam)   \
+-     VALPARAM_TIC(nam, FC_TOKEN_FUNC, tok , VALUE, TRUE )
++     VALPARAM_TIC(nam, FC_TOKEN_FUNC, tok , VALUE, true )
+ 
+ #define BI_FCODE_VRBLE( tok, nam)   \
+-     VALPARAM_TIC(nam, FC_TOKEN_FUNC, tok , VARIABLE, TRUE )
++     VALPARAM_TIC(nam, FC_TOKEN_FUNC, tok , VARIABLE, true )
+ 
+ #define BI_FCODE_DEFER( tok, nam)   \
+-     VALPARAM_TIC(nam, FC_TOKEN_FUNC, tok , DEFER, TRUE )
++     VALPARAM_TIC(nam, FC_TOKEN_FUNC, tok , DEFER, true )
+ 
+ #define BI_FCODE_CONST( tok, nam)   \
+-     VALPARAM_TIC(nam, FC_TOKEN_FUNC, tok , CONST, TRUE )
++     VALPARAM_TIC(nam, FC_TOKEN_FUNC, tok , CONST, true )
+ 
+ /* **************************************************************************
+  *
+@@ -363,10 +363,10 @@ static void obsolete_fc_token( tic_param_t pfield)
+ #define OBSO_FC_FUNC  obsolete_fc_token
+ 
+ #define OBSOLETE_FCODE( tok, nam)   \
+-     VALPARAM_TIC(nam, OBSO_FC_FUNC, tok , UNSPECIFIED, TRUE )
++     VALPARAM_TIC(nam, OBSO_FC_FUNC, tok , UNSPECIFIED, true )
+ 
+ #define OBSOLETE_VALUE( tok, nam)   \
+-     VALPARAM_TIC(nam, OBSO_FC_FUNC, tok , VALUE, TRUE )
++     VALPARAM_TIC(nam, OBSO_FC_FUNC, tok , VALUE, true )
+ 
+ 
+ /* **************************************************************************
+@@ -509,7 +509,7 @@ void enter_global_scope( void )
+     }else{
+ 	tokenization_error( INFO,
+ 	    "Initiating Global Scope definitions.\n" );
+-	scope_is_global = TRUE;
++	scope_is_global = true;
+ 	save_device_definitions = current_definitions;
+ 	current_definitions = &global_voc_dict_ptr;
+     }
+@@ -523,7 +523,7 @@ void resume_device_scope( void )
+ 	    "Terminating Global Scope definitions; "
+ 		"resuming Device-node definitions.\n" );
+ 	current_definitions = save_device_definitions;
+-	scope_is_global = FALSE;
++	scope_is_global = false;
+     }else{
+ 	tokenization_error( WARNING,
+ 	    "%s -- Device-node Scope already in effect; ignoring.\n",
+@@ -570,7 +570,7 @@ tic_hdr_t *lookup_current( char *tname)
+     /*  Search Current Device Vocabulary ahead of global (core) vocabulary  */
+     tic_hdr_t *retval;
+     retval = lookup_tic_entry( tname, *current_definitions);
+-    if ( (retval == NULL) && INVERSE(scope_is_global) )
++    if ( (retval == NULL) && !scope_is_global )
+ {
+ 	retval = lookup_core_word( tname);
+     }
+@@ -597,7 +597,7 @@ tic_hdr_t *lookup_current( char *tname)
+ bool exists_in_current( char *tname)
+ {
+     tic_hdr_t *found = lookup_word( tname, NULL, NULL);
+-    bool retval = BOOLVAL ( found != NULL);
++    bool retval = ( found != NULL);
+     return( retval);
+ 	}
+ 
+@@ -626,7 +626,7 @@ tic_hdr_t *lookup_in_dev_node( char *tname)
+ {
+     tic_hdr_t *retval = NULL;
+ 
+-    if ( INVERSE(scope_is_global) )
++    if ( !scope_is_global )
+ {
+ 	retval = lookup_tic_entry( tname, *current_definitions);
+ }
+@@ -715,7 +715,7 @@ void add_to_current( char *name,
+ 
+ 	save_current = *current_definitions;
+ 	add_tic_entry( nu_name, FC_TOKEN_FUNC, fc_token,
+-			   definer, 0 , TRUE , NULL, current_definitions );
++			   definer, 0 , true , NULL, current_definitions );
+     }else{
+ 	trace_create_failure( name, NULL, fc_token);
+ 	warn_if_duplicate( name);
+@@ -835,15 +835,15 @@ void reveal_last_colon ( void )
+ 
+ bool create_current_alias( char *new_name, char *old_name )
+ {
+-    bool retval = FALSE;
+-    bool split_alias = FALSE;
++    bool retval = false;
++    bool split_alias = false;
+ 
+     /*  Rules 1 & 2 are implemented in the same code.  */
+     if ( create_tic_alias( new_name, old_name, current_definitions) )
+     {
+-	 retval = TRUE;
++	 retval = true;
+     }else{
+-    if ( INVERSE(scope_is_global) )
++    if ( !scope_is_global )
+     {
+ 	    /*  Rule 3.
+ 	     *  Because the vocab into which the new definition will go is
+@@ -857,7 +857,7 @@ bool create_current_alias( char *new_name, char *old_name )
+ 	     *      have to disturb the other callers of  create_tic_alias()
+ 	     *  Yes!  Excellent!  Make it so!
+ 	     */
+-	    split_alias = TRUE;
++	    split_alias = true;
+ 	    split_alias_message = INFO;
+ 	    retval = create_split_alias(
+ 			 new_name, old_name,
+@@ -1450,7 +1450,7 @@ tic_hdr_t *lookup_token( char *tname)
+ 
+ bool entry_is_token( tic_hdr_t *test_entry )
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     if ( test_entry != NULL )
+     {
+ 	retval = test_entry->is_token;
+diff --git a/toke/emit.c b/toke/emit.c
+index eb41beb..9b5f31a 100644
+--- a/toke/emit.c
++++ b/toke/emit.c
+@@ -120,7 +120,7 @@ static  int pci_data_blk_ob_off = -1;
+  *
+  **************************************************************************** */
+ 
+-static bool fcode_written = FALSE;
++static bool fcode_written = false;
+ 
+ /* **************************************************************************
+  *
+@@ -155,8 +155,8 @@ void init_emit( void)
+     pci_data_blk_ob_off = -1;
+     opc                 =  0;
+     pci_hdr_end_ob_off  =  0;
+-    fcode_written       = FALSE;
+-    haveend             = FALSE;   /*  Get this one too...  */
++    fcode_written       = false;
++    haveend             = false;   /*  Get this one too...  */
+ }
+ 
+ 
+@@ -188,7 +188,7 @@ void emit_fcode(u16 tok)
+ 		emit_byte(tok>>8);
+ 
+ 	emit_byte(tok&0xff);
+-	fcode_written = TRUE;
++	fcode_written = true;
+ }
+ 
+ static void emit_num32(u32 num)
+@@ -212,7 +212,7 @@ static void emit_num32(u32 num)
+ void user_emit_byte(u8 data)
+ {
+ 	emit_byte( data);
+-	fcode_written = TRUE;
++	fcode_written = true;
+ }
+ 
+ void emit_offset(s16 offs)
+@@ -348,7 +348,7 @@ void finish_fcodehdr(void)
+ 	    {
+ 		printf( "toke: checksum is 0x%04x (%d bytes).  ",
+                         (u16)checksum, length);
+-		list_fcode_ranges( TRUE);
++		list_fcode_ranges( true);
+ 	    }
+ 	}
+ 
+@@ -356,8 +356,8 @@ void finish_fcodehdr(void)
+ 	fcode_start_ob_off = -1;
+ 	fcode_hdr_ob_off   = -1;
+ 	fcode_body_ob_off  = -1;
+-	fcode_written      = FALSE;
+-	haveend=FALSE;
++	fcode_written      = false;
++	haveend=false;
+ }
+ 
+ /* **************************************************************************
+diff --git a/toke/errhandler.c b/toke/errhandler.c
+index 0ca9667..caea694 100644
+--- a/toke/errhandler.c
++++ b/toke/errhandler.c
+@@ -199,14 +199,14 @@ typedef struct {
+ static const err_category  error_categories[] = {
+     /*  FATAL  must be the first entry in the table.   */
+     /*  No plural is needed; only one is allowed....   */
+-    { FATAL,    "Fatal Error", "", "",     &err_count      , TRUE  },
+-
+-    { TKERROR,    "Error"     , "", "s",    &err_count      , FALSE },
+-    { WARNING,    "Warning"   , "", "s",    &warn_count     , FALSE },
+-    { INFO,       "Advisor"   , "y", "ies", &info_count     , FALSE },
+-    { MESSAGE ,   "Message"   , "", "s",    &user_msg_count , TRUE  },
+-    { P_MESSAGE , "Message"   , "", "s",    &user_msg_count  , FALSE },
+-    { TRACER , "Trace-Note"   , "", "s",    &trace_msg_count , FALSE }
++    { FATAL,    "Fatal Error", "", "",     &err_count      , true  },
++
++    { TKERROR,    "Error"     , "", "s",    &err_count      , false },
++    { WARNING,    "Warning"   , "", "s",    &warn_count     , false },
++    { INFO,       "Advisor"   , "y", "ies", &info_count     , false },
++    { MESSAGE ,   "Message"   , "", "s",    &user_msg_count , true  },
++    { P_MESSAGE , "Message"   , "", "s",    &user_msg_count  , false },
++    { TRACER , "Trace-Note"   , "", "s",    &trace_msg_count , false }
+ };
+ 
+ static const int num_categories =
+@@ -487,7 +487,7 @@ void tokenization_error( int err_type, char* msg, ... )
+     char *catgy_name = "Error";
+     char *catgy_suffx = "";
+     int *catgy_counter = &err_count;
+-    bool print_new_line = FALSE;
++    bool print_new_line = false;
+ 
+     /*  Accumulated the Error-type into  err_types_found  */
+     err_types_found |= err_type;
+@@ -512,10 +512,10 @@ void tokenization_error( int err_type, char* msg, ... )
+ 	      "Program error: Unknown Error-Type, 0x%08x.  "
+               "  Will treat as Error.\n", err_type) ;
+          err_types_found |= TKERROR;
+-         print_msg = TRUE ;
++         print_msg = true ;
+     } else {
+          /*  Check the Error-Type against the Error Verbosity Mask  */
+-         print_msg = BOOLVAL( ( errs_to_print & err_type ) != 0 );
++         print_msg = ( ( errs_to_print & err_type ) != 0 );
+     }
+ 
+     if ( print_msg )
+@@ -637,8 +637,8 @@ static void print_where_started( bool show_started,
+ 	bool lin_is_diff;
+ 
+ 	/*  File names are case-sensitive  */
+-	fil_is_diff = BOOLVAL(strcmp(saved_ifile, iname) != 0 );
+-	lin_is_diff = BOOLVAL(saved_lineno != lineno );
++	fil_is_diff = (strcmp(saved_ifile, iname) != 0 );
++	lin_is_diff = (saved_lineno != lineno );
+ 	if ( fil_is_diff || lin_is_diff )
+ 	{
+ 	    if ( show_started )
+@@ -660,7 +660,7 @@ static void print_where_started( bool show_started,
+ 
+ 	if ( may_show_incolon )
+ 	{
+-	    in_last_colon( TRUE );
++	    in_last_colon( true );
+ 	}else{
+ 	    fprintf(message_dest, "\n");
+ 	}
+@@ -693,7 +693,7 @@ static void print_where_started( bool show_started,
+ 
+ void started_at( char * saved_ifile, unsigned int saved_lineno)
+ {
+-    print_where_started( TRUE, TRUE, saved_ifile, saved_lineno, TRUE);
++    print_where_started( true, true, saved_ifile, saved_lineno, true);
+ }
+ 
+ 
+@@ -741,7 +741,7 @@ void print_started_at( char * saved_ifile, unsigned int saved_lineno)
+ 
+ void just_started_at( char * saved_ifile, unsigned int saved_lineno)
+ {
+-    print_where_started( TRUE, TRUE, saved_ifile, saved_lineno, FALSE);
++    print_where_started( true, true, saved_ifile, saved_lineno, false);
+ }
+ 
+ /* **************************************************************************
+@@ -769,7 +769,7 @@ void just_started_at( char * saved_ifile, unsigned int saved_lineno)
+ 
+ void where_started( char * saved_ifile, unsigned int saved_lineno)
+ {
+-    print_where_started( FALSE, FALSE, saved_ifile, saved_lineno, TRUE);
++    print_where_started( false, false, saved_ifile, saved_lineno, true);
+ }
+ 
+ /* **************************************************************************
+@@ -796,7 +796,7 @@ void where_started( char * saved_ifile, unsigned int saved_lineno)
+ 
+ void just_where_started( char * saved_ifile, unsigned int saved_lineno)
+ {
+-    print_where_started( FALSE, FALSE, saved_ifile, saved_lineno, FALSE);
++    print_where_started( false, false, saved_ifile, saved_lineno, false);
+ }
+ 
+ /* **************************************************************************
+@@ -844,8 +844,8 @@ void in_last_colon( bool say_in )
+ 	{
+ 	    fprintf( message_dest, "%s definition of  %s ", say_in ? " in" : "",
+ 		strupr( last_colon_defname) );
+-	    print_where_started( TRUE, FALSE,
+-		last_colon_filename, last_colon_lineno, FALSE);
++	    print_where_started( true, false,
++		last_colon_filename, last_colon_lineno, false);
+ 	}else{
+ 	    fprintf(message_dest, "\n");
+ 	}
+@@ -927,14 +927,14 @@ bool error_summary( void )
+ {
+     /*  Bit-mask of error-types that require suppressing output   */
+     static const int suppress_mask = ( FATAL | TKERROR );
+-    bool retval = TRUE;
+-    bool suppressing = FALSE;
++    bool retval = true;
++    bool suppressing = false;
+ 
+     /*  There's no escaping a FATAL error   */
+     if ( ( err_types_found & FATAL ) != 0 )
+     {
+ 	/*   FATAL error.  Don't even bother with the tally.   */
+-	suppressing = TRUE;
++	suppressing = true;
+     } else {
+ 
+ 	if ( opc == 0 )
+@@ -947,7 +947,7 @@ bool error_summary( void )
+ 	if ( err_types_found != 0 )
+ 	{
+ 	    int indx;
+-	    bool tally_started = FALSE ;
++	    bool tally_started = false ;
+ 	    printf (". ");
+ 	    /*
+ 	     *  Print a tally of the error-types;
+@@ -970,7 +970,7 @@ bool error_summary( void )
+ 		     *      by the "Messages" and "P_Messages" categories.
+ 		     */
+ 		    *(error_categories[indx].counter) = 0;
+-		    tally_started = TRUE;
++		    tally_started = true;
+ 		}
+ 	    }
+ 	}
+@@ -979,9 +979,9 @@ bool error_summary( void )
+ 	if ( ( err_types_found & suppress_mask ) != 0 )
+ 	{    /*  Errors found.  Not  OK to produce output    */
+              /*  Unless "Ignore Errors" flag set...          */
+-	    if ( INVERSE(noerrors) )
++	    if ( !noerrors )
+             {
+-		suppressing = TRUE;
++		suppressing = true;
+             }else{
+ 		if ( opc > 0 )
+ 		{
+@@ -993,7 +993,7 @@ bool error_summary( void )
+     }
+     if ( suppressing )
+     {
+-	retval = FALSE ;
++	retval = false ;
+ 	printf ("Suppressing binary output.\n");
+     }
+     return ( retval );
+diff --git a/toke/flowcontrol.c b/toke/flowcontrol.c
+index 42fdc28..22a89d6 100644
+--- a/toke/flowcontrol.c
++++ b/toke/flowcontrol.c
+@@ -337,8 +337,8 @@ static bool not_cs_underflow;  /*  No need to initialize.  */
+  *
+  **************************************************************************** */
+ 
+-static bool not_consuming_two = TRUE;
+-static bool didnt_print_otl = TRUE;
++static bool not_consuming_two = true;
++static bool didnt_print_otl = true;
+ 
+ 
+ /* **************************************************************************
+@@ -388,7 +388,7 @@ static void push_cstag( unsigned long cstag, unsigned long datum)
+     control_stack->cs_line_num = lineno;
+     control_stack->cs_abs_token_num = abs_token_no;
+     control_stack->cs_word = strdup(statbuf);
+-    control_stack->cs_not_dup = TRUE;
++    control_stack->cs_not_dup = true;
+     control_stack->cs_datum = datum;
+     control_stack->prev = cs_temp;
+ 
+@@ -472,16 +472,16 @@ static void pop_cstag( void)
+ 
+ static bool control_stack_size_test( int min_depth )
+ {
+-    bool retval = TRUE;
++    bool retval = true;
+ 
+     if ( control_stack_depth < min_depth )
+     {
+-	retval = FALSE;
++	retval = false;
+ 	tokenization_error ( TKERROR,
+ 		"Control-Stack underflow at %s", strupr(statbuf) );
+-	in_last_colon( TRUE);
++	in_last_colon( true);
+ 
+-	not_cs_underflow = FALSE;   /*  See expl'n early on in this file  */
++	not_cs_underflow = false;   /*  See expl'n early on in this file  */
+     }
+ 
+     return( retval );
+@@ -587,7 +587,7 @@ static void offset_too_large( bool too_large_for_16 )
+ 	    "Branch offset is too large between %s and the %s" ,
+ 		strupr(statbuf), strupr(control_stack->cs_word));
+ 	where_started( control_stack->cs_inp_fil, control_stack->cs_line_num );
+-	if ( INVERSE( offs16 ) )
++	if ( !offs16 )
+ 	{
+ 	    if ( too_large_for_16 )
+ 	    {
+@@ -601,7 +601,7 @@ static void offset_too_large( bool too_large_for_16 )
+ 	    }
+ 	}
+     }
+-    didnt_print_otl = FALSE;
++    didnt_print_otl = false;
+ }
+ 
+ /* **************************************************************************
+@@ -642,10 +642,10 @@ static void emit_fc_offset( int fc_offset)
+ {
+     int fc_offs_s16 = (s16)fc_offset;
+     int fc_offs_s8  =  (s8)fc_offset;
+-    bool too_large_for_8  = BOOLVAL( fc_offset != fc_offs_s8 );
+-    bool too_large_for_16 = BOOLVAL( fc_offset != fc_offs_s16);
++    bool too_large_for_8  = ( fc_offset != fc_offs_s8 );
++    bool too_large_for_16 = ( fc_offset != fc_offs_s16);
+ 
+-    if ( too_large_for_16 || ( INVERSE(offs16) && too_large_for_8 ) )
++    if ( too_large_for_16 || ( !offs16 && too_large_for_8 ) )
+     {
+ 	offset_too_large( too_large_for_16 );
+ 	if ( noerrors )
+@@ -725,22 +725,22 @@ static void emit_fc_offset( int fc_offset)
+ 
+ static bool matchup_control_structure( unsigned long cstag )
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+ 
+     if ( control_stack_size_test( 1) )
+     {
+-	retval = TRUE;
++	retval = true;
+ 
+ 	if ( control_stack->cs_tag != cstag )
+ 	{
+ 	    control_structure_mismatch();
+ 
+-	    if (    ( INVERSE(noerrors) )
++	    if (    ( !noerrors )
+ 		 || ( cstag == CASE_CSTAG )
+ 		 || ( control_stack->cs_tag == CASE_CSTAG )
+ 	            )
+ 	    {
+-		retval = FALSE;
++		retval = false;
+ 	    }
+ 	}
+ 
+@@ -856,12 +856,12 @@ static bool matchup_two_control_structures( unsigned long top_cstag,
+ {
+     bool retval;
+     bool topmatch;
+-    bool nextmatch = FALSE;
++    bool nextmatch = false;
+     bool sav_noerrors = noerrors;
+-    noerrors = FALSE;
+-    not_consuming_two = FALSE;
++    noerrors = false;
++    not_consuming_two = false;
+ 
+-    not_cs_underflow = TRUE;
++    not_cs_underflow = true;
+     topmatch = matchup_control_structure( top_cstag);
+     if ( not_cs_underflow )
+     {
+@@ -873,15 +873,15 @@ static bool matchup_two_control_structures( unsigned long top_cstag,
+ 	}
+     }
+ 
+-    retval = BOOLVAL( topmatch && nextmatch);
++    retval = ( topmatch && nextmatch);
+ 
+-    if ( INVERSE( retval) )
++    if ( !retval )
+     {
+         pop_cstag();
+         pop_cstag();
+     }
+ 
+-    not_consuming_two = TRUE;
++    not_consuming_two = true;
+     noerrors = sav_noerrors;
+     return ( retval );
+ }
+@@ -1091,7 +1091,7 @@ static void resolve_forward( unsigned long cstag)
+     unsigned long resvd_opc;
+     bool sav_noerrors = noerrors;
+     bool cs_match_result;
+-    noerrors = FALSE;
++    noerrors = false;
+     /*  Restore the "ignore-errors" flag before we act on our match result
+      *      because we want it to remain in effect for  emit_fc_offset()
+      */
+@@ -1262,7 +1262,7 @@ void emit_else( void )
+ 	emit_token("bbranch");
+ 	mark_forward_branch( IF_CSTAG );
+     }
+-    not_cs_underflow = TRUE;
++    not_cs_underflow = true;
+     control_structure_swap();
+     if ( not_cs_underflow )
+     {
+@@ -1453,15 +1453,15 @@ void emit_repeat( void )
+ {
+     if ( matchup_two_control_structures( BEGIN_CSTAG, WHILE_CSTAG ) )
+     {
+-	not_cs_underflow = TRUE;
+-	not_consuming_two = FALSE;
++	not_cs_underflow = true;
++	not_consuming_two = false;
+ 	emit_again();
+ 	if ( not_cs_underflow )
+ 	{
+             emit_token("b(>resolve)");
+ 	    resolve_forward( WHILE_CSTAG );
+ 	}
+-	not_consuming_two = TRUE;
++	not_consuming_two = true;
+     }
+ }
+ 
+@@ -1518,7 +1518,7 @@ void emit_repeat( void )
+ void mark_do( void )
+ {
+     mark_forward_branch( DO_CSTAG);
+-    control_stack->cs_not_dup = FALSE;
++    control_stack->cs_not_dup = false;
+     mark_backward_target( DO_CSTAG);
+     do_loop_depth++;
+ }
+@@ -1598,21 +1598,21 @@ void mark_do( void )
+ 
+ void resolve_loop( void )
+ {
+-    if ( INVERSE( matchup_two_control_structures( DO_CSTAG, DO_CSTAG) ) )
++    if ( !matchup_two_control_structures( DO_CSTAG, DO_CSTAG) )
+     {
+ 	emit_offset( 0 );
+     }else{
+-	not_cs_underflow = TRUE;
+-	didnt_print_otl = TRUE;
+-	not_consuming_two = FALSE;
++	not_cs_underflow = true;
++	didnt_print_otl = true;
++	not_consuming_two = false;
+ 	resolve_backward( DO_CSTAG);
+ 	if ( not_cs_underflow )
+ 	{
+ 	    resolve_forward( DO_CSTAG);
+ 	}
+ 	if ( do_loop_depth > 0 ) do_loop_depth--;
+-	not_consuming_two = TRUE;
+-	didnt_print_otl = TRUE;   /*  Might have gotten cleared   */
++	not_consuming_two = true;
++	didnt_print_otl = true;   /*  Might have gotten cleared   */
+     }
+ }
+ 
+diff --git a/toke/macros.c b/toke/macros.c
+index 92bc0ca..a3afb9e 100644
+--- a/toke/macros.c
++++ b/toke/macros.c
+@@ -248,8 +248,8 @@ static void eval_mac_string( tic_param_t pfield)
+     sav_mac_funct = *tic_found->funct;
+     (*tic_found).funct = macro_recursion_error;
+     (*tic_found).ign_func = macro_recursion_error;
+-    push_source( mac_string_recovery, tic_found, FALSE);
+-    report_multiline = FALSE;  /*  Must be done AFTER call to push_source()
++    push_source( mac_string_recovery, tic_found, false);
++    report_multiline = false;  /*  Must be done AFTER call to push_source()
+                                 *      because  report_multiline  is part of
+                                 *      the state that  push_source()  saves.
+ 				*/
+@@ -459,7 +459,7 @@ void add_user_macro( void)
+ {
+     char *macroname;
+     char *macrobody;
+-    bool failure = TRUE;
++    bool failure = true;
+ 
+     /*  Copy of function name, for error message  */
+     char *func_cpy = strdup( statbuf);
+@@ -469,7 +469,7 @@ void add_user_macro( void)
+         /*  This is the Macro name  */
+ 	macroname = strdup( statbuf);
+ 
+-	if ( INVERSE(get_rest_of_line() ) )
++	if ( !get_rest_of_line() )
+ 	{
+ 	    /*  No body on line  */
+ 	    free( macroname);
+@@ -494,9 +494,9 @@ void add_user_macro( void)
+ 
+ 	    add_tic_entry( macroname, EVAL_MAC_FUNC,
+ 	                       (TIC_P_DEFLT_TYPE)macrobody,
+-			           MACRO_DEF, mac_body_len, FALSE,
++			           MACRO_DEF, mac_body_len, false,
+ 				       EVAL_MAC_FUNC, target_vocab );
+-	    failure = FALSE;
++	    failure = false;
+ 	}
+     }
+ 
+@@ -535,13 +535,13 @@ void add_user_macro( void)
+  **************************************************************************** */
+ void skip_user_macro( tic_bool_param_t pfield )
+ {
+-    bool failure = TRUE;
++    bool failure = true;
+     char *func_cpy = strdup( statbuf);
+     if ( get_word_in_line( NULL ) )
+     {
+ 	if ( get_rest_of_line() )
+ 	{
+-	    failure = FALSE;
++	    failure = false;
+ 	}
+     }
+ 
+diff --git a/toke/nextfcode.c b/toke/nextfcode.c
+index ab78ea6..d0bbacb 100644
+--- a/toke/nextfcode.c
++++ b/toke/nextfcode.c
+@@ -194,8 +194,8 @@ typedef struct fcode_range
+  *
+  **************************************************************************** */
+ 
+-static bool           ranges_exist      = FALSE;
+-static bool           changes_listed    = FALSE;
++static bool           ranges_exist      = false;
++static bool           changes_listed    = false;
+ 
+ static u16            range_start       = FCODE_START;
+ static u16            range_end         = 0;
+@@ -269,7 +269,7 @@ void reset_fcode_ranges( void)
+ 	    free( first_fc_range);
+ 	    first_fc_range = current_fc_range;
+ 	}
+-	ranges_exist = FALSE;
++	ranges_exist = false;
+     }else{
+ 	if ( first_fcr_infile != NULL )
+ 	{
+@@ -281,7 +281,7 @@ void reset_fcode_ranges( void)
+ 	}
+     }
+ 
+-    changes_listed    = FALSE;
++    changes_listed    = false;
+     range_start       = FCODE_START;
+     range_end         = 0;
+ 
+@@ -347,9 +347,9 @@ void list_fcode_ranges( bool final_tally)
+ 	{
+ 	    fprintf(message_dest, "\n");
+ 	}else{
+-	    changes_listed = TRUE;
++	    changes_listed = true;
+ 
+-	    if ( INVERSE(ranges_exist) )
++	    if ( !ranges_exist )
+ 	    {   /*  List the first and only range  */
+ 		if ( range_end == 0 )
+ 		{
+@@ -388,7 +388,7 @@ void list_fcode_ranges( bool final_tally)
+ 		    }else{
+ 			fprintf(message_dest, "    From 0x%x to 0x%x",
+ 			    next_range->fcr_start, next_range->fcr_end );
+-			if ( INVERSE( next_range->fcr_not_lapped) )
++			if ( !next_range->fcr_not_lapped )
+ 			{
+ 			    fprintf(message_dest, " ***Overlap***" );
+ 			}
+@@ -487,7 +487,7 @@ void list_fcode_ranges( bool final_tally)
+ 
+ void set_next_fcode( u16  new_fcode)
+ {
+-    if ( INVERSE( ranges_exist) )
++    if ( !ranges_exist )
+     {    /*  The current range is the first and only.  */
+ 
+ 	if ( new_fcode == nextfcode )
+@@ -514,7 +514,7 @@ void set_next_fcode( u16  new_fcode)
+ 	    first_fc_range->fcr_end          = range_end;
+ 	    first_fc_range->fcr_infile       = first_fcr_infile;
+ 	    first_fc_range->fcr_linenum      = first_fcr_linenum;
+-	    first_fc_range->fcr_not_lapped   = TRUE;
++	    first_fc_range->fcr_not_lapped   = true;
+ 	    first_fc_range->fcr_next         = NULL;
+ 
+ 	    first_fcr_infile  = NULL;
+@@ -524,7 +524,7 @@ void set_next_fcode( u16  new_fcode)
+ 
+ 	    current_fc_range  = first_fc_range;
+ 
+-	    ranges_exist      = TRUE;
++	    ranges_exist      = true;
+ 	}
+     }
+ 
+@@ -539,10 +539,10 @@ void set_next_fcode( u16  new_fcode)
+                                   /*  Will be filled in by first assignment  */
+     current_fc_range->fcr_infile      = strdup( iname);
+     current_fc_range->fcr_linenum     = lineno;
+-    current_fc_range->fcr_not_lapped  = TRUE;
++    current_fc_range->fcr_not_lapped  = true;
+     current_fc_range->fcr_next        = NULL;
+ 
+-    changes_listed                    = FALSE;
++    changes_listed                    = false;
+ }
+ 
+ 
+@@ -636,7 +636,7 @@ void assigning_fcode( void)
+     {
+ 	/*  Let's give a last summarization before we crap out */
+ 	tokenization_error( INFO, "");
+-	list_fcode_ranges( FALSE);
++	list_fcode_ranges( false);
+ 
+ 	tokenization_error( FATAL,
+ 	    "Too many definitions.  "
+@@ -648,9 +648,9 @@ void assigning_fcode( void)
+ 	 */
+     }
+ 
+-    changes_listed = FALSE;
++    changes_listed = false;
+ 
+-    if ( INVERSE(ranges_exist) )
++    if ( !ranges_exist )
+     {    /*  No Overlap Error checking needed here.  */
+ 	range_end = nextfcode;
+     }else{
+@@ -667,7 +667,7 @@ void assigning_fcode( void)
+ 			"which overlaps the range", nextfcode);
+ 		started_at( found_lap->fcr_infile, found_lap->fcr_linenum);
+ 
+-		current_fc_range->fcr_not_lapped = FALSE;
++		current_fc_range->fcr_not_lapped = false;
+ 	    }
+ 	}
+     }
+diff --git a/toke/parselocals.c b/toke/parselocals.c
+index 084e8c3..5868d91 100644
+--- a/toke/parselocals.c
++++ b/toke/parselocals.c
+@@ -279,11 +279,11 @@ static void invoke_local( tic_param_t pfield )
+ 
+ static bool locals_separator( char subj )
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     /*  Is it the preferred (i.e., non-legacy) separator?   */
+     if ( subj == '|' )
+     {  
+-	retval = TRUE;
++	retval = true;
+ 	return ( retval );
+     }
+ 	
+@@ -291,7 +291,7 @@ static bool locals_separator( char subj )
+     {
+ 	if ( subj == ';' )
+ 	{
+-	    retval = TRUE;
++	    retval = true;
+ 	    if ( ibm_legacy_separator_message )
+ 	    {
+ 		tokenization_error ( WARNING , "Semicolon as separator in "
+@@ -338,7 +338,7 @@ static void add_local( TIC_P_DEFLT_TYPE lnum, char *lname)
+ 
+     lnamecopy = strdup( lname);
+     add_tic_entry( lnamecopy, invoke_local, lnum,
+-		       LOCAL_VAL, 0, FALSE,  NULL,
++		       LOCAL_VAL, 0, false,  NULL,
+ 			       &local_names );
+ }
+ 
+@@ -393,9 +393,9 @@ static void add_local( TIC_P_DEFLT_TYPE lnum, char *lname)
+ static bool gather_locals( bool initted, int *counter )
+ {
+     signed long wlen;
+-    bool retval = FALSE;
++    bool retval = false;
+ 
+-    while ( TRUE )
++    while ( true )
+     {
+         wlen = get_word();
+ 
+@@ -420,13 +420,13 @@ static bool gather_locals( bool initted, int *counter )
+ 	        /*  If gathering initted Local names, separator is legit  */
+ 	        if ( initted )
+ 		{
+-		    retval = TRUE;
++		    retval = true;
+ 		    break;
+ 		}else{
+ 		    tokenization_error ( TKERROR,
+ 		        "Excess separator -- %s -- found "
+ 			    "in Local-Values declaration", statbuf);
+-		    in_last_colon( TRUE);
++		    in_last_colon( true);
+ 		    continue;
+ 		}
+ 	    }
+@@ -562,19 +562,19 @@ static int last_local_colon = 0;
+ 
+ static bool error_check_locals ( void )
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     
+     if ( ! incolon )
+     {
+ 	tokenization_error ( TKERROR,
+ 	    "Can only declare Locals inside of a Colon-definition.\n");
+-        retval = TRUE;
++        retval = true;
+     } else {
+ 	if ( last_local_colon == lastcolon )
+ 	{
+ 	    tokenization_error ( TKERROR, "Excess Locals Declaration");
+-	    in_last_colon( TRUE);
+-	    retval = TRUE;
++	    in_last_colon( true);
++	    retval = true;
+ 	}else{
+             last_local_colon = lastcolon;
+ 	    if ( opc > lastcolon )
+@@ -637,7 +637,7 @@ void declare_locals ( bool ignoring)
+     
+     l_d_lineno = lineno;
+     bool sav_rep_mul_lin = report_multiline;
+-    report_multiline = TRUE;
++    report_multiline = true;
+ 
+     if ( ignoring || error_check_locals() )
+     {
+@@ -649,9 +649,9 @@ void declare_locals ( bool ignoring)
+ 	   pc++ ;  /*  Get past the close-curly-brace  */
+        }
+     }else{
+-       if (gather_locals( TRUE,  &num_ilocals ) )
++       if (gather_locals( true,  &num_ilocals ) )
+        {
+-	   gather_locals( FALSE, &num_ulocals );
++	   gather_locals( false, &num_ulocals );
+        }
+     }
+ 
+@@ -834,7 +834,7 @@ void assign_local ( void )
+     local_op = "!";   /*  Set to Store  */
+ 
+     is_okay = handle_local( statbuf);
+-    if( INVERSE(is_okay)  )
++    if( !is_okay  )
+     {
+         tokenization_error ( TKERROR,
+ 	    "Cannot apply -> to %s, only to a declared Local.\n", statbuf );
+diff --git a/toke/scanner.c b/toke/scanner.c
+index 6a3ae0b..2bc1047 100644
+--- a/toke/scanner.c
++++ b/toke/scanner.c
+@@ -70,16 +70,16 @@ u8  *statbuf=NULL;      /*  The word just read from the input stream  */
+ u8   base=0x0a;         /*  The numeric-interpretation base           */
+ 
+ /* pci data */
+-bool pci_is_last_image=TRUE;
++bool pci_is_last_image=true;
+ u16  pci_image_rev=0x0001;  /*  Vendor's Image, NOT PCI Data Structure Rev */
+ u16  pci_vpd=0x0000;
+ 
+ 
+ /*  Having to do with the state of the tokenization  */
+-bool offs16       = TRUE;    /*  We are using 16-bit branch- (etc) -offsets */
+-bool in_tokz_esc  = FALSE;   /*  TRUE if in "Tokenizer Escape" mode   */
+-bool incolon      = FALSE;   /*  TRUE if inside a colon definition    */
+-bool haveend      = FALSE;   /*  TRUE if the "end" code was read.     */
++bool offs16       = true;    /*  We are using 16-bit branch- (etc) -offsets */
++bool in_tokz_esc  = false;   /*  TRUE if in "Tokenizer Escape" mode   */
++bool incolon      = false;   /*  TRUE if inside a colon definition    */
++bool haveend      = false;   /*  TRUE if the "end" code was read.     */
+ int do_loop_depth = 0;       /*  How deep we are inside DO ... LOOP variants  */
+ 
+ /*  State of headered-ness for name-creation  */
+@@ -92,7 +92,7 @@ int lastcolon;   /*  Location in output stream of latest colon-definition. */
+ char *last_colon_defname = NULL;   /*  Name of last colon-definition        */
+ char *last_colon_filename = NULL;  /*  File where last colon-def'n made     */
+ unsigned int last_colon_lineno;    /*  Line number of last colon-def'n      */
+-bool report_multiline = TRUE;      /*  False to suspend multiline warning   */
++bool report_multiline = true;      /*  False to suspend multiline warning   */
+ unsigned int last_colon_abs_token_no;
+ 
+            /*  Shared phrases                                               */
+@@ -105,18 +105,18 @@ char *wh_defined      = ", which is defined as a ";
+ static u16  last_colon_fcode;  /*  FCode-number assigned to last colon-def'n  */
+                                /*      Used for RECURSE  */
+ 
+-static bool do_not_overload = TRUE ;  /*  False to suspend dup-name-test     */
+-static bool got_until_eof = FALSE ;   /*  TRUE to signal "unterminated"      */
++static bool do_not_overload = true ;  /*  False to suspend dup-name-test     */
++static bool got_until_eof = false ;   /*  TRUE to signal "unterminated"      */
+ 
+ static unsigned int last_colon_do_depth = 0;
+ 
+ /*  Local variables having to do with:                                      */
+ /*       ...  the state of the tokenization                                 */
+-static bool is_instance = FALSE;        /*  Is "instance" is in effect?     */
++static bool is_instance = false;        /*  Is "instance" is in effect?     */
+ static char *instance_filename = NULL;  /*  File where "instance" invoked   */
+ static unsigned int instance_lineno;    /*  Line number of "instance"       */
+-static bool fcode_started = FALSE ;     /*  Only 1 fcode_starter per block. */
+-static bool first_fc_starter = TRUE;    /*  Only once per tokenization...   */
++static bool fcode_started = false ;     /*  Only 1 fcode_starter per block. */
++static bool first_fc_starter = true;    /*  Only once per tokenization...   */
+ 
+ /*       ... with the state of the input stream,                            */
+ static bool need_to_pop_source;
+@@ -128,10 +128,10 @@ static int ret_stk_depth = 0;          /*  Return-Stack-Usage-Depth counter */
+            /*  Should a warning about a dangling "instance" 
+ 	    *      be issued at the next device-node change?
+ 	    */
+-static bool dev_change_instance_warning = TRUE;
++static bool dev_change_instance_warning = true;
+ 
+            /*  Has a gap developed between "instance" and its application?  */
+-static bool instance_definer_gap = FALSE;
++static bool instance_definer_gap = false;
+ 
+ 
+ /* **************************************************************************
+@@ -161,7 +161,7 @@ static bool instance_definer_gap = FALSE;
+ 
+ static bool skip_ws(void)
+ {
+-    bool retval = TRUE;
++    bool retval = true;
+     char ch_tmp;
+ 
+     for (  ; pc < end; pc++ )
+@@ -169,7 +169,7 @@ static bool skip_ws(void)
+         ch_tmp = *pc;
+ 	if ( (ch_tmp != '\t') && (ch_tmp != ' ') && (ch_tmp != '\n' ) )
+ 	{
+-	    retval = FALSE;
++	    retval = false;
+ 	    break;
+ 	}
+         if ( ch_tmp == '\n')  lineno++;
+@@ -206,7 +206,7 @@ static bool skip_ws(void)
+ 
+ bool skip_until( char lim_ch)
+ {
+-    bool retval = TRUE;
++    bool retval = true;
+     char ch_tmp;
+ 
+     for (  ; pc < end; pc++ )
+@@ -214,7 +214,7 @@ bool skip_until( char lim_ch)
+         ch_tmp = *pc;
+         if ( ch_tmp == lim_ch )
+ 	{
+-	    retval = FALSE;
++	    retval = false;
+ 	    break;
+ 	}
+         if ( ch_tmp == '\n')  lineno++;
+@@ -291,7 +291,7 @@ static signed long get_until(char needle)
+ 	memcpy(statbuf, safe, len);
+ 	statbuf[len]=0;
+ 
+-	if ( INVERSE(got_until_eof) )
++	if ( !got_until_eof )
+ {
+ 	    if ( needle != '\n' )  pc++;
+ 	}
+@@ -483,18 +483,18 @@ static void drop_source( void)
+ 
+ static bool pop_source( void )
+ {
+-    bool retval = TRUE;
++    bool retval = true;
+ 
+     if ( saved_source != NULL )
+     {
+-	retval = FALSE;
++	retval = false;
+ 	if ( need_to_pop_source )
+ 	{
+-	    need_to_pop_source = FALSE;
++	    need_to_pop_source = false;
+ 	}else{
+ 	    if ( saved_source->pause_before_pop )
+ 	    {
+-	        need_to_pop_source = TRUE;
++	        need_to_pop_source = true;
+ 		return( retval);
+ 	    }
+ 	}
+@@ -678,7 +678,7 @@ signed long get_word( void)
+ bool get_word_in_line( char *func_nam)
+ {                                                                               
+     signed long wlen;
+-    bool retval = TRUE;
++    bool retval = true;
+     u8 *save_pc = pc;
+     unsigned int save_lineno = lineno;
+     unsigned int save_abs_token_no = abs_token_no;
+@@ -699,7 +699,7 @@ bool get_word_in_line( char *func_nam)
+ 	abs_token_no = save_abs_token_no;
+ 	lineno = save_lineno;
+ 	pc = save_pc;
+-	retval = FALSE;
++	retval = false;
+ 	if ( func_nam != NULL )
+ 	{
+ 	    tokenization_error ( TKERROR,
+@@ -741,17 +741,17 @@ bool get_word_in_line( char *func_nam)
+ 
+ bool get_rest_of_line( void)
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     u8 *save_pc = pc;
+     unsigned int save_lineno = lineno;
+     unsigned int save_abs_token_no = abs_token_no;
+ 
+-    if ( INVERSE( skip_ws() ) )
++    if ( !skip_ws() )
+     {
+         if ( lineno == save_lineno )
+ 	{
+ 	    signed long wlen = get_until('\n');
+-	    if ( wlen > 0 ) retval = TRUE;
++	    if ( wlen > 0 ) retval = true;
+ 	}else{
+ 	    abs_token_no = save_abs_token_no;
+ 	    lineno = save_lineno;
+@@ -806,7 +806,7 @@ bool get_rest_of_line( void)
+  *
+  **************************************************************************** */
+ 
+-static bool unterm_is_colon = FALSE;
++static bool unterm_is_colon = false;
+ void warn_unterm( int severity, char *something, unsigned int saved_lineno)
+ {
+     unsigned int tmp = lineno;
+@@ -815,10 +815,10 @@ void warn_unterm( int severity, char *something, unsigned int saved_lineno)
+     {
+ 	tokenization_error( severity, "Unterminated %s of %s\n",
+ 	    something, strupr( last_colon_defname) );
+-	unterm_is_colon = FALSE;
++	unterm_is_colon = false;
+     }else{
+ 	tokenization_error( severity, "Unterminated %s", something);
+-	in_last_colon( TRUE);
++	in_last_colon( true);
+     }
+     lineno = tmp;
+ }
+@@ -863,7 +863,7 @@ void warn_if_multiline( char *something, unsigned int start_lineno )
+ 	tokenization_error( WARNING, "Multi-line %s, started", something);
+ 	where_started( iname, start_lineno);
+     }
+-    report_multiline = TRUE;
++    report_multiline = true;
+ }
+ 
+ 
+@@ -920,14 +920,14 @@ static void string_remark(char *errmsg_txt)
+ static long parse_number(u8 *start, u8 **endptr, int lbase) 
+ {
+ 	long val = 0;
+-	bool negative = FALSE ;
++	bool negative = false ;
+ 	int  curr;
+ 	u8 *nptr=start;
+ 
+ 	curr = *nptr;
+ 	if (curr == '-')
+ 	{
+-		negative = TRUE ;
++		negative = true ;
+ 		nptr++;
+ 	}
+ 	
+@@ -1062,7 +1062,7 @@ static void c_string_escape( u8 **walk)
+      *      with a value for  val  and a decision
+      *      as to whether to write it.
+      */
+-    bool write_val = TRUE;
++    bool write_val = true;
+ 	
+     switch (c)
+     {
+@@ -1118,7 +1118,7 @@ static void c_string_escape( u8 **walk)
+ 		    /*        or a sequence-ending quote.                 */
+ 			 || ( c == '"' ) )
+ 		    {
+-			write_val = FALSE;
++			write_val = false;
+ 		    }else{
+ 			/*  In the WARNING message, print the character
+ 			 *      if it's printable or show it in hex
+@@ -1241,8 +1241,8 @@ static void c_string_escape( u8 **walk)
+ static bool get_sequence(u8 **walk)
+ {
+     int pv_indx = 0;
+-    bool retval = FALSE;   /*  "Abnormal Completion" indicator  */
+-    bool ready_to_parse = FALSE;
++    bool retval = false;   /*  "Abnormal Completion" indicator  */
++    bool ready_to_parse = false;
+     char next_ch;
+     char pval[3];
+ 
+@@ -1256,7 +1256,7 @@ static bool get_sequence(u8 **walk)
+ 	next_ch = *pc;
+ 	if ( next_ch == ')' )
+ 	{
+-	    retval = TRUE;
++	    retval = true;
+ 				break;
+ 	}
+ 	if ( hex_remark_escape )
+@@ -1274,14 +1274,14 @@ static bool get_sequence(u8 **walk)
+ 	    {
+ 		pv_indx++;
+ 	    }else{
+-		ready_to_parse = TRUE;
++		ready_to_parse = true;
+ 	    }
+ 	}else{
+ 	    if ( next_ch == '\n' )  lineno++ ;
+ 	    if ( pv_indx != 0 )
+ 	    {
+ 		pval[1] = 0;
+-		ready_to_parse = TRUE;
++		ready_to_parse = true;
+ 	    }
+ 	}
+ 	if ( ready_to_parse )
+@@ -1292,7 +1292,7 @@ static bool get_sequence(u8 **walk)
+ 		printf(" %02x",val);
+ #endif
+ 	    pv_indx = 0;
+-	    ready_to_parse = FALSE;
++	    ready_to_parse = false;
+ 	}
+ 	pc++;
+     }
+@@ -1336,7 +1336,7 @@ static signed long get_string( bool pack_str)
+ 	u8 *walk;
+ 	unsigned long len;
+ 	char c;
+-	bool run = TRUE;
++	bool run = true;
+ 	unsigned long start_lineno = lineno;    /*  For warning message  */
+ 	
+ 	/*
+@@ -1349,7 +1349,7 @@ static signed long get_string( bool pack_str)
+ 	if ( *pc == '\n' ) lineno++;
+ 	pc++;
+ 
+-	got_until_eof = TRUE ;
++	got_until_eof = true ;
+ 
+ 	walk=statbuf;
+ 	while (run) {
+@@ -1362,8 +1362,8 @@ static signed long get_string( bool pack_str)
+ 			/*  End of the buffer also ends the string cleanly  */
+ 			if ( pc >= end )
+ 			{
+-			    run = FALSE;
+-			    got_until_eof = FALSE ;
++			    run = false;
++			    got_until_eof = false ;
+ 				break;
+ 			}
+ 			/*  Pick up the next char after the '"' (Quote) */
+@@ -1411,8 +1411,8 @@ static signed long get_string( bool pack_str)
+ 				 */
+ 				pc++;
+ 			    case '\n':
+-				run=FALSE;
+-				got_until_eof = FALSE ;
++				run=false;
++				got_until_eof = false ;
+ 				break;
+ 			default:
+ 				/*  Control allowability of Quote-Backslash
+@@ -1460,12 +1460,12 @@ static signed long get_string( bool pack_str)
+ 		/*  Done if we hit end of file before string was concluded  */
+ 		if ( pc >= end )
+ 		{
+-		    run = FALSE;
++		    run = false;
+ 		    if ( got_until_eof )
+ 		    {
+ 			warn_unterm( WARNING, "string", start_lineno);
+ 			/*  Prevent multiple messages for one error  */
+-			got_until_eof = FALSE;
++			got_until_eof = false;
+ 		    }
+ 		}
+ 	}
+@@ -1542,12 +1542,12 @@ static void handle_user_message( char delim, bool print_it )
+     signed long wlen;
+     unsigned int start_lineno = lineno;
+     unsigned int multiline_start = lineno;    /*  For warning message  */
+-    bool check_multiline = FALSE;
++    bool check_multiline = false;
+     const char *ug_msg = "user-generated message";
+ 
+     if ( delim == '"' )
+     {
+-	wlen = get_string( FALSE);
++	wlen = get_string( false);
+     }else{
+ 	/*
+ 	 *  When the message-delimiter is a new-line, and the
+@@ -1565,7 +1565,7 @@ static void handle_user_message( char delim, bool print_it )
+ 	    if ( *pc == '\n' ) lineno++;
+ 	    pc++;
+ 	    multiline_start = lineno;
+-	    check_multiline = TRUE;
++	    check_multiline = true;
+ 	}
+ 	wlen = get_until( delim );
+     }
+@@ -1626,7 +1626,7 @@ static void handle_user_message( char delim, bool print_it )
+ void user_message( tic_param_t pfield )
+ {
+     char delim = (char)pfield.fw_token ;
+-    handle_user_message( delim, TRUE);
++    handle_user_message( delim, true);
+ }
+ 
+ /* **************************************************************************
+@@ -1657,7 +1657,7 @@ void user_message( tic_param_t pfield )
+ void skip_user_message( tic_param_t pfield )
+ {
+     char delim = (char)pfield.deflt_elem ;
+-    handle_user_message( delim, FALSE);
++    handle_user_message( delim, false);
+ }
+ 
+ 
+@@ -1693,7 +1693,7 @@ bool get_number( long *result)
+ {
+     u8 *until;
+     long val;
+-    bool retval = FALSE ;
++    bool retval = false ;
+ 
+     val = parse_number(statbuf, &until, base);
+ 	
+@@ -1709,7 +1709,7 @@ bool get_number( long *result)
+     if (until==(statbuf+strlen((char *)statbuf)))
+     {
+ 	*result=val;
+-	retval = TRUE;
++	retval = true;
+     }
+ 
+     return ( retval );
+@@ -1856,14 +1856,14 @@ static void ascii_left_number( char *in_str)
+     char *str_ptr = in_str;
+     long numval = 0;
+     int shift_amt = 24;
+-    bool shift_over = FALSE ;
++    bool shift_over = false ;
+ 
+     for ( nxt_ch = (u8)*str_ptr ;
+ 	    ( nxt_ch = (u8)*str_ptr ) != 0 ;
+         	str_ptr++ )
+     {
+         if ( shift_over )  numval <<= 8;
+-	if ( shift_amt == 0 )  shift_over = TRUE ;
++	if ( shift_amt == 0 )  shift_over = true ;
+ 	numval += ( nxt_ch << shift_amt );
+ 	if ( shift_amt > 0 ) shift_amt -= 8;
+     }
+@@ -1989,19 +1989,19 @@ static void set_hdr_flag( headeredness new_flag)
+ void init_scan_state( void)
+ {
+     base = 0x0a;
+-    pci_is_last_image = TRUE;
+-    incolon = FALSE;
+-    is_instance = FALSE;
++    pci_is_last_image = true;
++    incolon = false;
++    is_instance = false;
+     set_hdr_flag( FLAG_HEADERLESS);
+     reset_fcode_ranges();
+-    first_fc_starter = TRUE;
++    first_fc_starter = true;
+     if ( last_colon_filename != NULL ) free( last_colon_filename);
+     if ( instance_filename != NULL ) free( instance_filename);
+     last_colon_filename = NULL;
+     instance_filename = NULL;
+-    dev_change_instance_warning = TRUE;
+-    instance_definer_gap = FALSE;
+-    need_to_pop_source = FALSE;
++    dev_change_instance_warning = true;
++    instance_definer_gap = false;
++    need_to_pop_source = false;
+     ret_stk_depth = 0;
+ }
+ 
+@@ -2040,13 +2040,13 @@ void init_scan_state( void)
+ 
+ static void collect_input_filename( char **saved_nam)
+ {
+-    bool update_lcfn = TRUE;    /*  Need to re-allocate?  */
++    bool update_lcfn = true;    /*  Need to re-allocate?  */
+     if ( *saved_nam != NULL )
+     {
+ 	if ( strcmp( *saved_nam, iname) == 0 )
+ 	{
+ 	    /*  Last collected filename unchanged from iname  */
+-	    update_lcfn = FALSE;
++	    update_lcfn = false;
+ 	}else{
+ 	    free( *saved_nam);
+ 	}
+@@ -2098,15 +2098,15 @@ static bool test_in_colon ( char *wname,
+ 				     char *use_instead)
+ {
+     bool is_wrong;
+-    bool retval = TRUE ;
++    bool retval = true ;
+ 
+-    is_wrong = BOOLVAL(( sb_in_colon != FALSE ) != ( incolon != FALSE )) ;
++    is_wrong = (( sb_in_colon != false ) != ( incolon != false )) ;
+     if ( is_wrong )
+     {  
+         char *ui_pt1 = "";
+         char *ui_pt2 = "";
+         char *ui_pt3 = "";
+-	retval = FALSE;
++	retval = false;
+ 	if ( use_instead != NULL )
+ 	{
+ 	    ui_pt1 = "  Use  ";
+@@ -2142,7 +2142,7 @@ static void must_be_deep_in_do( int how_deep )
+     {
+ 	char deep_do[64] = "";
+ 	int indx;
+-	bool prefix = FALSE;
++	bool prefix = false;
+ 
+ 	for ( indx = 0; indx < how_deep ; indx ++ )
+ 	{
+@@ -2155,12 +2155,12 @@ static void must_be_deep_in_do( int how_deep )
+ 		strcat( deep_do, " ... ");
+ 	    }
+ 	    strcat( deep_do, "LOOP");
+-	    prefix = TRUE;
++	    prefix = true;
+ 	}
+ 
+ 	tokenization_error( TKERROR,
+ 	    "%s outside of  %s  structure", strupr(statbuf), deep_do);
+-	in_last_colon( TRUE);
++	in_last_colon( true);
+     }
+ 
+ }
+@@ -2287,7 +2287,7 @@ static void ret_stk_balance_rpt( char *before_what, bool clear_it)
+ 
+ 	tokenization_error( WARNING,
+ 	    "Possible Return-Stack %s before %s", what_flow, what_phr);
+-	in_last_colon( TRUE);
++	in_last_colon( true);
+ 
+ 	if ( clear_it )
+ 	{
+@@ -2334,7 +2334,7 @@ static void ret_stk_access_rpt( void)
+ 	    "Possible Return-Stack access attempt by %s "
+ 		"without value having been placed there",
+ 		strupr(statbuf) );
+-	in_last_colon( TRUE);
++	in_last_colon( true);
+     }
+ }
+ 
+@@ -2463,7 +2463,7 @@ void check_name_length( signed long wlen )
+ 
+ bool definer_name(fwtoken definer, char **reslt_ptr)
+ {
+-    bool retval = TRUE;
++    bool retval = true;
+     switch (definer)
+     {
+ 	case VARIABLE:
+@@ -2500,7 +2500,7 @@ bool definer_name(fwtoken definer, char **reslt_ptr)
+ 	    *reslt_ptr = "Local Value name";
+ 	    break;
+ 	default:
+-	    retval = FALSE;
++	    retval = false;
+     }
+ 
+     return ( retval);
+@@ -2648,8 +2648,8 @@ static char lookup_where_pt1_buf[AS_WHAT_BUF_SIZE];
+ tic_hdr_t *lookup_word( char *stat_name, char **where_pt1, char **where_pt2 )
+ {
+     tic_hdr_t *found = NULL;
+-    bool trail_space = TRUE;
+-    bool doing_lookup = BOOLVAL( ( where_pt1 != NULL )
++    bool trail_space = true;
++    bool doing_lookup = ( ( where_pt1 != NULL )
+ 			      && ( where_pt2 != NULL ) );
+     char *temp_where_pt2 = "in the core vocabulary.\n";
+ 
+@@ -2675,7 +2675,7 @@ tic_hdr_t *lookup_word( char *stat_name, char **where_pt1, char **where_pt2 )
+ 	    found = lookup_local( stat_name);
+ 	    if ( doing_lookup && ( found != NULL ) )
+ 	    {
+-		trail_space = FALSE;
++		trail_space = false;
+ 		temp_where_pt2 = ".\n";
+ 	    }
+ 	}
+@@ -2745,12 +2745,12 @@ tic_hdr_t *lookup_word( char *stat_name, char **where_pt1, char **where_pt2 )
+ 
+ bool word_exists( char *stat_name, char **where_pt1, char **where_pt2 )
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     tic_hdr_t *found = lookup_word( stat_name, where_pt1, where_pt2 );
+ 
+     if ( found != NULL )
+     {
+-	retval = TRUE;
++	retval = true;
+     }
+ 
+     return( retval);
+@@ -2815,7 +2815,7 @@ void warn_if_duplicate( char *stat_name)
+ 	    show_node_start();
+ 	}
+     }
+-    do_not_overload = TRUE;
++    do_not_overload = true;
+ }
+ 
+ 
+@@ -2916,7 +2916,7 @@ static void tokenized_word_error( char *stat_name)
+     bool found_somewhere;
+     
+     bool sav_in_tokz_esc = in_tokz_esc;
+-    in_tokz_esc = INVERSE(sav_in_tokz_esc);
++    in_tokz_esc = !sav_in_tokz_esc;
+ 
+     traced_name_error( stat_name);
+ 
+@@ -2930,7 +2930,7 @@ static void tokenized_word_error( char *stat_name)
+ 	not_in_dict( stat_name);
+     }
+ 
+-    if ( INVERSE(exists_in_ancestor( stat_name)) )
++    if ( !exists_in_ancestor( stat_name) )
+     {
+         if ( found_somewhere && sav_in_tokz_esc )
+ 	{
+@@ -3049,7 +3049,7 @@ static void validate_instance(fwtoken definer)
+ {
+     if ( is_instance )
+     {
+-	bool is_error = TRUE ;
++	bool is_error = true ;
+ 
+ 	switch ( definer)
+ 	{
+@@ -3057,7 +3057,7 @@ static void validate_instance(fwtoken definer)
+ 	    case VARIABLE:
+ 	    case DEFER:
+ 	    case BUFFER:
+-		is_error = FALSE;
++		is_error = false;
+ 	    /*  No default needed, likewise, no breaks;      */
+ 	    /*  but some compilers get upset without 'em...  */
+ 	    default:
+@@ -3066,15 +3066,15 @@ static void validate_instance(fwtoken definer)
+ 
+ 	if( is_error )
+ 	{
+-	    modified_by_instance(definer, FALSE );
+-	    instance_definer_gap = TRUE;
++	    modified_by_instance(definer, false );
++	    instance_definer_gap = true;
+ 	}else{
+ 	    if ( instance_definer_gap )
+ 	    {
+-		modified_by_instance(definer, TRUE );
++		modified_by_instance(definer, true );
+ 	    }
+-	    is_instance = FALSE;
+-	    instance_definer_gap = FALSE;
++	    is_instance = false;
++	    instance_definer_gap = false;
+ 	}
+     }
+ }
+@@ -3176,17 +3176,17 @@ static void validate_instance(fwtoken definer)
+ static bool create_word(fwtoken definer)
+ {
+     signed long wlen;
+-    bool retval = FALSE;
++    bool retval = false;
+     char *defn_type_name;
+ 
+     /*  If already inside a colon, ERROR and discontinue processing    */
+     /*  If an alias to a definer is used, show the name of the alias  */
+-    if ( test_in_colon(statbuf, FALSE, TKERROR, NULL) ) 
++    if ( test_in_colon(statbuf, false, TKERROR, NULL) )
+     {
+ 	char defn_type_buffr[32] = "";
+ 	unsigned int old_lineno = lineno;    /*  For error message  */
+ 
+-	define_token = TRUE;
++	define_token = true;
+ 
+ 	{   /*  Set up definition-type text for error-message */
+ 
+@@ -3201,7 +3201,7 @@ static bool create_word(fwtoken definer)
+ 	{
+ 	    announce_control_structs( TKERROR, defn_type_buffr, 0);
+ 	    /*  Leave the new token undefined.  */
+-	    define_token = FALSE;
++	    define_token = false;
+ 	}
+ 
+ 	/*  Get the name of the new token  */
+@@ -3215,7 +3215,7 @@ static bool create_word(fwtoken definer)
+ 	{
+ 	    warn_unterm( TKERROR, defn_type_buffr, old_lineno);
+ 	}else{
+-	    bool emit_token_name = TRUE;
++	    bool emit_token_name = true;
+ 
+ 	    /*  Other Error or Warnings as applicable  */
+ 	    validate_instance( definer);
+@@ -3241,7 +3241,7 @@ static bool create_word(fwtoken definer)
+ 
+ 		default:  /*   FLAG_HEADERLESS   */
+ 		    emit_token("new-token");
+-		    emit_token_name = FALSE;
++		    emit_token_name = false;
+ 	    }
+ 
+ 	    /*  Emit name of token, if applicable  */
+@@ -3266,7 +3266,7 @@ static bool create_word(fwtoken definer)
+ 	    bump_fcode();
+ 
+ 	    /*  Declare victory   */
+-	    retval = TRUE;
++	    retval = true;
+ 	}
+     }
+     return( retval);
+@@ -3420,8 +3420,8 @@ static bool validate_to_target( void )
+     unsigned int saved_lineno = lineno;
+     unsigned int saved_abs_token_no = abs_token_no;
+     fwtoken defr = UNSPECIFIED ;
+-    bool targ_err = TRUE ;
+-    bool retval = FALSE ;
++    bool targ_err = true ;
++    bool retval = false ;
+ 
+     wlen = get_word();
+     if ( wlen <= 0 )
+@@ -3441,9 +3441,9 @@ static bool validate_to_target( void )
+ 			cmd_cpy, statbuf);
+ 		case DEFER:
+ 		case VALUE:
+-		    targ_err = FALSE ;
++		    targ_err = false ;
+ 		case CONST:
+-		    retval = TRUE ;
++		    retval = true ;
+ 		/*  No default needed, likewise, no breaks;      */
+ 		/*  but some compilers get upset without 'em...  */
+ 		default:
+@@ -3566,7 +3566,7 @@ static void fcode_starter( const char *token_name, int spread, bool is_offs16)
+ 
+ 	emit_fcodehdr(token_name);
+ 	offs16 = is_offs16;
+-	fcode_started = TRUE;
++	fcode_started = true;
+ 
+ 	current_device_node->ifile_name = strdup(iname);
+ 	current_device_node->line_no = lineno;
+@@ -3574,7 +3574,7 @@ static void fcode_starter( const char *token_name, int spread, bool is_offs16)
+ 	if ( first_fc_starter )
+ 	{
+ 	    reset_fcode_ranges();
+-	    first_fc_starter = FALSE;
++	    first_fc_starter = false;
+ 	}else{
+ 	    set_next_fcode( nextfcode);
+ 	}
+@@ -3607,7 +3607,7 @@ static void fcode_starter( const char *token_name, int spread, bool is_offs16)
+ 
+ static void fcode_end_err_check( void)
+ {
+-    bool stack_imbal = BOOLVAL( stackdepth() != 0 );
++    bool stack_imbal = ( stackdepth() != 0 );
+ 
+ 	if ( stack_imbal )
+ 	{
+@@ -3678,12 +3678,12 @@ void fcode_ender(void)
+     {
+ 	char *tmp_iname = iname;
+ 	iname = last_colon_filename;
+-	unterm_is_colon = TRUE;
++	unterm_is_colon = true;
+ 	warn_unterm( TKERROR, "Colon Definition", last_colon_lineno);
+ 	iname = tmp_iname;    
+     }
+     
+-    haveend = TRUE;
++    haveend = true;
+ 
+     if ( is_instance )
+     {
+@@ -3700,7 +3700,7 @@ void fcode_ender(void)
+     fcode_end_err_check();
+     reset_normal_vocabs();
+     finish_fcodehdr();
+-    fcode_started = FALSE;
++    fcode_started = false;
+ 
+     if ( current_device_node->ifile_name != default_top_dev_ifile_name )
+     {
+@@ -3752,7 +3752,7 @@ void fcode_ender(void)
+ 
+ static bool get_token(tic_hdr_t **tok_entry)
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     tic_hdr_t *found;
+     u8 *save_pc;
+ 
+@@ -3788,7 +3788,7 @@ static bool get_token(tic_hdr_t **tok_entry)
+ 	    if ( defr == BI_FWRD_DEFN )
+ 	    {
+ 	        found = lookup_token( statbuf);
+-		retval = BOOLVAL( found != NULL );
++		retval = ( found != NULL );
+ 	    }else{
+ 		retval = entry_is_token( found);
+ 	    }
+@@ -3811,7 +3811,7 @@ static bool get_token(tic_hdr_t **tok_entry)
+ 
+ static void base_change ( int new_base )
+ {
+-    if ( incolon && ( INVERSE( in_tokz_esc) ) )
++    if ( incolon && ( !in_tokz_esc ) )
+     {
+         emit_literal(new_base );
+ 	emit_token("base");
+@@ -3885,7 +3885,7 @@ static void base_val (int new_base)
+ 
+ void eval_string( char *inp_bufr)
+ {
+-    push_source( NULL, NULL, FALSE);
++    push_source( NULL, NULL, false);
+     init_inbuf( inp_bufr, strlen(inp_bufr));
+ }
+ 
+@@ -3947,20 +3947,20 @@ void eval_string( char *inp_bufr)
+ 
+ static void finish_or_new_device( bool finishing_device )
+ {
+-    if ( INVERSE( incolon ) )
++    if ( !incolon )
+     {
+-	if ( INVERSE( is_instance) )
++	if ( !is_instance )
+ 	{
+ 	    /*  Arm warning for next time:         */
+-	    dev_change_instance_warning = TRUE;
++	    dev_change_instance_warning = true;
+ 	}else{
+ 	    /*  Dangling "instance"                */
+-	    instance_definer_gap = TRUE;
++	    instance_definer_gap = true;
+ 	    /*   Warn only once.                   */
+ 	    if ( dev_change_instance_warning )
+ 	    {
+ 		unresolved_instance( WARNING);
+-		dev_change_instance_warning = FALSE;
++		dev_change_instance_warning = false;
+ 	    }
+ 	}
+ 
+@@ -4053,7 +4053,7 @@ static void finish_or_new_device( bool finishing_device )
+ 	
+ static bool abort_quote( fwtoken tok)
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     if ( tok == ABORTTXT )
+     {
+ 	if ( ! enable_abort_quote )
+@@ -4062,7 +4062,7 @@ static bool abort_quote( fwtoken tok)
+ 	    char *save_statbuf;
+ 	    signed long wlen;
+ 	    save_statbuf = strdup( (char *)statbuf);
+-	    wlen = get_string( FALSE);
++	    wlen = get_string( false);
+ 	    strcpy( statbuf, save_statbuf);
+ 	    free( save_statbuf);
+ 	}else{
+@@ -4077,11 +4077,11 @@ static bool abort_quote( fwtoken tok)
+ 	    char *abort_string;
+ 	    signed long wlen;
+ 
+-	    retval = TRUE;
++	    retval = true;
+ 	    tokenization_error (INFO, "ABORT\" in fcode not "
+ 			    "defined by IEEE 1275-1994\n");
+-	    test_in_colon("ABORT\"", TRUE, TKERROR, NULL);
+-	    wlen=get_string( TRUE);
++	    test_in_colon("ABORT\"", true, TKERROR, NULL);
++	    wlen=get_string( true);
+ 
+ 	    if ( sun_style_abort_quote )  emit_if();
+ 
+@@ -4299,7 +4299,7 @@ static  bool string_err_check( bool is_paren,
+     {
+ 	warn_unterm( TKERROR, item_typ, sav_lineno );
+     }else{
+-	retval = TRUE;
++	retval = true;
+ 	warn_if_multiline( item_typ, strt_lineno );
+ 	}
+     return( retval);
+@@ -4363,8 +4363,8 @@ void handle_internal( tic_param_t pfield)
+ 	signed long wlen;
+ 	unsigned int sav_lineno = lineno;    /*  For error message  */
+ 
+-	bool handy_toggle = TRUE ;   /*  Various uses...   */
+-	bool handy_toggle_too = TRUE ;   /*  Various other uses...   */
++	bool handy_toggle = true ;   /*  Various uses...   */
++	bool handy_toggle_too = true ;   /*  Various other uses...   */
+ 	char *handy_string = "";
+ 	int handy_int = 0;
+ 	
+@@ -4420,7 +4420,7 @@ void handle_internal( tic_param_t pfield)
+ 			last_colon_defname = strdup(statbuf);
+ 
+ 		emit_token("b(:)");
+-		incolon=TRUE;
++		incolon=true;
+ 			hide_last_colon();
+ 			lastcolon = opc;
+ 		    }
+@@ -4428,9 +4428,9 @@ void handle_internal( tic_param_t pfield)
+ 		break;
+ 	
+ 	case SEMICOLON:
+-		if ( test_in_colon("SEMICOLON", TRUE, TKERROR, NULL) )
++		if ( test_in_colon("SEMICOLON", true, TKERROR, NULL) )
+ 		{
+-		    ret_stk_balance_rpt( "termination,", TRUE);
++		    ret_stk_balance_rpt( "termination,", true);
+ 		    /*  Clear Control Structures just back to where
+ 		     *      the current Colon-definition began.
+ 		     */
+@@ -4444,7 +4444,7 @@ void handle_internal( tic_param_t pfield)
+ 		    }
+ 
+ 		emit_token("b(;)");
+-		incolon=FALSE;
++		incolon=false;
+ 		    reveal_last_colon();
+ 		}
+ 		break;
+@@ -4464,13 +4464,13 @@ void handle_internal( tic_param_t pfield)
+ 		break;
+ 
+ 	case ALLOW_MULTI_LINE:
+-		report_multiline = FALSE;
++		report_multiline = false;
+ 		break;
+ 
+ 	case OVERLOAD:
+-		if ( test_in_colon(statbuf, FALSE, WARNING, NULL) )
++		if ( test_in_colon(statbuf, false, WARNING, NULL) )
+ 		{
+-		    do_not_overload = FALSE;
++		    do_not_overload = false;
+ 		}
+ 		break;
+ 
+@@ -4484,12 +4484,12 @@ void handle_internal( tic_param_t pfield)
+ 	case CL_FLAG:
+ 		if (get_word_in_line( statbuf) )
+ 		{
+-		     set_cl_flag( statbuf, TRUE);
++		     set_cl_flag( statbuf, true);
+ 		}
+ 		break;
+ 
+ 	case SHOW_CL_FLAGS:
+-		show_all_cl_flag_settings( TRUE);
++		show_all_cl_flag_settings( true);
+ 		break;
+ 
+ 	case FIELD:
+@@ -4551,7 +4551,7 @@ void handle_internal( tic_param_t pfield)
+ 		break;
+ 
+ 	case NEW_DEVICE:
+-		handy_toggle = FALSE;
++		handy_toggle = false;
+ 	case FINISH_DEVICE:
+ 		finish_or_new_device( handy_toggle );
+ 		break;
+@@ -4606,7 +4606,7 @@ void handle_internal( tic_param_t pfield)
+ 			"Call of OFFSET16 is redundant.\n");
+ 		}
+ 		emit_token("offset16");
+-		offs16=TRUE;
++		offs16=true;
+ 		break;
+ 
+ 	case IF:
+@@ -4653,22 +4653,22 @@ void handle_internal( tic_param_t pfield)
+ 
+ 	case INSTANCE:
+ 		{
+-		    bool set_instance_state = FALSE;
+-		    bool emit_instance = TRUE;
++		    bool set_instance_state = false;
++		    bool emit_instance = true;
+ 		    /*  We will treat "instance" in a colon-definition as
+ 		     *      an error, but allow it to be emitted if we're
+ 		     *      ignoring errors; if we're not ignoring errors,
+ 		     *      there's no output anyway...
+ 		     */
+-		    if ( test_in_colon(statbuf, FALSE, TKERROR, NULL) )
++		    if ( test_in_colon(statbuf, false, TKERROR, NULL) )
+ 		    {   /*   We are in interpretation (not colon) state.  */
+ 			/*  "Instance" not allowed during "global" scope  */ 
+ 			if ( scope_is_global )
+ 			{
+-			    glob_not_allowed( WARNING, FALSE );
+-			    emit_instance = FALSE;
++			    glob_not_allowed( WARNING, false );
++			    emit_instance = false;
+ 			}else{
+-			    set_instance_state = TRUE;
++			    set_instance_state = true;
+ 			}
+ 		    }
+ 		    if ( emit_instance )
+@@ -4682,8 +4682,8 @@ void handle_internal( tic_param_t pfield)
+ 			    }
+ 			    collect_input_filename( &instance_filename);
+ 			    instance_lineno = lineno;
+-			    is_instance = TRUE;
+-			    dev_change_instance_warning = TRUE;
++			    is_instance = true;
++			    dev_change_instance_warning = true;
+ 			}
+ 			emit_token("instance");
+ 		    }
+@@ -4691,9 +4691,9 @@ void handle_internal( tic_param_t pfield)
+ 		break;
+ 		
+ 	case GLOB_SCOPE:
+-		if ( test_in_colon(statbuf, FALSE, TKERROR, NULL) )
++		if ( test_in_colon(statbuf, false, TKERROR, NULL) )
+ 		{
+-		    if ( INVERSE( is_instance) )
++		    if ( !is_instance )
+ 		    {
+ 			enter_global_scope();
+ 		    }else{
+@@ -4707,14 +4707,14 @@ void handle_internal( tic_param_t pfield)
+ 		break;
+ 
+ 	case DEV_SCOPE:
+-		if ( test_in_colon(statbuf, FALSE, TKERROR, NULL) )
++		if ( test_in_colon(statbuf, false, TKERROR, NULL) )
+ 		{
+ 		    resume_device_scope();
+ 		}
+ 		break;
+ 
+ 	case TICK:             /*    '    */
+-		test_in_colon(statbuf, FALSE, WARNING, "[']");
++		test_in_colon(statbuf, false, WARNING, "[']");
+ 	case BRACK_TICK:       /*   [']   */
+ 		{
+ 		    tic_hdr_t *token_entry;
+@@ -4750,7 +4750,7 @@ void handle_internal( tic_param_t pfield)
+ 		break;
+ 
+ 	case CHAR:
+-		handy_toggle = FALSE;
++		handy_toggle = false;
+ 	case CCHAR:
+ 		test_in_colon(statbuf, handy_toggle, WARNING,
+ 		    handy_toggle ? "CHAR" : "[CHAR]" );
+@@ -4792,12 +4792,12 @@ void handle_internal( tic_param_t pfield)
+ 		{
+ 		    bool stream_ok ;
+ 			
+-		    push_source( close_stream, NULL, TRUE) ;
++		    push_source( close_stream, NULL, true) ;
+ 			
+ 		    tokenization_error( INFO, "FLOADing %s\n", statbuf );
+ 			
+ 		    stream_ok = init_stream( statbuf );
+-		    if ( INVERSE( stream_ok) )
++		    if ( !stream_ok )
+ 		    {
+ 			drop_source();
+ 		    }
+@@ -4805,9 +4805,9 @@ void handle_internal( tic_param_t pfield)
+ 		break;
+ 
+ 	case STRING:         /*  Double-Quote ( " ) string  */
+-		handy_toggle = FALSE;
++		handy_toggle = false;
+ 	case PSTRING:        /*  Dot-Quote  ( ." ) string   */
+-		wlen=get_string( TRUE);
++		wlen=get_string( true);
+ 		emit_token("b(\")");
+ 		emit_string(statbuf, wlen);
+ 		if ( handy_toggle )
+@@ -4817,7 +4817,7 @@ void handle_internal( tic_param_t pfield)
+ 		break;
+ 
+ 	case SSTRING:        /*  Ess-Quote  ( s"  ) string  */
+-		handy_toggle = FALSE;
++		handy_toggle = false;
+ 	case PBSTRING:       /*  Dot-Paren  .(   string  */
+ 		if (*pc++=='\n') lineno++;
+ 		{
+@@ -4876,7 +4876,7 @@ void handle_internal( tic_param_t pfield)
+ 		break;
+ 
+ 	case ASC_LEFT_NUM:
+-		handy_toggle = FALSE;
++		handy_toggle = false;
+ 	case ASC_NUM:
+ 		if (get_word_in_line( statbuf) )
+ 		{
+@@ -4911,15 +4911,15 @@ void handle_internal( tic_param_t pfield)
+ 		tokenization_error( INFO,
+ 		    "Encountered %s.  Resetting FCode-token "
+ 			"Assignment Counter.  ", strupr(statbuf) );
+-		list_fcode_ranges( FALSE);
++		list_fcode_ranges( false);
+ 		reset_fcode_ranges();
+ 		break;
+ 		
+ 	case EXIT:
+-		if ( test_in_colon( statbuf, TRUE, TKERROR, NULL)
++		if ( test_in_colon( statbuf, true, TKERROR, NULL)
+ 		     || noerrors )
+ 		{
+-		    ret_stk_balance_rpt( NULL, FALSE);
++		    ret_stk_balance_rpt( NULL, false);
+ 		    if ( ibm_locals )
+ 		    {
+ 			finish_locals ();
+@@ -4934,7 +4934,7 @@ void handle_internal( tic_param_t pfield)
+ 	
+ 	case VERSION1:
+ 	case FCODE_V1:
+-		fcode_starter( "version1", 1, FALSE) ;
++		fcode_starter( "version1", 1, false) ;
+ 		tokenization_error( INFO, "Using version1 header "
+ 		    "(8-bit offsets).\n");
+ 		break;
+@@ -4942,26 +4942,26 @@ void handle_internal( tic_param_t pfield)
+ 	case START1:
+ 	case FCODE_V2:
+ 	case FCODE_V3: /* Full IEEE 1275 */
+-		fcode_starter( "start1", 1, TRUE);
++		fcode_starter( "start1", 1, true);
+ 		break;
+ 		
+ 	case START0:
+-		fcode_starter( "start0", 0, TRUE);
++		fcode_starter( "start0", 0, true);
+ 		break;
+ 		
+ 	case START2:
+-		fcode_starter( "start2", 2, TRUE);
++		fcode_starter( "start2", 2, true);
+ 		break;
+ 		
+ 	case START4:
+-		fcode_starter( "start4", 4, TRUE);
++		fcode_starter( "start4", 4, true);
+ 		break;
+ 		
+ 	case END1:
+ 		tokenization_error( WARNING, 
+ 		    "Appearance of END1 in FCode source code "
+ 			"is not intended by IEEE 1275-1994\n");
+-		handy_toggle = FALSE;
++		handy_toggle = false;
+ 	case END0:
+ 	case FCODE_END:
+ 		if ( handy_toggle )
+@@ -4974,7 +4974,7 @@ void handle_internal( tic_param_t pfield)
+ 		break;
+ 
+ 	case RECURSE:
+-		if ( test_in_colon(statbuf, TRUE, TKERROR, NULL ) )
++		if ( test_in_colon(statbuf, true, TKERROR, NULL ) )
+ 		{
+ 		    emit_fcode(last_colon_fcode);
+ 		}
+@@ -4982,7 +4982,7 @@ void handle_internal( tic_param_t pfield)
+ 		
+ 
+ 	case RECURSIVE:
+-		if ( test_in_colon(statbuf, TRUE, TKERROR, NULL ) )
++		if ( test_in_colon(statbuf, true, TKERROR, NULL ) )
+ 		{
+ 		    reveal_last_colon();
+ 		}
+@@ -4999,7 +4999,7 @@ void handle_internal( tic_param_t pfield)
+ 		    /*  handy_toggle_too  is already TRUE    */
+ 		    /*  Will not call bump_ret_stk_depth()   */
+ 		    /*  handy_int  is already zero    */
+-		handy_toggle = FALSE;
++		handy_toggle = false;
+ 	case RET_STK_FROM:
+ 		if ( handy_toggle )
+ 		{
+@@ -5008,14 +5008,14 @@ void handle_internal( tic_param_t pfield)
+ 		    /*  handy_toggle_too  is already TRUE    */
+ 		    /*  Will call bump_ret_stk_depth( -1)    */
+ 		    handy_int = -1;
+-		    handy_toggle = FALSE;
++		    handy_toggle = false;
+ 		}
+ 	case RET_STK_TO:
+ 		if ( handy_toggle )
+ 		{
+ 		    handy_string = ">r";
+ 		    /*  Will not call ret_stk_access_rpt()   */
+-		    handy_toggle_too  = FALSE;
++		    handy_toggle_too  = false;
+ 		    /*  Will call bump_ret_stk_depth( 1)     */
+ 		    handy_int =  1;
+ 		    /*  Last in series doesn't need to reset handy_toggle  */
+@@ -5025,7 +5025,7 @@ void handle_internal( tic_param_t pfield)
+ 		handy_toggle = allow_ret_stk_interp;
+ 		if ( ! handy_toggle )
+ 		{
+-		    handy_toggle = test_in_colon(statbuf, TRUE, TKERROR, NULL );
++		    handy_toggle = test_in_colon(statbuf, true, TKERROR, NULL );
+ 		}
+ 		if ( handy_toggle || noerrors )
+ 		{
+@@ -5061,13 +5061,13 @@ void handle_internal( tic_param_t pfield)
+ 		break;
+ 
+ 	case NOTLAST:
+-		handy_toggle = FALSE;
++		handy_toggle = false;
+ 	case ISLAST:
+ 		dpush(handy_toggle);
+ 	case SETLAST:
+ 		{
+ 		    u32 val = dpop();
+-		    bool new_pili = BOOLVAL( (val != 0) );
++		    bool new_pili = ( (val != 0) );
+ 		    if ( pci_is_last_image != new_pili )
+ 		    {
+ 			tokenization_error( INFO,
+@@ -5102,7 +5102,7 @@ void handle_internal( tic_param_t pfield)
+ 		break;
+ 
+ 	case FCODE_DATE:
+-		handy_toggle = FALSE;
++		handy_toggle = false;
+ 	case FCODE_TIME:
+ 		{
+ 			time_t tt;
+@@ -5136,16 +5136,16 @@ void handle_internal( tic_param_t pfield)
+ 	    /*  IBM-style Locals, under control of a switch  */
+ 	    if ( ibm_locals )
+ 	    {
+-		bool found_it = TRUE;
++		bool found_it = true;
+ 		switch (tok) {
+ 		    case CURLY_BRACE:
+-			declare_locals( FALSE);
++			declare_locals( false);
+ 			break;
+ 		    case DASH_ARROW:
+ 			assign_local();
+ 			break;
+ 		    default:
+-			found_it = FALSE;
++			found_it = false;
+ 	}
+ 		if ( found_it ) break;
+ }
+@@ -5160,13 +5160,13 @@ void handle_internal( tic_param_t pfield)
+ 	     *      "fake-out" the line number...
+ 	     */
+ {
+-		bool fake_out_lineno = FALSE;
++		bool fake_out_lineno = false;
+ 		unsigned int save_lineno = lineno;
+ 		unsigned int true_lineno;
+ 		if ( abort_quote( tok) )
+ 		{   break;
+ 		}else{
+-		    if ( tok == ABORTTXT )  fake_out_lineno = TRUE;
++		    if ( tok == ABORTTXT )  fake_out_lineno = true;
+ 		}
+ 		true_lineno = lineno;
+ 
+@@ -5222,18 +5222,18 @@ void skip_string( tic_param_t pfield)
+ {
+     fwtoken tok = pfield.fw_token;
+     unsigned int sav_lineno = lineno;
+-    bool handy_toggle = TRUE ;   /*  Various uses...   */
++    bool handy_toggle = true ;   /*  Various uses...   */
+ 			
+     switch (tok) {
+     case STRING:         /*  Double-Quote ( " ) string    */
+     case PSTRING:        /*  Dot-Quote  ( ." ) string     */
+     case ABORTTXT:       /*  ABORT", even if not enabled  */
+-	get_string( FALSE);   /*  Don't truncate; ignoring anyway  */
++	get_string( false);   /*  Don't truncate; ignoring anyway  */
+ 	/*  Will handle multi-line warnings, etc.   */
+ 				break;
+ 			
+     case SSTRING:        /*  Ess-Quote  ( s"  ) string  */
+-	handy_toggle = FALSE;
++	handy_toggle = false;
+     case PBSTRING:       /*  Dot-Paren  .(   string  */
+ 			if (*pc++=='\n') lineno++;
+ 	{
+@@ -5247,16 +5247,16 @@ void skip_string( tic_param_t pfield)
+ 	/*  IBM-style Locals, under control of a switch  */
+ 	if ( ibm_locals )
+ 	{
+-	    bool found_it = TRUE;
++	    bool found_it = true;
+ 	    switch (tok) {
+ 		case CURLY_BRACE:
+-		    declare_locals( TRUE);
++		    declare_locals( true);
+ 		    break;
+ 		case DASH_ARROW:
+ 		    get_word();
+ 		    break;
+ 		default:
+-		    found_it = FALSE;
++		    found_it = false;
+ 	    }
+ 	    if ( found_it ) break;
+ 	}
+@@ -5356,7 +5356,7 @@ void process_remark( tic_param_t pfield )
+ 
+ bool filter_comments( u8 *inword)
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     tic_hdr_t *found = lookup_word( inword, NULL, NULL );
+ 			
+     if ( found != NULL )
+@@ -5364,7 +5364,7 @@ bool filter_comments( u8 *inword)
+ 	if ( found->funct == process_remark )
+ 	{
+ 	    found->funct( found->pfield);
+-	    retval = TRUE;
++	    retval = true;
+ 	}else{
+ 	    /*  Permit the "allow-multiline-comments" directive  */
+ 	    if ( found->funct == handle_internal )
+@@ -5373,7 +5373,7 @@ bool filter_comments( u8 *inword)
+ 		{
+ 		    /*   Make sure any intended side-effects occur...  */
+ 		    found->funct( found->pfield);
+-		    retval = TRUE;
++		    retval = true;
+ 		}
+ 	    }
+ 	}
+diff --git a/toke/stack.c b/toke/stack.c
+index 2d4614a..eedbe2f 100644
+--- a/toke/stack.c
++++ b/toke/stack.c
+@@ -98,7 +98,7 @@ static void stackerror(bool stat)
+  */
+ bool min_stack_depth(int mindep)
+ {
+-    bool retval = TRUE ;
++    bool retval = true ;
+     long *stack_result;
+ 
+     stack_result = dstack + mindep;
+@@ -116,8 +116,8 @@ bool min_stack_depth(int mindep)
+ 
+     if ( stack_result > enddstack )
+     {
+-	retval = FALSE;
+-	stackerror(TRUE);
++	retval = false;
++	stackerror(true);
+     }
+ 
+     return ( retval );
+@@ -128,7 +128,7 @@ bool min_stack_depth(int mindep)
+  */
+ static bool room_on_stack_for(int newdep)
+ {
+-    bool retval = TRUE ;
++    bool retval = true ;
+     long *stack_result;
+ 
+     stack_result = dstack - newdep;
+@@ -136,8 +136,8 @@ static bool room_on_stack_for(int newdep)
+ 
+     if ( stack_result < startdstack )
+     {
+-	retval = FALSE;
+-	stackerror(FALSE);
++	retval = false;
++	stackerror(false);
+     }
+ 
+     return ( retval );
+diff --git a/toke/stream.c b/toke/stream.c
+index 6e6a5a7..ed5be5d 100644
+--- a/toke/stream.c
++++ b/toke/stream.c
+@@ -126,7 +126,7 @@ static char *depncy_list_name;
+ static FILE *depncy_file;
+ static char *missing_list_name;
+ static FILE *missing_list_file;
+-static bool no_files_missing = TRUE;
++static bool no_files_missing = true;
+ 
+ /* **************************************************************************
+  *
+@@ -399,12 +399,12 @@ static void init_incl_list_scan( char *base_name)
+ 
+ static bool scan_incl_list( char *base_name)
+ {
+-    bool retval = FALSE;   /*  default to "Done"  */
++    bool retval = false;   /*  default to "Done"  */
+ 	
+     if ( include_list_full_path == NULL )
+     {
+ 	include_list_full_path = base_name;
+-	retval = TRUE;
++	retval = true;
+     }else{
+ 	if ( include_list_next != NULL )
+ 	{
+@@ -425,7 +425,7 @@ static bool scan_incl_list( char *base_name)
+ 	            include_list_next->dir_path, base_name);
+ 	    }
+ 	    include_list_next = include_list_next->next;
+-	    retval = TRUE;
++	    retval = true;
+ 	}
+     }
+ 
+@@ -550,7 +550,7 @@ static FILE *open_incl_list_file( char *base_name, char *mode)
+ 
+ static bool stat_incl_list_file( char *base_name, struct stat *file_info)
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     int stat_reslt = -1;    /*  Success = 0   */
+ 
+     init_incl_list_scan( base_name);
+@@ -559,7 +559,7 @@ static bool stat_incl_list_file( char *base_name, struct stat *file_info)
+         stat_reslt = stat( include_list_full_path, file_info);
+ 	if ( stat_reslt == 0 )
+ 	{
+-	    retval = TRUE;
++	    retval = true;
+ 	    break; 
+ 	}
+     }
+@@ -650,7 +650,7 @@ static void file_is_missing( char *fle_nam)
+     if ( missing_list_file != NULL )
+     {
+ 	fprintf( missing_list_file, "%s\n", fle_nam);
+-	no_files_missing = FALSE;
++	no_files_missing = false;
+     }
+ }
+ 
+@@ -785,7 +785,7 @@ static void expanded_name( void )
+ 
+ static void expansion_error( void )
+ {
+-    if ( INVERSE( verbose) )
++    if ( !verbose )
+     {
+ 	expansion_msg_severity |= FORCE_MSG;
+ 	expanded_name();
+@@ -902,7 +902,7 @@ static char *expand_pathname( const char *input_pathname)
+     static const int buffer_max = GET_BUF_MAX * 2;
+ 
+     char *retval = (char *)input_pathname;
+-    was_expanded = FALSE;
++    was_expanded = false;
+ 
+     /*  If no '$' is found, expansion is unnecessary.  */
+     if ( strchr( input_pathname, '$') != NULL )
+@@ -937,7 +937,7 @@ static char *expand_pathname( const char *input_pathname)
+ 	    retval = NULL;
+ 	}else{
+ 	    expansion_buffer[syst_stat-1] =0;
+-	    was_expanded = TRUE;
++	    was_expanded = true;
+ 	    retval = expansion_buffer;
+ 	    expanded_name();
+ 	}
+@@ -993,7 +993,7 @@ FILE *open_expanded_file( const char *path_name, char *mode, char *for_what)
+ 	    "Failed to open file %s for %s\n", path_name, for_what );
+     }
+ 
+-    finish_incl_list_scan( BOOLVAL( retval != NULL) );
++    finish_incl_list_scan( ( retval != NULL) );
+ 
+     return( retval);
+ }
+@@ -1080,30 +1080,30 @@ bool init_stream( const char *name)
+     FILE *infile;
+     u8 *newbuf;
+ 	struct stat finfo;
+-    bool stat_succ = FALSE;
+-    bool tried_stat = FALSE;
+-    bool retval = FALSE;
+-    bool inp_fil_acc_err = FALSE;
+-    bool inp_fil_open_err = FALSE;
+-    bool inp_fil_read_err = FALSE;
++    bool stat_succ = false;
++    bool tried_stat = false;
++    bool retval = false;
++    bool inp_fil_acc_err = false;
++    bool inp_fil_open_err = false;
++    bool inp_fil_read_err = false;
+ 
+     char *infile_name = expand_pathname( name);
+ 
+     if ( (infile_name != NULL) )
+     {
+-	tried_stat = TRUE;
++	tried_stat = true;
+ 	stat_succ = stat_incl_list_file( infile_name, &finfo);
+     }
+ 
+-    if ( INVERSE( stat_succ) )
++    if ( !stat_succ )
+     {
+-	inp_fil_acc_err = TRUE;
++	inp_fil_acc_err = true;
+     }else{
+ 	
+ 	infile = fopen( include_list_full_path, "r");
+ 	if ( infile == NULL )
+ 	{
+-	    inp_fil_open_err = TRUE;
++	    inp_fil_open_err = true;
+ 	}else{
+ 	
+ 	ilen=finfo.st_size;
+@@ -1111,12 +1111,12 @@ bool init_stream( const char *name)
+ 
+ 	    if ( fread( newbuf, ilen, 1, infile) != 1 )
+ 	    {
+-		inp_fil_read_err = TRUE;
++		inp_fil_read_err = true;
+ 		free( newbuf );
+ 	    } else {
+ 		unsigned int i;
+ 
+-		retval = TRUE ;
++		retval = true ;
+ 		/*  Replace zeroes in the file with LineFeeds. */
+ 		/*  Replace carr-rets with spaces.  */
+ 		for (i=0; i<ilen; i++)
+@@ -1164,7 +1164,7 @@ bool init_stream( const char *name)
+ 		if ( oname == NULL )
+ 		{
+ 		    /*  Quick way to suppress "finish"ing the i-l scan */
+-		    tried_stat = FALSE; 
++		    tried_stat = false;
+ 		}
+ 	    }
+ 	fclose(infile);
+@@ -1173,7 +1173,7 @@ bool init_stream( const char *name)
+ 	
+     FFLUSH_STDOUT	/*   Do this first  */
+     /*  Now we can deliver our postponed error and advisory messages  */
+-    if ( INVERSE( retval) )
++    if ( !retval )
+     {
+ 	file_is_missing( (char *)name);
+ 	if ( inp_fil_acc_err )
+@@ -1416,7 +1416,7 @@ void init_output( const char *in_name, const char *out_name )
+ 	    char *temp_iname = iname;
+ 	    iname = NULL; 
+ 	
+-	    finish_incl_list_scan( TRUE);
++	    finish_incl_list_scan( true);
+ 
+ 	    if ( fload_list && (load_list_file == NULL) )
+ 	    {
+@@ -1434,7 +1434,7 @@ void init_output( const char *in_name, const char *out_name )
+ 	    {
+ 		missing_list_name = extend_filename( oname, ".fl.missing");
+ 		missing_list_file = fopen( missing_list_name,"w");
+-		no_files_missing = TRUE;
++		no_files_missing = true;
+ 
+ 		if ( missing_list_file == NULL )
+ 		{
+@@ -1559,12 +1559,12 @@ void close_stream( _PTR dummy)
+ 
+ bool close_output(void)
+ {
+-    bool retval = TRUE;  /*  "Failure"  */
++    bool retval = true;  /*  "Failure"  */
+     if ( error_summary() )
+     { 
+ 	if ( opc == 0 )
+ {
+-	    retval = FALSE;  /*  "Not a problem"  */
++	    retval = false;  /*  "Not a problem"  */
+ 	}else{
+ 	FILE *outfile;
+ 
+@@ -1586,7 +1586,7 @@ bool close_output(void)
+ 
+ 		printf("toke: wrote %d bytes to bytecode file '%s'\n",
+ 		    opc, oname);
+-		retval = FALSE;  /*  "No problem"  */
++		retval = false;  /*  "No problem"  */
+ 	    }
+ 	}
+     }
+diff --git a/toke/strsubvocab.c b/toke/strsubvocab.c
+index b7fec08..1efeeff 100644
+--- a/toke/strsubvocab.c
++++ b/toke/strsubvocab.c
+@@ -172,13 +172,13 @@ str_sub_vocab_t *lookup_str_sub( char *tname, str_sub_vocab_t *str_sub_vocab )
+ 
+ bool exists_in_str_sub( char *tname, str_sub_vocab_t *str_sub_vocab )
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     str_sub_vocab_t *found = NULL;
+ 
+     found = lookup_str_sub( tname, str_sub_vocab );
+     if ( found != NULL )
+     {
+-        retval = TRUE;
++        retval = true;
+     }
+     return ( retval );
+ 
+diff --git a/toke/ticvocab.c b/toke/ticvocab.c
+index 3e96716..90ecc8d 100644
+--- a/toke/ticvocab.c
++++ b/toke/ticvocab.c
+@@ -369,12 +369,12 @@ tic_hdr_t *lookup_tic_entry( char *tname, tic_hdr_t *tic_vocab )
+ bool exists_in_tic_vocab( char *tname, tic_hdr_t *tic_vocab )
+ {
+     tic_hdr_t *found ;
+-    bool retval = FALSE;
++    bool retval = false;
+ 
+     found = lookup_tic_entry( tname, tic_vocab );
+     if ( found != NULL )
+     {
+-	retval = TRUE;
++	retval = true;
+     }
+ 
+     return ( retval );
+@@ -443,7 +443,7 @@ bool create_split_alias( char *new_name, char *old_name,
+                               tic_hdr_t **src_vocab, tic_hdr_t **dest_vocab )
+ {
+     tic_hdr_t *found ;
+-    bool retval = FALSE;
++    bool retval = false;
+ 
+     found = lookup_tic_entry( old_name, *src_vocab );
+     if ( found != NULL )
+@@ -455,7 +455,7 @@ bool create_split_alias( char *new_name, char *old_name,
+ 	}
+ 	if ( trace_it )
+ 	{
+-	    bool old_is_global = BOOLVAL( src_vocab != dest_vocab );
++	    bool old_is_global = ( src_vocab != dest_vocab );
+ 	    trace_creation( found, new_name, old_is_global);
+ 	}
+ 	warn_if_duplicate( new_name);
+@@ -468,7 +468,7 @@ bool create_split_alias( char *new_name, char *old_name,
+ 					   found->ign_func,
+ 					       trace_it,
+ 						   dest_vocab );
+-	retval = TRUE;
++	retval = true;
+     }
+ 
+     return ( retval );
+@@ -539,13 +539,13 @@ bool create_tic_alias( char *new_name, char *old_name, tic_hdr_t **tic_vocab )
+  
+ bool handle_tic_vocab( char *tname, tic_hdr_t *tic_vocab )
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     
+     tic_found = lookup_tic_entry( tname, tic_vocab );
+     if ( tic_found != NULL )
+     {
+         tic_found->funct( tic_found->pfield);
+-	retval = TRUE;
++	retval = true;
+     }
+ 
+     return ( retval ) ;
+diff --git a/toke/ticvocab.h b/toke/ticvocab.h
+index 8dc9301..a53e092 100644
+--- a/toke/ticvocab.h
++++ b/toke/ticvocab.h
+@@ -311,7 +311,7 @@ typedef struct tic_bool_hdr
+  **************************************************************************** */
+ #define NO_PARAM_TIC(nam, func )  \
+   { nam , (tic_hdr_t *)NULL , func ,   \
+-        { 0 }, UNSPECIFIED , FALSE , NULL , 0 , FALSE }
++        { 0 }, UNSPECIFIED , false , NULL , 0 , false }
+ 
+ 
+ /* **************************************************************************
+@@ -328,7 +328,7 @@ typedef struct tic_bool_hdr
+  **************************************************************************** */
+ #define NO_PARAM_IGN(nam, func )  \
+   { nam , (tic_hdr_t *)NULL , func ,   \
+-        { 0 }, UNSPECIFIED , FALSE , func , 0 , FALSE }
++        { 0 }, UNSPECIFIED , false , func , 0 , false }
+ 
+ 
+ /* **************************************************************************
+@@ -356,7 +356,7 @@ typedef struct tic_bool_hdr
+ 
+ #define VALPARAM_TIC(nam, func, pval, definr, is_tok )  \
+     { nam , (tic_hdr_t *)NULL , func ,  \
+-        { (TIC_P_DEFLT_TYPE)(pval) }, definr , is_tok , NULL , 0 , FALSE }
++        { (TIC_P_DEFLT_TYPE)(pval) }, definr , is_tok , NULL , 0 , false }
+ 
+ 
+ /* **************************************************************************
+@@ -380,12 +380,12 @@ typedef struct tic_bool_hdr
+  **************************************************************************** */
+ #define DUALFUNC_TIC(nam, afunc, pval, ifunc, definr )  \
+     { nam , (tic_hdr_t *)NULL , afunc ,  \
+-        { (TIC_P_DEFLT_TYPE)(pval) }, definr , FALSE , ifunc , 0 , FALSE }
++        { (TIC_P_DEFLT_TYPE)(pval) }, definr , false , ifunc , 0 , false }
+ 
+ /*  Similar but a  tic_fwt_hdr_t  type structure  */
+ #define DUFNC_FWT_PARM(nam, afunc, pval, ifunc, definr )  \
+     { nam , (tic_fwt_hdr_t *)NULL , afunc ,  \
+-        { (TIC_FWT_P_DEFLT_TYPE)(pval) }, definr , FALSE , ifunc , 0 , FALSE }
++        { (TIC_FWT_P_DEFLT_TYPE)(pval) }, definr , false , ifunc , 0 , false }
+ 
+ 
+ /* **************************************************************************
+@@ -406,7 +406,7 @@ typedef struct tic_bool_hdr
+ 
+ #define FWORD_TKN_TIC(nam, func, fw_tokval, definr )    \
+     { nam , (tic_fwt_hdr_t *)NULL , func , { fw_tokval },  \
+-      definr , FALSE , NULL , 0 , FALSE }
++      definr , false , NULL , 0 , false }
+ 
+ /* **************************************************************************
+  *          Macro Name:   DUALFUNC_FWT_TIC
+@@ -427,7 +427,7 @@ typedef struct tic_bool_hdr
+  **************************************************************************** */
+ #define DUALFUNC_FWT_TIC(nam, afunc, fw_tokval, ifunc, definr )    \
+     { nam , (tic_fwt_hdr_t *)NULL , afunc , { fw_tokval }, \
+-      definr , FALSE , ifunc , 0 , FALSE }
++      definr , false , ifunc , 0 , false }
+ 
+ /* **************************************************************************
+  *          Macro Name:   BUILTIN_MAC_TIC
+@@ -449,7 +449,7 @@ typedef struct tic_bool_hdr
+ 
+ #define BUILTIN_MAC_TIC(nam, func, alias )    \
+     { nam , (tic_mac_hdr_t *)NULL , func , { alias }, \
+-      MACRO_DEF , FALSE , NULL , 0 , FALSE }
++      MACRO_DEF , false , NULL , 0 , false }
+ 
+ 
+ /* **************************************************************************
+@@ -472,7 +472,7 @@ typedef struct tic_bool_hdr
+ 
+ #define BUILTIN_BOOL_TIC(nam, func, bool_vbl )    \
+     { nam , (tic_bool_hdr_t *)NULL , func , { &bool_vbl },   \
+-        COMMON_FWORD , FALSE , func , 0 , FALSE }
++        COMMON_FWORD , false , func , 0 , false }
+ 
+ 
+ /* **************************************************************************
+diff --git a/toke/toke.c b/toke/toke.c
+index 397b177..f7582f3 100644
+--- a/toke/toke.c
++++ b/toke/toke.c
+@@ -74,10 +74,10 @@
+  *
+  **************************************************************************** */
+ 
+-bool verbose         = FALSE;
+-bool noerrors        = FALSE;
+-bool fload_list      = FALSE;
+-bool dependency_list = FALSE;
++bool verbose         = false;
++bool noerrors        = false;
++bool fload_list      = false;
++bool dependency_list = false;
+ 
+ /* **************************************************************************
+  *
+@@ -230,9 +230,9 @@ static void get_args( int argc, char **argv )
+ 	const char *optstring="vhilPo:d:f:I:T:?";
+ 	int c;
+ 	int argindx = 0;
+-	bool inval_opt = FALSE;
+-	bool help_mssg = FALSE;
+-	bool cl_flag_error = FALSE;
++	bool inval_opt = false;
++	bool help_mssg = false;
++	bool cl_flag_error = false;
+ 
+ 	while (1) {
+ #ifdef __GLIBC__
+@@ -262,19 +262,19 @@ static void get_args( int argc, char **argv )
+ 		argindx++;
+ 		switch (c) {
+ 		case 'v':
+-			verbose=TRUE;
++			verbose=true;
+ 			break;
+ 		case 'o':
+ 			outputname = optarg;
+ 			break;
+ 		case 'i':
+-			noerrors = TRUE;
++			noerrors = true;
+ 			break;
+ 		case 'l':
+-			fload_list = TRUE;
++			fload_list = true;
+ 			break;
+ 		case 'P':
+-			dependency_list = TRUE;
++			dependency_list = true;
+ 			break;
+ 		case 'd':
+ 			{
+@@ -283,7 +283,7 @@ static void get_args( int argc, char **argv )
+ 			}
+ 			break;
+ 		case 'f':
+-			cl_flag_error = set_cl_flag(optarg, FALSE) ;
++			cl_flag_error = set_cl_flag(optarg, false) ;
+ 			break;
+ 		case 'I':
+ 			{
+@@ -300,12 +300,12 @@ static void get_args( int argc, char **argv )
+ 			 */
+ 			if ( optopt )
+ 			{
+-			    inval_opt = TRUE;
++			    inval_opt = true;
+ 			    break;
+ 			}
+ 		case 'h':
+ 		case 'H':
+-			 help_mssg = TRUE;		
++			 help_mssg = true;
+ 			break;
+ 		default:
+ 			/*  This is never executed
+diff --git a/toke/tokzesc.c b/toke/tokzesc.c
+index 32f9941..e62b6ec 100644
+--- a/toke/tokzesc.c
++++ b/toke/tokzesc.c
+@@ -159,7 +159,7 @@ void enter_tokz_esc( void )
+ {
+     saved_base = base ;
+     base = 16;
+-    in_tokz_esc = TRUE;
++    in_tokz_esc = true;
+ }
+ 
+ /* **************************************************************************
+@@ -178,7 +178,7 @@ void enter_tokz_esc( void )
+ 
+ static void end_tokz_esc( tic_param_t pfield )
+ {
+-    in_tokz_esc = FALSE;
++    in_tokz_esc = false;
+     base = saved_base ;
+ }
+ 
+@@ -254,7 +254,7 @@ static void tokz_esc_emit_byte ( tic_param_t pfield )
+ 
+ static bool get_fcode_from_stack( u16 *the_num, bool setting_fc)
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     char *the_action = "emit FCode value of";
+     u16 legal_minimum = 0x10;
+     long num_on_stk = dpop();
+@@ -274,7 +274,7 @@ static bool get_fcode_from_stack( u16 *the_num, bool setting_fc)
+     }
+     if ( ( test_fcode >= legal_minimum ) && ( test_fcode <= 0xfff ) )
+     {
+-	retval = TRUE;
++	retval = true;
+ 	*the_num = test_fcode;
+     }else{	tokenization_error( TKERROR, "Attempt to %s "
+ 	    "0x%x, which violates limit specified by IEEE-1275.  "
+@@ -305,7 +305,7 @@ static void tokz_esc_next_fcode( tic_param_t pfield )
+ {
+     u16 test_fcode;
+ 
+-    if ( get_fcode_from_stack( &test_fcode, TRUE) )
++    if ( get_fcode_from_stack( &test_fcode, true) )
+     {
+ 	if ( test_fcode == nextfcode )
+ 	{
+@@ -344,7 +344,7 @@ static void tokz_emit_fcode( tic_param_t pfield )
+ {
+     u16 test_fcode;
+ 
+-    if ( get_fcode_from_stack( &test_fcode, FALSE) )
++    if ( get_fcode_from_stack( &test_fcode, false) )
+     {
+ 	tokenization_error( INFO,
+ 	    "Emitting FCode value of 0x%x\n", test_fcode);
+@@ -526,7 +526,7 @@ static void create_constant( tic_param_t pfield )
+ 	     do_constant,
+ 		  (TIC_P_DEFLT_TYPE)valu,
+ 		       CONST ,
+-			  0 , FALSE , NULL,
++			  0 , false , NULL,
+ 		               &tokz_esc_vocab );
+ 
+     check_name_length( wlen );
+@@ -561,7 +561,7 @@ static const char close_paren = ')' ;
+  **************************************************************************** */
+ 
+ #define TKZESC_CONST(nam, pval)   \
+-                        VALPARAM_TIC(nam, do_constant, pval, CONST, FALSE )
++                        VALPARAM_TIC(nam, do_constant, pval, CONST, false )
+ #define TKZ_ESC_FUNC(nam, afunc, pval, ifunc)   \
+                         DUALFUNC_TIC(nam, afunc, pval, ifunc, UNSPECIFIED)
+ 
+@@ -621,12 +621,12 @@ void init_tokz_esc_vocab ( void )
+     static const int tokz_esc_vocab_max_indx =
+ 	 sizeof(tokz_esc_vocab_tbl)/sizeof(tic_hdr_t) ;
+ 
+-    in_tokz_esc = TRUE;
++    in_tokz_esc = true;
+     tokz_esc_vocab = NULL ;   /*  Belt-and-suspenders...  */
+     init_tic_vocab(tokz_esc_vocab_tbl,
+                        tokz_esc_vocab_max_indx,
+ 		           &tokz_esc_vocab );
+-    in_tokz_esc = FALSE;
++    in_tokz_esc = false;
+ }
+ 
+ /* **************************************************************************
+diff --git a/toke/tracesyms.c b/toke/tracesyms.c
+index 4de93f6..1cdff64 100644
+--- a/toke/tracesyms.c
++++ b/toke/tracesyms.c
+@@ -142,7 +142,7 @@ typedef struct trace_entry {
+ static trace_entry_t *trace_list = NULL;
+ static trace_entry_t *trace_list_last = NULL;
+ 
+-static bool tracing_symbols = FALSE;
++static bool tracing_symbols = false;
+ 
+ /* **************************************************************************
+  *
+@@ -192,7 +192,7 @@ void add_to_trace_list( char *trace_symb)
+ 	trace_list_last->next = new_t_l_entry;
+     }else{
+     trace_list = new_t_l_entry;
+-	tracing_symbols = TRUE;
++	tracing_symbols = true;
+     }
+     trace_list_last = new_t_l_entry;
+ }
+@@ -217,7 +217,7 @@ void add_to_trace_list( char *trace_symb)
+ 
+ bool is_on_trace_list( char *symb_name)
+ {
+-    bool retval = FALSE;
++    bool retval = false;
+     if ( tracing_symbols )
+     {
+     trace_entry_t *test_entry = trace_list;
+@@ -225,7 +225,7 @@ bool is_on_trace_list( char *symb_name)
+     {
+         if ( strcasecmp( symb_name, test_entry->tracee) == 0 )
+ 	{
+-	    retval = TRUE;
++	    retval = true;
+ 	    break;
+ 	}
+ 	    test_entry = test_entry->next;
+@@ -342,8 +342,8 @@ void trace_creation( tic_hdr_t *trace_entry,
+     char *defr_name = "" ;
+     char *defr_phrase = "" ;
+     char *with_scope = "" ;
+-    bool def_is_local = BOOLVAL( trace_entry->fword_defr == LOCAL_VAL);
+-    bool creating_alias = BOOLVAL( nu_name != NULL );
++    bool def_is_local = ( trace_entry->fword_defr == LOCAL_VAL);
++    bool creating_alias = ( nu_name != NULL );
+ 
+     if ( creating_alias )
+     {
+@@ -451,7 +451,7 @@ void trace_creation( tic_hdr_t *trace_entry,
+     {
+ 	if ( def_is_local )
+ 	{
+-	    in_last_colon( TRUE);
++	    in_last_colon( true);
+ 	}else{
+ 	    show_node_start();
+ 	}
+@@ -484,7 +484,7 @@ void trace_creation( tic_hdr_t *trace_entry,
+ 
+ void trace_create_failure( char *new_name, char *old_name, u16 fc_tokn)
+ {
+-    bool not_alias   = BOOLVAL( old_name == NULL );
++    bool not_alias   = ( old_name == NULL );
+     bool do_it       = is_on_trace_list( new_name);
+ 
+     if ( ( ! do_it ) && ( ! not_alias ) )
+@@ -727,7 +727,7 @@ void trace_builtin( tic_hdr_t *trace_entry)
+ 		           (u16)trace_entry->pfield.deflt_elem );
+ 	}
+ 	definer_name(trace_entry->fword_defr, &defr_name);
+-	trace_entry->tracing = TRUE;
++	trace_entry->tracing = true;
+ 	tokenization_error(TRACER,
+ 	    "%s"                             /*  <name>                 */
+ 	    "%s "                            /*  fc_token_display       */
+diff --git a/toke/usersymbols.c b/toke/usersymbols.c
+index 32860c0..c955766 100644
+--- a/toke/usersymbols.c
++++ b/toke/usersymbols.c
+@@ -353,7 +353,7 @@ void list_user_symbols(void )
+ 
+ 	    /*  Detect duplicate names.  */
+ 	    dup_srch_indx = indx;
+-	    is_dup = FALSE;
++	    is_dup = false;
+ 	    while ( dup_srch_indx > 0 )
+ 	    {
+ 		str_sub_vocab_t *dup_cand;
+@@ -361,7 +361,7 @@ void list_user_symbols(void )
+ 		dup_cand = symb_ptr[dup_srch_indx];
+ 		if ( strcmp( curr->name, dup_cand->name) == 0 )
+ 		{
+-		    is_dup = TRUE;
++		    is_dup = true;
+ 		    break;
+ 		}
+ 	    }
+-- 
+2.52.0.windows.1
+
