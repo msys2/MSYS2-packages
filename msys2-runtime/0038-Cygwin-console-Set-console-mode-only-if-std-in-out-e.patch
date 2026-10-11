@@ -1,7 +1,7 @@
-From c892dfe93ec1f5a82d299efca8c0297ff7ade794 Mon Sep 17 00:00:00 2001
+From c0b496fb63f26893a1d1085ebeecc54c99c9e2d1 Mon Sep 17 00:00:00 2001
 From: Takashi Yano <takashi.yano@nifty.ne.jp>
 Date: Thu, 3 Jul 2025 09:06:22 +0900
-Subject: [PATCH 42/N] Cygwin: console: Set console mode only if
+Subject: [PATCH 38/N] Cygwin: console: Set console mode only if
  std{in,out,err} is console
 
 Currently, when cygwin app is launched, the console input mode is
@@ -22,15 +22,15 @@ Assisted-by: GPT-6
 Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
 Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
 ---
- winsup/cygwin/dtable.cc           |  6 +-----
- winsup/cygwin/fhandler/console.cc | 36 ++++++++++++++++++++++---------
- 2 files changed, 27 insertions(+), 15 deletions(-)
+ winsup/cygwin/dtable.cc           |  6 +----
+ winsup/cygwin/fhandler/console.cc | 37 ++++++++++++++++++++++---------
+ 2 files changed, 28 insertions(+), 15 deletions(-)
 
 diff --git a/winsup/cygwin/dtable.cc b/winsup/cygwin/dtable.cc
-index 6ccc19a..e4cd3bd 100644
+index 02d5d7b..206f683 100644
 --- a/winsup/cygwin/dtable.cc
 +++ b/winsup/cygwin/dtable.cc
-@@ -326,11 +326,7 @@ dtable::init_std_file_from_handle (int fd, HANDLE handle)
+@@ -329,11 +329,7 @@ dtable::init_std_file_from_handle (int fd, HANDLE handle)
        if (CTTY_IS_VALID (myself->ctty))
  	dev.parse (myself->ctty);
        else
@@ -44,26 +44,34 @@ index 6ccc19a..e4cd3bd 100644
    else if (GetCommState (handle, &dcb))
      /* FIXME: Not right - assumes ttyS0 */
 diff --git a/winsup/cygwin/fhandler/console.cc b/winsup/cygwin/fhandler/console.cc
-index 857485c..e19e124 100644
+index b5cd992..c4532c5 100644
 --- a/winsup/cygwin/fhandler/console.cc
 +++ b/winsup/cygwin/fhandler/console.cc
-@@ -953,8 +953,10 @@ fhandler_console::cleanup_for_non_cygwin_app (handle_set_t *p)
+@@ -1086,8 +1086,10 @@ fhandler_console::cleanup_for_non_cygwin_app (handle_set_t *p)
+   set_disable_master_thread (con.owner == GetCurrentProcessId ());
    /* conmode can be tty::restore when non-cygwin app is
       exec'ed from login shell. */
-   tty::cons_mode conmode = cons_mode_on_close (p);
 -  set_output_mode (conmode, ti, p);
 -  set_input_mode (conmode, ti, p);
 +  if (con.curr_output_mode != conmode)
 +    set_output_mode (conmode, ti, p);
 +  if (con.curr_input_mode != conmode)
 +    set_input_mode (conmode, ti, p);
+   ReleaseMutex (p->cons_mode_mutex);
  }
  
- /* Return the tty structure associated with a given tty number.  If the
-@@ -1947,13 +1949,24 @@ fhandler_console::open (int flags, mode_t)
+@@ -2116,6 +2118,7 @@ fhandler_console::open (int flags, mode_t)
  	setenv ("TERM", "cygwin", 1);
      }
  
++
+   /* Another process may hold cons_mode_mutex while waiting for the
+      master thread to acknowledge a state change. */
+   if (GetCurrentProcessId () == con.owner)
+@@ -2137,13 +2140,24 @@ fhandler_console::open (int flags, mode_t)
+     }
+ 
+   WaitForSingleObject (cons_mode_mutex, mutex_timeout);
 -  if (con.curr_input_mode != tty::cygwin)
 +  HANDLE h_in = GetStdHandle (STD_INPUT_HANDLE);
 +  HANDLE h_out = GetStdHandle (STD_OUTPUT_HANDLE);
@@ -87,15 +95,16 @@ index 857485c..e19e124 100644
      {
        prev_output_mode_backup = con.prev_output_mode;
        GetConsoleMode (get_output_handle (), &con.prev_output_mode);
-@@ -2069,13 +2082,14 @@ fhandler_console::close (int flag)
- 
-   acquire_output_mutex (mutex_timeout);
+@@ -2244,14 +2258,15 @@ fhandler_console::close (int flag)
+ {
+   debug_printf ("closing: %p, %p", get_handle (), get_output_handle ());
  
 -  if (shared_console_info[unit] && con.curr_input_mode != tty::restore
 -      && (dev_t) myself->ctty == get_device ()
 +  if (shared_console_info[unit] && (dev_t) myself->ctty == get_device ()
        && cons_mode_on_close (&handle_set) == tty::restore)
      {
+       WaitForSingleObject (cons_mode_mutex, mutex_timeout);
        set_disable_master_thread (true, this);
 -      set_output_mode (tty::restore, &get_ttyp ()->ti, &handle_set);
 -      set_input_mode (tty::restore, &get_ttyp ()->ti, &handle_set);
@@ -103,19 +112,19 @@ index 857485c..e19e124 100644
 +	set_output_mode (tty::restore, &get_ttyp ()->ti, &handle_set);
 +      if (con.curr_input_mode != tty::restore)
 +	set_input_mode (tty::restore, &get_ttyp ()->ti, &handle_set);
+       ReleaseMutex (cons_mode_mutex);
      }
  
-   if (shared_console_info[unit] && con.owner == GetCurrentProcessId ())
-@@ -2296,8 +2310,10 @@ int
- fhandler_console::tcsetattr (int a, struct termios const *t)
+@@ -2486,8 +2501,10 @@ fhandler_console::tcsetattr (int a, struct termios const *t)
  {
    get_ttyp ()->ti = *t;
+   WaitForSingleObject (cons_mode_mutex, mutex_timeout);
 -  set_input_mode (tty::cygwin, t, &handle_set);
 -  set_output_mode (tty::cygwin, t, &handle_set);
 +  if (con.curr_input_mode == tty::cygwin)
 +    set_input_mode (tty::cygwin, t, &handle_set);
 +  if (con.curr_output_mode == tty::cygwin)
 +    set_output_mode (tty::cygwin, t, &handle_set);
+   ReleaseMutex (cons_mode_mutex);
    return 0;
  }
- 
