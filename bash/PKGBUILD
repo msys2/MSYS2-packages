@@ -4,7 +4,7 @@
 pkgbase=bash
 pkgname=('bash' 'bash-devel')
 _basever=5.3
-_patchlevel=020 #prepare for some patches
+_patchlevel=20
 pkgver=${_basever}.${_patchlevel}
 pkgrel=2
 pkgdesc="The GNU Bourne Again shell"
@@ -30,20 +30,17 @@ source=(https://ftp.gnu.org/gnu/bash/bash-${_basever}.tar.gz{,.sig}
         0005-bash-4.3-msys2-fix-lineendings.patch
         0006-bash-4.3-add-pwd-W-option.patch
         0007-fix-static-build.patch)
-if [ $_patchlevel -gt 000 ]; then
-  for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
-    source=(${source[@]} https://ftp.gnu.org/gnu/bash/bash-${_basever}-patches/bash${_basever//./}-$(printf "%03d" $p){,.sig})
+if [ $_patchlevel -gt 0 ]; then
+  for (( p=1; p<=${_patchlevel}; p++ )); do
+    source+=(https://ftp.gnu.org/gnu/bash/bash-${_basever}-patches/bash${_basever//./}-$(printf "%03d" $p){,.sig})
   done
 fi
-noextract=(${pkgbase}-${_basever}.tar.gz)
 validpgpkeys=('7C0135FB088AAF6C66C650B9BB5869F064EA74AB') # Chet Ramey
 
 prepare() {
-  [[ -d ${pkgbase}-${_basever} ]] && rm -rf ${pkgbase}-${_basever}
-  tar -xzvf ${srcdir}/${pkgbase}-${_basever}.tar.gz || true
-  cd ${srcdir}/${pkgname}-${_basever}
+  cd "${pkgname}-${_basever}"
 
-  for (( p=1; p<=$((10#${_patchlevel})); p++ )); do
+  for (( p=1; p<=${_patchlevel}; p++ )); do
     msg "applying patch bash${_basever//./}-$(printf "%03d" $p)"
     patch -p0 -i $srcdir/bash${_basever//./}-$(printf "%03d" $p)
   done
@@ -58,7 +55,7 @@ prepare() {
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-$_basever
+  cd "${pkgname}-${_basever}"
 
   export MSYSTEM=CYGWIN
 
@@ -83,7 +80,6 @@ build() {
   # Prepopulate the release level.
   expr ${pkgrel} > .build || :
 
-  # CFLAGS+=" -D_STATIC_BUILD"
   make CPPFLAGS=-DWORDEXP_OPTION \
        HISTORY_LDFLAGS= \
        READLINE_LDFLAGS= \
@@ -91,14 +87,14 @@ build() {
 }
 
 check() {
-  cd ${srcdir}/${pkgname}-$_basever
-  make check
+  cd "${pkgname}-${_basever}"
+  LANG=C make check
 }
 
 package_bash() {
   provides=('sh')
 
-  cd ${srcdir}/${pkgname}-$_basever
+  cd "${pkgname}-${_basever}"
   make DESTDIR=${pkgdir} install
 
   cp -fp ${pkgdir}/usr/bin/{ba,}sh.exe
@@ -124,15 +120,15 @@ package_bash-devel() {
  options=('staticlibs')
  backup=()
 
- mkdir -p ${pkgdir}/usr/{include,lib,bin}
- cd ${srcdir}/bash-$_basever
- cp -f libbash.dll.a ${pkgdir}/usr/lib/
+  mkdir -p ${pkgdir}/usr/{include,lib,bin}
+  cd "bash-${_basever}"
+  cp -f libbash.dll.a ${pkgdir}/usr/lib/
 
- mkdir -p  ${pkgdir}/usr/include/bash
- for f in [^y]*.h builtins/*.h include/*.h lib/{glob,tilde}/*.h
- do
-   /usr/bin/install ${f} ${pkgdir}/usr/include/bash
- done
+  mkdir -p ${pkgdir}/usr/include/bash
+  for f in [^y]*.h builtins/*.h include/*.h lib/{glob,tilde}/*.h
+  do
+    install ${f} ${pkgdir}/usr/include/bash
+  done
 }
 
 sha256sums=('0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba'
