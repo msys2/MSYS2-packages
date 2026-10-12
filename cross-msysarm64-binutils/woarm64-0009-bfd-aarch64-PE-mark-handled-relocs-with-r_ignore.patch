@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Mon, 31 Aug 2026 11:39:46 +0530
+Subject: [PATCH 09/10] bfd: aarch64 PE: mark handled relocs with r_ignore
+
+The ABS-constant ADRP rewrite marked the relocation as handled by setting
+rel->r_vaddr = (bfd_vma) -1.  That marker was only honoured by the
+cofflink.c hunk in our "Fix IMAGE_REL_ARM64_PAGEBASE_REL21 relocation and
+symbol reduction" commit, which this rebase drops because upstream
+supersedes it with a dedicated r_ignore field (2b0b52883eb), consumed at
+bfd/cofflink.c:3116.
+
+Left as-is the marker is written but never read, so the relocation is
+processed normally and contents + rel->r_vaddr addresses memory at offset
+(bfd_vma) -1.  Use upstream's mechanism instead.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ bfd/coff-aarch64.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/bfd/coff-aarch64.c b/bfd/coff-aarch64.c
+index 291a1cc281e..2a2317311a4 100644
+--- a/bfd/coff-aarch64.c
++++ b/bfd/coff-aarch64.c
+@@ -738,7 +738,7 @@ if (bfd_is_abs_section (sec)
+                     contents + rel->r_vaddr);
+ 
+         /* Mark this reloc handled so generic relocation won't touch it. */
+-        rel->r_vaddr = (bfd_vma) -1;
++        rel->r_ignore = 1;
+         break;
+       }
+   } 

@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Evgeny Karpov <eukarpov@gmail.com>
+Date: Wed, 19 Mar 2025 15:42:02 +0100
+Subject: [PATCH 06/29] Fix unwiding codes when stack probing is applied
+
+(cherry picked from commit fcb31b58a20f368042fda0c2f44703bf2f843da7)
+---
+ gcc/config/mingw/winnt.cc | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/gcc/config/mingw/winnt.cc b/gcc/config/mingw/winnt.cc
+index c2db97a921b..dfd91aaa0bd 100644
+--- a/gcc/config/mingw/winnt.cc
++++ b/gcc/config/mingw/winnt.cc
+@@ -1504,6 +1504,7 @@ seh_pattern_emit (FILE *f, struct seh_frame_state *seh, rtx pat)
+       {
+ 	HOST_WIDE_INT increment = 0;
+ 	dest = SET_DEST (pat);
++	static HOST_WIDE_INT stack_alloc = 0;
+ 
+ 	switch (GET_CODE (dest))
+ 	  {
+@@ -1526,6 +1527,22 @@ seh_pattern_emit (FILE *f, struct seh_frame_state *seh, rtx pat)
+ 		  seh_emit_stackalloc (f, seh, increment);
+ 		break;
+ 
++	      case MINUS:
++		src = XEXP (src, 0);
++		rtx extend;
++		extend = SET_SRC (pat);
++		extend = XEXP (extend, 1);
++		if (dest == stack_pointer_rtx && src == stack_pointer_rtx
++		    && REGNO(extend) == R12_REGNUM) 
++		  seh_emit_stackalloc (f, seh, stack_alloc);
++   	      break;
++
++	      case CONST_INT:
++		increment = INTVAL (src);
++		if (REGNO(dest) == R12_REGNUM)
++		  stack_alloc = increment;
++		break;
++
+ 	      case MEM:
+ 		src = XEXP (src, 0);
+ 		if (GET_CODE (src) == PLUS
+@@ -1607,7 +1624,6 @@ aarch64_pe_seh_unwind_emit (FILE *out_file, rtx_insn *insn)
+ 
+ 	case REG_CFA_EXPRESSION:
+ 	case REG_CFA_REGISTER:
+-	case REG_CFA_ADJUST_CFA:
+ 	case REG_CFA_OFFSET:
+ 	  related_exp_needed = false;
+ 	  break;

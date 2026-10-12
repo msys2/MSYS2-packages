@@ -1,0 +1,70 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:13 +0530
+Subject: [PATCH 035/109] Cygwin: aarch64: Add runtime pseudo relocation
+
+(cherry picked from commit b64aee468a06620baba261e92a54be723589924c)
+---
+ winsup/cygwin/pseudo-reloc.cc | 35 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 35 insertions(+)
+
+diff --git a/winsup/cygwin/pseudo-reloc.cc b/winsup/cygwin/pseudo-reloc.cc
+index 5a0eab936..e24a90620 100644
+--- a/winsup/cygwin/pseudo-reloc.cc
++++ b/winsup/cygwin/pseudo-reloc.cc
+@@ -199,6 +199,9 @@ do_pseudo_reloc (void * start, void * end, void * base)
+   ptrdiff_t reloc_target = (ptrdiff_t) ((char *)end - (char*)start);
+   runtime_pseudo_reloc_v2 *v2_hdr = (runtime_pseudo_reloc_v2 *) start;
+   runtime_pseudo_reloc_item_v2 *r;
++#ifdef __aarch64__
++  uint32_t opcode;
++#endif
+ 
+   /* A valid relocation list will contain at least one entry, and
+    * one v1 data structure (the smallest one) requires two DWORDs.
+@@ -307,6 +310,13 @@ do_pseudo_reloc (void * start, void * end, void * base)
+ 	  if ((reldata & 0x8000) != 0)
+ 	    reldata |= ~((ptrdiff_t) 0xffff);
+ 	  break;
++#ifdef __aarch64__
++	case 12:
++	case 21:
++	  opcode = (*((unsigned int *) reloc_target));
++	  reldata = 0;
++	  break;
++#endif
+ 	case 32:
+ 	  reldata = (ptrdiff_t) (*((unsigned int *)reloc_target));
+ #if defined (__x86_64__) || defined (_WIN64)
+@@ -339,6 +349,31 @@ do_pseudo_reloc (void * start, void * end, void * base)
+ 	case 16:
+ 	  __write_memory ((void *) reloc_target, &reldata, 2);
+ 	  break;
++#ifdef __aarch64__
++	case 12:
++	  /* Replace add Xn, Xn, :lo12:label with ldr Xn, [Xn, :lo12:__imp__func].
++	     That loads the address of _func into Xn.  */
++	  opcode = 0xf9400000 | (opcode & 0x3ff); // ldr
++	  reldata = ((ptrdiff_t) base + r->sym) & ((1 &lt;&lt; 12) - 1);
++	  reldata >>= 3;
++	  opcode |= reldata &lt;&lt; 10;
++	  __write_memory ((void *) reloc_target, &opcode, 4);
++	  break;
++	case 21:
++	  /* Replace adrp Xn, label with adrp Xn, __imp__func.  */
++	  opcode &= 0x9f00001f;
++	  reldata = (((ptrdiff_t) base + r->sym) >> 12)
++		    - (((ptrdiff_t) base + r->target) >> 12);
++	  reldata &= (1 &lt;&lt; 21) - 1;
++	  opcode |= (reldata & 3) &lt;&lt; 29;
++	  reldata >>= 2;
++	  opcode |= reldata &lt;&lt; 5;
++	  __write_memory ((void *) reloc_target, &opcode, 4);
++	  break;
++	/* A note regarding 26 bits relocation.
++	   A single opcode is not sufficient for 26 bits relocation in dynamic linking.
++	   The linker generates a jump stub instead.  */
++#endif
+ 	case 32:
+ #if defined (__CYGWIN__) && defined (__x86_64__)
+ 	  if (reldata > (ptrdiff_t) __INT32_MAX__

@@ -85,6 +85,12 @@ pacman -R --recursive --unneeded --noconfirm --noprogressbar git python
 # Enable linting
 export MAKEPKG_LINT_PKGBUILD=1
 
+# Share one source cache across packages. cross-msysarm64-gcc and
+# cross-msysarm64-gcc-stage1 pull the same gcc commit, and a bare clone of it
+# costs ~25-30 minutes on a runner; without this it is paid twice.
+export SRCDEST="${PWD}/.srccache"
+mkdir -p "${SRCDEST}"
+
 message 'Building packages'
 for package in "${packages[@]}"; do
     echo "::group::[build] ${package}"

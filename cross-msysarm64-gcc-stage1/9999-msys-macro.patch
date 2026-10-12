@@ -1,0 +1,47 @@
+From: Windows on ARM Experiments <woarm64@qti.qualcomm.com>
+Subject: [PATCH] aarch64 cygwin: define __MSYS__ for the stage-1 compiler
+
+The runtime is built with the standard aarch64-pc-cygwin triple, mirroring the
+x86_64-pc-msys -> x86_64-pc-cygwin move upstream: MSYS-ness is expressed
+through preprocessor macros, not the triple name.
+
+Add gcc/config/aarch64/msys.h defining __MSYS__ / __MSYS2__ alongside
+__CYGWIN__, and append it as the LAST entry of the existing aarch64-*-cygwin*
+tm_file chain so it overrides EXTRA_OS_CPP_BUILTINS from the shared
+i386/cygwin{,-w64}.h. Stage 1 only needs the macros; the LINK_SPEC/LIB_SPEC
+overrides that select the MSYS DLL entry and -lmsys-2.0 come with the stage-2
+copy of this patch, once a runtime exists to link against.
+
+diff --git a/gcc/config.gcc b/gcc/config.gcc
+--- a/gcc/config.gcc
++++ b/gcc/config.gcc
+@@ -1285,6 +1285,9 @@ aarch64-*-cygwin*)
+ 	tm_file="${tm_file} i386/cygwin-stdint.h"
+ 	tm_file="${tm_file} mingw/winnt.h"
+ 	tm_file="${tm_file} mingw/winnt-dll.h"
++	# aarch64/msys.h MUST come last: it overrides EXTRA_OS_CPP_BUILTINS and
++	# LINK_SPEC/LIB_SPEC set by the shared headers above.
++	tm_file="${tm_file} aarch64/msys.h"
+ 	xm_file=i386/xm-cygwin.h
+ 	tmake_file="${tmake_file} aarch64/t-aarch64"
+ 	tmake_file="${tmake_file} aarch64/t-aarch64-mingw"
+diff --git a/gcc/config/aarch64/msys.h b/gcc/config/aarch64/msys.h
+new file mode 100644
+index 00000000000..04cd4618301
+--- /dev/null
++++ b/gcc/config/aarch64/msys.h
+@@ -0,0 +1,14 @@
++#ifndef GCC_AARCH64_MSYS_H
++#define GCC_AARCH64_MSYS_H
++
++/* Override cygwin default */
++#undef EXTRA_OS_CPP_BUILTINS
++#define EXTRA_OS_CPP_BUILTINS()        \
++  do {                                \
++    builtin_define("__CYGWIN__");      \
++    builtin_define("__MSYS__");        \
++    builtin_define("__MSYS2__");       \
++    builtin_define_std("unix");        \
++  } while (0)
++
++#endif /* GCC_AARCH64_MSYS_H */

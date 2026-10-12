@@ -1,0 +1,166 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:15:09 +0530
+Subject: [PATCH 081/109] ci(arm64): wire the toolchain pipeline to the
+ external repos
+
+(cherry picked from commit 8bcd118d460513868e1c569bda39dc974f9d859d)
+---
+ .github/arm64/README.md                  | 35 ++++++++++++++----------
+ .github/arm64/build-msys2-woarm64-all.sh |  4 +--
+ .github/workflows/cygwin.yml             |  5 ++--
+ .github/workflows/toolchain.yml          | 14 +++++-----
+ 4 files changed, 32 insertions(+), 26 deletions(-)
+
+diff --git a/.github/arm64/README.md b/.github/arm64/README.md
+index 035184f43..f901723ef 100644
+--- a/.github/arm64/README.md
++++ b/.github/arm64/README.md
+@@ -14,22 +14,29 @@ This repo drives both halves of the ARM64 pipeline:
+ 
+ ## Before the toolchain build can go green
+ 
+-These external dependencies are intentionally left pointing at their current
+-sources; provision them in this repo's settings first:
+-
+-1. **`CI_TOKEN` secret** — a PAT with read access to the PKGBUILD source the
+-   toolchain build clones:
+-   - `qcom-eng-691/MSYS2-packages` (PKGBUILDs, branch `ci/cross-runtime-packaging`)
+-   Without it the private clone fails. The release download itself uses the job
+-   token (same repo), so `CI_TOKEN` is only needed for that clone. The old
+-   `msys2-woarm64-build` driver is no longer cloned — the only pieces the build
+-   used from it (the pthread-header hack scripts) are vendored under
+-   `.github/arm64/scripts/`.
+-2. **`qcom-eng-691/setup-msys2`** action — the org fork used by every job. Ensure
+-   this repo can resolve it (make it accessible, or vendor/replace the reference).
+-3. **Runner** — jobs target `windows-11-arm` (GitHub-hosted ARM64). Confirm the
++Provision one secret in this repo's settings (Settings → Secrets and variables →
++Actions):
++
++1. **`CI_TOKEN` secret** — a `mayankag-qti` PAT with **read** access to
++   `mayankag-qti/MSYS2-packages-arm64` (branch `ci/cross-runtime-packaging`),
++   which the toolchain build clones for the PKGBUILDs. The per-job `github.token`
++   only covers *this* repo, so a cross-repo read needs `CI_TOKEN`; the same
++   fine-grained PAT you use to push here (scoped to both repos) works. The
++   toolchain release download uses the job token (same repo), so `CI_TOKEN` is
++   only needed for the packages clone.
++
++2. **Runner** — jobs target `windows-11-arm` (GitHub-hosted ARM64). Confirm the
+    hosted ARM64 runner is available/enabled for this repo, or override via the
+    `arm64_runner` workflow_dispatch input with a self-hosted label.
+ 
++Notes:
++- `toolchain.yml` and `cygwin.yml` use the public **`msys2/setup-msys2@v2`**
++  action (the old `qcom-eng-691` fork existed only for an internal enterprise
++  policy that does not apply here). `build.yaml` (the x86_64 path) still
++  references the `qcom-eng-691` forks and can be repointed the same way when needed.
++- The old `msys2-woarm64-build` driver is no longer cloned — the only pieces the
++  build used from it (the pthread-header hack scripts) are vendored under
++  `.github/arm64/scripts/`.
++
+ Once these are in place: Actions → **Toolchain (ARM64)** → Run workflow (publishes
+ the release), after which `cygwin.yml`'s `windows-build-arm64` consumes it per push/PR.
+diff --git a/.github/arm64/build-msys2-woarm64-all.sh b/.github/arm64/build-msys2-woarm64-all.sh
+index 320d96951..4a23665aa 100755
+--- a/.github/arm64/build-msys2-woarm64-all.sh
++++ b/.github/arm64/build-msys2-woarm64-all.sh
+@@ -58,8 +58,8 @@ START_STEP="${1:-1}"
+ # rest (steps 1-9 fast install-prebuilt from cache, then build 10-17).
+ STOP_AFTER="${STOP_AFTER:-0}"
+ 
+-PKGS_REPO="${PKGS_REPO:-https://github.com/Multicorewareinc/MSYS2-packages.git}"
+-PKGS_BRANCH="${PKGS_BRANCH:-woarm64}"
++PKGS_REPO="${PKGS_REPO:-https://github.com/mayankag-qti/MSYS2-packages-arm64.git}"
++PKGS_BRANCH="${PKGS_BRANCH:-ci/cross-runtime-packaging}"
+ 
+ MINGW_LIBDIR="/opt/aarch64-w64-mingw32/lib"
+ MSYS_SYSROOT="/usr/aarch64-pc-msys"
+diff --git a/.github/workflows/cygwin.yml b/.github/workflows/cygwin.yml
+index ec1f22a26..fb4949112 100644
+--- a/.github/workflows/cygwin.yml
++++ b/.github/workflows/cygwin.yml
+@@ -221,8 +221,7 @@ jobs:
+         fetch-depth: 0
+ 
+     - name: Setup MSYS2 (x86_64, emulated host)
+-      # org fork of msys2/setup-msys2 (enterprise policy blocks external actions)
+-      uses: qcom-eng-691/setup-msys2@v2
++      uses: msys2/setup-msys2@v2
+       with:
+         msystem: MSYS
+         update: false        # ARM64 runner image: MSYS2 keys are "unknown trust"
+@@ -292,7 +291,7 @@ jobs:
+         git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+         git config --global --add safe.directory '*'
+         mkdir -p "$ROOT"
+-        git clone https://github.com/qcom-eng-691/MSYS2-packages.git --branch ci/cross-runtime-packaging "$ROOT/MSYS2-packages"
++        git clone https://github.com/mayankag-qti/MSYS2-packages-arm64.git --branch ci/cross-runtime-packaging "$ROOT/MSYS2-packages"
+         HP="$HOME/MSYS2-packages"; rm -rf "$HP"; MSYS=winsymlinks:nativestrict ln -s "$ROOT/MSYS2-packages" "$HP"
+         RT2="$ROOT/MSYS2-packages/msys2-runtime-aarch64-stage-2"
+         # Build the runtime from the exact commit under test (git+file:// source override).
+diff --git a/.github/workflows/toolchain.yml b/.github/workflows/toolchain.yml
+index cac1f28c9..d01ff05f4 100644
+--- a/.github/workflows/toolchain.yml
++++ b/.github/workflows/toolchain.yml
+@@ -61,7 +61,7 @@ jobs:
+       - name: Checkout MSYS2-packages (toolchain PKGBUILDs)
+         uses: actions/checkout@v4
+         with:
+-          repository: qcom-eng-691/MSYS2-packages
++          repository: mayankag-qti/MSYS2-packages-arm64
+           ref: ${{ github.event.inputs.pkgs_branch || 'ci/cross-runtime-packaging' }}
+           path: _pkgs
+           token: ${{ secrets.CI_TOKEN || github.token }}
+@@ -116,14 +116,14 @@ jobs:
+     timeout-minutes: 330
+     env:
+       ROOT: /c/msys2-arm64-build
+-      PKGS_REPO: https://github.com/qcom-eng-691/MSYS2-packages.git
++      PKGS_REPO: https://github.com/mayankag-qti/MSYS2-packages-arm64.git
+       PKGS_BRANCH: ${{ github.event.inputs.pkgs_branch || 'ci/cross-runtime-packaging' }}
+       # Never block on a git credential prompt (private org clones) — fail fast.
+       GIT_TERMINAL_PROMPT: "0"
+     steps:
+       - uses: actions/checkout@v4
+       - name: Setup MSYS2 (x86_64, emulated build host)
+-        uses: qcom-eng-691/setup-msys2@v2
++        uses: msys2/setup-msys2@v2
+         with:
+           msystem: MSYS
+           # Skip the action's internal -Syuu: on the ARM64 runner image the
+@@ -194,7 +194,7 @@ jobs:
+     timeout-minutes: 330
+     env:
+       ROOT: /c/msys2-arm64-build
+-      PKGS_REPO: https://github.com/qcom-eng-691/MSYS2-packages.git
++      PKGS_REPO: https://github.com/mayankag-qti/MSYS2-packages-arm64.git
+       PKGS_BRANCH: ${{ github.event.inputs.pkgs_branch || 'ci/cross-runtime-packaging' }}
+       # Never block on a git credential prompt (private org clones) — fail fast.
+       GIT_TERMINAL_PROMPT: "0"
+@@ -218,7 +218,7 @@ jobs:
+           restore-keys: |
+             ${{ needs.compute-key.outputs.key }}-p1
+       - name: Setup MSYS2 (x86_64, emulated build host)
+-        uses: qcom-eng-691/setup-msys2@v2
++        uses: msys2/setup-msys2@v2
+         with:
+           msystem: MSYS
+           update: false        # see arm64-mingw (keyring "unknown trust")
+@@ -278,7 +278,7 @@ jobs:
+       contents: write        # create/refresh the toolchain release
+     env:
+       ROOT: /c/msys2-arm64-build
+-      PKGS_REPO: https://github.com/qcom-eng-691/MSYS2-packages.git
++      PKGS_REPO: https://github.com/mayankag-qti/MSYS2-packages-arm64.git
+       PKGS_BRANCH: ${{ github.event.inputs.pkgs_branch || 'ci/cross-runtime-packaging' }}
+       # Never block on a git credential prompt (private org clones) — fail fast.
+       GIT_TERMINAL_PROMPT: "0"
+@@ -291,7 +291,7 @@ jobs:
+           key: ${{ needs.compute-key.outputs.key }}-p2
+           fail-on-cache-miss: true
+       - name: Setup MSYS2 (x86_64, emulated build host)
+-        uses: qcom-eng-691/setup-msys2@v2
++        uses: msys2/setup-msys2@v2
+         with:
+           msystem: MSYS
+           update: false        # see arm64-mingw (keyring "unknown trust")

@@ -1,0 +1,369 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Evgeny Karpov <eukarpov@gmail.com>
+Date: Thu, 17 Apr 2025 15:58:14 +0200
+Subject: [PATCH 07/29] Rebase woarm64 aarch64-pe target prototype
+
+(cherry picked from commit 2fa4632a28437a0fcb4c29208c10c1e50aaa4123)
+---
+ gcc/config/aarch64/aarch64-protos.h           |   2 +
+ gcc/config/aarch64/cygming.h                  |  17 ++-
+ libgcc/config.host                            | 102 +++++++++++-------
+ libgcc/config/i386/cygming-crtbegin.c         |   5 +-
+ libgcc/config/i386/cygming-crtend.c           |  14 +++
+ .../config/os/mingw32-w64/os_defines.h        |   2 +-
+ libstdc++-v3/config/os/mingw32/os_defines.h   |   2 +-
+ 7 files changed, 98 insertions(+), 46 deletions(-)
+
+diff --git a/gcc/config/aarch64/aarch64-protos.h b/gcc/config/aarch64/aarch64-protos.h
+index e8ae3d42794..f2b3c42ba3d 100644
+--- a/gcc/config/aarch64/aarch64-protos.h
++++ b/gcc/config/aarch64/aarch64-protos.h
+@@ -1315,5 +1315,7 @@ extern unsigned aarch64_stack_alignment (const_tree exp, unsigned align);
+ 
+ extern rtx aarch64_gen_compare_zero_and_branch (rtx_code code, rtx x,
+ 						rtx_code_label *label);
++extern void aarch64_pe_seh_unwind_emit (FILE *, rtx_insn *);
++extern void aarch64_print_reg (rtx, int, FILE*);
+ 
+ #endif /* GCC_AARCH64_PROTOS_H */
+diff --git a/gcc/config/aarch64/cygming.h b/gcc/config/aarch64/cygming.h
+index 2c76b07d2f2..52be7adad2f 100644
+--- a/gcc/config/aarch64/cygming.h
++++ b/gcc/config/aarch64/cygming.h
+@@ -95,9 +95,6 @@ still needed for compilation.  */
+ #define TARGET_ASM_UNIQUE_SECTION mingw_pe_unique_section
+ #define TARGET_ENCODE_SECTION_INFO  mingw_pe_encode_section_info
+ 
+-extern void aarch64_pe_seh_unwind_emit (FILE *, rtx_insn *);
+-extern void aarch64_print_reg (rtx, int, FILE*);
+-
+ #define TARGET_VALID_DLLIMPORT_ATTRIBUTE_P mingw_pe_valid_dllimport_attribute_p
+ 
+ /* Output function declarations at the end of the file.  */
+@@ -182,6 +179,20 @@ extern void aarch64_print_reg (rtx, int, FILE*);
+   (fprintf (asm_out_file, "\t.section\t.drectve\n"), \
+    in_section = NULL)
+ 
++/* This implements the `alias' attribute, keeping any stdcall or
++   fastcall decoration.  */
++#undef	ASM_OUTPUT_DEF_FROM_DECLS
++#define	ASM_OUTPUT_DEF_FROM_DECLS(STREAM, DECL, TARGET)			\
++  do									\
++    {									\
++      const char *alias							\
++	= IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (DECL));		\
++      mingw_pe_maybe_record_exported_symbol (DECL, alias, 0);		\
++      if (TREE_CODE (DECL) == FUNCTION_DECL)				\
++	mingw_pe_declare_type (STREAM, alias,			\
++				       TREE_PUBLIC (DECL), 1);		\
++      ASM_OUTPUT_DEF (STREAM, alias, IDENTIFIER_POINTER (TARGET));	\
++    } while (0)
+ 
+ /* Enable alias attribute support.  */
+ #ifndef SET_ASM_OP
+diff --git a/libgcc/config.host b/libgcc/config.host
+index 319d6cfe0ef..7f246d4fc25 100644
+--- a/libgcc/config.host
++++ b/libgcc/config.host
+@@ -1,5 +1,5 @@
+ # libgcc host-specific configuration file.
+-# Copyright (C) 1997-2026 Free Software Foundation, Inc.
++# Copyright (C) 1997-2025 Free Software Foundation, Inc.
+ 
+ #This file is part of GCC.
+ 
+@@ -81,6 +81,10 @@ unwind_header=unwind-generic.h
+ # Set default cpu_type so it can be updated in each machine entry.
+ cpu_type=`echo ${host} | sed 's/-.*$//'`
+ case ${host} in
++m32c*-*-*)
++        cpu_type=m32c
++	tmake_file=t-fdpbit
++        ;;
+ aarch64*-*-*)
+ 	cpu_type=aarch64
+ 	;;
+@@ -137,6 +141,19 @@ lm32*-*-*)
+ 	;;
+ loongarch*-*)
+ 	cpu_type=loongarch
++	tmake_file="loongarch/t-loongarch"
++	if test "${libgcc_cv_loongarch_hard_float}" = yes; then
++		tmake_file="${tmake_file} t-hardfp-sfdf t-hardfp"
++	else
++		tmake_file="${tmake_file} t-softfp-sfdf"
++	fi
++	if test "${ac_cv_sizeof_long_double}" = 16; then
++		tmake_file="${tmake_file} loongarch/t-softfp-tf"
++	fi
++	if test "${host_address}" = 64; then
++		tmake_file="${tmake_file} loongarch/t-loongarch64"
++	fi
++	tmake_file="${tmake_file} t-softfp"
+ 	;;
+ m32r*-*-*)
+         cpu_type=m32r
+@@ -188,7 +205,7 @@ sparc*-*-*)
+ 	cpu_type=sparc
+ 	tmake_file="${tmake_file} sparc/t-sparc"
+ 	;;
+-s390x-*-*)
++s390*-*-*)
+ 	cpu_type=s390
+ 	;;
+ # Note the 'l'; we need to be able to match e.g. "shle" or "shl".
+@@ -275,7 +292,7 @@ case ${host} in
+   # machine-specific sections may refine and add to this
+   # configuration.
+   tmake_file="$tmake_file t-freebsd t-crtstuff-pic t-libgcc-pic t-eh-dw2-dip t-slibgcc t-slibgcc-gld t-slibgcc-elf-ver"
+-  extra_parts="crtbegin.o crtend.o crtbeginS.o crtbeginT.o crtendS.o"
++  extra_parts="crtbegin.o crtend.o crtbeginS.o crtendS.o"
+   case ${target_thread_file} in
+     posix)
+       tmake_file="${tmake_file} t-freebsd-thread"
+@@ -455,16 +472,30 @@ aarch64-*-mingw*)
+ 	  posix)
+ 	    tmake_thr_file="mingw/t-mingw-pthread"
+ 	    ;;
+-	  mcf)
+-	    tmake_thr_file="mingw/t-mingw-mcfgthread"
+-	    ;;
+ 	esac
+-	tmake_file="${tmake_file} mingw/t-seh-eh ${tmake_thr_file}"
++	# This has to match the logic for DWARF2_UNWIND_INFO in gcc/config/i386/cygming.h
++	if test x$ac_cv_sjlj_exceptions = xyes; then
++		tmake_eh_file="i386/t-sjlj-eh"
++	else
++		tmake_eh_file="mingw/t-seh-eh"
++	fi
++	# Shared libgcc DLL install dir depends on cross/native build.
++	if test x${build} = x${host} ; then
++		tmake_dlldir_file="i386/t-dlldir"
++	else
++		tmake_dlldir_file="i386/t-dlldir-x"
++	fi
++	tmake_file="${tmake_file} ${tmake_eh_file} ${tmake_thr_file} ${tmake_dlldir_file}"
+ 	tmake_file="${tmake_file} t-dfprules"
++	tmake_file="${tmake_file} i386/t-slibgcc-cygming i386/t-cygming i386/t-mingw32"
+ 	tmake_file="${tmake_file} ${cpu_type}/t-aarch64"
+ 	tmake_file="${tmake_file} ${cpu_type}/t-mingw"
+-	tmake_file="${tmake_file} ${cpu_type}/t-lse"
+-	tmake_file="${tmake_file} t-crtfm"
++	tmake_file="${tmake_file} ${cpu_type}/t-lse t-slibgcc-libgcc"
++	tmake_file="${tmake_file} ${cpu_type}/t-softfp t-softfp t-crtfm"
++	extra_parts="$extra_parts crtbegin.o crtend.o crtfastmath.o"
++	if test x$enable_vtable_verify = xyes; then
++		extra_parts="$extra_parts vtv_start.o vtv_end.o vtv_start_preinit.o vtv_end_preinit.o"
++	fi
+ 	;;
+ alpha*-*-linux*)
+ 	tmake_file="${tmake_file} alpha/t-alpha alpha/t-ieee t-crtfm alpha/t-linux"
+@@ -709,11 +740,7 @@ hppa*64*-*-hpux11*)
+ 	else
+ 	    tmake_file="$tmake_file pa/t-slibgcc-dwarf-ver"
+ 	fi
+-	if test $with_gnu_ld = yes; then
+-	    tmake_file="$tmake_file t-slibgcc-libgcc pa/t-slibgcc-gld"
+-	else
+-	    tmake_file="$tmake_file pa/t-slibgcc-hpux"
+-	fi
++	tmake_file="$tmake_file pa/t-slibgcc-hpux t-slibgcc-hpux"
+ 	tmake_file="$tmake_file pa/t-softfp-sfdftf t-softfp"
+ 	tm_file="$tm_file pa/pa64-hpux-lib.h"
+ 	extra_parts="crtbegin.o crtend.o crtbeginS.o crtendS.o crtbeginT.o \
+@@ -766,18 +793,18 @@ x86_64-*-dragonfly*)
+ 	md_unwind_header=i386/dragonfly-unwind.h
+ 	;;
+ i[34567]86-*-freebsd*)
+-	tmake_file="${tmake_file} i386/t-freebsd i386/t-crtstuff i386/t-msabi"
++	tmake_file="${tmake_file} i386/t-freebsd i386/t-crtstuff"
+ 	md_unwind_header=i386/freebsd-unwind.h
+ 	;;
+ x86_64-*-freebsd*)
+-	tmake_file="${tmake_file} i386/t-freebsd i386/t-crtstuff i386/t-msabi"
++	tmake_file="${tmake_file} i386/t-freebsd i386/t-crtstuff"
+ 	md_unwind_header=i386/freebsd-unwind.h
+ 	;;
+ i[34567]86-*-netbsdelf*)
+-	tmake_file="${tmake_file} i386/t-crtstuff i386/t-msabi"
++	tmake_file="${tmake_file} i386/t-crtstuff"
+ 	;;
+ x86_64-*-netbsd*)
+-	tmake_file="${tmake_file} i386/t-crtstuff i386/t-msabi"
++	tmake_file="${tmake_file} i386/t-crtstuff"
+ 	;;
+ i[34567]86-*-openbsd*)
+ 	;;
+@@ -894,7 +921,7 @@ i[34567]86-*-mingw*)
+ 	    tmake_thr_file="mingw/t-mingw-pthread"
+ 	    ;;
+ 	  mcf)
+-	    tmake_thr_file="mingw/t-mingw-mcfgthread"
++	    tmake_thr_file="i386/t-mingw-mcfgthread"
+ 	    ;;
+ 	esac
+ 	# This has to match the logic for DWARF2_UNWIND_INFO in gcc/config/i386/cygming.h
+@@ -921,7 +948,7 @@ x86_64-*-mingw*)
+ 	    tmake_thr_file="mingw/t-mingw-pthread"
+ 	    ;;
+ 	  mcf)
+-	    tmake_thr_file="mingw/t-mingw-mcfgthread"
++	    tmake_thr_file="i386/t-mingw-mcfgthread"
+ 	    ;;
+ 	esac
+ 	# This has to match the logic for DWARF2_UNWIND_INFO in gcc/config/i386/cygming.h
+@@ -957,11 +984,9 @@ ia64*-*-freebsd*)
+ ia64*-*-linux*)
+ 	# Don't use crtbeginT.o from *-*-linux* default.
+ 	extra_parts="crtbegin.o crtend.o crtbeginS.o crtendS.o crtfastmath.o"
+-	tmake_file="${tmake_file} ia64/t-ia64 ia64/t-ia64-elf t-crtfm t-softfp-tf ia64/t-softfp t-softfp ia64/t-softfp-compat ia64/t-eh-ia64"
++	tmake_file="$tmake_file ia64/t-ia64 ia64/t-ia64-elf t-crtfm t-softfp-tf ia64/t-softfp t-softfp ia64/t-softfp-compat ia64/t-eh-ia64 t-libunwind ia64/t-linux"
+ 	if test x$with_system_libunwind != xyes ; then
+ 		tmake_file="${tmake_file} t-libunwind-elf ia64/t-linux-libunwind"
+-	else
+-		tmake_file="${tmake_file} ia64/t-linux t-libunwind"
+ 	fi
+ 	md_unwind_header=ia64/linux-unwind.h
+ 	;;
+@@ -992,22 +1017,16 @@ lm32-*-uclinux*)
+ 	;;
+ loongarch*-linux*)
+ 	extra_parts="$extra_parts crtfastmath.o"
+-	md_unwind_header=loongarch/linux-unwind.h
+-	tmake_file="${tmake_file} loongarch/t-loongarch t-softfp-sfdf loongarch/t-softfp-tf"
+-	if test "${host_address}" = 64; then
+-		tmake_file="${tmake_file} loongarch/t-loongarch64"
+-	fi
+-	tmake_file="${tmake_file} t-softfp"
+ 	tmake_file="${tmake_file} t-crtfm loongarch/t-crtstuff"
+-	tmake_file="${tmake_file} t-slibgcc-libgcc"
++	case ${host} in
++	  *)
++	    tmake_file="${tmake_file} t-slibgcc-libgcc"
++	    ;;
++	esac
++	md_unwind_header=loongarch/linux-unwind.h
+ 	;;
+ loongarch*-elf*)
+ 	extra_parts="$extra_parts crtfastmath.o"
+-	tmake_file="${tmake_file} loongarch/t-loongarch t-softfp-sfdf loongarch/t-softfp-tf"
+-	if test "${host_address}" = 64; then
+-		tmake_file="${tmake_file} loongarch/t-loongarch64"
+-	fi
+-	tmake_file="${tmake_file} t-softfp"
+ 	tmake_file="${tmake_file} t-crtfm loongarch/t-crtstuff"
+ 	tmake_file="${tmake_file} t-slibgcc-libgcc"
+ 	;;
+@@ -1050,7 +1069,6 @@ mcore-*-elf)
+ 	;;
+ microblaze*-linux*)
+ 	tmake_file="${tmake_file} microblaze/t-microblaze t-fdpbit t-slibgcc-libgcc"
+-	md_unwind_header=microblaze/linux-unwind.h
+ 	;;
+ microblaze*-*-elf)
+ 	tmake_file="${tmake_file} microblaze/t-microblaze t-fdpbit"
+@@ -1385,12 +1403,15 @@ rx-*-linux*)
+ 	tmake_file="rx/t-rx t-fdpbit"
+ 	tm_file="$tm_file rx/rx-lib.h"
+ 	;;
++s390-*-linux*)
++	tmake_file="${tmake_file} s390/t-crtstuff s390/t-linux s390/32/t-floattodi t-stack s390/t-stack-s390"
++	md_unwind_header=s390/linux-unwind.h
++	;;
+ s390x-*-linux*)
+ 	tmake_file="${tmake_file} s390/t-crtstuff s390/t-linux t-stack s390/t-stack-s390"
+-	if test "$libgcc_cv_s390_float16" = "yes"; then
+-		tmake_file="${tmake_file} s390/t-float16"
++	if test "${host_address}" = 32; then
++	   tmake_file="${tmake_file} s390/32/t-floattodi"
+ 	fi
+-	tmake_file="${tmake_file} s390/t-softfp t-softfp"
+ 	md_unwind_header=s390/linux-unwind.h
+ 	;;
+ s390x-ibm-tpf*)
+@@ -1560,6 +1581,9 @@ am33_2.0-*-linux*)
+ 	extra_parts="crtbegin.o crtend.o crtbeginS.o crtendS.o"
+ 	tmake_file="$tmake_file t-fdpbit"
+ 	;;
++m32c-*-elf*)
++	tmake_file="$tmake_file m32c/t-m32c"
++ 	;;
+ nvptx-*)
+ 	tmake_file="$tmake_file nvptx/t-nvptx"
+ 	extra_parts="crt0.o"
+diff --git a/libgcc/config/i386/cygming-crtbegin.c b/libgcc/config/i386/cygming-crtbegin.c
+index 8435a125817..a0682fca1b5 100644
+--- a/libgcc/config/i386/cygming-crtbegin.c
++++ b/libgcc/config/i386/cygming-crtbegin.c
+@@ -134,8 +134,9 @@ __gcc_register_frame (void)
+     }
+   else
+     {
+-      register_frame_fn = __register_frame_info;
+-      deregister_frame_fn = __deregister_frame_info;
++      // FIXME
++      // register_frame_fn = __register_frame_info;
++      // deregister_frame_fn = __deregister_frame_info;
+     }
+   if (register_frame_fn)
+      register_frame_fn (__EH_FRAME_BEGIN__, &obj);
+diff --git a/libgcc/config/i386/cygming-crtend.c b/libgcc/config/i386/cygming-crtend.c
+index 3dfae1eb7e4..704d64f5270 100644
+--- a/libgcc/config/i386/cygming-crtend.c
++++ b/libgcc/config/i386/cygming-crtend.c
+@@ -58,7 +58,14 @@ extern void __gcc_deregister_frame (void);
+ 
+ #pragma GCC diagnostic push
+ #pragma GCC diagnostic ignored "-Wprio-ctor-dtor"
++
++#ifdef __aarch64__
++/* constructor not yet enabled for aarch64 */
++static void register_frame_ctor (void);
++#else
+ static void register_frame_ctor (void) __attribute__ ((constructor (0)));
++#endif
++
+ #pragma GCC diagnostic pop
+ 
+ static void
+@@ -70,7 +77,14 @@ register_frame_ctor (void)
+ #if !DEFAULT_USE_CXA_ATEXIT
+ #pragma GCC diagnostic push
+ #pragma GCC diagnostic ignored "-Wprio-ctor-dtor"
++
++#ifdef __aarch64__
++/* destructor not yet enabled for aarch64 */
++static void deregister_frame_dtor (void);
++#else
+ static void deregister_frame_dtor (void) __attribute__ ((destructor (0)));
++#endif
++
+ #pragma GCC diagnostic pop
+ 
+ static void
+diff --git a/libstdc++-v3/config/os/mingw32-w64/os_defines.h b/libstdc++-v3/config/os/mingw32-w64/os_defines.h
+index 6d4dd9b1c06..a30ca2fcc0a 100644
+--- a/libstdc++-v3/config/os/mingw32-w64/os_defines.h
++++ b/libstdc++-v3/config/os/mingw32-w64/os_defines.h
+@@ -74,7 +74,7 @@
+ #define _GLIBCXX_CDTOR_CALLABI __thiscall
+ #endif
+ 
+-#ifdef __x86_64__
++#if defined (__x86_64__) || defined (__aarch64__)
+ #define _GLIBCXX_LLP64 1
+ // See libstdc++/69506
+ #define _GLIBCXX_USE_WEAK_REF 0
+diff --git a/libstdc++-v3/config/os/mingw32/os_defines.h b/libstdc++-v3/config/os/mingw32/os_defines.h
+index c4d26238333..ed45b26ca5e 100644
+--- a/libstdc++-v3/config/os/mingw32/os_defines.h
++++ b/libstdc++-v3/config/os/mingw32/os_defines.h
+@@ -71,7 +71,7 @@
+ #define _GLIBCXX_CDTOR_CALLABI __thiscall
+ #endif
+ 
+-#ifdef __x86_64__
++#if defined (__x86_64__) || defined (__aarch64__)
+ #define _GLIBCXX_LLP64 1
+ #endif
+ 

@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: mayagr <mayagr@qti.qualcomm.com>
+Date: Wed, 29 Jul 2026 23:08:24 +0530
+Subject: [PATCH 103/109] build: getprocaddrarm64: build when the aarch64 MinGW
+ compiler is present
+
+Native ARM64 (PID_NOTCYGWIN) processes should be terminated gently via a
+console helper instead of TerminateProcess.  Probe for aarch64-w64-mingw32-gcc
+in winsup/configure.ac and build getprocaddrarm64 under the HAVE_MINGWARM64_CC
+conditional.
+
+The probe is done unconditionally (outside the with_cross_bootstrap /
+mingw-progs block) and never errors when the compiler is absent, so the helper
+builds on Windows-on-ARM cross setups (e.g. --with-cross-bootstrap) without
+requiring the x86 MinGW compilers, and x86 hosts are unaffected.
+
+Note: winsup/configure is generated; run autoreconf so the new
+AC_CHECK_PROGS/AM_CONDITIONAL take effect.
+
+Co-authored-by: chandru-mcw <chandru.kumaresan@multicorewareinc.com>
+(cherry picked from commit 4b38982c5c1f46e4b6d2494c968a75ae6abd3864)
+(cherry picked from commit 6a1138f18d643ecd812dbeaab0d3bc65c74c9d02)
+(cherry picked from commit 2f8f0bac57de89726a54fcc272c137b5360bd11f)
+---
+ winsup/configure.ac | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/winsup/configure.ac b/winsup/configure.ac
+index 0452c113f..ca005f870 100644
+--- a/winsup/configure.ac
++++ b/winsup/configure.ac
+@@ -190,6 +190,13 @@ AM_CONDITIONAL(HAVE_MINGW32_CC, [test -n "$MINGW32_CC"])
+ AM_CONDITIONAL(HAVE_MINGW64_CC, [test -n "$MINGW64_CC"])
+ AM_CONDITIONAL(HAVE_MINGWARM64_CC, [test -n "$MINGWARM64_CC"])
+ 
++# Optional aarch64 MinGW compiler (present only on Windows-on-ARM hosts).
++# When available, build getprocaddrarm64 for gentle kill of native ARM64
++# processes; probed even under --with-cross-bootstrap and not an error when
++# missing, so x86 hosts are unaffected.
++AC_CHECK_PROGS(MINGWARM64_CC, aarch64-w64-mingw32-gcc)
++AM_CONDITIONAL(HAVE_MINGWARM64_CC, [test -n "$MINGWARM64_CC"])
++
+ AC_EXEEXT
+ 
+ AC_ARG_ENABLE([dumper],
