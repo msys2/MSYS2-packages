@@ -101,27 +101,27 @@ rem Setup proper title and icon
 if "%MSYSTEM%" == "MINGW32" (
   set "CONTITLE=MinGW x32"
   set "CONICON=mingw32.ico"
-  set "WD_PLATFORM_PATH=%WD%..\..\mingw32\"
+  set "MINGW_PREFIX=%WD%..\..\mingw32\"
 ) else if "%MSYSTEM%" == "MINGW64" (
   set "CONTITLE=MinGW x64"
   set "CONICON=mingw64.ico"
-  set "WD_PLATFORM=%WD%..\..\mingw64\"
+  set "MINGW_PREFIX=%WD%..\..\mingw64\"
 ) else if "%MSYSTEM%" == "UCRT64" (
   set "CONTITLE=MinGW UCRT x64"
   set "CONICON=ucrt64.ico"
-  set "WD_PLATFORM=%WD%..\..\ucrt64\"
+  set "MINGW_PREFIX=%WD%..\..\ucrt64\"
 ) else if "%MSYSTEM%" == "CLANG64" (
   set "CONTITLE=MinGW Clang x64"
   set "CONICON=clang64.ico"
-  set "WD_PLATFORM=%WD%..\..\clang64\"
+  set "MINGW_PREFIX=%WD%..\..\clang64\"
 ) else if "%MSYSTEM%" == "CLANGARM64" (
   set "CONTITLE=MinGW Clang ARM64"
   set "CONICON=clangarm64.ico"
-  set "WD_PLATFORM=%WD%..\..\clangarm64\"
+  set "MINGW_PREFIX=%WD%..\..\clangarm64\"
 ) else (
   set "CONTITLE=MSYS2 MSYS"
   set "CONICON=msys2.ico"
-  set "WD_PLATFORM=%WD%"
+  set "MINGW_PREFIX=%WD%"
 )
 
 if "x%MSYSCON%" == "xmintty.exe" goto startmintty
@@ -161,14 +161,14 @@ if not defined MSYS2_NOSTART (
 exit /b %ERRORLEVEL%
 
 :startalacritty
-if not exist "%WD_PLATFORM%bin\alacritty.exe" (
+if not exist "%MINGW_PREFIX%bin\alacritty.exe" (
   echo "Alacritty not found. Exiting." 1>&2
   exit /b 2
 )
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%WD_PLATFORM%bin\alacritty.exe" -T "%CONTITLE%" -e "%WD%%LOGINSHELL%" !SHELL_ARGS!
+  start "%CONTITLE%" "%MINGW_PREFIX%bin\alacritty.exe" -T "%CONTITLE%" -e "%WD%%LOGINSHELL%" !SHELL_ARGS!
 ) else (
-  "%WD_PLATFORM%bin\alacritty.exe" -T "%CONTITLE%" -e "%WD%%LOGINSHELL%" !SHELL_ARG!
+  "%MINGW_PREFIX%bin\alacritty.exe" -T "%CONTITLE%" -e "%WD%%LOGINSHELL%" !SHELL_ARG!
 )
 exit /b %ERRORLEVEL%
 
