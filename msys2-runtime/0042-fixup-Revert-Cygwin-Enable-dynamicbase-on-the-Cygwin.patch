@@ -1,0 +1,58 @@
+From f5ca2e2b05bd7b16406de611e53614f91277c69e Mon Sep 17 00:00:00 2001
+From: Ali Robertson <alirobe@alirobe.com>
+Date: Thu, 8 Oct 2026 01:33:09 +1100
+Subject: [PATCH 42/N] fixup! Revert "Cygwin: Enable dynamicbase on the Cygwin
+ DLL by default"
+
+Upstream enabled ASLR for the Cygwin DLL in 3.4.0 (943433b00cac, "Cygwin:
+Enable dynamicbase on the Cygwin DLL by default"). MSYS2 dropped the
+flag one day after updating to 3.4.3, because of fork() failures seen
+only in Docker (MSYS2-packages PR 3425: "might be related to 3.4.x
+setting dynamicbase. Let's see if reverting that helps."). The cause was
+never identified and the revert has been carried ever since.
+
+In the weeks and months after that, upstream fixed several fork()
+regressions from exactly that period, none of them container-specific:
+the child-side initialisation order broken by 30add3e6b3e3 (fixed in
+3.4.4 by a81fef51cf9f), the allocation of shared regions under ASLR
+(dc0fe7742b8c and follow-ups, 3.4.4 and 3.4.5), and the cygheap size
+computation introduced by the ASLR work itself (a14a0e542d3a, 3.4.7),
+whose symptom was the same "child_copy: ... read copy failed, Win32
+error 299" as the Docker reports.
+
+Without the flag, msys-2.0.dll is relocated by Windows' "Force
+randomization for images (Mandatory ASLR)", the forked child no longer
+finds the DLL at the parent's address, and every MSYS program fails with
+"forked process ... died unexpectedly, ... exit code 0xC0000142" (#327,
+git-for-windows/git#1412). Under process isolation that host policy also
+applies inside Windows containers, so on a hardened host MSYS2 cannot
+fork in a container at all.
+
+With only the dynamicbase bit set on the shipped 3.6.10 DLL, fork()
+works under Mandatory ASLR without exemptions on Windows 11, and inside
+Windows containers on Server 2022 and Server 2025 under both process and
+Hyper-V isolation, 50 of 50 forks in every combination (reproduction:
+https://github.com/alirobe/msys2-aslr-fork-test). Restore upstream's
+link flag, which also drops one patch from the MSYS2 series.
+
+Addresses: https://github.com/msys2/msys2-runtime/issues/327
+Assisted-by: Claude Fable 5.1
+Signed-off-by: Ali Robertson <alirobe@alirobe.com>
+---
+ winsup/cygwin/Makefile.am | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/Makefile.am b/winsup/cygwin/Makefile.am
+index 41190bd..072aeb2 100644
+--- a/winsup/cygwin/Makefile.am
++++ b/winsup/cygwin/Makefile.am
+@@ -610,7 +610,8 @@ $(NEW_DLL_NAME): $(LDSCRIPT) libdll.a $(VERSION_OFILES) $(LIBSERVER)\
+ 		  $(newlib_build)/libm.a $(newlib_build)/libc.a
+ 	$(AM_V_CXXLD)$(CXX) $(CXXFLAGS) \
+ 	-mno-use-libstdc-wrappers \
+-	-Wl,--gc-sections -nostdlib -Wl,-T$(LDSCRIPT) -static \
++	-Wl,--gc-sections -nostdlib -Wl,-T$(LDSCRIPT) \
++	-Wl,--dynamicbase -static \
+ 	$${SOURCE_DATE_EPOCH:+-Wl,--no-insert-timestamp} \
+ 	-Wl,--heap=0 -Wl,--out-implib,msysdll.a -shared -o $@ \
+ 	-e @DLL_ENTRY@ $(DEF_FILE) \
