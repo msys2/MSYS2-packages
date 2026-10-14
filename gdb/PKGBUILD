@@ -1,69 +1,92 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=gdb
-pkgname=("gdb"
-         "gdb-multiarch")
-pkgver=17.1
-pkgrel=3
-pkgdesc="GNU Debugger (MSYS2 version)"
+pkgname=(
+  'gdb'
+  'gdb-multiarch'
+)
+pkgver=18.1
+pkgrel=1
+pkgdesc='GNU Debugger (MSYS2 version)'
 arch=('i686' 'x86_64')
-license=('spdx:GPL-3.0-or-later')
-url="https://www.gnu.org/software/gdb/"
+url='https://www.gnu.org/software/gdb/'
 msys2_repository_url='https://sourceware.org/git/binutils-gdb.git'
 msys2_references=(
-  "cpe: cpe:/a:gnu:gdb"
+  'cpe: cpe:/a:gnu:gdb'
 )
-depends=('gcc-libs' 'zlib' 'python' 'libexpat' 'libreadline' 'mpc' 'mpfr' 'xxhash' 'libguile' 'zstd' 'iconv')
-#checkdepends=('dejagnu' 'bc')
-makedepends=(autotools
-             gcc
-             guile
-             libexpat-devel
-             libguile-devel
-             liblzma-devel
-             libreadline-devel
-             libzstd-devel
-             mpfr-devel
-             ncurses-devel
-             python-devel
-             zlib-devel)
+license=('spdx:GPL-3.0-or-later')
+depends=(
+  'gcc-libs'
+  'iconv'
+  'libexpat'
+  'libguile'
+  'libreadline'
+  'mpc'
+  'mpfr'
+  'python'
+  'xxhash'
+  'zlib'
+  'zstd'
+)
+makedepends=(
+  'autotools'
+  'gcc'
+  'guile'
+  'libexpat-devel'
+  'libguile-devel'
+  'liblzma-devel'
+  'libreadline-devel'
+  'libzstd-devel'
+  'mpfr-devel'
+  'ncurses-devel'
+  'python-devel'
+  'zlib-devel'
+)
+# checkdepends=('bc' 'dejagnu')
 options=('staticlibs' '!distcc' '!ccache')
-source=("https://ftp.gnu.org/gnu/gdb/gdb-${pkgver}.tar.xz"{,.sig}
-        'gdbinit'
-        0002-Only-ignore-expected-Cygwin-OutputDebugStrings.patch
-        0004-7.8-symtab-cygwin.patch
-        1005-msysize.patch
-        1006-autoreconf.patch)
-validpgpkeys=('F40ADB902B24264AA42E50BF92EDB04BFF325CF3')
-sha256sums=('14996f5f74c9f68f5a543fdc45bca7800207f91f92aeea6c2e791822c7c6d876'
+source=(
+  "https://ftp.gnu.org/gnu/gdb/${pkgname}-${pkgver}.tar.xz"{,.sig}
+  'gdbinit'
+  '0002-Only-ignore-expected-Cygwin-OutputDebugStrings.patch'
+  '0004-7.8-symtab-cygwin.patch'
+  '1005-msysize.patch'
+  '1006-autoreconf.patch'
+)
+sha256sums=('cd9fc3fe2b47743840e42c1592d3d87f8302eb18639c0b8b4ba0898002e2348f'
             'SKIP'
             '2bbe7eddb1828c394d0ff99777058df79b1a596172603bb0e30d983fc1ea8785'
             '66cf6b5f9966dd39076ff06b36ecc049f4207abcb9860770d0feb4809495d151'
             '15c7397d85b4f43ac22d5e81565de0d8d0a0b6473db2ab9a04fbb72f061fbf4e'
             '5d497e908e195f416d1cb54d4023706ef8aeae16c753c704db6af0db75768686'
             '66e0c1c6c6878b39da16c163d84b1ea303b0875b3ca6ccfef6d64872ecac9faa')
+validpgpkeys=(
+  'F40ADB902B24264AA42E50BF92EDB04BFF325CF3' # Joel Brobecker <brobecker@adacore.com>
+)
 
 prepare() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${pkgname}-${pkgver}"
 
-  patch -p1 -i ${srcdir}/1005-msysize.patch
-  patch -p1 -i ${srcdir}/1006-autoreconf.patch
+  patch -Np1 -i "${srcdir}/1005-msysize.patch"
+  patch -Np1 -i "${srcdir}/1006-autoreconf.patch"
 
   # from cygwin
-  patch -p1 -i ${srcdir}/0002-Only-ignore-expected-Cygwin-OutputDebugStrings.patch
-  patch -p1 -i ${srcdir}/0004-7.8-symtab-cygwin.patch
+  patch -Np1 -i "${srcdir}/0002-Only-ignore-expected-Cygwin-OutputDebugStrings.patch"
+  patch -Np1 -i "${srcdir}/0004-7.8-symtab-cygwin.patch"
 }
 
 do_build() {
-  builddir=${srcdir}/build-${CHOST}$1
-  [[ -d "$builddir" ]] && rm -rf "$builddir"
-  mkdir -p "$builddir" && pushd "$builddir"
+  local suffix="$1"
+  local extra_flags="$2"
+  local builddir="${srcdir}/build-${CHOST}${suffix}"
+
+  [[ -d "${builddir}" ]] && rm -rf "${builddir}"
+  mkdir -p "${builddir}" && pushd "${builddir}" >/dev/null
 
   export MSYSTEM=CYGWIN
-  ../${pkgname}-${pkgver}/configure \
-    --build=${CHOST} \
+  "../${pkgname}-${pkgver}/configure" \
+    --build="${CHOST}" \
     --prefix=/usr \
-    $2 \
+    ${extra_flags} \
     --enable-64-bit-bfd \
     --disable-werror \
     --disable-sim \
@@ -80,6 +103,8 @@ do_build() {
     --with-system-zlib \
     --enable-tui
   make
+
+  popd >/dev/null
 }
 
 build() {
@@ -88,21 +113,23 @@ build() {
 }
 
 check() {
-  cd ${srcdir}/build-${CHOST}
+  cd "${srcdir}/build-${CHOST}"
+
   make check || true
 }
 
 package_gdb() {
-  cd ${srcdir}/build-${CHOST}
-  make DESTDIR=${pkgdir} install
+  cd "${srcdir}/build-${CHOST}"
+
+  make DESTDIR="${pkgdir}" install
 
   # install "custom" system gdbinit
-  install -D -m644 ${srcdir}/gdbinit ${pkgdir}/etc/gdbinit
-  sed -i 's|%GCC_NAME%|gcc-'$(gcc -dumpversion)'|g' ${pkgdir}/etc/gdbinit
+  install -Dm644 "${srcdir}/gdbinit" "${pkgdir}/etc/gdbinit"
+  sed -i "s|%GCC_NAME%|gcc-$(gcc -dumpversion)|g" "${pkgdir}/etc/gdbinit"
 
   # these are shipped by binutils
-  rm -fr ${pkgdir}/usr/{include,lib}/ ${pkgdir}/usr/share/locale/
-  rm -f ${pkgdir}/usr/share/info/{bfd,configure,standards,ctf-spec,sframe-spec}.info
+  rm -rf "${pkgdir}"/usr/{include,lib}/ "${pkgdir}/usr/share/locale/"
+  rm -f "${pkgdir}"/usr/share/info/{bfd,configure,standards,ctf-spec,sframe-spec}.info
 
   python3 -m compileall -o 0 -o 1 -s "${pkgdir}" "${pkgdir}/usr/share/gdb/python"
 
@@ -118,13 +145,13 @@ package_gdb-multiarch() {
   pkgdesc="GNU Debugger (supports all targets)"
   depends=("gdb=${pkgver}")
 
-  builddir=${srcdir}/build-${CHOST}-multiarch
-  cd ${builddir}
-  make DESTDIR=${builddir}/inst install-gdb install-gdbserver
+  local builddir="${srcdir}/build-${CHOST}-multiarch"
+  cd "${builddir}"
+  make DESTDIR="${builddir}/inst" install-gdb install-gdbserver
 
-  destdir=${pkgdir}/usr/bin
-  bindir=${builddir}/inst/usr/bin
-  mkdir -p $destdir
-  cp -p ${bindir}/gdb.exe ${destdir}/gdb-multiarch.exe
-  cp -p ${bindir}/gdbserver.exe ${destdir}/gdbserver-multiarch.exe
+  local destdir="${pkgdir}/usr/bin"
+  local bindir="${builddir}/inst/usr/bin"
+  mkdir -p "${destdir}"
+  cp -p "${bindir}/gdb.exe" "${destdir}/gdb-multiarch.exe"
+  cp -p "${bindir}/gdbserver.exe" "${destdir}/gdbserver-multiarch.exe"
 }
