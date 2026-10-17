@@ -1,0 +1,62 @@
+--- origsrc/lib/same.c	2016-07-15 14:47:39.000000000 -0500
++++ src/lib/same.c	2017-02-03 13:32:48.741217700 -0600
+@@ -40,6 +40,13 @@
+ #include "error.h"
+ #include "same-inode.h"
+ 
++#if __CYGWIN__
++# include <sys/cygwin.h>
++# include "cygwin.h"
++# include "malloca.h"
++# include "memcasecmp.h"
++#endif
++
+ #ifndef MIN
+ # define MIN(a, b) ((a) < (b) ? (a) : (b))
+ #endif
+@@ -59,6 +66,45 @@ same_name (const char *source, const cha
+     (source_baselen == dest_baselen
+      && memcmp (source_basename, dest_basename, dest_baselen) == 0);
+   bool compare_dirs = identical_basenames;
++#if __CYGWIN__
++  /* If two names differ case-insensitively by only an '.exe' suffix,
++     do some sleuthing to see if .exe magic matters on the shorter
++     name.  Swapping the longer name to dest avoids duplication.  */
++  if (source_baselen == dest_baselen + 4)
++    {
++      char const *tmp_basename = source_basename;
++      size_t tmp_baselen = source_baselen;
++      source_basename = dest_basename;
++      source_baselen = dest_baselen;
++      dest_basename = tmp_basename;
++      dest_baselen = tmp_baselen;
++    }
++  if (source_baselen + 4 == dest_baselen
++      && !memcasecmp (dest_basename - 4, ".exe", 4)
++      && !memcasecmp (source_basename, dest_basename, source_baselen)
++      && 0 < cygwin_spelling(source))
++    dest_baselen -= 4;
++  /* Some, but not all, files are case-insensitive (depending on mount
++     options, CYGWIN=case settings, and virtual file systems).  Do
++     some sleuthing to decide whether case-insensitivity matters.  */
++  if (! compare_dirs && source_baselen == dest_baselen)
++    {
++      ssize_t wsrclen = cygwin_conv_path (CCP_POSIX_TO_WIN_W,
++                                          source, NULL, 0);
++      ssize_t wdstlen = cygwin_conv_path (CCP_POSIX_TO_WIN_W,
++                                          dest, NULL, 0);
++      char *wsrc = malloca (wsrclen);
++      char *wdst = malloca (wdstlen);
++      if (cygwin_conv_path (CCP_POSIX_TO_WIN_W, source, wsrc, wsrclen))
++        error (EXIT_FAILURE, errno, "unable to convert path name %s", source);
++      if (cygwin_conv_path (CCP_POSIX_TO_WIN_W, dest, wdst, wdstlen))
++        error (EXIT_FAILURE, errno, "unable to convert path name %s", dest);
++      if (wsrclen == wdstlen && memcasecmp (wsrc, wdst, wsrclen) == 0)
++        compare_dirs = true;
++      freea (wsrc);
++      freea (wdst);
++    }
++#endif /* __CYGWIN__ */
+   bool same = false;
+ 
+ #if ! _POSIX_NO_TRUNC && HAVE_PATHCONF && defined _PC_NAME_MAX
