@@ -1,0 +1,45 @@
+diff -Naur old/cmake/PTHREAD_Stage2.cmake new/cmake/PTHREAD_Stage2.cmake
+--- old/cmake/PTHREAD_Stage2.cmake	2026-09-07 13:17:38.000000000 +0200
++++ new/cmake/PTHREAD_Stage2.cmake	2026-09-14 10:33:02.921255786 +0200
+@@ -146,8 +146,9 @@
+ 		${CMAKE_COMMAND} -E env "PATH=${STAGE1_BINARY_DIR}/bin:$ENV{PATH}" -- ${MAKE_EXE} -j1
+ 
+ 	# Install to STAGE2_BINARY_DIR
++	# (-j1 here also, or makepkg on msys2 breaks...)
+ 	INSTALL_COMMAND
+-		${CMAKE_COMMAND} -E env "PATH=${STAGE1_BINARY_DIR}/bin:$ENV{PATH}" -- ${MAKE_EXE} install
++		${CMAKE_COMMAND} -E env "PATH=${STAGE1_BINARY_DIR}/bin:$ENV{PATH}" -- ${MAKE_EXE} -j1 install
+ 
+ 	BUILD_BYPRODUCTS
+ 		"${PTHREAD_STAGE2_BYPRODUCTS}"
+diff -Naur old/cmake/PTHREAD_Stage3.cmake new/cmake/PTHREAD_Stage3.cmake
+--- old/cmake/PTHREAD_Stage3.cmake	2026-09-07 10:52:16.000000000 +0200
++++ new/cmake/PTHREAD_Stage3.cmake	2026-09-14 10:33:52.084531881 +0200
+@@ -79,12 +79,14 @@
+ 			"s|\\(CFLAGS.*=\\).*|\\1 -I<SOURCE_DIR><SOURCE_SUBDIR> -D_REENTRANT -mtune=${DJGPP_MTUNE} -march=${DJGPP_MARCH} ${PTHREAD_C_FLAGS}|"
+ 			"Makefile"
+ 
++	# Build (very old makefiles) using a single job.
+ 	BUILD_COMMAND
+ 		${CMAKE_COMMAND} -E env "PATH=${STAGE2_BINARY_DIR}/bin:$ENV{PATH}" -- ${MAKE_EXE} -j1
+ 
++	# (-j1 here also, or makepkg on msys2 breaks...)
+ 	INSTALL_COMMAND
+ 		${CMAKE_COMMAND} -E env "PATH=${STAGE2_BINARY_DIR}/bin:$ENV{PATH}" --
+-			${MAKE_EXE} "DESTDIR=${STAGE3_BINARY_DIR}" install
++			${MAKE_EXE} "DESTDIR=${STAGE3_BINARY_DIR}" -j1 install
+ 
+ 	BUILD_BYPRODUCTS
+ 		"${PTHREAD_STAGE3_BYPRODUCTS}"
+diff -Naur old/djgpp_toolchain.cmake new/djgpp_toolchain.cmake
+--- old/djgpp_toolchain.cmake	2026-04-12 10:53:41.000000000 +0200
++++ new/djgpp_toolchain.cmake	2026-09-16 16:28:06.963444932 +0200
+@@ -67,7 +67,7 @@
+ 	OUTPUT_STRIP_TRAILING_WHITESPACE)
+ 
+ # Now infer the DJGPP toolchain location.
+-get_filename_component(DJGPP_TOOLCHAIN_DIR ${BINUTILS_PATH} DIRECTORY)
++get_filename_component(DJGPP_TOOLCHAIN_DIR "${BINUTILS_PATH}" DIRECTORY)
+ 
+ # Setup the various compilers...
+ set(CMAKE_C_COMPILER ${TOOLCHAIN_PREFIX}gcc)
