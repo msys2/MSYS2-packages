@@ -8,20 +8,30 @@ pkgbase=gcc
 pkgname=('gcc' 'gcc-libs')
 # NOTE: gdb must be rebuilt with each new gcc version.
 # NOTE: libtool must be rebuilt with each new gcc version.
-# FIXME: run compileall on /usr/share/gcc-${pkgver}/python/libstdcxx on the next version update
-pkgver=15.3.0
+_pkgver=16.2.0 # GCC's BASE-VER
+pkgver=${_pkgver}
 pkgrel=1
 pkgdesc="The GNU Compiler Collection"
 arch=('i686' 'x86_64')
-license=('spdx:GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-3.0-or-later AND GFDL-1.3-or-later AND GPL-3.0-or-later WITH GCC-exception-3.1')
+license=('spdx:GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later')
 url="https://gcc.gnu.org/"
 msys2_repository_url="https://gcc.gnu.org/git/?p=gcc.git"
 msys2_references=(
   "cpe: cpe:/a:gnu:gcc"
 )
-makedepends=('gcc' 'binutils' 'autotools'
-             'isl-devel' 'gmp-devel' 'mpc-devel' 'mpfr-devel' 'zlib-devel'
-             'windows-default-manifest' 'gperf')
+makedepends=(
+  'gcc'
+  'autotools'
+  'binutils'
+  'isl-devel'
+  'gmp-devel'
+  'mpc-devel'
+  'mpfr-devel'
+  'python'
+  'texinfo'
+  'windows-default-manifest'
+  'zlib-devel'
+)
 options=('!emptydirs') # '!strip' 'debug')
 source=(https://ftp.gnu.org/gnu/gcc/gcc-${pkgver}/gcc-${pkgver}.tar.xz
         0001-Always-define-WIN32_LEAN_AND_MEAN-before-windows.h.patch
@@ -44,7 +54,7 @@ source=(https://ftp.gnu.org/gnu/gcc/gcc-${pkgver}/gcc-${pkgver}.tar.xz
         0404-fix-build-opts.patch
         0950-11.2.0-configure-msys2.patch
         0951-11.2.0-msys2-spec.patch)
-sha256sums=('fa59c1beef8995f27c4d71c1df227587189315d3e6faff1bb4306e61b0c530eb'
+sha256sums=('e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e'
             'ae993ebe11402172611a9fa1550e0611dfc212ab9250a3eaff1022342c9bde71'
             '707faae90300f04fc48949f74af51f47f7505f44f9813bfc26660511ae93b6c1'
             '40871b6750e393b7627dc039c3460b39894fb7bb2514c71b39a1f163fe8e3f30'
@@ -57,7 +67,7 @@ sha256sums=('fa59c1beef8995f27c4d71c1df227587189315d3e6faff1bb4306e61b0c530eb'
             '205cf51c9327f249dc11b20785f0ada2204c1112d5123d6debd124e30f6bf9c7'
             '1f6203d53cb9b4957acfa132f0238bd1e5d9670a53efb4d626ec80fc5cee6646'
             '6d037a2da5e1314c6aa76a97bdfdbc6e72d980e62b9e49e947feb70d9346faaa'
-            'ec8bc93a2bd10095952a8bee6cd5e43cd3a67022bddbed45c28dde54c504538d'
+            '0280c4f52abaf9e09bee41962e46f2955b2467bcf2e88aa34a0274e9f50619be'
             'b5fa45f9f131db2b1d1d064fcb2c459a1f6baa118e406f6cc7d5fa4aae24c707'
             '8abcf5ee41507d2814eaf0c0bbfca1a200ccb71833887966ba38378b917fc319'
             '4c637318e3cecc7ef6f05c03ec69444b255ee003f745ba3bdd6ca10780426195'
@@ -74,23 +84,13 @@ apply_patch_with_msg() {
     patch -Nbp1 -i "${srcdir}"/${_fname}
   done
 }
-
-del_file_exists() {
-  for _fname in "$@"
-  do
-    if [ -f $_fname ] || [ -d $_fname ]; then
-      rm -rf $_fname
-    fi
-  done
-}
 # =========================================== #
 
 prepare() {
-  cd ${srcdir}/gcc-${pkgver}
+  cd "gcc-${pkgver}"
 
   # Remove files created by patches
-  rm -f libgomp/config/cygwin/plugin-suffix.h \
-    > /dev/null 2>&1
+  rm -vf libgomp/config/cygwin/plugin-suffix.h
 
   # Cygwin patches
   apply_patch_with_msg \
@@ -123,12 +123,6 @@ prepare() {
   apply_patch_with_msg \
     0950-11.2.0-configure-msys2.patch \
     0951-11.2.0-msys2-spec.patch
-
-  # Do not run fixincludes
-  #sed -i 's@\./fixinc\.sh@-c true@' gcc/Makefile.in
-  echo ${pkgver} > gcc/BASE-VER
-  # hack! - some configure tests for header files using "$CPP $CPPFLAGS"
-  sed -i "/ac_cpp=/s/\$CPPFLAGS/\$CPPFLAGS -O2/" {libiberty,gcc}/configure
 }
 
 build() {
@@ -160,7 +154,7 @@ build() {
 
   export MSYSTEM=CYGWIN
 
-  ${srcdir}/gcc-${pkgver}/configure \
+  ../gcc-${pkgver}/configure \
     --build=${CHOST} \
     --prefix=/usr \
     --libexecdir=/usr/lib \
@@ -197,10 +191,6 @@ build() {
     --enable-libstdcxx-filesystem-ts
 
   make
-
-  # make documentation
-  #cd $CHOST/libstdc++-v3
-  #make doc-man-doxygen
 }
 
 #check() {
@@ -211,45 +201,26 @@ build() {
 #  ${srcdir}/gcc-${pkgver}/contrib/test_summary
 #}
 
-package_gcc-libs()
-{
+package_gcc-libs() {
   pkgdesc="Runtime libraries shipped by GCC"
-  license=('spdx:LGPL-3.0-or-later AND GPL-3.0-or-later WITH GCC-exception-3.1')
+  # libquadmath: LGPL-2.1-or-later AND GFDL-1.2-or-later
+  # All others: GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later
+  license=('spdx:LGPL-2.1-or-later AND GPL-3.0-or-later WITH GCC-exception-3.1 AND GFDL-1.3-or-later')
 
-  cd ${srcdir}/build-MSYS
-  make -j1 -C $CHOST/libgcc DESTDIR=${pkgdir} install-shared
-  for lib in libgomp libstdc++-v3/src; do
-    make -j1 -C $CHOST/$lib DESTDIR=${pkgdir} install-toolexeclibLTLIBRARIES
-  done
+  mkdir -p "${pkgdir}/usr/bin"
+  mv -v "${srcdir}/dest"/*.dll "${pkgdir}/usr/bin/"
 
-  make -j1 -C $CHOST/libstdc++-v3/po DESTDIR=${pkgdir} install
-  make -j1 -C $CHOST/libgomp DESTDIR=${pkgdir} install-info
-  make -j1 -C $CHOST/libquadmath DESTDIR=${pkgdir} install-info
-
-  make -j1 DESTDIR=${pkgdir} install-target-libquadmath
-  #make -j1 DESTDIR=${pkgdir} install-target-libssp
-  make -j1 DESTDIR=${pkgdir} install-target-libatomic
-  #make -j1 DESTDIR=${pkgdir} install-target-libcilkrts
-  make -j1 DESTDIR=${pkgdir} install-target-libvtv
-
-  rm -f ${pkgdir}/*.dll
-  rm -rf ${pkgdir}/usr/lib/
-  rm -rf ${pkgdir}/usr/share/gcc-${pkgver}
-
-  # remove static libraries
-  #find ${pkgdir} -name *.a -delete
-
-  # Install Runtime Library Exception
-  install -Dm644 ${srcdir}/gcc-${pkgver}/COPYING.RUNTIME \
-    ${pkgdir}/usr/share/licenses/gcc-libs/RUNTIME.LIBRARY.EXCEPTION
+  # Install GPL-3 + Runtime Library Exception + LGPL-2.1
+  install -Dm644 "${srcdir}/gcc-${pkgver}/COPYING3" "${pkgdir}/usr/share/licenses/gcc-libs/COPYING3"
+  install -Dm644 "${srcdir}/gcc-${pkgver}/COPYING.RUNTIME" \
+    "${pkgdir}/usr/share/licenses/gcc-libs/RUNTIME.LIBRARY.EXCEPTION"
+  install -Dm644 "${srcdir}/gcc-${pkgver}/libquadmath/COPYING.LIB" \
+    "${pkgdir}/usr/share/licenses/gcc-libs/COPYING.LIB"
 }
 
-package_gcc()
-{
+package_gcc() {
   pkgdesc="The GNU Compiler Collection - C and C++ frontends"
-  license=('spdx:GPL-3.0-or-later AND GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-3.0-or-later AND GFDL-1.3-or-later AND GPL-3.0-or-later WITH GCC-exception-3.1')
   depends=("gcc-libs=${pkgver}-${pkgrel}" 'binutils' 'gmp' 'isl' 'libiconv' 'libintl' 'mpc' 'mpfr' 'zlib' 'msys2-runtime-devel' 'msys2-w32api-headers' 'msys2-w32api-runtime' 'windows-default-manifest')
-  #options=("!strip")
   provides=('msys2-devel')
   conflicts=('gcc-fortran<=11.3.0-4')
 
@@ -259,29 +230,18 @@ package_gcc()
     export STRIP=true
   fi
 
-  make -j1 DESTDIR=${pkgdir} install
-  # install -d ${pkgdir}/usr/share/gdb/auto-load/usr/lib
-  # mv $pkg{pkgdir}dir{,/usr/share/gdb/auto-load}/usr/lib/libstdc++.so.6.0.18-gdb.py
+  make -j1 DESTDIR="${pkgdir}" install
 
-  # unfortunately it is much, much easier to install the lot and clean-up the mess...
+  # DLLs goes into gcc-libs
+  mkdir -p "${srcdir}/dest"
+  mv -v "${pkgdir}/usr/bin"/*.dll "${srcdir}/dest/"
 
-  # remove all DLLs
-  rm -f ${pkgdir}/usr/bin/*.dll
-
-  rm -f ${pkgdir}/usr/lib/libiberty.a
-  # rm -f ${pkgdir}/usr/lib/gcc/${CHOST}/${pkgver}/libatomic{.dll,}.a
-  rm -f ${pkgdir}/usr/share/info/{libgomp,libquadmath}.info
-  rm -f ${pkgdir}/usr/share/locale/{de,fr}/LC_MESSAGES/libstdc++.mo
-
-  # remove static libraries - note libstdc++.a is needed for the binutils and glibc testsuite
-  #rm ${pkgdir}/usr/lib/gcc/${CHOST}/${pkgver}/lib{gomp,quadmath}{.dll,}.a
-
-  # many packages expect this symlinks
-  ln -s gcc ${pkgdir}/usr/bin/cc
-  cp -f ${pkgdir}/usr/bin/cpp.exe ${pkgdir}/usr/lib/cpp
+  # many packages expect these links (use hardlink for better compatiablity)
+  ln -v "${pkgdir}/usr/bin/gcc.exe" "${pkgdir}/usr/bin/cc.exe"
+  ln -v "${pkgdir}/usr/bin/cpp.exe" "${pkgdir}/usr/lib/cpp.exe"
 
   # POSIX conformance launcher scripts for c89 and c99
-  cat > $pkgdir/usr/bin/c89 <<"EOF"
+  cat > "${pkgdir}/usr/bin/c89" <<"EOF"
 #!/bin/sh
 fl="-std=c89"
 for opt; do
@@ -294,7 +254,7 @@ done
 exec /usr/bin/gcc $fl ${1+"$@"}
 EOF
 
-  cat > ${pkgdir}/usr/bin/c99 <<"EOF"
+  cat > "${pkgdir}/usr/bin/c99" <<"EOF"
 #!/bin/sh
 fl="-std=c99"
 for opt; do
@@ -307,14 +267,13 @@ done
 exec /usr/bin/gcc $fl ${1+"$@"}
 EOF
 
-  chmod 755 ${pkgdir}/usr/bin/c{8,9}9
+  chmod 755 "${pkgdir}/usr/bin/"c{8,9}9
 
-  # install the libstdc++ man pages
-  # install -dm755 ${pkgdir}/usr/share/man/man3
-  # install -m644 -t ${pkgdir}/usr/share/man/man3 \
-  #  ${CHOST}/libstdc++-v3/doc/doxygen/man/man3/*.3
+  # byte-compile python libraries
+  python -m compileall -o 0 -o 1 "${pkgdir}/usr/share/gcc-${_pkgver}/"
 
-  # Install Runtime Library Exception
-  install -Dm644 ${srcdir}/gcc-${pkgver}/COPYING.RUNTIME \
-    ${pkgdir}/usr/share/licenses/gcc/RUNTIME.LIBRARY.EXCEPTION
+  # Install GPL-3 + Runtime Library Exception
+  install -Dm644 "${srcdir}/gcc-${pkgver}/COPYING3" "${pkgdir}/usr/share/licenses/gcc/COPYING3"
+  install -Dm644 "${srcdir}/gcc-${pkgver}/COPYING.RUNTIME" \
+    "${pkgdir}/usr/share/licenses/gcc/RUNTIME.LIBRARY.EXCEPTION"
 }
