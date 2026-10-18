@@ -1,0 +1,30 @@
+--- origsrc/src/install.c	2016-11-28 10:17:17.000000000 -0600
++++ src/src/install.c	2017-02-03 13:32:48.741217700 -0600
+@@ -45,6 +45,10 @@
+ #include "utimens.h"
+ #include "xstrtol.h"
+ 
++#ifdef __CYGWIN__
++# include "cygwin.h"
++#endif
++
+ /* The official name of this program (e.g., no 'g' prefix).  */
+ #define PROGRAM_NAME "install"
+ 
+@@ -556,6 +560,16 @@ strip (char const *name)
+       error (0, errno, _("fork system call failed"));
+       break;
+     case 0:			/* Child. */
++#if __CYGWIN__
++      {
++	/* Check for .exe here, since strip doesn't.  */
++	char *p;
++	if (((p = strchr (name, '\0') - 4) <= name
++	     || strcasecmp (p, ".exe") != 0)
++	    && 0 < cygwin_spelling (name))
++          CYGWIN_APPEND_EXE (p, name);
++      }
++#endif /* __CYGWIN__ */
+       execlp (strip_program, strip_program, name, NULL);
+       die (EXIT_FAILURE, errno, _("cannot run %s"), quoteaf (strip_program));
+     default:			/* Parent. */
