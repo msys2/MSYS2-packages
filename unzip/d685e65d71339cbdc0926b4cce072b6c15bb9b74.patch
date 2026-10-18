@@ -1,0 +1,69 @@
+From d685e65d71339cbdc0926b4cce072b6c15bb9b74 Mon Sep 17 00:00:00 2001
+From: Mark Adler <madler@alumni.caltech.edu>
+Date: Thu, 23 May 2019 21:29:49 -0700
+Subject: [PATCH] Clean up warnings.
+
+Use (void)var to mark var as used, instead of var = var. The
+intent of the self assignment was to avoid a warning, but it ends
+up invoking a different warning.
+
+Turn off security warnings for a potentially mutable string being
+given as the format string to sprintf(). Though only on macosx
+unix targets. All of the strings provided are in fact not mutable,
+but this fact is hidden from the compiler due to the strings being
+extern in a different object file.
+---
+ fileio.c      | 6 +++---
+ unix/Makefile | 4 ++--
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/fileio.c b/fileio.c
+index ba0a1d0..c042987 100644
+--- a/fileio.c
++++ b/fileio.c
+@@ -1489,7 +1489,7 @@ int UZ_EXP UzpInput(pG, buf, size, flag)
+     int flag;     /* flag bits (bit 0: no echo) */
+ {
+     /* tell picky compilers to shut up about "unused variable" warnings */
+-    pG = pG; buf = buf; flag = flag;
++    (void)pG; (void)buf; (void)flag;
+ 
+     *size = 0;
+     return 0;
+@@ -1583,7 +1583,7 @@ int UZ_EXP UzpPassword (pG, rcnt, pwbuf, size, zfn, efn)
+ 
+ #ifndef REENTRANT
+     /* tell picky compilers to shut up about "unused variable" warnings */
+-    pG = pG;
++    (void)pG;
+ #endif
+ 
+     if (*rcnt == 0) {           /* First call for current entry */
+@@ -1614,7 +1614,7 @@ int UZ_EXP UzpPassword (pG, rcnt, pwbuf, size, zfn, efn)
+ 
+ #else /* !CRYPT */
+     /* tell picky compilers to shut up about "unused variable" warnings */
+-    pG = pG; rcnt = rcnt; pwbuf = pwbuf; size = size; zfn = zfn; efn = efn;
++    (void)pG; (void)rcnt; (void)pwbuf; (void)size; (void)zfn; (void)efn;
+ 
+     return IZ_PW_ERROR;  /* internal error; function should never get called */
+ #endif /* ?CRYPT */
+diff --git a/unix/Makefile b/unix/Makefile
+index ab32270..2688303 100644
+--- a/unix/Makefile
++++ b/unix/Makefile
+@@ -872,12 +872,12 @@ lynx:		unix_make
+ 
+ # Macintosh MacOS X (Unix-compatible enviroment), using standard compiler
+ macosx:	unix_make
+-	$(MAKE) unzips CFLAGS="-O3 -Wall -DBSD" LF2=""
++	$(MAKE) unzips CFLAGS="-O3 -Wall -DBSD -DZIP64_SUPPORT -Wno-format-security" LF2=""
+ 	$(STRIP) $(UNZIPS)
+ 
+ # Macintosh MacOS X (Unix-compatible enviroment), using gcc
+ macosx_gcc:	unix_make
+-	$(MAKE) unzips CC=gcc CFLAGS="-O3 -Wall -DBSD" LF2=""
++	$(MAKE) unzips CC=gcc CFLAGS="-O3 -Wall -DBSD -DZIP64_SUPPORT Wno-format-security" LF2=""
+ 	$(STRIP) $(UNZIPS)
+ 
+ # Minix 1.5 PC for the 386.  Invoke as is to use default cc, or as "make

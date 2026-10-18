@@ -1,0 +1,21 @@
+From: Paul Marquess <paul.marquess@outlook.com>
+Subject: Fix stack out-of-bounds NUL write in EF_SMARTZIP handler [CAN-2026-2034443]
+Bug-Debian: https://bugs.debian.org/1142905
+X-Debian-version: 6.0-30
+
+--- a/zipinfo.c
++++ b/zipinfo.c
+@@ -1702,9 +1702,12 @@
+                     if ((eb_datalen == EB_SMARTZIP_HLEN) &&
+                         makelong(ef_ptr) == 0x70695A64 /* "dZip" */) {
+                         char filenameBuf[32];
++                        int filename_length = ef_ptr[32] ;
+                         zi_showMacTypeCreator(__G__ &ef_ptr[4]);
+                         memcpy(filenameBuf, &ef_ptr[33], 31);
+-                        filenameBuf[ef_ptr[32]] = '\0';
++                        if (filename_length > 31)
++                            filename_length = 31;
++                        filenameBuf[filename_length] = '\0';
+                         A_TO_N(filenameBuf);
+                         Info(slide, 0, ((char *)slide,
+                              LoadFarString(ZipItFname), filenameBuf));
