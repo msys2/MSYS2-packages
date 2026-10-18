@@ -27,7 +27,8 @@ test -d msys2-runtime || {
 } ||
 die "Could not clone msys2-runtime"
 
-git --git-dir msys2-runtime fetch --no-tags $url $base_tag:$base_tag $msys2_branch:$msys2_branch
+git --git-dir msys2-runtime fetch --no-tags $url $base_tag:$base_tag $msys2_branch:$msys2_branch ||
+die "Could not fetch $base_tag and $msys2_branch"
 
 git -c core.abbrev=7 \
 	-c diff.renames=true \
