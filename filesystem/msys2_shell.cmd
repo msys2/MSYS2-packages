@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 
 set "WD=%__CD__%"
 if NOT EXIST "%WD%msys-2.0.dll" set "WD=%~dp0usr\bin\"
-set "LOGINSHELL=bash"
+set "SHELL=bash"
 set /a msys2_shiftCounter=0
 
 rem To activate windows native symlinks uncomment next line
@@ -77,8 +77,8 @@ if "x%~1" == "x-shell" (
     echo Shell not specified for -shell parameter. 1>&2
     exit /b 2
   )
-  set LOGINSHELL="%~2"
-  call :removequotes LOGINSHELL
+  set SHELL="%~2"
+  call :removequotes SHELL
   
   set msys2_arg="%~2"
   call :substituteparens msys2_arg
@@ -125,9 +125,9 @@ if NOT EXIST "%WD%mintty.exe" goto startsh
 set MSYSCON=mintty.exe
 :startmintty
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%WD%mintty" -i "/%CONICON%" -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" -l !SHELL_ARGS!
+  start "%CONTITLE%" "%WD%mintty" -i "/%CONICON%" -t "%CONTITLE%" "/usr/bin/%SHELL%" -l !SHELL_ARGS!
 ) else (
-  "%WD%mintty" -i "/%CONICON%" -t "%CONTITLE%" "/usr/bin/%LOGINSHELL%" -l !SHELL_ARGS!
+  "%WD%mintty" -i "/%CONICON%" -t "%CONTITLE%" "/usr/bin/%SHELL%" -l !SHELL_ARGS!
 )
 exit /b %ERRORLEVEL%
 
@@ -137,18 +137,18 @@ call :conemudetect || (
   exit /b 1
 )
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\%CONICON%" /cmd "%WD%\%LOGINSHELL%" -l !SHELL_ARGS!
+  start "%CONTITLE%" "%ComEmuCommand%" /Here /Icon "%WD%..\..\%CONICON%" /cmd "%WD%\%SHELL%" -l !SHELL_ARGS!
 ) else (
-  "%ComEmuCommand%" /Here /Icon "%WD%..\..\%CONICON%" /cmd "%WD%\%LOGINSHELL%" -l !SHELL_ARGS!
+  "%ComEmuCommand%" /Here /Icon "%WD%..\..\%CONICON%" /cmd "%WD%\%SHELL%" -l !SHELL_ARGS!
 )
 exit /b %ERRORLEVEL%
 
 :startsh
 set MSYSCON=
 if not defined MSYS2_NOSTART (
-  start "%CONTITLE%" "%WD%\%LOGINSHELL%" -l !SHELL_ARGS!
+  start "%CONTITLE%" "%WD%\%SHELL%" -l !SHELL_ARGS!
 ) else (
-  "%WD%\%LOGINSHELL%" -l !SHELL_ARGS!
+  "%WD%\%SHELL%" -l !SHELL_ARGS!
 )
 exit /b %ERRORLEVEL%
 
