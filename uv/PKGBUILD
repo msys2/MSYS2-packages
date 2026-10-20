@@ -47,15 +47,15 @@ prepare() {
 
   patch -d "${srcdir}/cap-primitives-4.0.3" -p1 -i "${srcdir}/cap-primitives-cygwin.patch"
   patch -d "${srcdir}/zstd-sys-2.1.0+zstd.1.5.7" -i "${srcdir}/link-zstd-dynamically.patch"
-  
-  cat >> Cargo.toml <<EOF
+
+  cat >>Cargo.toml <<EOF
 
 [patch.crates-io]
 cap-primitives.path = "../cap-primitives-4.0.3"
 zstd-sys.path = "../zstd-sys-2.1.0+zstd.1.5.7"
 EOF
 
-  rm rust-toolchain.toml
+  rm -f rust-toolchain.toml
   cargo update -p cap-primitives
   cargo update -p zstd-sys
   cargo fetch --locked
@@ -64,7 +64,11 @@ EOF
 build() {
   cd "${_realname}"
 
+  # Fix Cygwin fork remapping issues with host proc-macro DLLs (rkyv_derive)
+  export RUSTFLAGS="-C link-arg=-Wl,--enable-auto-image-base"
+  export CARGO_BUILD_JOBS=1
   export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 # release profile lacks codegen-units=1
+  export CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_CODEGEN_UNITS=1
   export CARGO_TARGET_DIR="${srcdir}/target-4"
   export ZSTD_SYS_USE_PKG_CONFIG=1
 
@@ -73,10 +77,10 @@ build() {
 
 package() {
   depends=(
-  'liblzma'
-  'libzstd'
-  'python'
-)
+    'liblzma'
+    'libzstd'
+    'python'
+  )
 
   cd "${_realname}"
 
