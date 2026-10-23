@@ -1,0 +1,34 @@
+From 0b82c20ac7375b522215b567174f370be89a4b12 Mon Sep 17 00:00:00 2001
+From: Mark Adler <fork@madler.net>
+Date: Mon, 10 Oct 2022 14:19:07 -0700
+Subject: [PATCH] Remove length integrity check in funzip.
+
+funzip hasn't been touched in 20 years, and does not support the
+Zip64 zip format extensions. This commit bypasses the uncompressed
+length check, where the length can be stored in a Zip64 extended
+information extra field as eight bytes, instead of the four-byte
+field in the local header. Such entries can now be successfully
+decompressed. The CRC integrity check is still performed.
+
+This is a temporary application of duct tape for this issue. The
+code will be updated to handle the modern formats for large files,
+as well as handle streaming data descriptors.
+---
+ funzip.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/funzip.c b/funzip.c
+index 1e55910..b74ff47 100644
+--- a/funzip.c
++++ b/funzip.c
+@@ -534,8 +534,8 @@ char **argv;
+   /* validate decompression */
+   if (LG(h + LOCCRC) != G.crc32val)
+     err(4, "invalid compressed data--crc error");
+-  if (LG((g ? (h + LOCSIZ) : (h + LOCLEN))) != outsiz)
+-    err(4, "invalid compressed data--length error");
++  // if (LG((g ? (h + LOCSIZ) : (h + LOCLEN))) != outsiz)
++  //   err(4, "invalid compressed data--length error");
+ 
+   /* check if there are more entries */
+   if (!g && fread((char *)h, 1, 4, G.in) == 4 && LG(h) == LOCSIG)

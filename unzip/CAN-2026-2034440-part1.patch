@@ -1,0 +1,73 @@
+--- a/process.c
++++ b/process.c
+@@ -2985,7 +2985,7 @@
+             have_new_type_eb = 2;
+ 
+             /* Ignore any prior EF_IZUNIX/EF_PKUNIX/EF_IZUNIX2 UID/GID. */
+-            flags &= 0x0ff;
++            flags &= EB_UT_FL_TIMES;
+         /*
+           Version       1 byte      version of this extra field, currently 1
+           UIDSize       1 byte      Size of UID field
+@@ -2994,28 +2994,45 @@
+           GID           Variable    GID for this entry
+         */
+ 
+-#ifdef IZ_HAVE_UXUIDGID
+-            if ((eb_len >= EB_UX3_MINLEN)
+-                && (z_uidgid != NULL)
+-                && ((*((EB_HEADSIZE + 0) + ef_buf) == 1)))
+-                    /* only know about version 1 */
++# ifdef IZ_HAVE_UXUIDGID
++            /* Check for a legitimate extra block length, a non-NULL
++             * destination pointer, and "ux" version 1 (which is all we
++             * understand).
++             */
++            if ((eb_len >= EB_UX3_MINLEN) &&
++             (z_uidgid != NULL) &&
++             (*((EB_HEADSIZE + 0) + ef_buf) == 1))
+             {
+-                uch uid_size;
+-                uch gid_size;
++                /* 2012-12-07 SMS.  (OUSPG report.)
++                 * First, clear "flags".  Then, check the validity of
++                 * uid_size before using it to find gid_size.
++                 * Made Xid_size bigger than "uch" for safer arithmetic.
++                 */
++                unsigned uid_size;
++                unsigned gid_size;
+ 
+                 uid_size = *((EB_HEADSIZE + 1) + ef_buf);
+-                gid_size = *((EB_HEADSIZE + uid_size + 2) + ef_buf);
++                /* Valid: 1 (Version) + 1 (UIDSize) + UIDSize +
++                 *        1 (GIDSize) + 2 (min GIDSize) <= eb_len.
++                 */
++                if (5+ uid_size <= eb_len)
++                {
++                    gid_size = *((EB_HEADSIZE + uid_size + 2) + ef_buf);
+ 
+-                if ( read_ux3_value((EB_HEADSIZE + 2) + ef_buf,
+-                                    uid_size, &z_uidgid[0])
+-                    &&
+-                     read_ux3_value((EB_HEADSIZE + uid_size + 3) + ef_buf,
+-                                    gid_size, &z_uidgid[1]) )
+-                {
+-                    flags |= EB_UX2_VALID;   /* signal success */
++                    /* Last, check total claimed xID sizes against eb_len. */
++                    if (3+ uid_size+ gid_size == eb_len)
++                    {
++                        if (read_ux3_value( (EB_HEADSIZE + 2) + ef_buf,
++                         uid_size, &z_uidgid[0]) &&
++                         read_ux3_value( (EB_HEADSIZE + uid_size + 3) + ef_buf,
++                         gid_size, &z_uidgid[1]))
++                        {
++                        flags |= EB_UX2_VALID;   /* signal success */
++                        }
++                    }
+                 }
+             }
+-#endif /* IZ_HAVE_UXUIDGID */
++# endif /* def IZ_HAVE_UXUIDGID */
+             break;
+ 
+           case EF_IZUNIX:
