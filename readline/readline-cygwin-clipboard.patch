@@ -1,0 +1,61 @@
+Read the clipboard through Cygwin's /dev/clipboard instead of the Win32 API.
+
+MSYS2's readline-7.0.3-3.clipboard.patch enables rl_paste_from_clipboard on
+__CYGWIN__ with OpenClipboard/GetClipboardData/CloseClipboard.  That makes
+every program that links readline statically (bash.exe) import user32.dll,
+and with it win32u, gdi32, gdi32full, msvcp_win and imm32: six DLLs loaded
+at every bash start and again in every fork child, whether or not anything is
+ever pasted.  Cygwin already exposes the clipboard as /dev/clipboard (UTF-8 in
+a UTF-8 locale), loading user32 on first use only.  Same behaviour as before:
+the text up to the first CR is inserted at point and the mark set.
+
+Applies after readline-7.0.3-3.clipboard.patch (patch -p1).
+
+--- readline-8.3/kill.c.orig
++++ readline-8.3/kill.c
+@@ -861,7 +861,44 @@
+ }
+ 
+ /* A special paste command for Windows users. */
+-#if defined (_WIN32) || defined (__CYGWIN__)
++#if defined (__CYGWIN__)
++#include <fcntl.h>
++
++int
++rl_paste_from_clipboard (int count, int key)
++{
++  char *data, *ptr;
++  size_t len, size;
++  ssize_t n;
++  int fd;
++
++  fd = open ("/dev/clipboard", O_RDONLY);
++  if (fd < 0)
++    return (0);
++  size = 1024;
++  len = 0;
++  data = (char *)xmalloc (size);
++  while ((n = read (fd, data + len, size - len - 1)) > 0)
++    {
++      len += n;
++      if (size - len < 2)
++	data = (char *)xrealloc (data, size *= 2);
++    }
++  close (fd);
++  data[len] = '\0';
++  ptr = strchr (data, '\r');
++  if (ptr)
++    *ptr = '\0';
++  if (*data)
++    {
++      _rl_set_mark_at_pos (rl_point);
++      rl_insert_text (data);
++    }
++  xfree (data);
++  return (0);
++}
++
++#elif defined (_WIN32)
+ #define WIN32_LEAN_AND_MEAN
+ 
+ #include <windows.h>
