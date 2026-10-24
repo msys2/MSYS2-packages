@@ -27,14 +27,14 @@ test -d msys2-pacman ||
 git clone --bare $url msys2-pacman ||
 die "Could not clone msys2-pacman"
 
-git -C msys2-pacman fetch --no-tags $url $base_tag:$base_tag $msys2_branch:$msys2_branch
+git --git-dir msys2-pacman fetch --no-tags $url $base_tag:$base_tag $msys2_branch:$msys2_branch
 
 git -c core.abbrev=7 \
 	-c diff.renames=true \
 	-c format.from=false \
 	-c format.numbered=auto \
 	-c format.useAutoBase=false \
-	-C msys2-pacman \
+	--git-dir msys2-pacman \
 	format-patch \
 		--no-signature \
 		--topo-order \
@@ -45,7 +45,6 @@ git -c core.abbrev=7 \
 		--no-thread \
 		--suffix=.patch \
 		--subject-prefix=PATCH \
-		--output-directory .. \
 		$base_tag..$msys2_branch \
 		-- ':(exclude).github/' ||
 die "Could not generate new patch set"
@@ -59,11 +58,8 @@ done &&
 git add $patches ||
 die "Could not stage new patch set"
 
-in_sources="$(echo "$patches" | sed "{s/^/        /;:1;N;s/\\n/\\\\n        /;b1}")"
-in_prepare="$(echo "$patches" | tr '\n' '\\' | sed -e 's/\\$//' -e 's/\\/ &&&n  /g')"
-sed -i -e "/^        0.*\.patch$/{:1;N;/[^)]$/b1;s|.*|$in_sources)|}" \
-	-e "/^ *apply_git_with_msg /{:2;N;/[^}]$/b2;s|.*| apply_git_with_msg $in_prepare\\n\\}|}" \
-	PKGBUILD ||
+in_patches="$(echo "$patches" | sed "{s/^/  /;:1;N;s/\\n/\\\\n  /;b1}")"
+sed -i -e "/^_patches=(/{:1;N;/[^)]$/b1;s|.*|_patches=(\\n$in_patches\\n)|}" PKGBUILD ||
 die "Could not update the patch set in PKGBUILD"
 
 updpkgsums ||
