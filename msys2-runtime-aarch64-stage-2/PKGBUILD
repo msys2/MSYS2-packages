@@ -371,11 +371,15 @@ prepare() {
   # Refresh them from source to ensure they're the aarch64-patched versions.
   echo "--- Installing headers from source ---"
 
-  # newlib first (base layer)
-  # cp -rf ${srcdir}/${_realname}/newlib/libc/include/. \
-  #   /usr/aarch64-pc-cygwin/sys-include/
-  cp -rf ${srcdir}/${_realname}/newlib/libc/include/. \
-    /usr/aarch64-pc-cygwin/include/
+  # newlib first (base layer).  Leave alone the headers runtime-devel installs
+  # differently on purpose: iconv.h and unctrl.h belong to libiconv and ncurses
+  # and newlib.h / _newlib_version.h are placeholders in the source tree
+  # while runtime-devel ships the configured ones.  Copying them here put the
+  # placeholders and the shadowing headers back into the live sysroot.
+  ( cd ${srcdir}/${_realname}/newlib/libc/include && \
+    tar -cf - --exclude=./iconv.h --exclude=./unctrl.h \
+              --exclude=./newlib.h --exclude=./_newlib_version.h . ) | \
+    tar -xf - -C /usr/aarch64-pc-cygwin/include/
 
   # cygwin headers second (override layer)
   # cp -rf ${srcdir}/${_realname}/winsup/cygwin/include/. \
@@ -954,6 +958,16 @@ package() {
   ln -sf libmsys-2.0.a "${pkgdir}/usr/aarch64-pc-cygwin/lib/libcygwin.a"
   echo "packaged libmsys-2.0.a (+ libcygwin.a alias)"
 
+  # --- file-mode objects: link one of these to set the default open mode
+  # (binary/text/textread/auto).  The x86_64 msys2-runtime ships them in
+  # /usr/lib; openssh links textreadmode.o on Cygwin targets.
+  for _o in automode.o binmode.o textmode.o textreadmode.o; do
+    _s="$(find "${_rb}" -path '*/cygwin/*' -name "${_o}" 2>/dev/null | head -1)"
+    [ -n "${_s}" ] || { echo "FATAL: ${_o} not found in ${_rb}"; exit 1; }
+    install -m644 "${_s}" "${pkgdir}/usr/aarch64-pc-cygwin/lib/${_o}"
+  done
+  echo "packaged automode.o binmode.o textmode.o textreadmode.o"
+
   # --- newlib libs (Phase 2): fold libc/libm/libg into this package so the
   # sysroot's newlib libs come from a package, not a hand-copy out of src/.
   # libc.a/libm.a are mandatory. libg.a is a LEGACY "debug libc" that modern
@@ -967,6 +981,18 @@ package() {
     install -m644 "${_s}" "${pkgdir}/usr/aarch64-pc-cygwin/lib/${_o}"
     echo "packaged ${_o}"
   done
+  # The libraries winsup generates for -lpthread, -ldl, -lrt and -lutil (the
+  # functions themselves are in msys-2.0.dll), as the native
+  # msys2-runtime-devel ships them.  Without libpthread.a a configure check
+  # that links -lpthread fails (Berkeley DB then picks unsupported fcntl
+  # mutexes).
+  for _o in libpthread.a libdl.a librt.a libutil.a; do
+    _s="$(find "${_rb}" -path '*/cygwin/*' -name "${_o}" 2>/dev/null | head -1)"
+    [ -n "${_s}" ] || { echo "FATAL: ${_o} not found in ${_rb}"; exit 1; }
+    install -m644 "${_s}" "${pkgdir}/usr/aarch64-pc-cygwin/lib/${_o}"
+    echo "packaged ${_o}"
+  done
+
   _s="$(find "${_rb}" -name libg.a 2>/dev/null | head -1)"
   if [ -n "${_s}" ]; then
     install -m644 "${_s}" "${pkgdir}/usr/aarch64-pc-cygwin/lib/libg.a"
