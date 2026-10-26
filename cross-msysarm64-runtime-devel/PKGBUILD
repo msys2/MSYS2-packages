@@ -3,7 +3,7 @@
 _realname=msys2-runtime
 pkgname="cross-msysarm64-runtime-devel"
 pkgver=3.6.10
-pkgrel=1
+pkgrel=3
 pkgdesc="Cross msys2-runtime headers for aarch64-pc-cygwin sysroot (newlib + cygwin)"
 arch=('x86_64')
 url="https://github.com/msys2/msys2-runtime"
@@ -126,6 +126,8 @@ source=(
   woarm64-0107-Cygwin-fix-argv-corruption-from-overlapping-strcpy-i.patch
   woarm64-0108-Revert-include-stat.h.patch
   woarm64-0109-Cygwin-testsuite-Fix-compatibility-with-GCC-15.patch
+  newlib-aarch64.h
+  _newlib_version-aarch64.h
 )
 sha256sums=('SKIP'
             'SKIP'
@@ -236,7 +238,9 @@ sha256sums=('SKIP'
             'SKIP'
             'SKIP'
             'SKIP'
-            'SKIP')
+            'SKIP'
+            '76208fc6f2d59334afe85099295aa63680a9811dd22893927425277a0357cce4'
+            'f4c14dfb59c9eb36181455ef077c4ec7a0571ed64f79947094ac1cd9a96d3fae')
 
 _target=aarch64-pc-cygwin
 _sysroot=/usr/${_target}
@@ -296,6 +300,33 @@ package() {
     ${pkgdir}/${_sysroot_usr}/sys-include \
     ${pkgdir}/${_sysroot_usr}/include; do
     cp -r ${srcdir}/${_realname}/winsup/cygwin/include/. ${dest}/
+  done
+
+  # newlib's iconv.h and unctrl.h belong to libiconv and ncurses, and the
+  # native msys2-runtime-devel ships neither.  The bare include directory
+  # is searched before usr/include, so these copies would shadow the real
+  # headers that libiconv and ncurses install there.
+  for dest in \
+    ${pkgdir}/${_sysroot_bare}/sys-include \
+    ${pkgdir}/${_sysroot_bare}/include \
+    ${pkgdir}/${_sysroot_usr}/sys-include \
+    ${pkgdir}/${_sysroot_usr}/include; do
+    rm -f ${dest}/iconv.h ${dest}/unctrl.h
+  done
+
+  # newlib.h and _newlib_version.h in newlib/libc/include are placeholders
+  # ("Real file is created by newlib configuration").  Install the ones the
+  # aarch64-pc-cygwin newlib configure generates for this source commit
+  # (taken from the msys2-runtime-aarch64-stage-2 build), as the native
+  # msys2-runtime-devel does; without them _HAVE_LONG_DOUBLE and the other
+  # feature macros are undefined and strtold & co. are not declared.
+  for dest in \
+    ${pkgdir}/${_sysroot_bare}/sys-include \
+    ${pkgdir}/${_sysroot_bare}/include \
+    ${pkgdir}/${_sysroot_usr}/sys-include \
+    ${pkgdir}/${_sysroot_usr}/include; do
+    install -m644 ${srcdir}/newlib-aarch64.h ${dest}/newlib.h
+    install -m644 ${srcdir}/_newlib_version-aarch64.h ${dest}/_newlib_version.h
   done
 
   echo "--- Header install check ---"
