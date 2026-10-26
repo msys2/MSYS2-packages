@@ -5,10 +5,10 @@ pkgname=('libedit' 'libedit-devel')
 _base_ver=3.1
 _snap_date=20240808
 pkgver=${_snap_date}_${_base_ver}
-pkgrel=1
+pkgrel=2
 pkgdesc="Libedit is an autotool- and libtoolized port of the NetBSD Editline library."
 groups=('libraries')
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 license=('spdx:BSD-3-Clause')
 url="https://www.thrysoee.dk/editline/"
 depends=('ncurses' 'sh')
@@ -35,12 +35,38 @@ prepare() {
 build() {
   cd "${srcdir}/${pkgname}-${_snap_date}-${_base_ver}"
 
+  # For the aarch64-pc-cygwin cross build ncurses comes from the toolchain
+  # sysroot, not the host /usr, and configure needs --host to stop probing
+  # with the build compiler.
+  local _host_args=(--build=${CHOST})
+  local _inc=/usr/include/ncursesw
+  local _lib=/usr/lib/ncursesw
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    _host_args=(--build=${CHOST} --host=aarch64-pc-cygwin)
+    _inc=/usr/aarch64-pc-cygwin/usr/include/ncursesw
+    _lib=/usr/aarch64-pc-cygwin/usr/lib
+  fi
+
+  # refresh.c shuffles rows of el_display (wchar_t **) through wint_t *
+  # locals.  On Cygwin those differ in width (2 vs 4 bytes), which GCC 14+
+  # rejects outright.  The pointers are only swapped and cast back to
+  # wchar_t * before use -- the single dereference zeroes two cells instead
+  # of one, which still empties the string -- so demote it rather than
+  # patching NetBSD source.
+  CFLAGS+=" -Wno-error=incompatible-pointer-types"
+  # src/read.c calls ioctl() without including <sys/ioctl.h>, which GCC 14+
+  # makes an error; force the include rather than patch the source.
+  # _GNU_SOURCE must come with it: -include is processed before config.h,
+  # so without it the system headers are parsed before config.h defines the
+  # feature macro and wcwidth/secure_getenv end up undeclared.
+  CFLAGS+=" -D_GNU_SOURCE -include sys/ioctl.h"
+
   ./configure \
-    --build=${CHOST} \
+    "${_host_args[@]}" \
     --prefix=/usr \
     --enable-widec \
-    CPPFLAGS="$CPPFLAGS -I/usr/include/ncursesw" \
-    LDFLAGS="$LDFLAGS -L/usr/lib/ncursesw"
+    CPPFLAGS="$CPPFLAGS -I${_inc}" \
+    LDFLAGS="$LDFLAGS -L${_lib}"
 
   make
 
