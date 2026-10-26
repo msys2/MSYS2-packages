@@ -4,7 +4,7 @@ _realname=gcc
 _target=aarch64-pc-cygwin
 pkgname="cross-msysarm64-${_realname}"
 pkgver=17.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Cross GCC stage2 for aarch64-pc-cygwin (with full runtime)"
 arch=('i686' 'x86_64')
 url="https://gcc.gnu.org"
@@ -416,4 +416,41 @@ package() {
   find ${pkgdir}/usr/bin -name "*.exe" -exec strip -s {} \; 2>/dev/null || true
 
 #   # Do NOT strip target libraries — they need relocs for the target
+
+  # Install a default specs file that clears HIGH_ENTROPY_VA on every link.
+  #
+  # The cygheap must be reserved at a FIXED address -- it holds internal
+  # pointers, so a forked child cannot relocate it -- and needs a contiguous
+  # 8 GiB at 0x800000000-0xA00000000.  HIGH_ENTROPY_VA lets the loader place
+  # allocations anywhere in the 128 TB address space, including inside that
+  # window; when one lands there the reservation fails and the forked child
+  # dies with 0xC0000005 ("flaky fork", msys2-runtime#7).
+  #
+  # The cross profile passes -Wl,--disable-high-entropy-va, but any recipe that
+  # sets its own LDFLAGS drops it again -- which is how msys-crypto-3.dll,
+  # msys-ssl-3.dll and msys-z.dll came to ship with the bit set while
+  # sshd.exe itself did not, breaking the fork sshd does per connection.
+  # gcc reads $libdir/specs automatically, so putting the flag in the *link*
+  # spec applies it to every link regardless of flags.
+  local _gccdir _specs
+  # The staged gcc is relocatable, so -print-libgcc-file-name already points
+  # inside ${pkgdir}; use that directory as is (prefixing ${pkgdir} again put
+  # the file at ${pkgdir}${pkgdir}/usr/lib/gcc/..., where gcc never looks).
+  _gccdir="$(dirname "$("${pkgdir}/usr/bin/${_target}-gcc" -print-libgcc-file-name)")"
+  _gccdir="$(cd "${_gccdir}" && pwd)"   # resolve the usr/bin/.. it reports
+  case "${_gccdir}" in
+    "${pkgdir}"/usr/lib/gcc/*) ;;
+    *) echo "==> ERROR: unexpected gcc libdir ${_gccdir}" >&2; return 1 ;;
+  esac
+  _specs="${_gccdir}/specs"
+  install -d "$(dirname "${_specs}")"
+  "${pkgdir}/usr/bin/${_target}-gcc" -dumpspecs     | awk -v w32="-L/usr/${_target}/lib/w32api" '/^\*link:$/{print; getline; print $0 "   --disable-high-entropy-va " w32; next} {print}'     > "${_specs}"
+  grep -q -- '--disable-high-entropy-va' "${_specs}" ||
+    { echo "==> ERROR: specs file did not get --disable-high-entropy-va" >&2; return 1; }
+  # The Win32 import libraries (libkernel32.a & co.) ship in the w32api
+  # subdirectory, which a native Cygwin gcc searches through its built-in
+  # specs but this cross gcc does not; without the -L an installed toolchain
+  # cannot link even "hello world" (cannot find -lkernel32).
+  grep -q -- "-L/usr/${_target}/lib/w32api" "${_specs}" ||
+    { echo "==> ERROR: specs file did not get the w32api library path" >&2; return 1; }
 }
