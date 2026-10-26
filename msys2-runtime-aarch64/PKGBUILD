@@ -387,11 +387,15 @@ CEOF
   # Refresh them from source to ensure they're the aarch64-patched versions.
   echo "--- Installing headers from source ---"
 
-  # newlib first (base layer)
-  # cp -rf ${srcdir}/${_realname}/newlib/libc/include/. \
-  #   /usr/aarch64-pc-cygwin/sys-include/
-  cp -rf ${srcdir}/${_realname}/newlib/libc/include/. \
-    /usr/aarch64-pc-cygwin/include/
+  # newlib first (base layer).  Leave alone the headers runtime-devel installs
+  # differently on purpose: iconv.h and unctrl.h belong to libiconv and ncurses
+  # and newlib.h / _newlib_version.h are placeholders in the source tree
+  # while runtime-devel ships the configured ones.  Copying them here put the
+  # placeholders and the shadowing headers back into the live sysroot.
+  ( cd ${srcdir}/${_realname}/newlib/libc/include && \
+    tar -cf - --exclude=./iconv.h --exclude=./unctrl.h \
+              --exclude=./newlib.h --exclude=./_newlib_version.h . ) | \
+    tar -xf - -C /usr/aarch64-pc-cygwin/include/
 
   # cygwin headers second (override layer)
   # cp -rf ${srcdir}/${_realname}/winsup/cygwin/include/. \
