@@ -34,7 +34,8 @@ source=(https://ftp.gnu.org/gnu/bash/bash-${_basever}.tar.gz{,.sig}
         0002-bash-4.3-msysize.patch
         0005-bash-4.3-msys2-fix-lineendings.patch
         0006-bash-4.3-add-pwd-W-option.patch
-        0007-fix-static-build.patch)
+        0007-fix-static-build.patch
+        aarch64-fix-pwd-W.py)
 if [ $_patchlevel -gt 0 ]; then
   for (( p=1; p<=${_patchlevel}; p++ )); do
     source+=(https://ftp.gnu.org/gnu/bash/bash-${_basever}-patches/bash${_basever//./}-$(printf "%03d" $p){,.sig})
@@ -57,6 +58,14 @@ prepare() {
   patch -p1 -i ${srcdir}/0007-fix-static-build.patch
 
   if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # pwd -W wrote its result into a PATH_MAX buffer while telling
+    # cygwin_conv_path the buffer was PATH_MAX+1, never zeroed it and never
+    # checked getcwd().  On AArch64 the result came back unterminated, so
+    # pwd -W returned the path with adjacent heap appended -- e.g.
+    #   C:/fbwork/-W   C:/fbwork/repo/.git/-v
+    # git-filter-branch calls pwd via a wrapper that uses -W, so every
+    # --tree-filter/--index-filter run died on a corrupted temp path.
+    python "${srcdir}"/aarch64-fix-pwd-W.py
     # environ is a DATA symbol exported by msys-2.0.dll.  A bare
     #   extern char **environ;
     # makes ld fall back to auto-import, and on AArch64 that pseudo-relocation is
@@ -116,6 +125,12 @@ build() {
     # sysroot at /usr/aarch64-pc-cygwin/usr.
     #   - GCC-15 too new for bash sources: -std=gnu89 (build + target).
     #   - bash_cv_* : cross defaults for these AC_TRY_RUN probes are wrong.
+    #     bash_cv_getcwd_malloc in particular: when cross-compiling configure
+    #     defaults it to no, so bash builds lib/sh/getcwd.c instead of using
+    #     the system getcwd.  That replacement walks .. matching inodes, which
+    #     cannot work under a cygdrive mount outside the install root, so
+    #     pwd -W failed for every path on /c -- and git-filter-branch, which
+    #     builds its temp dir from pwd, died on every run.
     #   - CFLAGS_FOR_BUILD -fcommon: build-host helpers (mkbuiltins etc.) need it
     #     under GCC-15's default -fno-common.
     ./configure --build=${CHOST} \
@@ -134,7 +149,8 @@ build() {
       bash_cv_dev_fd=standard \
       bash_cv_wexitstatus_offset=8 \
       bash_cv_termcap_lib=libncurses \
-      CFLAGS="-O1 -std=gnu89 -DHEREDOC_PIPESIZE=65536 -I/usr/aarch64-pc-cygwin/usr/include -I/usr/aarch64-pc-cygwin/usr/include/ncursesw" \
+      bash_cv_getcwd_malloc=yes \
+      CFLAGS="-O1 -std=gnu89 -DHEREDOC_PIPESIZE=65536 -I/usr/aarch64-pc-cygwin/usr/include -I/usr/aarch64-pc-cygwin/usr/include/ncurses" \
       CFLAGS_FOR_BUILD="-fcommon -std=gnu89" \
       LDFLAGS="${LDFLAGS} -L/usr/aarch64-pc-cygwin/usr/lib"
 
@@ -285,6 +301,7 @@ sha256sums=('0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba'
             '696e38540a9abfbf217d6dd17b2c6ffe274b9383815c5db76ce118fdddabd777'
             '500c75c64593a70276585345a55c807226c0cc220d08b7cccece2ab005b3bcea'
             'cbae1aa81d56eba4e916bdaf2b2983731d6e2537dd8d606a3b378e49bcb81e79'
+            'SKIP'
             '1f608434364af86b9b45c8b0ea3fb3b165fb830d27697e6cdfc7ac17dee3287f'
             'SKIP'
             'e385548a00130765ec7938a56fbdca52447ab41fabc95a25f19ade527e282001'
