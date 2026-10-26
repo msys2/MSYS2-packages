@@ -3,7 +3,7 @@
 pkgbase=ncurses
 pkgname=('ncurses' 'ncurses-devel')
 pkgver=6.6
-pkgrel=3
+pkgrel=4
 pkgdesc="System V Release 4.0 curses emulation library"
 arch=('i686' 'x86_64' 'aarch64')
 url="https://www.gnu.org/software/ncurses/"
@@ -45,8 +45,14 @@ build() {
     # runs tic/infocmp during install — those must be the BUILD (x64) compiler,
     # not the cross CC. --with-build-cc + BUILD_* flags direct that.
     # GCC-15 is too new for some ncurses sources: force -std=gnu17.
+    # The host is named aarch64-pc-msys, not -cygwin, as the native build
+    # does (CHOST rewrite above): configure picks its DLL naming from the
+    # host triplet, and only the msys model gives msys-ncursesw6.dll & co;
+    # a cygwin host gives cyg- names.  The compiler is still the cross CC,
+    # and AR/RANLIB are set explicitly because configure would otherwise
+    # look for aarch64-pc-msys-* and fall back to the host's ar/ranlib.
     _host_args=(
-      --host=aarch64-pc-cygwin
+      --host=aarch64-pc-msys
       --with-build-cc=gcc
       --with-build-cflags=-D_XOPEN_SOURCE_EXTENDED
       --with-build-cppflags="-D_XOPEN_SOURCE_EXTENDED -DBUILDING_NCURSES"
@@ -55,6 +61,7 @@ build() {
     )
     export CFLAGS="-std=gnu17 -D_GNU_SOURCE"
     export BUILD_CC=gcc
+    export AR=aarch64-pc-cygwin-ar RANLIB=aarch64-pc-cygwin-ranlib
   fi
 
   ./configure \
@@ -98,7 +105,11 @@ build() {
       grep -n '^INSTALL_PROG' progs/Makefile >&2 || true
       return 1
     fi
-    echo "==> ok: install -s will use aarch64-pc-cygwin-strip (#50)"
+    echo "==> ok: install -s will use aarch64-pc-cygwin-strip"
+    if ! grep -q 'msys-' mk_shared_lib.sh; then
+      echo "==> ERROR: ncurses did not select the msys DLL naming" >&2
+      return 1
+    fi
   fi
 
   make
