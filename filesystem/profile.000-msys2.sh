@@ -26,6 +26,10 @@ _warn_deprecated_winver()
 _warn_deprecated_winver;
 unset _warn_deprecated_winver;
 
+# Set the user id
+# USER="$(exec id -un)" # Heavy
+export USER="${USERNAME}"
+
 # Default to removing the write permission for group and other
 #  (files normally created with mode 777 become 755; files created with
 #  mode 666 become 644)
