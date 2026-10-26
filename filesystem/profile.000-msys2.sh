@@ -25,3 +25,24 @@ _warn_deprecated_winver()
 
 _warn_deprecated_winver;
 unset _warn_deprecated_winver;
+
+# Set the user id
+# USER="$(exec id -un)" # Heavy
+export USER="${USERNAME}"
+
+# Default to removing the write permission for group and other
+#  (files normally created with mode 777 become 755; files created with
+#  mode 666 become 644)
+umask 022
+
+# Start MSYS in selected folder
+# c:\msys\usr\bin\bash -c "cd '%curdir'; export
+# CHERE_INVOKING=1; exec /usr/bin/bash --login -i"
+#
+# Make sure we start in home if invoked without -here option and not in a nested shell
+if [ -n "${CHERE_INVOKING}" ]; then
+    CHERE_INVOKING_VISIBLE_FOR_USER="${CHERE_INVOKING}"
+    unset CHERE_INVOKING
+elif [ ${SHLVL:-0} -le 1 ]; then
+    cd "${HOME}" || echo "WARNING: Failed attempt to cd into ${HOME}!"
+fi
