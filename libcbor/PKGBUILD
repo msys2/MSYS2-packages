@@ -3,9 +3,9 @@
 pkgbase=libcbor
 pkgname=("${pkgbase}" "${pkgbase}-devel")
 pkgver=0.14.0
-pkgrel=2
+pkgrel=3
 pkgdesc="A C library for parsing and generating CBOR, a general-purpose schema-less binary data format"
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 url="https://github.com/PJK/libcbor"
 msys2_repository_url='https://github.com/PJK/libcbor'
 license=('spdx:MIT')
@@ -14,6 +14,44 @@ source=(https://github.com/PJK/libcbor/archive/v${pkgver}/${pkgname}-${pkgver}.t
 sha256sums=('a8c1516e741562cf95aa4479c64916c3d4d2623e24fdc35e414e2320e7300aae')
 
 build() {
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # Cross-build for aarch64-pc-cygwin.  Unlike the autotools recipes in this
+    # series, cmake needs to be told explicitly that it is cross-compiling:
+    # setting CMAKE_SYSTEM_NAME is what switches it into cross mode, and
+    # without CMAKE_FIND_ROOT_PATH it would happily find the HOST x86_64
+    # headers and libraries under /usr and link an unusable mixture.
+    #
+    # FIND_ROOT_PATH_MODE_PROGRAM=NEVER because helper programs must still be
+    # taken from the build host; LIBRARY/INCLUDE=ONLY so headers and libraries
+    # come exclusively from the target sysroot.
+    #
+    # CMAKE_SYSTEM_NAME=MSYS, not CYGWIN: the platform module is what decides the
+    # shared-library prefix, and it sets it AFTER cache entries are processed, so
+    # -DCMAKE_SHARED_LIBRARY_PREFIX on the command line is overridden and has no
+    # effect.  Platform/CYGWIN.cmake produces cygcbor-*.dll; MSYS2 expects the
+    # msys- prefix that Platform/MSYS.cmake sets, which is what MinGit ships.
+    cmake \
+      -GNinja \
+      -Bbuild \
+      -S "${pkgname}-${pkgver}" \
+      -DCMAKE_SYSTEM_NAME=MSYS \
+      -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+      -DCMAKE_C_COMPILER=aarch64-pc-cygwin-gcc \
+      -DCMAKE_FIND_ROOT_PATH=/usr/aarch64-pc-cygwin/usr \
+      -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+      -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+      -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr \
+      -DCBOR_CUSTOM_ALLOC=ON \
+      -DWITH_EXAMPLES=OFF \
+      -DBUILD_SHARED_LIBS=ON \
+      -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    cmake --build build
+    DESTDIR="${srcdir}/dest" cmake --install build
+    return
+  fi
+
   cmake \
     -GNinja \
     -Bbuild \
