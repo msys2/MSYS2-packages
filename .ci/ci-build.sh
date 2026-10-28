@@ -57,8 +57,11 @@ list_packages() {
     readarray -t packages < <("$DIR/ci-get-build-order.py")
 }
 
-install_packages() {
-    pacman --noprogressbar --upgrade --noconfirm *.pkg.tar.*
+pkgver_from_metadata() {
+    local version
+    version="$(sed -n 's/^Version[[:space:]]*:[[:space:]]*//p')"
+    version="${version%-*}"
+    printf '%s\n' "${version#*~}" | sed 's/\./\\./g'
 }
 
 # Status functions
@@ -69,7 +72,8 @@ message() { local status="${1}"; local items=("${@:2}"); _status message "${stat
 # Detect
 list_packages || failure 'Could not detect changed files'
 message 'Processing changes'
-test -z "${packages}" && success 'No changes in package recipes'
+
+[ "${#packages[@]}" -eq 0 ] && success 'No changes in package recipes'
 
 # Build
 message 'Building packages' "${packages[@]}"
@@ -90,13 +94,16 @@ for package in "${packages[@]}"; do
     echo "::group::[build] ${package}"
     execute 'Clear cache' pacman -Scc --noconfirm
     execute 'Fetch keys' "$DIR/fetch-validpgpkeys.sh"
-    execute 'Building binary' makepkg --noconfirm --noprogressbar --nocheck --syncdeps --rmdeps --cleanbuild
-    repo-add $PWD/artifacts/ci.db.tar.gz $PWD/$package/*.pkg.tar.*
+    cp -r ${package} B && cd B
+    message 'Building binary'
+    makepkg --noconfirm --noprogressbar --nocheck --syncdeps --rmdeps --cleanbuild || failure "${status} failed"
+    cd - > /dev/null
+    repo-add $PWD/artifacts/ci.db.tar.gz $PWD/B/*.pkg.tar.*
     pacman -Sy
-    cp $PWD/$package/*.pkg.tar.* $PWD/artifacts
+    cp $PWD/B/*.pkg.tar.* $PWD/artifacts
     echo "::endgroup::"
 
-    cd "$package"
+    cd B
     for pkg in *.pkg.tar.*; do
         pkgname="$(echo "$pkg" | rev | cut -d- -f4- | rev)"
         echo "::group::[install] ${pkgname}"
@@ -110,13 +117,17 @@ for package in "${packages[@]}"; do
 
         echo "::group::[file-diff] ${pkgname}"
         message "File listing diff for ${pkgname}"
-        diff -Nur <(pacman -Fl ${MSYSTEM,,}/"$pkgname" | sed -e 's|^[^ ]* |/|' | sort) <(pacman -Ql "$pkgname" | sed -e 's|^[^/]*||' | sort) || true
+        old_pkgver="$(pacman -Si ${MSYSTEM,,}/"${pkgname}" | pkgver_from_metadata || true)"
+        new_pkgver="$(pacman -Qip "${pkg}" | pkgver_from_metadata || true)"
+        diff -Nur \
+            <(pacman -Fl ${MSYSTEM,,}/"${pkgname}" | sed -e 's|^[^ ]* |/|' -e "s|${old_pkgver}|PKGVER|g" | sort) \
+            <(pacman -Ql "${pkgname}" | sed -e 's|^[^/]*||' -e "s|${new_pkgver}|PKGVER|g" | sort) || true
         echo "::endgroup::"
 
-        echo "::group::[dll check] ${pkgname}"
-        declare -a binaries=($(pacman -Qlq $pkgname | grep -E ${MINGW_PREFIX}/.+\.\(dll\|exe\|pyd\)$))
+        echo "::group::[runtime-dependencies] ${pkgname}"
+        message "Runtime dependencies for ${pkgname}"
+        declare -a binaries=($(pacman -Ql $pkgname | sed -e 's|^[^ ]* ||' | grep -E ${MINGW_PREFIX}/.+\.\(dll\|exe\|pyd\)$))
         if [ "${#binaries[@]}" -ne 0 ]; then
-            message "Runtime dependencies for ${pkgname}"
             for binary in ${binaries[@]}; do
                 echo "${binary}:"
                 ldd ${binary} | GREP_COLOR="1;35" grep --color=always "msys-.*\|" \
@@ -135,7 +146,7 @@ for package in "${packages[@]}"; do
     done
     cd - > /dev/null
 
-    rm -f "${package}"/*.pkg.tar.*
+    rm -rf B
     unset package
 done
 success 'All packages built successfully'
