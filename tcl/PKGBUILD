@@ -9,37 +9,72 @@ pkgdesc="The Tcl scripting language"
 arch=('i686' 'x86_64')
 url="https://tcl.sourceforge.io/"
 msys2_references=(
-  "anitya: 4941"
-  "cpe: cpe:/a:tcl:tcl"
+  'anitya: 4941'
+  'archlinux: tcl'
+  'aur:' # ignore tcl84
+  'cpe: cpe:/a:tcl:tcl'
+  'gentoo: dev-lang/tcl'
 )
 license=('spdx:TCL')
-depends=('zlib')
-makedepends=('autotools' 'gcc')
+depends=(
+  'zlib'
+)
+makedepends=(
+  'autotools'
+  'gcc'
+)
 options=('staticlibs')
-source=(https://downloads.sourceforge.net/sourceforge/tcl/tcl${pkgver}-src.tar.gz
-        tcl-8.6.12-1.src.patch)
+_archive="tcl${pkgver}"
+source=(
+  "https://downloads.sourceforge.net/sourceforge/tcl/${_archive}-src.tar.gz"
+  '001-cygwin-removals.patch'
+  '002-build-info-command.patch'
+  '003-registry-update.patch'
+  '004-test-octal-literals.patch'
+  '005-buildsystem-and-ci.patch'
+)
 sha256sums=('26c995dd0f167e48b11961d891ee555f680c175f7173ff8cb829f4ebcde4c1a6'
-            '322c7e17c63249fc5f6b0d89b1c77fa67406aa91f44efa4964be3f75bb271568')
+            '911d99ca2855351bea3f6714e79130c17600981f825c7a24c8afa8eff5507534'
+            '171c86040a1dca7e368dd01cb719b400f756a8d5330fe35269bbc55c47984f0d'
+            '20cd7a7a22a9403d414add5be687564664e7d7c71fea684e2c41ccfcb26fbd2d'
+            '55e4b767f7970d411dd3d6b810a4fb6f5f17073752b884a476c44b852bb947d8'
+            '93d19f635c592fb125fbcb92773c2aa25d18ce058c0b1394ac7d4f468d6efd00')
+
+apply_patch_with_msg() {
+  for _patch in "$@"; do
+    msg2 "Applying ${_patch}"
+    patch -Nbp1 -i "${srcdir}/${_patch}"
+  done
+}
 
 prepare() {
-  cd tcl${pkgver}
+  cd "${_archive}"
+
   # we build the tcl sqlite interface in sqlite-tcl package
   rm -rf pkgs/sqlite3*
 
-  # taken from cygwin
-  patch -p2 -i ${srcdir}/tcl-8.6.12-1.src.patch
+  apply_patch_with_msg \
+    '001-cygwin-removals.patch' \
+    '002-build-info-command.patch' \
+    '003-registry-update.patch' \
+    '004-test-octal-literals.patch' \
+    '005-buildsystem-and-ci.patch'
+
+  # 8.16.18
+  # for _dd in itcl4.3.7 tdbc1.1.13 tdbcmysql1.1.13 tdbcodbc1.1.13 tdbcpostgres1.1.13 tdbcsqlite3-1.1.13 thread2.8.13; do
 
   for _dd in itcl4.2.2 tdbc1.1.3 tdbcmysql1.1.3 tdbcodbc1.1.3 tdbcpostgres1.1.3 tdbcsqlite3-1.1.3 thread2.8.7; do
     pushd pkgs/${_dd}
       autoreconf -fiv
     popd
   done
+
   cd unix
   autoreconf -fiv
 }
 
 build() {
-  cd tcl${pkgver}/unix
+  cd "${_archive}/unix"
 
   export MSYSTEM=CYGWIN
   local BIT=
@@ -52,16 +87,18 @@ build() {
     tcl_cv_strtod_buggy=no \
     tcl_cv_sys_version=CYGWIN_NT \
     $BIT
+
   make
 }
 
 # check() {
-#   cd tcl${pkgver}/unix
+#   cd "${_archive}/unix"
 #   make test
 # }
 
 package_tcl() {
-  cd tcl${pkgver}/unix
+  cd "${_archive}/unix"
+
   make INSTALL_ROOT="${pkgdir}" install install-private-headers
 
   install -Dm644 libtcl${pkgver%.*}.dll.a "${pkgdir}"/usr/lib/libtcl${pkgver%.*}.dll.a
@@ -73,22 +110,24 @@ package_tcl() {
 
   # remove buildroot traces
   _tclver=8.6
-  sed -e "s#${srcdir}/tcl${pkgver}/unix#/usr/lib#" \
-      -e "s#${srcdir}/tcl${pkgver}#/usr/include#" \
+  sed -e "s#${srcdir}/${_archive}/unix#/usr/lib#" \
+      -e "s#${srcdir}/${_archive}#/usr/include#" \
       -e "s#'{/usr/lib} '#'/usr/lib/tcl$_tclver'#" \
       -i "${pkgdir}/usr/lib/tclConfig.sh"
 
+  # tdbcver=tdbc1.1.13
   tdbcver=tdbc1.1.3
-  sed -e "s#${srcdir}/tcl${pkgver}/unix/pkgs/$tdbcver#/usr/lib/$tdbcver#" \
-      -e "s#${srcdir}/tcl${pkgver}/pkgs/$tdbcver/generic#/usr/include#" \
-      -e "s#${srcdir}/tcl${pkgver}/pkgs/$tdbcver/library#/usr/lib/tcl${pkgver%.*}#" \
-      -e "s#${srcdir}/tcl${pkgver}/pkgs/$tdbcver#/usr/include#" \
+  sed -e "s#${srcdir}/${_archive}/unix/pkgs/$tdbcver#/usr/lib/$tdbcver#" \
+      -e "s#${srcdir}/${_archive}/pkgs/$tdbcver/generic#/usr/include#" \
+      -e "s#${srcdir}/${_archive}/pkgs/$tdbcver/library#/usr/lib/tcl${pkgver%.*}#" \
+      -e "s#${srcdir}/${_archive}/pkgs/$tdbcver#/usr/include#" \
       -i "${pkgdir}/usr/lib/$tdbcver/tdbcConfig.sh"
 
+  # itclver=itcl4.3.7
   itclver=itcl4.2.2
-  sed -e "s#${srcdir}/tcl${pkgver}/unix/pkgs/$itclver#/usr/lib/$itclver#" \
-      -e "s#${srcdir}/tcl${pkgver}/pkgs/$itclver/generic#/usr/include#" \
-      -e "s#${srcdir}/tcl${pkgver}/pkgs/$itclver#/usr/include#" \
+  sed -e "s#${srcdir}/${_archive}/unix/pkgs/$itclver#/usr/lib/$itclver#" \
+      -e "s#${srcdir}/${_archive}/pkgs/$itclver/generic#/usr/include#" \
+      -e "s#${srcdir}/${_archive}/pkgs/$itclver#/usr/include#" \
       -i "${pkgdir}/usr/lib/$itclver/itclConfig.sh"
 
   # make the default tcl version
@@ -98,7 +137,7 @@ package_tcl() {
   ln -s "${pkgdir}/usr/lib/tclConfig.sh" "${pkgdir}/usr/lib/tcl${pkgver%.*}/tclConfig.sh"
 
   # split package (from Alpine Linux)
-  cd "$pkgdir"
+  cd "${pkgdir}"
   for i in usr/include usr/lib/pkgconfig \
    $(find usr/lib -name '*.a' -o -name '*.dll.a') \
    $(find . -name '*.c' -o -name '*Config.sh'); do
@@ -110,10 +149,10 @@ package_tcl() {
   done
 
   for i in usr/share/man/man3 ; do
-    if [ -e "$pkgdir/$i" ] || [ -L "$pkgdir/$i" ]; then
+    if [ -e "${pkgdir}/${i}" ] || [ -L "${pkgdir}/${i}" ]; then
       mkdir -p ${srcdir}/tcl-doc/${i%/*}
-      mv "$pkgdir/$i" ${srcdir}/tcl-doc/${i%/*}/
-      rmdir "$pkgdir/${i%/*}" 2>/dev/null || :
+      mv "${pkgdir}/${i}" ${srcdir}/tcl-doc/${i%/*}/
+      rmdir "${pkgdir}/${i%/*}" 2>/dev/null || :
     fi
   done
 }
@@ -123,12 +162,12 @@ package_tcl-devel() {
   groups=('development')
   pkgdesc+=" (development files)"
 
-  mv "$srcdir"/tcl-devel/* "$pkgdir"
+  mv "${srcdir}"/tcl-devel/* "${pkgdir}"
 }
 
 package_tcl-doc() {
   depends=()
   pkgdesc+=" (documentation)"
 
-  mv "$srcdir"/tcl-doc/* "$pkgdir"
+  mv "${srcdir}"/tcl-doc/* "${pkgdir}"
 }

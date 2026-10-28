@@ -1,0 +1,256 @@
+--- a/generic/tclBasic.c
++++ b/generic/tclBasic.c
+@@ -434,6 +434,109 @@ TclFinalizeEvaluation(void)
+ /*
+  *----------------------------------------------------------------------
+  *
++ * buildInfoObjCmd --
++ *
++ *	Implements tcl::build-info command.
++ *
++ * Results:
++ *	None.
++ *
++ * Side effects:
++ *	None.
++ *
++ *----------------------------------------------------------------------
++ */
++
++static int
++buildInfoObjCmd(
++    void *clientData,
++    Tcl_Interp *interp,		/* Current interpreter. */
++    int objc,			/* Number of arguments. */
++    Tcl_Obj *const objv[])	/* Argument objects. */
++{
++    if (objc > 2) {
++	Tcl_WrongNumArgs(interp, 1, objv, "?option?");
++	return TCL_ERROR;
++    }
++    if (objc == 2) {
++	int len;
++	const char *arg = TclGetStringFromObj(objv[1], &len);
++	const char *p;
++	if (len == 7 && !strcmp(arg, "version")) {
++	    char buf[80];
++	    p = strchr((char *)clientData, '.');
++	    if (p) {
++		const char *q = strchr(p+1, '.');
++		const char *r = strchr(p+1, '+');
++		p = (q < r) ? q : r;
++	    }
++	    if (p) {
++		memcpy(buf, (char *)clientData, p - (char *)clientData);
++		buf[p - (char *)clientData] = '\0';
++		Tcl_AppendResult(interp, buf, NULL);
++	    }
++	    return TCL_OK;
++	} else if (len == 10 && !strcmp(arg, "patchlevel")) {
++	    char buf[80];
++	    p = strchr((char *)clientData, '+');
++	    if (p) {
++		memcpy(buf, (char *)clientData, p - (char *)clientData);
++		buf[p - (char *)clientData] = '\0';
++		Tcl_AppendResult(interp, buf, NULL);
++	    }
++	    return TCL_OK;
++	} else if (len == 6 && !strcmp(arg, "commit")) {
++	    const char *q, *p = strchr((char *)clientData, '+');
++	    if (p) {
++		if ((q = strchr(p, '.'))) {
++		    char buf[80];
++		    memcpy(buf, p+1, q - p - 1);
++		    buf[q - p - 1] = '\0';
++		    Tcl_AppendResult(interp, buf, NULL);
++		} else {
++		    Tcl_AppendResult(interp, p+1, NULL);
++		}
++	    }
++	    return TCL_OK;
++	} else if (len == 8 && !strcmp(arg, "compiler")) {
++	    p = strchr((char *)clientData, '.');
++	    while (p) {
++		if (!strncmp(p+1, "clang-", 6) || !strncmp(p+1, "gcc-", 4)
++			    || !strncmp(p+1, "icc-", 4) || !strncmp(p+1, "msvc-", 5)) {
++		    const char *q = strchr(p+1, '.');
++		    if (q) {
++			char buf[16];
++			memcpy(buf, p+1, q - p - 1);
++			buf[q - p - 1] = '\0';
++			Tcl_AppendResult(interp, buf, NULL);
++		    } else {
++			Tcl_AppendResult(interp, p+1, NULL);
++		    }
++		    return TCL_OK;
++		}
++		p = strchr(p+1, '.');
++	    }
++	    Tcl_AppendResult(interp, "0", NULL);
++	    return TCL_OK;
++	}
++	p = strchr((char *)clientData, '.');
++	while (p) {
++	    if (!strncmp(p+1, arg, len) && ((p[len+1] == '.') || (p[len+1] == '\0'))) {
++		Tcl_AppendResult(interp, "1", NULL);
++		return TCL_OK;
++	    }
++	    p = strchr(p+1, '.');
++	}
++	Tcl_AppendResult(interp, "0", NULL);
++	return TCL_OK;
++    }
++    Tcl_AppendResult(interp, (char *)clientData, NULL);
++    return TCL_OK;
++}
++
++/*
++ *----------------------------------------------------------------------
++ *
+  * Tcl_CreateInterp --
+  *
+  *	Create a new TCL command interpreter.
+@@ -471,8 +574,7 @@ Tcl_CreateInterp(void)
+ #endif /* TCL_COMPILE_STATS */
+     char mathFuncName[32];
+     CallFrame *framePtr;
+-
+-    TclInitSubsystems();
++    const char *version = TclInitSubsystems();
+ 
+     /*
+      * Panic if someone updated the CallFrame structure without also updating
+@@ -987,6 +1089,8 @@ Tcl_CreateInterp(void)
+      */
+ 
+     Tcl_PkgProvideEx(interp, "Tcl", TCL_PATCH_LEVEL, &tclStubs);
++    Tcl_CreateObjCommand(interp, "::tcl::build-info",
++	    buildInfoObjCmd, (void *)version, NULL);
+ 
+     if (TclTommath_Init(interp) != TCL_OK) {
+ 	Tcl_Panic("%s", Tcl_GetString(Tcl_GetObjResult(interp)));
+--- a/generic/tclEvent.c
++++ b/generic/tclEvent.c
+@@ -14,6 +14,9 @@
+  */
+ 
+ #include "tclInt.h"
++#ifndef _WIN32
++#include "tclUuid.h"
++#endif
+ 
+ /*
+  * The data structure below is used to report background errors. One such
+@@ -1021,7 +1024,92 @@ Tcl_Exit(
+  *-------------------------------------------------------------------------
+  */
+ 
+-void
++MODULE_SCOPE const TclStubs tclStubs;
++
++#ifndef STRINGIFY
++#  define STRINGIFY(x) STRINGIFY1(x)
++#  define STRINGIFY1(x) #x
++#endif
++
++static const struct {
++    const TclStubs *stubs;
++    const char version[256];
++} stubInfo = {
++    &tclStubs, {TCL_PATCH_LEVEL "+" STRINGIFY(TCL_VERSION_UUID)
++#if defined(__clang__) && defined(__clang_major__)
++	    ".clang-" STRINGIFY(__clang_major__)
++#if __clang_minor__ < 10
++	    "0"
++#endif
++	    STRINGIFY(__clang_minor__)
++#endif
++#ifdef TCL_COMPILE_DEBUG
++	    ".compiledebug"
++#endif
++#ifdef TCL_COMPILE_STATS
++	    ".compilestats"
++#endif
++#if defined(__cplusplus) && !defined(__OBJC__)
++	    ".cplusplus"
++#endif
++#if defined(__CYGWIN__)
++	    ".cygwin"
++#endif
++#ifndef NDEBUG
++	    ".debug"
++#endif
++#if !defined(__clang__) && !defined(__INTEL_COMPILER) && defined(__GNUC__)
++	    ".gcc-" STRINGIFY(__GNUC__)
++#if __GNUC_MINOR__ < 10
++	    "0"
++#endif
++	    STRINGIFY(__GNUC_MINOR__)
++#endif
++#ifdef __INTEL_COMPILER
++	    ".icc-" STRINGIFY(__INTEL_COMPILER)
++#endif
++#if (defined(_WIN32) && !defined(_WIN64)) || (ULONG_MAX == 0xffffffffUL)
++	    ".ilp32"
++#endif
++#ifdef TCL_MEM_DEBUG
++	    ".memdebug"
++#endif
++#if defined(_MSC_VER)
++	    ".msvc-" STRINGIFY(_MSC_VER)
++#endif
++#ifdef USE_NMAKE
++	    ".nmake"
++#endif
++#ifdef TCL_NO_DEPRECATED
++	    ".no-deprecate"
++#endif
++#if !TCL_THREADS
++	    ".no-thread"
++#endif
++#ifndef TCL_CFG_OPTIMIZED
++	    ".no-optimize"
++#endif
++#ifdef __OBJC__
++	    ".objective-c"
++#if defined(__cplusplus)
++	    "plusplus"
++#endif
++#endif
++#ifdef TCL_CFG_PROFILED
++	    ".profile"
++#endif
++#ifdef PURIFY
++	    ".purify"
++#endif
++#ifdef STATIC_BUILD
++	    ".static"
++#endif
++#if TCL_UTF_MAX < 4
++	    ".utf-16"
++#endif
++}};
++
++const char *
+ TclInitSubsystems(void)
+ {
+     if (inExit != 0) {
+@@ -1065,6 +1153,7 @@ TclInitSubsystems(void)
+ 	TclpInitUnlock();
+     }
+     TclInitNotifier();
++    return stubInfo.version;
+ }
+ 
+ /*
+--- a/generic/tclInt.h
++++ b/generic/tclInt.h
+@@ -3031,7 +3031,7 @@ MODULE_SCOPE void	TclInitLimitSupport(Tc
+ MODULE_SCOPE void	TclInitNamespaceSubsystem(void);
+ MODULE_SCOPE void	TclInitNotifier(void);
+ MODULE_SCOPE void	TclInitObjSubsystem(void);
+-MODULE_SCOPE void	TclInitSubsystems(void);
++MODULE_SCOPE const char *TclInitSubsystems(void);
+ MODULE_SCOPE int	TclInterpReady(Tcl_Interp *interp);
+ MODULE_SCOPE int	TclIsBareword(int byte);
+ MODULE_SCOPE Tcl_Obj *	TclJoinPath(int elements, Tcl_Obj * const objv[],
