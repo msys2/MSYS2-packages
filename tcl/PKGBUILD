@@ -4,13 +4,16 @@
 pkgbase=tcl
 pkgname=('tcl' 'tcl-devel' 'tcl-doc')
 pkgver=8.6.12
-pkgrel=4
+pkgrel=3
 pkgdesc="The Tcl scripting language"
 arch=('i686' 'x86_64')
 url="https://tcl.sourceforge.io/"
 msys2_references=(
-  "anitya: 4941"
-  "cpe: cpe:/a:tcl:tcl"
+  'anitya: 4941'
+  'archlinux: tcl'
+  'aur:' # ignore tcl84
+  'cpe: cpe:/a:tcl:tcl'
+  'gentoo: dev-lang/tcl'
 )
 license=('spdx:TCL')
 depends=(
@@ -21,8 +24,9 @@ makedepends=(
   'gcc'
 )
 options=('staticlibs')
+_archive="tcl${pkgver}"
 source=(
-  "https://downloads.sourceforge.net/sourceforge/tcl/tcl${pkgver}-src.tar.gz"
+  "https://downloads.sourceforge.net/sourceforge/tcl/${_archive}-src.tar.gz"
   '001-cygwin-removals.patch'
   '002-build-info-command.patch'
   '003-registry-update.patch'
@@ -44,12 +48,10 @@ apply_patch_with_msg() {
 }
 
 prepare() {
-  cd "tcl${pkgver}"
+  cd "${_archive}"
+
   # we build the tcl sqlite interface in sqlite-tcl package
   rm -rf pkgs/sqlite3*
-
-  # taken from cygwin
-  # patch -p2 -i ${srcdir}/tcl-8.6.12-1.src.patch
 
   apply_patch_with_msg \
     '001-cygwin-removals.patch' \
@@ -66,12 +68,13 @@ prepare() {
       autoreconf -fiv
     popd
   done
+
   cd unix
   autoreconf -fiv
 }
 
 build() {
-  cd tcl${pkgver}/unix
+  cd "${_archive}/unix"
 
   export MSYSTEM=CYGWIN
   local BIT=
@@ -84,16 +87,18 @@ build() {
     tcl_cv_strtod_buggy=no \
     tcl_cv_sys_version=CYGWIN_NT \
     $BIT
+
   make
 }
 
 # check() {
-#   cd tcl${pkgver}/unix
+#   cd "${_archive}/unix"
 #   make test
 # }
 
 package_tcl() {
-  cd tcl${pkgver}/unix
+  cd "${_archive}/unix"
+
   make INSTALL_ROOT="${pkgdir}" install install-private-headers
 
   install -Dm644 libtcl${pkgver%.*}.dll.a "${pkgdir}"/usr/lib/libtcl${pkgver%.*}.dll.a
@@ -105,24 +110,24 @@ package_tcl() {
 
   # remove buildroot traces
   _tclver=8.6
-  sed -e "s#${srcdir}/tcl${pkgver}/unix#/usr/lib#" \
-      -e "s#${srcdir}/tcl${pkgver}#/usr/include#" \
+  sed -e "s#${srcdir}/${_archive}/unix#/usr/lib#" \
+      -e "s#${srcdir}/${_archive}#/usr/include#" \
       -e "s#'{/usr/lib} '#'/usr/lib/tcl$_tclver'#" \
       -i "${pkgdir}/usr/lib/tclConfig.sh"
 
   # tdbcver=tdbc1.1.13
   tdbcver=tdbc1.1.3
-  sed -e "s#${srcdir}/tcl${pkgver}/unix/pkgs/$tdbcver#/usr/lib/$tdbcver#" \
-      -e "s#${srcdir}/tcl${pkgver}/pkgs/$tdbcver/generic#/usr/include#" \
-      -e "s#${srcdir}/tcl${pkgver}/pkgs/$tdbcver/library#/usr/lib/tcl${pkgver%.*}#" \
-      -e "s#${srcdir}/tcl${pkgver}/pkgs/$tdbcver#/usr/include#" \
+  sed -e "s#${srcdir}/${_archive}/unix/pkgs/$tdbcver#/usr/lib/$tdbcver#" \
+      -e "s#${srcdir}/${_archive}/pkgs/$tdbcver/generic#/usr/include#" \
+      -e "s#${srcdir}/${_archive}/pkgs/$tdbcver/library#/usr/lib/tcl${pkgver%.*}#" \
+      -e "s#${srcdir}/${_archive}/pkgs/$tdbcver#/usr/include#" \
       -i "${pkgdir}/usr/lib/$tdbcver/tdbcConfig.sh"
 
   # itclver=itcl4.3.7
   itclver=itcl4.2.2
-  sed -e "s#${srcdir}/tcl${pkgver}/unix/pkgs/$itclver#/usr/lib/$itclver#" \
-      -e "s#${srcdir}/tcl${pkgver}/pkgs/$itclver/generic#/usr/include#" \
-      -e "s#${srcdir}/tcl${pkgver}/pkgs/$itclver#/usr/include#" \
+  sed -e "s#${srcdir}/${_archive}/unix/pkgs/$itclver#/usr/lib/$itclver#" \
+      -e "s#${srcdir}/${_archive}/pkgs/$itclver/generic#/usr/include#" \
+      -e "s#${srcdir}/${_archive}/pkgs/$itclver#/usr/include#" \
       -i "${pkgdir}/usr/lib/$itclver/itclConfig.sh"
 
   # make the default tcl version
@@ -132,7 +137,7 @@ package_tcl() {
   ln -s "${pkgdir}/usr/lib/tclConfig.sh" "${pkgdir}/usr/lib/tcl${pkgver%.*}/tclConfig.sh"
 
   # split package (from Alpine Linux)
-  cd "$pkgdir"
+  cd "${pkgdir}"
   for i in usr/include usr/lib/pkgconfig \
    $(find usr/lib -name '*.a' -o -name '*.dll.a') \
    $(find . -name '*.c' -o -name '*Config.sh'); do
@@ -144,10 +149,10 @@ package_tcl() {
   done
 
   for i in usr/share/man/man3 ; do
-    if [ -e "$pkgdir/$i" ] || [ -L "$pkgdir/$i" ]; then
+    if [ -e "${pkgdir}/${i}" ] || [ -L "${pkgdir}/${i}" ]; then
       mkdir -p ${srcdir}/tcl-doc/${i%/*}
-      mv "$pkgdir/$i" ${srcdir}/tcl-doc/${i%/*}/
-      rmdir "$pkgdir/${i%/*}" 2>/dev/null || :
+      mv "${pkgdir}/${i}" ${srcdir}/tcl-doc/${i%/*}/
+      rmdir "${pkgdir}/${i%/*}" 2>/dev/null || :
     fi
   done
 }
@@ -157,12 +162,12 @@ package_tcl-devel() {
   groups=('development')
   pkgdesc+=" (development files)"
 
-  mv "$srcdir"/tcl-devel/* "$pkgdir"
+  mv "${srcdir}"/tcl-devel/* "${pkgdir}"
 }
 
 package_tcl-doc() {
   depends=()
   pkgdesc+=" (documentation)"
 
-  mv "$srcdir"/tcl-doc/* "$pkgdir"
+  mv "${srcdir}"/tcl-doc/* "${pkgdir}"
 }
