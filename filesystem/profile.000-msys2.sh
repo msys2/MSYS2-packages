@@ -1,6 +1,6 @@
 # Setting XDG_DATA_DIRS allows bash-completion to find completion files
 # installed in the mingw package prefixes as well
-if [ ! "${MINGW_PREFIX}" = "" ]; then
+if [ ! "${MINGW_PREFIX:-}" = "" ]; then
     XDG_DATA_DIRS="/usr/local/share/:/usr/share/"
     export XDG_DATA_DIRS="$MINGW_PREFIX/share/:$XDG_DATA_DIRS"
 fi
@@ -8,7 +8,7 @@ fi
 # Warn the user on the first login shell in case we detect a too old Windows version
 _warn_deprecated_winver()
 {
-    if [ "$__MSYS2_WINDOWS_VERSION_WARNING_DONE" = "true" ]; then
+    if [ "${__MSYS2_WINDOWS_VERSION_WARNING_DONE:-}" = "true" ]; then
         return;
     fi
 
@@ -27,8 +27,11 @@ _warn_deprecated_winver;
 unset _warn_deprecated_winver;
 
 # Set the user id
-# USER="$(exec id -un)" # Heavy
-export USER="${USERNAME}"
+if [[ -n "${USERNAME:-}" ]]; then
+    export USER="${USERNAME}"
+else
+    export USER="$(exec id -un)"
+fi
 
 # Default to removing the write permission for group and other
 #  (files normally created with mode 777 become 755; files created with
@@ -40,7 +43,7 @@ umask 022
 # CHERE_INVOKING=1; exec /usr/bin/bash --login -i"
 #
 # Make sure we start in home if invoked without -here option and not in a nested shell
-if [ -n "${CHERE_INVOKING}" ]; then
+if [ -n "${CHERE_INVOKING:-}" ]; then
     CHERE_INVOKING_VISIBLE_FOR_USER="${CHERE_INVOKING}"
     unset CHERE_INVOKING
 elif [ ${SHLVL:-0} -le 1 ]; then
