@@ -22,12 +22,9 @@ makedepends=(
   "libzstd-devel"
   "cross-msysarm64-binutils"
   "cross-msysarm64-gcc-stage1"      # stage1 compiler
-  "cross-msysarm64-runtime-stage1"  # ordering only: build() reads libmsys-2.0.a
-                                    # and newlib libc.a/libm.a straight out of
-                                    # ../msys2-runtime-aarch64/src, so that
-                                    # package has to be built first.  Without
-                                    # this CI ordered gcc before it and failed
-                                    # with "stage-1 runtime artifact missing".
+  "cross-msysarm64-runtime-stage1"  # prepare() stages its libmsys-2.0.a, newlib
+                                    # libc.a/libm.a and real crt0.o from
+                                    # lib/bootstrap-stage1/ into the sysroot.
   "cross-msysarm64-runtime-devel"   # real msys2-runtime headers + libcygwin.a
   "cross-msysarm64-w32api-headers"
   "cross-msysarm64-windows-default-manifest"  # default-manifest.o.  The target
@@ -160,23 +157,33 @@ prepare() {
   }
 
   # --- Stage the stage-1 runtime libs into the sysroot -
-  # Build order is: stage-1 runtime (loose files in src/) -> THIS stage-2 gcc ->
-  # stage-2 runtime package. The stage-2 cross-msysarm64-runtime PACKAGE is built
-  # AFTER gcc, so gcc cannot depend on it (circular). Stage-1 is intentionally
-  # bootstrap-only and ships no package, so we still read its libs from src/ here.
+  # Build order is: stage-1 runtime -> THIS stage-2 gcc -> stage-2 runtime
+  # package. The stage-2 cross-msysarm64-runtime PACKAGE is built AFTER gcc, so
+  # gcc cannot depend on it (circular).  The stage-1 artifacts come from the
+  # cross-msysarm64-runtime-stage1 package (a makedepend), which installs them
+  # under lib/bootstrap-stage1/.  Reading them out of the sibling recipe's src/
+  # instead only works when that build tree is still around: CI builds each
+  # package on its own and failed here with "stage-1 runtime artifact missing".
+  # src/ remains the fallback for hand-run builds without the package installed.
   # What changed for #3: this used to copy silently; now we hard-verify the crt0
   # is the REAL one (references msys_crt0), never the bootstrap STUB (nop;ret) that
   # makes every exe hang at startup. A missing/stub artifact is a fatal error.
   _rt1="$(dirname "${startdir}")/msys2-runtime-aarch64"
   _rt1_rb="${_rt1}/src/runtime-build"
-  for _f in \
-    "${_rt1_rb}/cygwin/libmsys-2.0.a:libmsys-2.0.a" \
-    "${_rt1}/src/newlib/libc.a:libc.a" \
-    "${_rt1}/src/newlib/libm.a:libm.a"; do
-    _src="${_f%%:*}"; _dst="${_f##*:}"
+  _rt1_pkg=/usr/aarch64-pc-cygwin/lib/bootstrap-stage1
+  # Path of stage-1 artifact $1: the installed package's copy, else the build tree.
+  _stage1_artifact() {
+    if [ -f "${_rt1_pkg}/$1" ]; then echo "${_rt1_pkg}/$1"; return; fi
+    case "$1" in
+      lib*.a) [ "$1" = libmsys-2.0.a ] && echo "${_rt1_rb}/cygwin/$1" || echo "${_rt1}/src/newlib/$1" ;;
+      *.o)    echo "${_rt1_rb}/cygwin/$1" ;;
+    esac
+  }
+  for _dst in libmsys-2.0.a libc.a libm.a; do
+    _src="$(_stage1_artifact "${_dst}")"
     if [ ! -f "${_src}" ]; then
       echo "FATAL: stage-1 runtime artifact missing: ${_src}"
-      echo "       Build msys2-runtime-aarch64 (stage 1) before cross-msysarm64-gcc."
+      echo "       Install cross-msysarm64-runtime-stage1, or build msys2-runtime-aarch64 (stage 1) first."
       exit 1
     fi
     cp -f "${_src}" "/usr/aarch64-pc-cygwin/lib/${_dst}"
@@ -199,18 +206,19 @@ prepare() {
   echo "staged libcygwin.a alias -> libmsys-2.0.a (build-time; final copy is package-owned)"
   # libg.a is a LEGACY "debug libc" that modern newlib often does not emit — stage
   # it only if present (not fatal), matching the stage-2 runtime package.
-  if [ -f "${_rt1}/src/newlib/libg.a" ]; then
-    cp -f "${_rt1}/src/newlib/libg.a" /usr/aarch64-pc-cygwin/lib/libg.a
+  _src="$(_stage1_artifact libg.a)"
+  if [ -f "${_src}" ]; then
+    cp -f "${_src}" /usr/aarch64-pc-cygwin/lib/libg.a
   fi
   echo "staged stage-1 runtime + newlib libs into sysroot"
 
   # --- Stage the REAL crt0.o / gcrt0.o from the stage-1 build ---
   # Step-14 (runtime stage 1) installs a bootstrap STUB crt0.o into the sysroot to
-  # break the circular link dep, then builds the REAL crt0.o at
-  # ${_rt1_rb}/cygwin/crt0.o but does NOT install it (stage-1 ships no package).
+  # break the circular link dep, then builds the REAL crt0.o, which its package
+  # ships under lib/bootstrap-stage1/, not in place of the stub.
   # On a fresh/CI box nothing stages the real one before this point, so the stub
   # survives and the hard check below would (correctly) FATAL. Stage the real
-  # objects here from the stage-1 build tree, gated on the same symbols the stage-2
+  # objects here from the stage-1 artifacts, gated on the same symbols the stage-2
   # runtime package() uses, so the sysroot has a real crt0 before gcc stage 2:
   #   crt0.o  -> must reference msys_crt0   (nm 'U msys_crt0'); stub nop;ret has none
   #   gcrt0.o -> the -pg startup, DEFINES _monstartup (nm 'T _monstartup'); optional
@@ -218,7 +226,7 @@ prepare() {
   for _o in crt0.o gcrt0.o; do
     if [ "${_o}" = "crt0.o" ]; then _sym="msys_crt0"; _grep="U msys_crt0"
     else                            _sym="_monstartup"; _grep=" T _monstartup"; fi
-    _s="${_rt1_rb}/cygwin/${_o}"
+    _s="$(_stage1_artifact "${_o}")"
     if [ ! -f "${_s}" ]; then
       if [ "${_o}" = "crt0.o" ]; then
         echo "FATAL: real crt0.o not found at ${_s} — build msys2-runtime-aarch64 (stage 1) first."
