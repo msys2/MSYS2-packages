@@ -3,6 +3,8 @@
 if [ ! "${MINGW_PREFIX:-}" = "" ]; then
     XDG_DATA_DIRS="/usr/local/share/:/usr/share/"
     export XDG_DATA_DIRS="$MINGW_PREFIX/share/:$XDG_DATA_DIRS"
+else
+    unset XDG_DATA_DIRS # Avoid leaking the variable from a MINGW shell into MSYS2 shell
 fi
 
 # Warn the user on the first login shell in case we detect a too old Windows version
