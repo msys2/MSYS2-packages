@@ -1,28 +1,36 @@
---- Python-3.8.7.cygwin/configure.ac	2021-05-11 21:07:52.839122100 +0200
-+++ Python-3.8.7/configure.ac	2021-05-11 21:10:48.366063600 +0200
-@@ -1137,7 +1148,7 @@
-   case $ac_sys_system in
+diff --git a/configure.ac b/configure.ac
+index f51935d..76b9985 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -1575,7 +1575,7 @@ if test $enable_shared = "yes"; then
      CYGWIN*)
-           LDLIBRARY='libpython$(LDVERSION).dll.a'
--          DLLLIBRARY='libpython$(LDVERSION).dll'
-+          DLLLIBRARY='msys-python$(LDVERSION).dll'
-           ;;
+       LDLIBRARY='libpython$(LDVERSION).dll.a'
+       BLDLIBRARY='-L. -lpython$(LDVERSION)'
+-      DLLLIBRARY='libpython$(LDVERSION).dll'
++      DLLLIBRARY='msys-python$(LDVERSION).dll'
+       ;;
      SunOS*)
- 	  LDLIBRARY='libpython$(LDVERSION).so'
---- Python-3.8.7.orig/Lib/ctypes/__init__.py	2020-12-21 17:25:24.000000000 +0100
-+++ Python-3.8.7/Lib/ctypes/__init__.py	2021-05-11 22:26:25.866873900 +0200
-@@ -456,7 +456,7 @@
- if _os.name == "nt":
+       LDLIBRARY='libpython$(LDVERSION).so'
+diff --git a/Lib/ctypes/__init__.py b/Lib/ctypes/__init__.py
+index 1aeb21e..cc7d4c6 100644
+--- a/Lib/ctypes/__init__.py
++++ b/Lib/ctypes/__init__.py
+@@ -562,7 +562,9 @@ if _os.name == "nt":
      pythonapi = PyDLL("python dll", None, _sys.dllhandle)
- elif _sys.platform == "cygwin":
--    pythonapi = PyDLL("libpython%d.%d.dll" % _sys.version_info[:2])
-+    pythonapi = PyDLL("msys-python%d.%d.dll" % _sys.version_info[:2])
+ elif _sys.platform in ["android", "cygwin"]:
+     # These are Unix-like platforms which use a dynamically-linked libpython.
+-    pythonapi = PyDLL(_sysconfig.get_config_var("LDLIBRARY"))
++    # On Cygwin LDLIBRARY is the import library, which can't be loaded.
++    pythonapi = PyDLL(_sysconfig.get_config_var(
++        "DLLLIBRARY" if _sys.platform == "cygwin" else "LDLIBRARY"))
  else:
-     pythonapi = PyDLL(None)
- 
---- Python-3.12.4/Lib/test/test_ctypes/test_loading.py.orig	2024-06-06 20:26:44.000000000 +0200
-+++ Python-3.12.4/Lib/test/test_ctypes/test_loading.py	2024-07-04 07:35:25.827763700 +0200
-@@ -16,7 +16,7 @@
+     try:
+         pythonapi = PyDLL(None)
+diff --git a/Lib/test/test_ctypes/test_loading.py b/Lib/test/test_ctypes/test_loading.py
+index 343f6a0..6bfcb33 100644
+--- a/Lib/test/test_ctypes/test_loading.py
++++ b/Lib/test/test_ctypes/test_loading.py
+@@ -20,7 +20,7 @@ def setUpModule():
      if os.name == "nt":
          libc_name = find_library("c")
      elif sys.platform == "cygwin":
@@ -31,22 +39,26 @@
      else:
          libc_name = find_library("c")
  
---- Python-3.8.7/Lib/ctypes/util.py.orig	2021-05-11 22:31:37.409285900 +0200
-+++ Python-3.8.7/Lib/ctypes/util.py	2021-05-11 22:33:22.371550100 +0200
-@@ -387,8 +387,8 @@
+diff --git a/Lib/ctypes/util.py b/Lib/ctypes/util.py
+index d942de1..81fc3aa 100644
+--- a/Lib/ctypes/util.py
++++ b/Lib/ctypes/util.py
+@@ -506,8 +506,8 @@ def test():
              print(f"crypto\t:: {find_library('crypto')}")
              print(f"crypto\t:: {cdll.LoadLibrary(find_library('crypto'))}")
          elif sys.platform == "cygwin":
 -            print(cdll.LoadLibrary("cygbz2-1.dll"))
 -            print(cdll.LoadLibrary("cygcrypt-0.dll"))
 +            print(cdll.LoadLibrary("msys-bz2-1.dll"))
-+            print(cdll.LoadLibrary("msys-crypt-0.dll"))
++            print(cdll.LoadLibrary("msys-crypt-2.dll"))
              print(find_library("crypt"))
          else:
              print(cdll.LoadLibrary("libm.so"))
---- Python-3.12.8/Lib/sysconfig.py.orig	2024-12-03 19:42:41.000000000 +0100
-+++ Python-3.12.8/Lib/sysconfig.py	2025-02-01 17:39:28.925188300 +0100
-@@ -815,13 +815,13 @@
+diff --git a/Lib/sysconfig/__init__.py b/Lib/sysconfig/__init__.py
+index a91c27f..8194071 100644
+--- a/Lib/sysconfig/__init__.py
++++ b/Lib/sysconfig/__init__.py
+@@ -731,13 +731,13 @@ def get_platform():
      elif osname[:3] == "aix":
          from _aix_support import aix_platform
          return aix_platform()
@@ -64,5 +76,5 @@
 -            release = m.group()
 +        return  f"{osname}-{machine}"
      elif osname[:6] == "darwin":
-         import _osx_support
-         osname, release, machine = _osx_support.get_platform_osx(
+         if sys.platform == "ios":
+             release = get_config_vars().get("IPHONEOS_DEPLOYMENT_TARGET", "13.0")

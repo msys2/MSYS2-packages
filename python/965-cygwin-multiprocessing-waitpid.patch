@@ -1,0 +1,42 @@
+cygwin: don't hang when two threads wait for the same process
+
+A blocking waitpid() doesn't return if another thread reaps the child first,
+so joining a worker that the concurrent.futures manager thread also joins
+could hang forever.
+
+--- Python-3.14.10.orig/Lib/multiprocessing/popen_fork.py
++++ Python-3.14.10/Lib/multiprocessing/popen_fork.py
+@@ -1,6 +1,8 @@
+ import atexit
+ import os
+ import signal
++import sys
++import time
+ 
+ from . import util
+ 
+@@ -22,10 +24,23 @@
+     def duplicate_for_child(self, fd):
+         return fd
+ 
++    def _waitpid(self, flag):
++        if sys.platform != 'cygwin' or flag != 0:
++            return os.waitpid(self.pid, flag)
++        # A blocking waitpid() on Cygwin doesn't return if another thread
++        # reaps the child first, so poll until one of the threads has.
++        delay = 0.0005
++        while True:
++            pid, sts = os.waitpid(self.pid, os.WNOHANG)
++            if pid or self.returncode is not None:
++                return pid, sts
++            time.sleep(delay)
++            delay = min(delay * 2, 0.05)
++
+     def poll(self, flag=os.WNOHANG):
+         if self.returncode is None:
+             try:
+-                pid, sts = os.waitpid(self.pid, flag)
++                pid, sts = self._waitpid(flag)
+             except OSError:
+                 # Child process not yet created. See #1731717
+                 # e.errno == errno.ECHILD == 10

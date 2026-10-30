@@ -1,0 +1,56 @@
+cygwin: use a correctly rounded fma() in the math module
+
+The fma() from newlib is just x * y + z, which makes math.fma() wrong and
+silently loses accuracy in math.hypot(), math.dist() and math.sumprod()
+because dl_mul() relies on an error-free fma().
+
+--- Python-3.14.10.orig/Modules/mathmodule.c
++++ Python-3.14.10/Modules/mathmodule.c
+@@ -77,6 +77,47 @@
+ [clinic start generated code]*/
+ /*[clinic end generated code: output=da39a3ee5e6b4b0d input=76bc7002685dd942]*/
+ 
++#ifdef __CYGWIN__
++/* The fma() from newlib is just x * y + z, with two rounding steps, but
++   math.fma() and dl_mul() need the correctly rounded result.
++
++   The product of two doubles is exact in binary128 and so is TwoSum with a
++   double. Rounding the sum to odd then prevents double rounding when it is
++   converted to double. */
++static double
++cygwin_fma(double x, double y, double z)
++{
++    union {
++        __float128 f;
++        struct { uint64_t lo, hi; } u;
++    } s;
++
++    if (!isfinite(x) || !isfinite(y) || x == 0.0 || y == 0.0) {
++        return x * y + z;
++    }
++    if (!isfinite(z)) {
++        return z;
++    }
++
++    __float128 p = (__float128)x * y;
++    s.f = p + z;
++    __float128 bb = s.f - p;
++    __float128 err = (p - (s.f - bb)) + (z - bb);
++
++    if (err != 0 && !(s.u.lo & 1)) {
++        if ((s.f > 0) == (err > 0)) {
++            s.u.lo += 1;
++        }
++        else {
++            s.u.hi -= (s.u.lo == 0);
++            s.u.lo -= 1;
++        }
++    }
++    return (double)s.f;
++}
++#define fma cygwin_fma
++#endif
++
+ 
+ 
+ /*
