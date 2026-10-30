@@ -302,12 +302,9 @@ prepare() {
 
   # --- Stub: default-manifest.o ---
   # The linker auto-includes default-manifest.o for PE manifests; it's not part
-  # of the dll itself. The full toolchain build's stage-1 runtime
-  # (msys2-runtime-aarch64/PKGBUILD) creates this empty stub in the MSYS sysroot
-  # /usr/aarch64-pc-cygwin/lib/. build-test runs only stage-2, so create it here
-  # too — else the winsup/cygserver link fails "cannot find default-manifest.o".
-  # (crt0.o is NOT stubbed here: the cross-msysarm64-runtime release ships the
-  # real one, and apply-crt0-fix re-stages it after the build.) Idempotent.
+  # of the dll itself.  If cross-msysarm64-windows-default-manifest is not
+  # installed, create an empty one, or the winsup/cygserver link fails with
+  # "cannot find default-manifest.o".
   if [ ! -f /usr/aarch64-pc-cygwin/lib/default-manifest.o ]; then
     echo "" > /tmp/dm_empty.c
     aarch64-pc-cygwin-gcc -c /tmp/dm_empty.c -o /usr/aarch64-pc-cygwin/lib/default-manifest.o
@@ -410,10 +407,7 @@ prepare() {
   # The newlib build mutates its own source tree: it regenerates every
   # Makefile.in under newlib/ and merges the winsup headers into
   # newlib/libc/include.  winsup cannot be built from a tree in that state,
-  # which is why this used to be a second PKGBUILD (newlib-pkgbuild/) driven
-  # by build-msys.sh.  That made a plain `makepkg` here impossible -- CI runs
-  # makepkg directly and has no way to invoke the wrapper, so build() always
-  # died on "newlib build tree not found".  Do it here against a copy instead.
+  # so newlib is built from a copy of the sources.
   if [ ! -d "${srcdir}/newlib-src" ]; then
     cp -a "${srcdir}/${_realname}" "${srcdir}/newlib-src"
     (
@@ -577,84 +571,76 @@ build() {
   # build tree, not the sysroot: cross-msysarm64-runtime overwrites the sysroot
   # libc.a with the DLL IMPORT library (t-msys_2_0_dll_*.o thunks), and linking
   # the DLL against its own import stubs fails with thousands of __imp_ refs.
-  # Prefer a tree left by newlib-pkgbuild/ + build-msys.sh (the local flow),
-  # otherwise build newlib here.  In-tree is what makes a bare `makepkg`
-  # work, which is all CI ever does.
-  _nlbuild="${startdir}/newlib-pkgbuild/src/runtime-build/${_target}/newlib"
-  if [ -d "${_nlbuild}" ]; then
-    echo "newlib: using pre-built tree from newlib-pkgbuild"
-  else
-    _nlbuild="${srcdir}/newlib-build/${_target}/newlib"
-    if [ ! -d "${_nlbuild}" ]; then
-      echo "newlib: no pre-built tree; building in-tree"
-      (
-        # Subshell.  This configure needs the NATIVE compiler for the host
-        # tools it builds and runs, so it must not inherit the cross CC/CXX/...
-        # exports build() set up for winsup.
-        unset CC CXX AS LD AR RANLIB NM OBJDUMP OBJCOPY STRIP WINDRES DLLTOOL
-        unset CFLAGS CXXFLAGS LDFLAGS CPPFLAGS
-        export CONFIG_SITE=/dev/null
-        export CCACHE_DISABLE=1
-        export ac_cv_header_rpc_xdr_h=yes
-        export ac_cv_func_xdrmem_create=yes
-        export newlib_cv_xdr_dir=yes
-        # configure recurses into configure-target-winsup, which probes
-        # sframe_decode in -lsframe and ZSTD_isError in -lzstd.  Under
-        # cross-bootstrap the target compiler is in AC_NO_EXECUTABLES mode, so
-        # those AC_CHECK_LIB *link* tests are illegal and abort the build.
-        # Pre-seed them to no; we link neither library.
-        export ac_cv_lib_sframe_sframe_decode=no
-        export ac_cv_lib_zstd_ZSTD_isError=no
+  _nlbuild="${srcdir}/newlib-build/${_target}/newlib"
+  if [ ! -d "${_nlbuild}" ]; then
+    echo "newlib: building in-tree"
+    (
+      # Subshell.  This configure needs the NATIVE compiler for the host
+      # tools it builds and runs, so it must not inherit the cross CC/CXX/...
+      # exports build() set up for winsup.
+      unset CC CXX AS LD AR RANLIB NM OBJDUMP OBJCOPY STRIP WINDRES DLLTOOL
+      unset CFLAGS CXXFLAGS LDFLAGS CPPFLAGS
+      export CONFIG_SITE=/dev/null
+      export CCACHE_DISABLE=1
+      export ac_cv_header_rpc_xdr_h=yes
+      export ac_cv_func_xdrmem_create=yes
+      export newlib_cv_xdr_dir=yes
+      # configure recurses into configure-target-winsup, which probes
+      # sframe_decode in -lsframe and ZSTD_isError in -lzstd.  Under
+      # cross-bootstrap the target compiler is in AC_NO_EXECUTABLES mode, so
+      # those AC_CHECK_LIB *link* tests are illegal and abort the build.
+      # Pre-seed them to no; we link neither library.
+      export ac_cv_lib_sframe_sframe_decode=no
+      export ac_cv_lib_zstd_ZSTD_isError=no
 
-        _gcc_base="$(dirname "$(aarch64-pc-cygwin-gcc -print-libgcc-file-name)")"
-        [ -f "${_gcc_base}/include/stddef.h" ] || {
-          echo "FATAL: no stddef.h under ${_gcc_base}/include" >&2; exit 1; }
-        _sysroot_inc=/usr/aarch64-pc-cygwin/include
-        # -nostdinc drops gcc's builtin include path, so re-add it explicitly.
-        # Passed only through the *_FOR_TARGET channel: leaking it into plain
-        # CFLAGS breaks the top-level native probe, which compiles AND RUNS an
-        # x86_64 conftest ("cannot run C compiled programs").
-        _tcflags="-nostdinc -isystem ${_gcc_base}/include -isystem ${_gcc_base}/include-fixed -isystem ${_sysroot_inc} -isystem ${_sysroot_inc}/w32api -D_MB_CAPABLE=1"
-        export CFLAGS_FOR_TARGET="${_tcflags}"
-        export CPPFLAGS_FOR_TARGET="${_tcflags}"
+      _gcc_base="$(dirname "$(aarch64-pc-cygwin-gcc -print-libgcc-file-name)")"
+      [ -f "${_gcc_base}/include/stddef.h" ] || {
+        echo "FATAL: no stddef.h under ${_gcc_base}/include" >&2; exit 1; }
+      _sysroot_inc=/usr/aarch64-pc-cygwin/include
+      # -nostdinc drops gcc's builtin include path, so re-add it explicitly.
+      # Passed only through the *_FOR_TARGET channel: leaking it into plain
+      # CFLAGS breaks the top-level native probe, which compiles AND RUNS an
+      # x86_64 conftest ("cannot run C compiled programs").
+      _tcflags="-nostdinc -isystem ${_gcc_base}/include -isystem ${_gcc_base}/include-fixed -isystem ${_sysroot_inc} -isystem ${_sysroot_inc}/w32api -D_MB_CAPABLE=1"
+      export CFLAGS_FOR_TARGET="${_tcflags}"
+      export CPPFLAGS_FOR_TARGET="${_tcflags}"
 
-        mkdir -p "${srcdir}/newlib-build"
-        cd "${srcdir}/newlib-build" || exit 1
-        CXXFLAGS_FOR_TARGET="-Wno-error -Wno-narrowing" \
-        "${srcdir}/newlib-src/configure" \
-          --prefix=/usr \
-          --build=${_build} \
-          --host=${_build} \
-          --target=${_target} \
-          --with-cross-bootstrap \
-          --disable-libgloss \
-          --enable-shared --enable-static \
-          --disable-doc --disable-dumper --disable-cygserver --disable-utils \
-          --without-mingw-progs --without-headers \
-          CC=gcc CXX=g++ AR=ar RANLIB=ranlib NM=nm OBJDUMP=objdump STRIP=strip \
-          CC_FOR_TARGET=aarch64-pc-cygwin-gcc \
-          CXX_FOR_TARGET=aarch64-pc-cygwin-g++ \
-          GCC_FOR_TARGET=aarch64-pc-cygwin-gcc \
-          AR_FOR_TARGET=aarch64-pc-cygwin-ar \
-          RANLIB_FOR_TARGET=aarch64-pc-cygwin-ranlib \
-          NM_FOR_TARGET=aarch64-pc-cygwin-nm \
-          OBJCOPY_FOR_TARGET=aarch64-pc-cygwin-objcopy \
-          OBJDUMP_FOR_TARGET=aarch64-pc-cygwin-objdump \
-          DLLTOOL_FOR_TARGET=aarch64-pc-cygwin-dlltool \
-          WINDRES_FOR_TARGET=aarch64-pc-cygwin-windres \
-          WINDMC_FOR_TARGET=aarch64-pc-cygwin-windmc \
-          LD_FOR_TARGET=aarch64-pc-cygwin-ld \
-          AS_FOR_TARGET=aarch64-pc-cygwin-as \
-          STRIP_FOR_TARGET=aarch64-pc-cygwin-strip \
-          MINGW_CXX=aarch64-w64-mingw32-g++ \
-          MINGW_CC=aarch64-w64-mingw32-gcc \
-          CFLAGS="-O2 -pipe -D_MB_CAPABLE=1" \
-          CXXFLAGS="-O2 -pipe -D_MB_CAPABLE=1"
-        # newlib only: a bare `make` would also build all-target-winsup, which
-        # here would compile without the workarounds build() applies below.
-        make -j$(nproc) all-target-newlib
-      ) || { echo "FATAL: in-tree newlib build failed" >&2; return 1; }
-    fi
+      mkdir -p "${srcdir}/newlib-build"
+      cd "${srcdir}/newlib-build" || exit 1
+      CXXFLAGS_FOR_TARGET="-Wno-error -Wno-narrowing" \
+      "${srcdir}/newlib-src/configure" \
+        --prefix=/usr \
+        --build=${_build} \
+        --host=${_build} \
+        --target=${_target} \
+        --with-cross-bootstrap \
+        --disable-libgloss \
+        --enable-shared --enable-static \
+        --disable-doc --disable-dumper --disable-cygserver --disable-utils \
+        --without-mingw-progs --without-headers \
+        CC=gcc CXX=g++ AR=ar RANLIB=ranlib NM=nm OBJDUMP=objdump STRIP=strip \
+        CC_FOR_TARGET=aarch64-pc-cygwin-gcc \
+        CXX_FOR_TARGET=aarch64-pc-cygwin-g++ \
+        GCC_FOR_TARGET=aarch64-pc-cygwin-gcc \
+        AR_FOR_TARGET=aarch64-pc-cygwin-ar \
+        RANLIB_FOR_TARGET=aarch64-pc-cygwin-ranlib \
+        NM_FOR_TARGET=aarch64-pc-cygwin-nm \
+        OBJCOPY_FOR_TARGET=aarch64-pc-cygwin-objcopy \
+        OBJDUMP_FOR_TARGET=aarch64-pc-cygwin-objdump \
+        DLLTOOL_FOR_TARGET=aarch64-pc-cygwin-dlltool \
+        WINDRES_FOR_TARGET=aarch64-pc-cygwin-windres \
+        WINDMC_FOR_TARGET=aarch64-pc-cygwin-windmc \
+        LD_FOR_TARGET=aarch64-pc-cygwin-ld \
+        AS_FOR_TARGET=aarch64-pc-cygwin-as \
+        STRIP_FOR_TARGET=aarch64-pc-cygwin-strip \
+        MINGW_CXX=aarch64-w64-mingw32-g++ \
+        MINGW_CC=aarch64-w64-mingw32-gcc \
+        CFLAGS="-O2 -pipe -D_MB_CAPABLE=1" \
+        CXXFLAGS="-O2 -pipe -D_MB_CAPABLE=1"
+      # newlib only: a bare `make` would also build all-target-winsup, which
+      # here would compile without the workarounds build() applies below.
+      make -j$(nproc) all-target-newlib
+    ) || { echo "FATAL: in-tree newlib build failed" >&2; return 1; }
   fi
   if [ ! -d "${_nlbuild}" ]; then
     echo "FATAL: newlib build tree not found at ${_nlbuild}" >&2; return 1
@@ -904,14 +890,9 @@ package() {
   # libs INTO THE SYSROOT (/usr/aarch64-pc-cygwin/...). Explicit copies, not `make
   # DESTDIR install`, which targets /usr and would clobber the host x86_64 runtime.
   #
-  # STRICT GUARANTEE: every artifact below is mandatory. A missing
-  # file — or a crt0.o that is still the bootstrap STUB — is a HARD `exit 1`,
-  # never a warning. This is what lets us retire apply-crt0-fix.sh: the package
-  # cannot silently ship the stub that makes every exe hang at startup.
+  # Every file below is required: a missing one, or a crt0.o that is still the
+  # bootstrap stub (which makes every program hang at startup), fails the build.
   pkgdesc="aarch64-pc-cygwin runtime: crt0 + libmsys-2.0 import lib + msys-2.0.dll + newlib libs (sysroot)"
-  # NB: no depends=() on cross-msysarm64-newlib — build-msys.sh runs `makepkg -e`
-  # without --nodeps, and the newlib pkg isn't pacman-installed during the build;
-  # the two are independent file sets and the consumer pacman -U's both.
   local _rb="${srcdir}/runtime-build"
 
   install -d "${pkgdir}/usr/aarch64-pc-cygwin/lib"
@@ -1030,7 +1011,7 @@ package() {
   # with the same aarch64-w64-mingw32 toolchain + flags/libs as
   # winsup/utils/mingw/Makefile.am (cygcheck_SOURCES + cygcheck_LDADD). The
   # compiler (mingw-w64-cross-mingwarm64-gcc), -lz (…-zlib) and CRT (…-crt) are
-  # already makedepends of this package. STRICT: any failure is a hard exit 1.
+  # already makedepends of this package.
   ( cd "${srcdir}/${_realname}/winsup" && aarch64-w64-mingw32-g++ \
       -fno-exceptions -fno-rtti -fno-use-cxa-atexit \
       -Wall -Wstrict-aliasing -Wwrite-strings -fno-common -pipe -fbuiltin -fmessage-length=0 \
@@ -1051,7 +1032,6 @@ package() {
   # Unlike cygcheck above, this MinGW host tool is built by `make` in build()
   # (runtime configured --enable-mingw-utils), exactly as the native x86_64 runtime
   # builds it — no hand-written compile line. Just install the automake output.
-  # STRICT: missing exe or wrong arch is a hard exit 1.
   _cch="${srcdir}/runtime-build/utils/mingw/cygwin-console-helper.exe"
   [ -f "${_cch}" ] \
     || { echo "FATAL: ${_cch} not found — 'make' did not build the MinGW host tools. Aborting."; exit 1; }
@@ -1065,7 +1045,6 @@ package() {
   # --- native ARM64 ldh ---------------------------------------------------------
   # ldh (load-DLL helper; used by cygcheck's BLODA scan) is another MinGW host tool
   # built by `make` in build() via --enable-mingw-utils. Install the automake output.
-  # STRICT: missing exe or wrong arch is a hard exit 1.
   _ldh="${srcdir}/runtime-build/utils/mingw/ldh.exe"
   [ -f "${_ldh}" ] \
     || { echo "FATAL: ${_ldh} not found — 'make' did not build the MinGW host tools. Aborting."; exit 1; }
@@ -1079,7 +1058,7 @@ package() {
   # --- native ARM64 getprocaddrarm64 --------------------------------------------
   # The gentle-kill helper. Built by `make` via HAVE_MINGWARM64_CC. Installs into
   # libexec (NOT bin): the runtime spawns it as /usr/libexec/getprocaddrarm64.exe
-  # (winsup/cygwin/include/cygwin/exit_process.h). STRICT: hard exit 1 on failure.
+  # (winsup/cygwin/include/cygwin/exit_process.h).
   _gpa="${srcdir}/runtime-build/utils/mingw/getprocaddrarm64.exe"
   [ -f "${_gpa}" ] \
     || { echo "FATAL: ${_gpa} not found — 'make' did not build getprocaddrarm64 (no aarch64 MinGW gcc?). Aborting."; exit 1; }
