@@ -1,0 +1,44 @@
+From fb135bd7711df792dc7bd485d9a2a697c7c8aed4 Mon Sep 17 00:00:00 2001
+From: Lars Dammann <lars.dammann@coherent.com>
+Date: Tue, 6 Oct 2026 14:46:28 +0200
+Subject: [PATCH 05/N] Cygwin: Guard XSAVE allocation against broken CPUID
+ emulation
+
+CPUID(0xD, 0) returns the XSAVE area size in the low 32 bits of
+RBX. A conforming implementation clears the upper 32 bits, but
+broken CPUID emulation may leave the upper half of the register stale.
+
+This was observed when TwinCAT eXtended Automation Runtime (XAR) was
+running. Its kernel-level real-time component appears to intercept
+CPUID and restore only the lower half of a saved register, allowing
+stale upper bits to leak into unrelated processes.
+
+MSYS2's sigdelayed uses the full-width RBX value both for XSAVE stack
+allocation and, after copying it to RCX, for clearing the XSAVE
+buffer. Stale upper bits can therefore turn a small allocation into a
+multi-gigabyte stack adjustment and cause an access violation.
+
+Zero-extend EBX immediately after CPUID, before using RBX as a 64-bit
+value. This has no effect on conforming implementations and protects
+against broken CPUID emulation.
+
+Addresses: https://github.com/msys2/msys2-runtime/issues/363
+
+Signed-off-by: Lars Dammann <lars.dammann@coherent.com>
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ winsup/cygwin/scripts/gendef | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 6328fe2..8a16292 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -232,6 +232,7 @@ sigdelayed:
+ 	movl	\$0x0d,%eax
+ 	xorl	%ecx,%ecx
+ 	cpuid	# get necessary space for xsave
++	movl	%ebx,%ebx # clear upper 32 bits from a faulty CPUID implementation
+ 	movq	%rbx,%rcx
+ 	addq	\$63, %rbx
+ 	andq	\$-64, %rbx # align to next 64-byte multiple
