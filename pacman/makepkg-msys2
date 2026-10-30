@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+#   makepkg-msys2 - wrapper for makepkg to build packages for multiple environments
+#
+#   Copyright (c) 2013 Alexey Pavlov <alexpux@gmail.com>
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+set -e
+
+plain() {
+  local mesg=$1; shift
+  printf "${BOLD}    ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_warning() {
+  local mesg=$1; shift
+  printf "${YELLOW}=> WARNING:${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_msg1() {
+  local mesg=$1; shift
+  printf "${GREEN}==> ${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_msg2() {
+  local mesg=$1; shift
+  printf "${BLUE}  ->${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+print_error() {
+  local mesg=$1; shift
+  printf "${RED}==> ERROR:${ALL_OFF}${BOLD} ${mesg}${ALL_OFF}\n" "$@" >&2
+}
+
+if /usr/bin/tput setaf 0 &>/dev/null; then
+  ALL_OFF="$(/usr/bin/tput sgr0)"
+  BOLD="$(/usr/bin/tput bold)"
+  BLUE="${BOLD}$(/usr/bin/tput setaf 4)"
+  GREEN="${BOLD}$(/usr/bin/tput setaf 2)"
+  RED="${BOLD}$(/usr/bin/tput setaf 1)"
+  YELLOW="${BOLD}$(/usr/bin/tput setaf 3)"
+else
+  ALL_OFF="\e[1;0m"
+  BOLD="\e[1;1m"
+  BLUE="${BOLD}\e[1;34m"
+  GREEN="${BOLD}\e[1;32m"
+  RED="${BOLD}\e[1;31m"
+  YELLOW="${BOLD}\e[1;33m"
+fi
+
+readonly ALL_OFF BOLD BLUE GREEN RED YELLOW
+
+# For certain flags skip our processing and just forward to makepkg
+for _arg in "$@"; do
+  if [ "${_arg}" = "--help" ] || [ "${_arg}" = "-h" ]; then
+    /usr/bin/makepkg "$@"
+    echo -e "makepkg-msys2:\n"
+    echo '  $MSYS2_ARCH      Space separated list of environments to build for.'
+    echo '                   Defaults to the active environment.'
+    exit 0
+  fi
+  if [ "${_arg}" = "--version" ] || [ "${_arg}" = "-V" ]; then
+    /usr/bin/makepkg "$@"
+    exit 0
+  fi
+done
+
+# For backwards compatibility
+if [[ -z "${MSYS2_ARCH}" ]] && [[ -n "${MINGW_ARCH}" ]]; then
+  print_warning "MINGW_ARCH is deprecated, use MSYS2_ARCH instead"
+  MSYS2_ARCH="${MINGW_ARCH}";
+fi
+
+# Validate or set MSYS2_ARCH
+declare -a MSYS2_ARCH_ALLOWED
+for _conf in /etc/makepkg_msys2.d/*.conf; do
+  MSYS2_ARCH_ALLOWED+=("$(basename "$_conf" .conf)")
+done
+
+MSYS2_ARCH="${MSYS2_ARCH,,}"
+if [[ -z "${MSYS2_ARCH}" ]]; then
+  # In case MSYS2_ARCH isn't set we default to MSYSTEM, or error out
+  if [[ " ${MSYS2_ARCH_ALLOWED[*]} " = *" ${MSYSTEM,,} "* ]]; then
+    MSYS2_ARCH="${MSYSTEM,,}"
+  else
+    print_warning 'MSYS2_ARCH not set and not called from a MSYS2 environment, defaulting to ucrt64. This will fail in the future!'
+    MSYS2_ARCH='ucrt64'
+  fi
+else
+  # Make sure MSYS2_ARCH is valid
+  for _env in ${MSYS2_ARCH}; do
+    if [[ ! " ${MSYS2_ARCH_ALLOWED[*]} " = *" ${_env} "* ]]; then
+      print_error "MSYS2_ARCH: '${_env}' unknown, possible values: ${MSYS2_ARCH_ALLOWED[*]}"
+      exit 1
+    fi
+  done
+fi
+print_msg1 "MSYS2_ARCH: ${MSYS2_ARCH}"
+
+for _env in ${MSYS2_ARCH}; do
+  print_msg2 "Building ${_env}..."
+
+  MSYSTEM="${_env^^}" \
+  CHERE_INVOKING=1 \
+    bash -leo pipefail -c "/usr/bin/makepkg \"\$@\"" bash "$@"
+
+done
+
+exit 0
