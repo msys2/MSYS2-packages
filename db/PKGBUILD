@@ -2,14 +2,14 @@
 
 pkgname=('db' 'libdb' 'libdb-devel' 'db-docs')
 pkgver=6.2.32
-pkgrel=6
+pkgrel=7
 pkgdesc="The Berkeley DB embedded database system"
 url="https://www.oracle.com/technetwork/database/database-technologies/berkeleydb/overview/index.html"
 msys2_references=(
   "cpe: cpe:/a:oracle:berkeley_db"
 )
 license=('spdx:AGPL-3.0-or-later')
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 depends=('sh')
 makedepends=('autotools' 'gcc')
 source=(http://download.oracle.com/berkeley-db/db-${pkgver}.tar.gz)
@@ -26,10 +26,28 @@ prepare() {
 build() {
   cd "${srcdir}"/$pkgname-${pkgver}/build_unix
 
+  # --host stops configure probing with the build compiler.  db ships its own
+  # libtool, which needs telling the target is Cygwin or it emits a static
+  # library only.
+  local _host_args=(--build=${CHOST})
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    _host_args+=(--host=aarch64-pc-cygwin)
+    # With a *-cygwin host triple libtool wants cygpath to map build paths to
+    # Windows ones when it relinks the utilities.  It only looks at LT_CYGPATH,
+    # which nothing sets in a cross environment, so every install of a utility
+    # fails and make install dies on the first chmod of a file it never copied.
+    export LT_CYGPATH=/usr/bin/cygpath
+    # The native x86_64 build uses the x86_64/gcc-assembly (test-and-set)
+    # mutexes.  The AArch64 equivalent exists, but configure detects it by
+    # __arm64__, which GCC does not define for aarch64 (only __aarch64__), so
+    # it falls through to fcntl mutexes, which BDB no longer supports.
+    _host_args+=(--with-mutex=ARM64/gcc-assembly)
+  fi
+
   CFLAGS="$CFLAGS -Wno-incompatible-pointer-types " \
   ../dist/configure \
     --prefix=/usr \
-    --build=${CHOST} \
+    "${_host_args[@]}" \
     --enable-compat185 \
     --enable-shared \
     --enable-static \
@@ -40,6 +58,20 @@ build() {
     --disable-tcl \
     --disable-test
   make
+
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # The cross gcc does not append .exe the way a native Cygwin gcc does
+    # (-o foo yields "foo", not "foo.exe").  libtool links its programs as
+    # -o .libs/NAME counting on the compiler to add the suffix, then installs
+    # .libs/NAME.exe -- which never exists, so make install dies on the first
+    # chmod of a file it never copied.  Give it the names it expects.
+    for _f in .libs/*; do
+      [ -f "${_f}" ] || continue
+      case "${_f}" in *.exe|*.a|*.dll|*.la|*.lai|*.o|*.lo|*_ltshwrapper) continue;; esac
+      case "$(file -b "${_f}")" in *executable*) cp -p "${_f}" "${_f}.exe";; esac
+    done
+  fi
+
   make DESTDIR=${srcdir}/dest docdir=/usr/share/doc/db/html emode=755 fmode=644 install
 }
 
