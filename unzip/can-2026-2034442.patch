@@ -1,0 +1,31 @@
+From: Paul Marquess <paul.marquess@outlook.com>
+Subject: Fix heap buffer overflow WRITE in memextract() STORED path
+Bug-Debian: https://bugs.debian.org/1142906
+X-Debian-version: 6.0-31
+
+--- a/extract.c
++++ b/extract.c
+@@ -2520,6 +2520,10 @@
+ 
+     switch (method) {
+         case STORED:
++            if ((extent)G.incnt > tgtsize) {
++                error = PK_ERR;
++                break;
++            }
+             memcpy((char *)tgt, (char *)G.inptr, (extent)G.incnt);
+             G.outcnt = (ulg)G.csize;    /* for CRC calculation */
+             break;
+@@ -2657,8 +2661,10 @@
+             decompress_bits(ucdata, usiz, ebdata+EB_IZVMS_HLEN);
+             break;
+         case EB_IZVMS_BCDEFL:
+-            memextract(__G__ ucdata, (ulg)usiz,
+-                       ebdata+EB_IZVMS_HLEN, (ulg)csiz);
++            if (memextract(__G__ ucdata, (ulg)usiz, ebdata+EB_IZVMS_HLEN, (ulg)csiz) != PK_OK) {
++                free(ucdata);
++                ucdata = NULL;
++            }
+             break;
+         default:
+             free(ucdata);
