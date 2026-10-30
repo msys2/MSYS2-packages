@@ -4,7 +4,7 @@ _realname=msys2-runtime
 pkgbase=${_realname}
 pkgname=cross-msysarm64-runtime
 pkgver=3.6.7
-pkgrel=19
+pkgrel=20
 pkgdesc="Cygwin POSIX emulation engine for aarch64-pc-cygwin"
 arch=('x86_64')
 options=('!strip' '!buildflags')
@@ -18,6 +18,8 @@ makedepends=(
   "cross-msysarm64-binutils"          # provides: aarch64-pc-cygwin-ld, ar, etc.
   "cross-msysarm64-w32api-headers"    # provides: sysroot/include/w32api/*.h
   "cross-msysarm64-runtime-devel"     # provides: sysroot/include/ (newlib + cygwin headers)
+  "cross-msysarm64-windows-default-manifest"  # default-manifest.o, which every
+                                      # non-shared link pulls in
   "mingw-w64-cross-mingwarm64-gcc"    # provides: aarch64-w64-mingw32-g++ for mingw helper
   "mingw-w64-cross-mingwarm64-crt"    # provides: /opt/aarch64-w64-mingw32/lib/
   "mingw-w64-cross-mingwarm64-zlib"   # provides: /opt/aarch64-w64-mingw32/lib/libz.a
@@ -299,17 +301,6 @@ prepare() {
   cp "$(aarch64-pc-cygwin-gcc -print-libgcc-file-name)" \
     /usr/aarch64-pc-cygwin/lib/libgcc.a
   echo "libgcc.a from gcc-stage1 installed"
-
-  # --- Stub: default-manifest.o ---
-  # The linker auto-includes default-manifest.o for PE manifests; it's not part
-  # of the dll itself.  If cross-msysarm64-windows-default-manifest is not
-  # installed, create an empty one, or the winsup/cygserver link fails with
-  # "cannot find default-manifest.o".
-  if [ ! -f /usr/aarch64-pc-cygwin/lib/default-manifest.o ]; then
-    echo "" > /tmp/dm_empty.c
-    aarch64-pc-cygwin-gcc -c /tmp/dm_empty.c -o /usr/aarch64-pc-cygwin/lib/default-manifest.o
-    echo "default-manifest.o stub installed"
-  fi
 
   # devices.cc: the old #pragma GCC optimize("O0") hack was removed.
   # At the build's -O1 it compiles cleanly (the ldp_fusion SIGSEGV is -O2-only);
