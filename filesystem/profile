@@ -59,7 +59,11 @@ MINGW*|CLANG*|UCRT*)
   ;;
 *)
   PATH="${MSYS2_PATH}:/opt/bin${ORIGINAL_PATH:+:${ORIGINAL_PATH}}"
-  PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/share/pkgconfig:/lib/pkgconfig"
+  PKG_CONFIG_PATH='/usr/lib/pkgconfig:/usr/share/pkgconfig'
+  # Not needed for MSYS, unset to avoid MINGW variables being leaked into MSYS environment
+  unset PKG_CONFIG_SYSTEM_INCLUDE_PATH
+  unset PKG_CONFIG_SYSTEM_LIBRARY_PATH
+  unset ACLOCAL_PATH
 esac
 
 CONFIG_SITE="/etc/config.site"
@@ -81,8 +85,8 @@ SYSCONFDIR="${SYSCONFDIR:=/etc}"
 # them set to the default Windows temporary directory or unset
 # can have unexpected consequences for msys2 apps, so we define
 # our own to match GNU/Linux behaviour.
-ORIGINAL_TMP="${ORIGINAL_TMP:-${TMP}}"
-ORIGINAL_TEMP="${ORIGINAL_TEMP:-${TEMP}}"
+ORIGINAL_TMP="${ORIGINAL_TMP:-${TMP:-}}"
+ORIGINAL_TEMP="${ORIGINAL_TEMP:-${TEMP:-}}"
 TMP="/tmp"
 TEMP="/tmp"
 
@@ -102,7 +106,7 @@ profile_d ()
     [ -e "${file}" ] && . "${file}"
   done
 
-  if [ -n "${MINGW_MOUNT_POINT}" ]; then
+  if [ -n "${MINGW_MOUNT_POINT:-}" ]; then
     for file in ${MINGW_MOUNT_POINT}/etc/profile.d/*.$1; do
       [ -e "${file}" ] && . "${file}"
     done
@@ -118,9 +122,9 @@ fi
 
 if [ ! "x${BASH_VERSION}" = "x" ]; then
   [ -z "${HOSTNAME}" ] && HOSTNAME="$(exec /usr/bin/hostname)"
-  case "${SHELL##*/}" in
-    bash*)
-      export SHELL="${SHELL%%.exe}"
+  case "${SHELL%.exe}" in
+    /bash|/*/bash)
+      export SHELL="${SHELL%.exe}"
       ;;
     *)
       export SHELL="$(which bash)"
@@ -133,9 +137,9 @@ elif [ ! "x${KSH_VERSION}" = "x" ]; then
   PS1=$(print '\033]0;${PWD}\n\033[32m${USER}@${HOSTNAME} \033[33m${PWD/${HOME}/~}\033[0m\n$ ')
 elif [ ! "x${ZSH_VERSION}" = "x" ]; then
   [ -z "${HOSTNAME}" ] && HOSTNAME="$(exec /usr/bin/hostname)"
-  case "${SHELL##*/}" in
-    zsh*)
-      export SHELL="${SHELL%%.exe}"
+  case "${SHELL%.exe}" in
+    /zsh|/*/zsh)
+      export SHELL="${SHELL%.exe}"
       ;;
     *)
       export SHELL="$(which zsh)"
@@ -152,12 +156,11 @@ else
   PS1="$ "
 fi
 
-if [ -n "$ACLOCAL_PATH" ]
-then
-  export ACLOCAL_PATH
+if [ ! "${MSYSTEM}" = "MSYS" ]; then
+  export ACLOCAL_PATH PKG_CONFIG_SYSTEM_INCLUDE_PATH PKG_CONFIG_SYSTEM_LIBRARY_PATH
 fi
 
-export PATH MANPATH INFOPATH PKG_CONFIG_PATH PKG_CONFIG_SYSTEM_INCLUDE_PATH PKG_CONFIG_SYSTEM_LIBRARY_PATH USER TMP TEMP PRINTER HOSTNAME PS1 SHELL ORIGINAL_TMP ORIGINAL_TEMP ORIGINAL_PATH CONFIG_SITE
+export PATH MANPATH INFOPATH PKG_CONFIG_PATH USER TMP TEMP PRINTER HOSTNAME PS1 SHELL ORIGINAL_TMP ORIGINAL_TEMP ORIGINAL_PATH CONFIG_SITE
 unset PATH_SEPARATOR
 
 if [ "$MAYBE_FIRST_START" = "true" ]; then
