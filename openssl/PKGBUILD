@@ -4,9 +4,9 @@ pkgname=('openssl' 'libopenssl' 'openssl-devel' 'openssl-docs')
 # Note: always rebuild openssh after updating openssl pkgver,
 # it does strict version checks at runtime
 pkgver=3.6.5
-pkgrel=1
+pkgrel=2
 pkgdesc='The Open Source toolkit for Secure Sockets Layer and Transport Layer Security'
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 url='https://openssl-library.org'
 msys2_repository_url="https://github.com/openssl/openssl"
 msys2_pgp_keys_url="https://github.com/openssl/openssl/blob/master/doc/fingerprints.txt"
@@ -14,17 +14,22 @@ msys2_references=(
   "cpe: cpe:/a:openssl:openssl"
 )
 license=('spdx:Apache-2.0')
-makedepends=('gcc' 'tar' 'perl' 'diffutils' 'nasm')
+makedepends=('gcc' 'tar' 'perl' 'diffutils')
+# nasm assembles the x86/x86_64 crypto asm only; the aarch64 target's
+# perlasm scheme emits GNU as, so requiring it would block the cross build.
+[[ ${CARCH} == aarch64 ]] || makedepends+=('nasm')
 noextract=(${pkgname}-${pkgver}.tar.gz)
 source=("https://github.com/openssl/openssl/releases/download/${pkgname}-${pkgver}/${pkgname}-${pkgver}.tar.gz"{,.asc}
         '0001-Use-usr-ssl-as-ca-dir-instead-of-.-demoCA.patch'
         '0002-Support-MSYS2.patch'
-        '0004-Override-engines-directory.patch')
+        '0004-Override-engines-directory.patch'
+        '0005-Add-Cygwin-aarch64-target.patch')
 sha256sums=('a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98'
             'SKIP'
             '7ff3213d8d085238695f076d254f16d15b16a9baca1f9393c1bed0057006da2c'
             'b73a45cf26830bbb3c110a8f9e042ea5c71a9627204d5d172b04c43aff5b0f1a'
-            '345350546bf55dd069133e0c56b2c5f7e037db237a30f7ad38159bd61b6d4daf')
+            '345350546bf55dd069133e0c56b2c5f7e037db237a30f7ad38159bd61b6d4daf'
+            'd85c9a7e489c131f644ad40f310eeddff0bc195bed72954298b1d3a61607faee')
 # https://openssl-library.org/source/index.html
 validpgpkeys=(
   'B146647E45A7B33947AB226B2A2C87D161692D40' # openssl@openssl.org
@@ -37,6 +42,7 @@ prepare() {
   patch -p1 -i ${srcdir}/0001-Use-usr-ssl-as-ca-dir-instead-of-.-demoCA.patch
   patch -p1 -i ${srcdir}/0002-Support-MSYS2.patch
   patch -p1 -i ${srcdir}/0004-Override-engines-directory.patch
+  patch -p1 -i ${srcdir}/0005-Add-Cygwin-aarch64-target.patch
 }
 
 build() {
@@ -46,14 +52,44 @@ build() {
     openssltarget='Cygwin-x86_64'
   elif [ "${CARCH}" == 'i686' ]; then
     openssltarget='Cygwin'
+  elif [ "${CARCH}" == 'aarch64' ] || [ -n "${MSYS2_ARM64_CROSS:-}" ]; then
+    # Added by 0005-Add-Cygwin-aarch64-target.patch: upstream ships Cygwin
+    # targets only up to x86_64.
+    openssltarget='Cygwin-aarch64'
   fi
 
   export MSYSTEM=CYGWIN
+  local crossflags=()
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # openssl's Configure has no --host: the toolchain is selected by prefixing
+    # every tool name with $CROSS_COMPILE, and the target comes from the named
+    # target above.
+    export CROSS_COMPILE=aarch64-pc-cygwin-
+    # ...which means CC must stay the bare tool name.  The cross makepkg config
+    # exports CC=aarch64-pc-cygwin-gcc, and Configure honours $CC over the
+    # target's own "gcc", so leaving it set yields the prefix twice:
+    #   aarch64-pc-cygwin-aarch64-pc-cygwin-gcc: command not found
+    # The same applies to every binutils tool the cross config exports.
+    unset CC CXX AR AS NM RANLIB STRIP OBJDUMP OBJCOPY DLLTOOL WINDRES
+    # A native Cygwin gcc adds .../lib/w32api to the library search path via
+    # its specs; the cross gcc searches only .../lib, so the Win32 import
+    # libraries (crypt32 here) are invisible and test/p_*.dll fail to link.
+    # Both of these go through make variables: Configure refuses to mix bare
+    # compiler flags with VAR= assignments on one command line.
+    crossflags+=(LDFLAGS=-L/usr/aarch64-pc-cygwin/lib/w32api)
+    # GCC 17's integrated preprocessor wedges (no output, no exit) on
+    # crypto/dllmain.c, which pulls in <windows.h>.  Same failure mode as
+    # findutils' gl/lib/mountlist.c; running cpp as a separate pass avoids
+    # it.  It must go through CFLAGS=: Configure strips the leading dash from
+    # a bare -flag and then rejects it as an unknown no-FEATURE option.
+    crossflags+=(CFLAGS=-no-integrated-cpp)
+  fi
   ./Configure \
     --prefix=/usr \
     --openssldir=/usr/ssl \
     --libdir=lib \
     shared \
+    "${crossflags[@]}" \
     "${openssltarget}"
 
   make depend

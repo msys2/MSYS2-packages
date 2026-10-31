@@ -2,9 +2,9 @@
 
 pkgname=('zlib' 'zlib-devel')
 pkgver=1.3.2
-pkgrel=1
+pkgrel=2
 pkgdesc='Compression library implementing the deflate compression method found in gzip and PKZIP'
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 groups=('libraries')
 license=('spdx:Zlib')
 url="https://www.zlib.net/"
@@ -35,6 +35,33 @@ prepare() {
 
 build() {
   cd ${srcdir}/${pkgname}-${pkgver}
+
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # Cross-build for aarch64-pc-cygwin.  zlib's ./configure is not used even
+    # natively (see the comment below); win32/Makefile.gcc is driven directly
+    # and takes the toolchain prefix via PREFIX=, which is all that is needed
+    # to retarget it.  SHAREDLIB keeps the MSYS2 DLL name.
+    # -include unistd.h: gzguts.h only pulls in <io.h>, and only when _WIN32 is
+    # defined, so on a Cygwin target lseek() is never declared.  GCC 17 treats
+    # an implicit declaration as an error rather than a warning, so the build
+    # stops in gzlib.c.  Forcing the correct header in is preferable to
+    # silencing the diagnostic.
+    make -j1 -f win32/Makefile.gcc \
+      PREFIX=aarch64-pc-cygwin- \
+      CFLAGS="${CFLAGS} -include unistd.h" \
+      SHAREDLIB=msys-z.dll
+    make -f win32/Makefile.gcc install \
+      PREFIX=aarch64-pc-cygwin- \
+      DESTDIR="${srcdir}/dest" \
+      SHAREDLIB=msys-z.dll \
+      BINARY_PATH=/usr/bin \
+      INCLUDE_PATH=/usr/include \
+      LIBRARY_PATH=/usr/lib \
+      prefix=/usr \
+      SHARED_MODE=1
+    install -D zlib.3 "${srcdir}/dest/usr/share/man/man3/zlib.3"
+    return
+  fi
 
   # configure doesn't really work.. but leave it here in case things improve
   export MSYSTEM=CYGWIN

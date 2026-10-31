@@ -11,13 +11,23 @@ pkgname=(
   'sqlite-extensions'
   'lemon'
 )
+# Two split packages cannot be produced for aarch64, and heimdal only wants
+# libsqlite/-devel:
+#   tcl-sqlite needs a cross tcl, which this series does not build;
+#   lemon is a parser generator run during the build, so it is compiled by the
+#   build compiler and comes out x86-64 -- shipping that inside an aarch64
+#   package would be worse than not shipping it.
+if [[ ${CARCH} == aarch64 ]]; then
+  pkgname=('sqlite' 'libsqlite' 'libsqlite-devel' 'sqlite-doc'
+           'sqlite-extensions')
+fi
 _sqlite_year=2026
 _srcver=3540000
 _docver=${_srcver}
 pkgver=3.54.0
-pkgrel=1
+pkgrel=2
 pkgdesc="A C library that implements an SQL database engine"
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 url="https://www.sqlite.org/"
 msys2_references=(
   "anitya: 4877"
@@ -56,6 +66,8 @@ sha256sums=('8847659821e0c5116bd14a94644c82ba932b2d9a05ac81af2e34af814aad7c58'
             'ef3a1faa02a88e05539d160d51679f164dfa23cc5a637ff36bc504bf04d6d7a6')
 
 _sqlite_tools="sqlite3.exe sqlite3_analyzer.exe sqldiff.exe dbhash.exe rbu.exe"
+# sqlite3_analyzer and rbu are Tcl-linked, so they cannot be built cross.
+[[ ${CARCH} == aarch64 ]] && _sqlite_tools="sqlite3.exe sqldiff.exe dbhash.exe"
 
 # Helper macros to help make tasks easier #
 apply_patch_with_msg() {
@@ -102,11 +114,27 @@ build() {
 
   mkdir -p build-${_srcver}-${MSYSTEM_CHOST}
   cd build-${_srcver}-${MSYSTEM_CHOST}
+  # aarch64-pc-cygwin cross: --host stops configure probing with the build
+  # compiler, readline/zlib come from the toolchain sysroot rather than the
+  # host /usr, and Tcl is disabled since there is no cross tcl in this series.
+  local _xargs=(--build=${CHOST})
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    _xargs+=(--host=aarch64-pc-cygwin --disable-tcl)
+    CPPFLAGS+=" -I/usr/aarch64-pc-cygwin/usr/include"
+    LDFLAGS+=" -L/usr/aarch64-pc-cygwin/usr/lib"
+    # sqlite 3.53 probes for readline by compiling and running its own test,
+    # which cannot work against a sysroot, so --enable-readline fails outright.
+    # Hand it the flags instead of letting it look.
+    _xargs+=(--with-readline-header=/usr/aarch64-pc-cygwin/usr/include/readline/readline.h)
+    _xargs+=(--with-readline-cflags="-I/usr/aarch64-pc-cygwin/usr/include")
+    _xargs+=(--with-readline-ldflags="-L/usr/aarch64-pc-cygwin/usr/lib -lreadline -lncursesw")
+  fi
+
   ../sqlite-src-${_srcver}/configure \
     --prefix=/usr \
     --sysconfdir=/etc \
     --localstatedir=/var \
-    --build=${CHOST} \
+    "${_xargs[@]}" \
     --enable-shared \
     --enable-static \
     --enable-readline \
@@ -126,7 +154,11 @@ build() {
   sed -e "s|@top_builddir@|${PWD}|g" -i ext/misc/Makefile
   sed -e "s|@prefix@|/usr|g" -i ext/misc/Makefile
   sed -e "s|@datadir@|/usr/share|g" -i ext/misc/Makefile
-  sed -e "s|@CC@|cc|g" -i ext/misc/Makefile
+  # @CC@ would otherwise become the build compiler and the extensions would
+  # come out x86-64.
+  local _extcc=cc
+  [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]] && _extcc=aarch64-pc-cygwin-gcc
+  sed -e "s|@CC@|${_extcc}|g" -i ext/misc/Makefile
   make -j -C ext/misc
 }
 

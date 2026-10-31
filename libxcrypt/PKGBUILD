@@ -3,9 +3,9 @@
 pkgbase=libxcrypt
 pkgname=('libxcrypt' 'libxcrypt-devel')
 pkgver=4.5.2
-pkgrel=1
+pkgrel=2
 pkgdesc='Modern library for one-way hashing of passwords'
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 url='https://github.com/besser82/libxcrypt/'
 license=('spdx:LGPL-2.1-or-later')
 source=("${url}/releases/download/v${pkgver}/${pkgbase}-${pkgver}.tar.xz"{,.asc}
@@ -28,6 +28,26 @@ build() {
   mkdir build-libxcrypt
 
   cd "${srcdir}/build-libxcrypt/"
+
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # Cross-build for aarch64-pc-cygwin (see .ci/makepkg-aarch64-cross.conf).
+    # First leaf of the SSH cluster: heimdal and openssh both need
+    # libxcrypt-devel, and it has no dependencies of its own.
+    "${srcdir}/${pkgbase}-${pkgver}"/configure \
+      --build=${CHOST} \
+      --host=aarch64-pc-cygwin \
+      --prefix=/usr \
+      --enable-static \
+      --disable-failure-tokens \
+      --disable-xcrypt-compat-files \
+      --disable-obsolete-api \
+      --enable-hashes=all \
+      --disable-symvers \
+      CFLAGS="-std=gnu17 -I/usr/aarch64-pc-cygwin/usr/include" \
+      LDFLAGS="${LDFLAGS} -L/usr/aarch64-pc-cygwin/usr/lib"
+    make DESTDIR=${srcdir}/dest install
+    return
+  fi
 
   "${srcdir}/${pkgbase}-${pkgver}"/configure \
     --prefix=/usr \

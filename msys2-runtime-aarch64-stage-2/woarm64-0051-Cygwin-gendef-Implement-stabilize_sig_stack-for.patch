@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:30 +0530
+Subject: [PATCH 051/109] Cygwin: gendef: Implement stabilize_sig_stack
+ for aarch64
+
+(cherry picked from commit 424fe29cfcaaa00bdb5b5608e338073b8aee6564)
+---
+ winsup/cygwin/scripts/gendef | 76 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 76 insertions(+)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index fea246d1c..aa12ece2c 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -624,7 +624,83 @@ sigdelayed:
+ 	.seh_endproc
+ _sigdelayed_end:
+ 	.global _sigdelayed_end
++	.seh_proc stabilize_sig_stack
+ stabilize_sig_stack:
++    // prologue
++    stp     fp, lr, [sp, #-0x10]!        // save FP and LR registers
++    .seh_save_fplr_x 0x10
++    mov     fp, sp                       // set frame pointer for unwinder
++    .seh_set_fp
++    .seh_endprologue
++
++    ldr     x10, [x18, #0x8]             // load TLS block base pointer into x10
++
++    // try to acquire the lock
++    mov     w9, #1                       // value to store (1 == locked)
++    ldr     x11, =_cygtls.stacklock      // load the symbol offset
++    add     x12, x10, x11                // x12 = tls_base + &stacklock
++1:
++    ldaxr   w13, [x12]                   // load old lock value
++    stlxr   w14, w9, [x12]               // attempt to store 1
++    cbnz    w14, 1b                      // if store failed, retry
++    cbz     w13, 2f                      // if lock was acquired, continue
++    yield                                // yield to allow other threads to run
++    b       1b                           // retry acquiring the lock
++
++2:
++    // lock acquired, increment incyg counter
++    ldr     x11, =_cygtls.incyg          // load the symbol offset
++    add     x12, x10, x11                // x12 = tls_base + &incyg
++    ldr     w9, [x12]                    // load current value of incyg
++    add     w9, w9, #1                   // increment incyg counter
++    str     w9, [x12]                    // store back incremented value
++
++    // check current_sig
++    ldr     x11, =_cygtls.current_sig    // load the symbol offset
++    ldr     w9, [x10, x11]               // load current value of current_sig
++    cbz     w9, 3f                       // if no current signal, jump to cleanup
++
++    // release lock before calling signal handler
++    ldr     x11, =_cygtls.stacklock      // load the symbol offset
++    add     x12, x10, x11                // x12 = tls_base + &stacklock
++    ldr     w9, [x12]                    // load current value of stacklock
++    sub     w9, w9, #1                   // decrement stacklock
++    stlr    w9, [x12]                    // store with release semantics
++
++    // prepare arg and call handler
++    ldr     x0, =_cygtls.start_offset    // load the symbol offset
++    add     x0, x10, x0                  // x0 = tls_base + &start_offset
++    bl      _ZN7_cygtls19call_signal_handlerEv
++
++    // call may clobber x10, restore TLS base
++    ldr     x10, [x18, #0x8]             // reload tls_base
++
++    // decrement incyg
++    ldr     x11, =_cygtls.incyg
++    add     x12, x10, x11
++    ldr     w9, [x12]
++    sub     w9, w9, #1
++    str     w9, [x12]
++
++    // loop to handle another signal
++    b       1b
++
++3:
++    // no signal to handle, decrement incyg counter
++    ldr     x11, =_cygtls.incyg
++    add     x12, x10, x11
++    ldr     w9, [x12]
++    sub     w9, w9, #1
++    str     w9, [x12]
++
++    mov     x0, x10                      // return TLS address in x0 (return register)
++
++    // epilogue
++    .seh_startepilogue
++    ldp     fp, lr, [sp], #0x10
++    .seh_endepilogue
++    ret
++    .seh_endproc
+ EOF
+ 	}
+     }

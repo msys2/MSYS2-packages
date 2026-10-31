@@ -2,7 +2,7 @@
 
 pkgname=openssh
 pkgver=10.6p1
-pkgrel=1
+pkgrel=2
 pkgdesc='Free version of the SSH connectivity tools'
 url='https://www.openssh.com/portable.html'
 msys2_changelog_url="https://www.openssh.com/releasenotes.html"
@@ -15,7 +15,7 @@ msys2_references=(
   'gentoo: net-misc/openssh'
 )
 license=('spdx:LicenseRef-OpenSSH')
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 groups=('net-utils')
 depends=(
   'heimdal'
@@ -73,15 +73,31 @@ build() {
 
   export MSYSTEM=CYGWIN
   TEST_SSH_UTF8=no \
+  # aarch64-pc-cygwin cross: --host stops configure probing with the build
+  # compiler, and kerberos5/libedit/openssl come from the toolchain sysroot.
+  local _xargs=(--build=${CHOST})
+  local _krb5=/usr
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    _xargs+=(--host=aarch64-pc-cygwin)
+    _krb5=/usr/aarch64-pc-cygwin/usr
+    CPPFLAGS+=" -I/usr/aarch64-pc-cygwin/usr/include"
+    LDFLAGS+=" -L/usr/aarch64-pc-cygwin/usr/lib"
+    # openssh links /usr/lib/textreadmode.o on Cygwin, which is the host
+    # x86-64 object; link the target one from the toolchain sysroot instead.
+    sed -i "s|LIBS=\"\$LIBS /usr/lib/textreadmode.o\"|LIBS=\"\$LIBS /usr/aarch64-pc-cygwin/lib/textreadmode.o\"|" configure
+    grep -q 'aarch64-pc-cygwin/lib/textreadmode.o' configure ||
+      { echo "textreadmode.o substitution did not apply" >&2; return 1; }
+  fi
+
   ./configure \
-    --build=${CHOST} \
+    "${_xargs[@]}" \
     --prefix=/usr \
     --sbindir=/usr/bin \
     --libexecdir=/usr/lib/ssh \
     --sysconfdir=/etc/ssh \
     --localstatedir=/var \
     --with-libedit \
-    --with-kerberos5=/usr \
+    --with-kerberos5=${_krb5} \
     --with-security-key-builtin \
     --without-hardening \
     --disable-strip

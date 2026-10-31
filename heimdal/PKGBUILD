@@ -3,9 +3,9 @@
 pkgbase=heimdal
 pkgname=('heimdal' 'heimdal-libs' 'heimdal-devel')
 pkgver=7.8.0
-pkgrel=7
+pkgrel=8
 pkgdesc="Implementation of Kerberos V5 libraries"
-arch=('i686' 'x86_64')
+arch=('i686' 'x86_64' 'aarch64')
 url="https://www.h5l.org/"
 msys2_repository_url="https://github.com/heimdal/heimdal"
 msys2_references=(
@@ -68,13 +68,95 @@ prepare() {
   ./autogen.sh
 }
 
+# Build the three code generators heimdal runs during its own build for the
+# BUILD host, in a separate copy of the tree.  Only used by the aarch64 cross
+# path; see the note at the call site.
+_build_native_tools() {
+  local _n="${srcdir}/heimdal-native"
+  if [ -x "${_n}/lib/com_err/compile_et.exe" ]; then
+    return 0
+  fi
+  rm -rf "${_n}"
+  cp -a "${srcdir}/heimdal-${pkgver}" "${_n}"
+  (
+    cd "${_n}"
+    # These tools must run on the BUILD host, so drop everything the cross
+    # makepkg config exports -- otherwise configure picks up the cross gcc and
+    # stops at "cannot run C compiled programs".
+    unset CC CXX AR AS NM RANLIB STRIP OBJDUMP OBJCOPY DLLTOOL WINDRES
+    unset CPPFLAGS LDFLAGS
+    export CC=gcc
+    make distclean >/dev/null 2>&1 || true
+    ./configure --build=${CHOST} --host=${CHOST} --prefix=/usr \
+      --disable-shared --enable-static --without-x \
+      --disable-kcm --disable-ndbm-db --disable-heimdal-documentation \
+      --disable-dependency-tracking \
+      --without-openssl --without-libedit --without-sqlite3 \
+      ac_cv_func_vasnprintf=no ac_cv_func_asnprintf=no \
+      CFLAGS="-Wno-error=incompatible-pointer-types -Wno-error=int-conversion -D_GNU_SOURCE -include sys/ioctl.h" \
+      >"${srcdir}/native-configure.log" 2>&1
+    local _d
+    for _d in include lib/roken lib/vers lib/com_err lib/libedit/src lib/sl lib/asn1; do
+      make -C "${_d}" >"${srcdir}/native-make-$(basename ${_d}).log" 2>&1 || true
+    done
+  )
+}
+
 build() {
+  # libtool needs LT_CYGPATH to map the uninstalled .libs paths when
+  # cross-building; without it the asn1/roken links fail with
+  #   ld: cannot find -lasn1
+  # makepkg sanitises the environment, so exporting it outside has no
+  # effect -- it has to be set here, the same way db/PKGBUILD does.
+  export LT_CYGPATH=/usr/bin/cygpath
   cd ${srcdir}/heimdal-${pkgver}
+
+  # For the aarch64-pc-cygwin cross build the host/target triple changes and
+  # openssl, libedit and sqlite3 come from the toolchain sysroot, not /usr.
+  local _triple=${CHOST}
+  local _sysroot=/usr
+  local _xvars=()
+  _gen_vars=()
+  local _ld_extra=""
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    _triple=aarch64-pc-cygwin
+    _sysroot=/usr/aarch64-pc-cygwin/usr
+    # newlib declares an incompatible vasnprintf -- char *(char *, size_t *,
+    # ...) rather than the int (char **, size_t, ...) heimdal expects -- and
+    # the link test finds it, so heimdal skips its own rk_vasnprintf rename
+    # and every call site fails to compile.  Tell configure they are absent
+    # so the bundled implementations are used.
+    _xvars+=(ac_cv_func_vasnprintf=no ac_cv_func_asnprintf=no)
+    # roken links -lcrypt (libxcrypt) but heimdal's own AC_FIND_FUNC_NO_LIBS
+    # probe comes back empty against the sysroot, leaving LIB_crypt unset and
+    # libroken with an undefined reference to crypt.  Seed the cache variable
+    # it derives LIB_crypt from.
+    _xvars+=(ac_cv_funclib_crypt=-lcrypt)
+    # getpwnam_r is probed with AC_RUN_IFELSE (cf/check-getpwnam_r-posix.m4),
+    # which cannot run when cross-compiling, so it defaults to "absent" and
+    # roken renames it to rk_getpwnam_r -- a symbol nothing defines, because
+    # roken ships no replacement.  The ARM64 runtime does export a POSIX
+    # getpwnam_r (msys-2.0 exports it and pwd.h declares it), so say so.
+    _xvars+=(ac_cv_funclib_getpwnam_r=yes ac_cv_func_getpwnam_r_posix=yes)
+    _xvars+=(ac_cv_func_getpwnam_r_posix_def=no)
+    # The --with-* prefixes above only cover openssl/libedit/sqlite3; roken
+    # also links -lcrypt (libxcrypt), so the sysroot needs to be on the
+    # general search path too.
+    CPPFLAGS+=" -I/usr/aarch64-pc-cygwin/usr/include"
+    # heimdal 7.8 predates GCC 14/15 promoting these to errors.  Its vendored
+    # NetBSD libedit needs the same two fixes the standalone libedit package
+    # does: a wchar_t/wint_t pointer mismatch, and ioctl() used without
+    # <sys/ioctl.h> (which needs _GNU_SOURCE alongside, as -include is
+    # processed before config.h).
+    CFLAGS+=" -Wno-error=incompatible-pointer-types -Wno-error=int-conversion"
+    CFLAGS+=" -D_GNU_SOURCE -include sys/ioctl.h"
+    LDFLAGS+=" -L/usr/aarch64-pc-cygwin/usr/lib"
+  fi
 
   ./configure \
     --build=${CHOST} \
-    --host=${CHOST} \
-    --target=${CHOST} \
+    --host=${_triple} \
+    --target=${_triple} \
     --prefix=/usr \
     --libexecdir=/usr/libexec \
     --sbindir=/usr/bin \
@@ -82,9 +164,9 @@ build() {
     --mandir=/usr/share/man \
     --datadir=/var/lib/heimdal \
     --localstatedir=/var/lib/heimdal \
-    --with-openssl=/usr \
-    --with-libedit=/usr \
-    --with-sqlite3=/usr \
+    --with-openssl=${_sysroot} \
+    --with-libedit=${_sysroot} \
+    --with-sqlite3=${_sysroot} \
     --enable-shared=yes \
     --enable-static \
     --without-x \
@@ -93,17 +175,85 @@ build() {
     --disable-heimdal-documentation \
     ac_cv_func_asnprintf=no \
     ac_cv_func_vasnprintf=no \
+    --disable-dependency-tracking \
     ac_cv_header_winsock2_h=no \
-    ac_cv_header_ws2tcpip_h=no
+    ac_cv_header_ws2tcpip_h=no \
+    "${_xvars[@]}"
   
-  make LDFLAGS="${LDFLAGS} -no-undefined"
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # heimdal runs three code generators it compiles itself.  Cross-built they
+    # are ARM64, and although this is an ARM64 machine they cannot be spawned
+    # from the x86_64 MSYS2 build shell: two Cygwin runtimes in one process
+    # tree share no cygheap, so they die with
+    #   cygheap read copy failed ... couldn't create signal pipe
+    # Build host copies in a second tree and swap them in.  The first make is
+    # expected to fail at the point it needs to RUN a generator; by then the
+    # generators themselves are built, so the copies land on top and the
+    # second make continues.
+    _build_native_tools
+    # heimdal expects the generators on PATH when cross-compiling: its
+    # configure sets e.g. ASN1_COMPILE = asn1_compile with no dependency,
+    # rather than a path into the build tree.  Give it the host copies.
+    mkdir -p "${srcdir}/native-tools"
+    local _g
+    for _g in lib/com_err/compile_et lib/sl/slc lib/asn1/asn1_compile; do
+      if [ -x "${srcdir}/heimdal-native/${_g}.exe" ]; then
+        cp -f "${srcdir}/heimdal-native/${_g}.exe" "${srcdir}/native-tools/$(basename ${_g}).exe"
+      fi
+    done
+    export PATH="${srcdir}/native-tools:${PATH}"
+    # PATH alone is not enough: SLC is used as a prerequisite as well as a
+    # command ("No rule to make target 'slc'"), so the generators have to be
+    # passed to make as absolute paths.
+    _gen_vars=(
+      "ASN1_COMPILE=${srcdir}/native-tools/asn1_compile.exe"
+      "COMPILE_ET=${srcdir}/native-tools/compile_et.exe"
+      "SLC=${srcdir}/native-tools/slc.exe"
+    )
+    # libheimntlm (and friends) reference com_err symbols but list only
+    # libkrb5 in LIBADD, relying on the transitive re-export a native build
+    # gives them.  Our cross libkrb5 links com_err through its import library
+    # and so does not re-export init_error_table, and -no-undefined makes that
+    # fatal.  Put com_err on the link line for every library.
+    local _hb="${srcdir}/heimdal-${pkgver}/lib"
+    _ld_extra=" -L${_hb}/com_err/.libs -L${_hb}/asn1/.libs -L${_hb}/wind/.libs"
+    _ld_extra+=" -L${_hb}/base/.libs -L${_hb}/roken/.libs"
+    _ld_extra+=" -lcom_err -lasn1 -lwind -lheimbase -lroken"
+    make LDFLAGS="${LDFLAGS} -no-undefined" "${_gen_vars[@]}" || true
+    local _t
+    for _t in lib/com_err/compile_et lib/sl/slc lib/asn1/asn1_compile; do
+      if [ -x "${srcdir}/heimdal-native/${_t}.exe" ]; then
+        cp -f "${srcdir}/heimdal-native/${_t}.exe" "${_t}.exe"
+        if [ -d "$(dirname ${_t})/.libs" ]; then
+          cp -f "${srcdir}/heimdal-native/${_t}.exe" "$(dirname ${_t})/.libs/$(basename ${_t}).exe"
+        fi
+        touch "${_t}.exe"
+      fi
+    done
+  fi
+
+  make LDFLAGS="${LDFLAGS} -no-undefined${_ld_extra}" "${_gen_vars[@]}"
+
+  if [[ ${CARCH} == aarch64 || -n ${MSYS2_ARM64_CROSS:-} ]]; then
+    # The host generators were copied into the build tree so make could run
+    # them; heimdal also installs asn1_compile and slc into libexec, and those
+    # must be the target build, not the x86-64 ones.  All the generated
+    # sources exist by now, so relinking them with the cross compiler is safe.
+    rm -f lib/asn1/asn1_compile.exe lib/asn1/.libs/asn1_compile.exe
+    rm -f lib/sl/slc.exe lib/sl/.libs/slc.exe
+    make -C lib/asn1 asn1_compile.exe LDFLAGS="${LDFLAGS} -no-undefined${_ld_extra}" "${_gen_vars[@]}"
+    make -C lib/sl   slc.exe          LDFLAGS="${LDFLAGS} -no-undefined${_ld_extra}" "${_gen_vars[@]}"
+  fi
+
   setup
 }
 
 setup() {
   local destdir=${srcdir}/dest
   cd ${srcdir}/heimdal-${pkgver}
-  make DESTDIR=${destdir} install
+  # install re-enters the Makefiles, so the generator overrides are needed
+  # here too or hx509 stops again on "No rule to make target 'slc'".
+  make DESTDIR=${destdir} "${_gen_vars[@]}" install
 
   # Remove daemons and their manpages
   for i in telnetd ftpd rshd; do

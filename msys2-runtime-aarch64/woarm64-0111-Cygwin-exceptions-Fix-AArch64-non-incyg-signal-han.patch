@@ -1,0 +1,311 @@
+From bc99666a4bc07963013c9fa21dfaf5c0dab5275d Mon Sep 17 00:00:00 2001
+From: Mate Dimand <mate.dimand@arm.com>
+Date: Fri, 10 Jul 2026 11:16:52 +0200
+Subject: [PATCH] Cygwin: exceptions: Fix AArch64 non-incyg signal handling
+
+This patch fixes crashes that occur when a signal interrupts sigfe or
+any non-cygwin function that does not preserve the LR register in its
+prologue/epilogue. This crash was discovered through the "run-heredoc"
+testcase in bash's testsuite, which caused bash to call "read"
+frequently, leading to a high chance of a signal interrupting sigfe.
+
+The original "sigdelayed" function in gendef clobbered the LR register
+to return to the instruction where the thread was interrupted. Picking
+any other register for branching back would also clobber said register.
+Leaf functions are not guaranteed to be compiled with LR being preserved
+on the stack. The solution is to use RtlRestoreContext to restore all
+registers without needing to sacrifice any.
+
+The patch replaces sigdelayed with an implementation that consists of
+both C and assembly functions. The "sigdelayed" assembly function was
+replaced with a simple wrapper function that was kept as assembly code
+to guarantee total control of the registers that get clobbered prior to
+capturing the context. This function calls RtlCaptureContext first, with
+the context being stored on the stack. The context is then passed to a
+C++ function which fixes the clobbered registers. Finally, this calls a
+C++ implementation of the original x64/AArch64 assembly version of
+sigdelayed. These functions were not written in assembly for the sake of
+readability. Once it completed handling the signals, it uses
+RtlRestoreContext to jump back.
+
+Signed-off-by: Mate Dimand <mate.dimand@arm.com>
+---
+ winsup/cygwin/exceptions.cc           |  61 ++++++++++
+ winsup/cygwin/local_includes/cygtls.h |   5 +
+ winsup/cygwin/scripts/gendef          | 168 +++-----------------------
+ 3 files changed, 82 insertions(+), 152 deletions(-)
+
+diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
+index 1e129b319..d89cf2c06 100644
+--- a/winsup/cygwin/exceptions.cc
++++ b/winsup/cygwin/exceptions.cc
+@@ -947,6 +947,67 @@ singlestep_handler (EXCEPTION_POINTERS *ep)
+ }
+ #endif
+ 
++#ifdef __aarch64__
++/* This function uses RtlRestoreContext to ensure that LR does not get
++   clobbered. Note that this function should not return, and the stack
++   contents created by this function are left un-popped. This should
++   not be a problem, since the context restoration also restores SP. */
++void
++_cygtls::sigdelayed_impl(PCONTEXT ctx)
++{
++  int backup_errno = saved_errno;
++
++  call_signal_handler();
++
++  lock();
++
++  if(backup_errno >= 0)
++  {
++    *errno_addr = backup_errno;
++  }
++
++  ctx->Pc = pop();
++
++  /* Atomically clear the return address. */
++  InterlockedExchange64 ((LONG64*)stackptr, 0);
++
++  incyg = 0;
++  unlock();
++
++  RtlRestoreContext(ctx, NULL);
++
++  /* If we got here, something was wrong. */
++  api_fatal ("Failed to restore context in sigdelayed_impl");
++}
++
++/* This function restores the context's clobbered registers and
++   calls the actual sigdelayed implementation. */
++extern "C" void
++sigdelayed_init(PCONTEXT ctx)
++{
++  /* Retrieving the registers stored on stack by sigdelayed. */
++  const DWORD64* sp = ((DWORD64*)ctx->Sp);
++  const DWORD64 stack_x16 = sp[0];
++  const DWORD64 stack_x17 = sp[1];
++  const DWORD64 stack_x0 = sp[2];
++  const DWORD64 stack_lr = sp[3];
++
++  ctx->X16 = stack_x16; // x16 clobbered by RtlCaptureContext
++  ctx->X17 = stack_x17;
++  ctx->X0 = stack_x0; // x0 isn't set by RtlCaptureContext
++  ctx->Lr = stack_lr; // LR is zeroed out by RtlCaptureContext
++
++  /* "sigdelayed" allocates 0x390 bytes for the context, matching the
++     struct's size. This should cause an error if the size of the struct
++     happened to change. */
++  static_assert(sizeof(CONTEXT) == 0x390);
++
++  ctx->Sp += sizeof(CONTEXT) + 32; // undo stack pushes from sigdelayed
++
++  _my_tls.sigdelayed_impl(ctx);
++}
++#endif
++
+ bool
+ _cygtls::interrupt_now (CONTEXT *cx, siginfo_t& si, void *handler,
+ 			struct sigaction& siga)
+diff --git a/winsup/cygwin/local_includes/cygtls.h b/winsup/cygwin/local_includes/cygtls.h
+index 0b5255495..366ff00cc 100644
+--- a/winsup/cygwin/local_includes/cygtls.h
++++ b/winsup/cygwin/local_includes/cygtls.h
+@@ -228,6 +228,11 @@ public: /* Do NOT remove this public: line, it's a marker for gentls_offsets. */
+   {
+     return initialized == CYGTLS_INITIALIZED;
+   }
++
++#ifdef __aarch64__
++  void sigdelayed_impl(PCONTEXT ctx);
++#endif
++
+   bool interrupt_now (CONTEXT *, siginfo_t&, void *, struct sigaction&);
+   void interrupt_setup (siginfo_t&, void *, struct sigaction&);
+ 
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 25698404b..233847e1a 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -461,162 +461,26 @@ _sigbe:
+ 	.global	sigdelayed
+ 	.seh_proc sigdelayed
+ sigdelayed:
+-	stp	x0,  x1,  [sp, #-16]!
+-	stp	x2,  x3,  [sp, #-16]!
+-	stp	x4,  x5,  [sp, #-16]!
+-	stp	x6,  x7,  [sp, #-16]!
+-	stp	x8,  x9,  [sp, #-16]!
+-	stp	x10, x11, [sp, #-16]!
+-	stp	x12, x13, [sp, #-16]!
+-	stp	x14, x15, [sp, #-16]!
+-	stp	x16, x17, [sp, #-16]!
+-	stp	x18, x19, [sp, #-16]!
+-	.seh_stackalloc 160
+-	.seh_save_reg x19, 152
+-	stp	x20, x21, [sp, #-16]!
+-	.seh_save_regp_x x20, 16
+-	stp	x22, x23, [sp, #-16]!
+-	.seh_save_regp_x x22, 16
+-	stp	x24, x25, [sp, #-16]!
+-	.seh_save_regp_x x24, 16
+-	stp	x26, x27, [sp, #-16]!
+-	.seh_save_regp_x x26, 16
+-	stp	x28, x29, [sp, #-16]!
+-	.seh_save_regp_x x28, 16
+-
+-	mov	x1, sp
+-	str	x1, [sp, #-16]!
+-
+-	stp	q0,  q1,  [sp, #-32]!
+-	stp	q2,  q3,  [sp, #-32]!
+-	stp	q4,  q5,  [sp, #-32]!
+-	stp	q6,  q7,  [sp, #-32]!
+-	stp	q8,  q9,  [sp, #-32]!
+-	stp	q10, q11, [sp, #-32]!
+-	stp	q12, q13, [sp, #-32]!
+-	stp	q14, q15, [sp, #-32]!
+-	stp	q16, q17, [sp, #-32]!
+-	stp	q18, q19, [sp, #-32]!
+-	stp	q20, q21, [sp, #-32]!
+-	stp	q22, q23, [sp, #-32]!
+-	stp	q24, q25, [sp, #-32]!
+-	stp	q26, q27, [sp, #-32]!
+-	stp	q28, q29, [sp, #-32]!
+-	stp	q30, q31, [sp, #-32]!
+-
+-	mrs	x1, fpcr
+-	mrs	x2, fpsr
+-	stp	x1, x2, [sp, #-16]!
+-
+-	.seh_stackalloc 544
+-
++	sub	sp,	sp,	0x390 	// sizeof(ARM64_NT_CONTEXT)
++	.seh_stackalloc 0x390
++	stp	x0,	x30,	[sp, #-16]!
++
++	// x16 gets clobbered after calling RtlCaptureContext.
++	// Both x16 and x17 are considered volatile registers, so we preserve both.
++	stp	x16,	x17,	[sp, #-16]!
++	.seh_save_regp_x x16, 16
+ 	.seh_endprologue
+ 
+-	ldr	x12, [x18, #8]			// get TLS pointer
+-	ldr	x13, =_cygtls.saved_errno	// get offset to saved_errno
+-	add	x13, x12, x13			// set x13 to &TLS.saved_errno
+-	ldr	w19, [x13]			// preserve saved_errno in w19
+-
+-	ldr	x13, =_cygtls.start_offset	// get offset to beginning of TLS block
+-	add	x0, x12, x13			// store offset as first arg to method
+-	bl	_ZN7_cygtls19call_signal_handlerEv	// call handler
+-	ldr	x12, [x18, #8]			// restore clobbered TLS pointer
++	// RtlCaptureContext captures the current CPU state
++	// at the time of calling it, letting us restore it
++	// later with adjusted registers in sigdelayed_impl.
++	add	x0,	sp,	32		// set x0 to the stack space allocated for the context
++	bl RtlCaptureContext
+ 
+-	mov	w11, #1				// set w11 to 1 (locked)
+-	ldr	x13, =_cygtls.stacklock		// get offset to stacklock
+-	add	x13, x12, x13			// set x13 to &TLS.stacklock
+-1:
+-	ldaxr	w14, [x13]			// read lock value with acquire
+-	cbnz	w14, 2f				// wait if already locked
+-	stxr	w14, w11, [x13]			// attempt to store 1
+-	cbnz	w14, 1b				// retry if locking not succeeded
+-	b	3f				// continue to critical region
+-2:
+-	yield					// hint to CPU (spin-wait)
+-	b	1b				// try again
++	add	x0,	sp,	32		// reset x0 in case it got clobbered
++	bl sigdelayed_init
+ 
+-3:
+-	tst	w19, w19			// was saved_errno < 0
+-	blt	4f				// if yes, ignore it
+-	ldr	x13, =_cygtls.errno_addr	// get offset to errno_addr
+-	add	x13, x12, x13			// set x13 to &TLS.errno_addr
+-	ldr	x11, [x13]			// set x11 to TLS->errno_addr
+-	str	w19, [x11]			// store saved_errno to errno_addr
+-
+-4:
+-	ldr	x13, =_cygtls.stackptr		// get offset to stackptr
+-	add	x13, x12, x13			// set x13 to &TLS.stackptr
+-5:
+-	ldxr	x11, [x13]			// get aux stack address
+-	sub	x11, x11, #8			// decrement aux stack address
+-	stxr	w14, x11, [x13]			// attempt to store decremented value
+-	cbnz	w14, 5b				// retry if not succeeded
+-
+-6:
+-	ldxr	x30, [x11]			// get return address from signal stack
+-	stxr	w14, xzr, [x11]			// attempt to clear return address
+-	cbnz	w14, 6b				// retry if not succeeded
+-
+-	ldr	x13, =_cygtls.incyg		// get offset to incyg
+-	add	x13, x12, x13			// set x13 to &TLS.incyg
+-	str	wzr, [x13]			// set TLS.incyg to 0 (not in cygwin)
+-	ldr	x13, =_cygtls.stacklock		// get offset to stacklock
+-	add	x13, x12, x13			// set x13 to &TLS.stacklock
+-	stlr	wzr, [x13]			// release lock
+-
+-	.seh_startepilogue
+-
+-	.seh_stackalloc 544
+-
+-	ldp	x1, x2, [sp], #16
+-	msr	fpcr, x1
+-	msr	fpsr, x2
+-
+-	ldp	q30, q31, [sp], #32
+-	ldp	q28, q29, [sp], #32
+-	ldp	q26, q27, [sp], #32
+-	ldp	q24, q25, [sp], #32
+-	ldp	q22, q23, [sp], #32
+-	ldp	q20, q21, [sp], #32
+-	ldp	q18, q19, [sp], #32
+-	ldp	q16, q17, [sp], #32
+-	ldp	q14, q15, [sp], #32
+-	ldp	q12, q13, [sp], #32
+-	ldp	q10, q11, [sp], #32
+-	ldp	q8,  q9,  [sp], #32
+-	ldp	q6,  q7,  [sp], #32
+-	ldp	q4,  q5,  [sp], #32
+-	ldp	q2,  q3,  [sp], #32
+-	ldp	q0,  q1,  [sp], #32
+-
+-	ldr	x1, [sp], #16
+-	mov	sp, x1
+-
+-	ldp	x28, x29, [sp], #16
+-	.seh_save_regp_x x28, 16
+-	ldp	x26, x27, [sp], #16
+-	.seh_save_regp_x x26, 16
+-	ldp	x24, x25, [sp], #16
+-	.seh_save_regp_x x24, 16
+-	ldp	x22, x23, [sp], #16
+-	.seh_save_regp_x x22, 16
+-	ldp	x20, x21, [sp], #16
+-	.seh_save_regp_x x20, 16
+-	ldp	x18, x19, [sp], #16
+-	.seh_save_reg x19, 152
+-	.seh_stackalloc 160
+-	ldp	x16, x17, [sp], #16
+-	ldp	x14, x15, [sp], #16
+-	ldp	x12, x13, [sp], #16
+-	ldp	x10, x11, [sp], #16
+-	ldp	x8,  x9,  [sp], #16
+-	ldp	x6,  x7,  [sp], #16
+-	ldp	x4,  x5,  [sp], #16
+-	ldp	x2,  x3,  [sp], #16
+-	ldp	x0,  x1,  [sp], #16
+-
+-	.seh_endepilogue
+-	ret
++	// unreachable
+ 	.seh_endproc
+ _sigdelayed_end:
+ 	.global _sigdelayed_end
+-- 
+2.43.7
+
