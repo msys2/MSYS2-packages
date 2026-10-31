@@ -1,0 +1,55 @@
+cygwin: fix SSLSocket on sockets that aren't connected
+
+recv() on a non-connected socket doesn't fail with ENOTCONN on Cygwin: it fails
+with EAGAIN if non-blocking and blocks forever otherwise. The first made every
+wrap_socket() of such a socket raise BlockingIOError, so a client couldn't
+wrap before connect() and http.server.HTTPSServer couldn't start.
+
+--- Python-3.14.10.orig/Lib/ssl.py
++++ Python-3.14.10/Lib/ssl.py
+@@ -1047,10 +1047,11 @@
+                     # testing revealed otherwise on macOS and Windows so we do
+                     # the non-blocking dance regardless. Our raise when any data
+                     # is found means consuming the data is harmless.
+-                    notconn_pre_handshake_data = self.recv(1)
++                    notconn_pre_handshake_data = super(SSLSocket, self).recv(1)
+                 except OSError as e:
+                     # EINVAL occurs for recv(1) on non-connected on unix sockets.
+-                    if e.errno not in (errno.ENOTCONN, errno.EINVAL):
++                    # EAGAIN occurs on non-connected sockets on Cygwin.
++                    if e.errno not in (errno.ENOTCONN, errno.EINVAL, errno.EAGAIN):
+                         raise
+                     notconn_pre_handshake_data = b''
+                 self.setblocking(blocking)
+@@ -1295,6 +1296,7 @@
+                     self.__class__)
+             return self.read(buflen)
+         else:
++            self._check_connected()
+             return super().recv(buflen, flags)
+ 
+     def recv_into(self, buffer, nbytes=None, flags=0):
+@@ -1314,6 +1316,7 @@
+                   self.__class__)
+             return self.read(nbytes, buffer)
+         else:
++            self._check_connected()
+             return super().recv_into(buffer, nbytes, flags)
+ 
+     def recvfrom(self, buflen=1024, flags=0):
+@@ -1322,6 +1325,7 @@
+             raise ValueError("recvfrom not allowed on instances of %s" %
+                              self.__class__)
+         else:
++            self._check_connected()
+             return super().recvfrom(buflen, flags)
+ 
+     def recvfrom_into(self, buffer, nbytes=None, flags=0):
+@@ -1330,6 +1334,7 @@
+             raise ValueError("recvfrom_into not allowed on instances of %s" %
+                              self.__class__)
+         else:
++            self._check_connected()
+             return super().recvfrom_into(buffer, nbytes, flags)
+ 
+     def recvmsg(self, *args, **kwargs):

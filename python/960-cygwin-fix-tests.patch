@@ -1,0 +1,54 @@
+cygwin: fix tests that make wrong assumptions
+
+_testinternalcapi: the import thunk for _PyEval_EvalFrameDefault has a different
+address, so set_eval_frame_default() left the custom hook installed.
+test_poplib: the server closed the connection during the client's connect().
+test_build_details: symlinks are copies, so compare the file contents.
+
+--- Python-3.14.10.orig/Modules/_testinternalcapi.c
++++ Python-3.14.10/Modules/_testinternalcapi.c
+@@ -656,7 +656,8 @@
+ set_eval_frame_default(PyObject *self, PyObject *Py_UNUSED(args))
+ {
+     module_state *state = get_module_state(self);
+-    _PyInterpreterState_SetEvalFrameFunc(_PyInterpreterState_GET(), _PyEval_EvalFrameDefault);
++    // NULL and not _PyEval_EvalFrameDefault: its address differs in a DLL
++    _PyInterpreterState_SetEvalFrameFunc(_PyInterpreterState_GET(), NULL);
+     Py_CLEAR(state->record_list);
+     Py_RETURN_NONE;
+ }
+--- Python-3.14.10.orig/Lib/test/test_build_details.py
++++ Python-3.14.10/Lib/test/test_build_details.py
+@@ -156,6 +156,13 @@
+         if sysconfig._installation_is_relocated():
+             self.skipTest("Installation is relocated")
+ 
++        if sys.platform == 'cygwin':
++            # MSYS2 symlinks are copies, so "python" and "python3.x" only have
++            # the same contents
++            import filecmp
++            self.assertTrue(filecmp.cmp(value, sys.executable, shallow=False))
++            return
++
+         self.assertEqual(os.path.realpath(value), os.path.realpath(sys.executable))
+ 
+     @needs_installed_python
+--- Python-3.14.10.orig/Lib/test/test_poplib.py
++++ Python-3.14.10/Lib/test/test_poplib.py
+@@ -527,9 +527,13 @@
+         evt.set()
+         try:
+             conn, addr = serv.accept()
+-            conn.send(b"+ Hola mundo\n")
+-            conn.close()
+-        except TimeoutError:
++            with conn:
++                conn.send(b"+ Hola mundo\n")
++                # Closing before the client's connect() has returned makes it
++                # fail with ECONNRESET on Cygwin
++                conn.settimeout(test_support.LOOPBACK_TIMEOUT)
++                conn.recv(1)
++        except OSError:
+             pass
+         finally:
+             serv.close()
