@@ -2,7 +2,7 @@
 
 pkgname=subversion
 pkgver=1.14.5
-pkgrel=3
+pkgrel=4
 pkgdesc="A Modern Concurrent Version Control System"
 arch=('i686' 'x86_64')
 url="https://subversion.apache.org/"
@@ -154,14 +154,15 @@ build() {
   make all
 
   plain "Compiling swig bindings: ruby"
-  make swig-rb
+  RUBY_LIB="-l$(ruby -rrbconfig -e 'print RbConfig::CONFIG["RUBY_SO_NAME"]')"
+  make swig-rb LIBS="$RUBY_LIB"
 
   plain "Compiling swig bindings: perl"
   make swig-pl
 
   plain "Compiling swig bindings: python"
   PYTHON_SITELIB=$(/usr/bin/python -c 'from distutils.sysconfig import * ; print(get_python_lib(0,0));')
-  make swig-py swig_pydir=${PYTHON_SITELIB}/libsvn swig_pydir_extra=${PYTHON_SITELIB}/svn
+  make swig-py LIBS="-lpython3.14" swig_pydir=${PYTHON_SITELIB}/libsvn swig_pydir_extra=${PYTHON_SITELIB}/svn
 }
 
 #check() {
@@ -197,7 +198,10 @@ package() {
   cd ${pkgname}-${pkgver}
 
   PYTHON_SITELIB=$(/usr/bin/python -c 'from distutils.sysconfig import * ; print(get_python_lib(0,0));')
+  RUBY_LIB="-l$(ruby -rrbconfig -e 'print RbConfig::CONFIG["RUBY_SO_NAME"]')"
+
   make -j1 DESTDIR="${pkgdir}" INSTALLDIRS=vendor \
+    LIBS="$RUBY_LIB -lpython3.14" \
     swig_pydir=${PYTHON_SITELIB}/libsvn \
     swig_pydir_extra=${PYTHON_SITELIB}/svn \
     install install-tools install-swig-py install-swig-pl install-swig-rb
