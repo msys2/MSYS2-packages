@@ -126,14 +126,14 @@ if [[ -n ${MSYS2_ARM64_CROSS:-} ]]; then
     # The packages for the cross-building toolchain need to be installed before reaching here.
     # Use separate root when installing cross-packages to avoid conflicts with the root of the build host.
     # Set environment variable PACMAN that is also used by makepkg
-    export PACMAN="pacman --root /opt/aarch64 --cachedir /opt/aarch64/var/cache/pacman/pkg --arch aarch64"
+    export PACMAN="pacman --root /usr/aarch64-pc-cygwin --cachedir /usr/aarch64-pc-cygwin/var/cache/pacman/pkg --arch aarch64"
     # Use cross-building configuration for makepkg
     _makepkg_extra_args=("--config /etc/makepkg_aarch64_cross.conf")
     # Initialize pacman configuration at separate root
-    mkdir -p /opt/aarch64/var/cache/pacman/pkg
-    mkdir -p /opt/aarch64/var/lib/pacman
+    mkdir -p /usr/aarch64-pc-cygwin/var/cache/pacman/pkg
+    mkdir -p /usr/aarch64-pc-cygwin/var/lib/pacman
     # FIXME: We would only need the database of the MSYS2 repository (not the MinGW repositories)
-    cp /etc/pacman.conf /opt/aarch64/pacman.conf
+    cp /etc/pacman.conf //usr/aarch64-pc-cygwin/pacman.conf
     # Load package database for separate root
     ${PACMAN} -Sy
 else
