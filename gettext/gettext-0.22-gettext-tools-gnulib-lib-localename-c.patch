@@ -1,0 +1,97 @@
+--- origsrc/gettext-tools/gnulib-lib/localename.c	2023-04-09 03:54:01.000000000 -0600
++++ src/gettext-tools/gnulib-lib/localename.c	2023-06-17 11:04:08.426713100 -0600
+@@ -74,7 +74,7 @@ extern char * getlocalename_l(int, local
+ # include "glthread/lock.h"
+ #endif
+ 
+-#if defined WINDOWS_NATIVE || defined __CYGWIN__ /* Native Windows or Cygwin */
++#if defined WINDOWS_NATIVE /* Native Windows */
+ # define WIN32_LEAN_AND_MEAN
+ # include <windows.h>
+ # include <winnls.h>
+@@ -1458,7 +1458,7 @@ gl_locale_name_canonicalize (char *name)
+ #endif
+ 
+ 
+-#if defined WINDOWS_NATIVE || defined __CYGWIN__ /* Native Windows or Cygwin */
++#if defined WINDOWS_NATIVE /* Native Windows */
+ 
+ /* Canonicalize a Windows native locale name to a Unix locale name.
+    NAME is a sufficiently large buffer.
+@@ -3193,19 +3193,6 @@ gl_locale_name_thread_unsafe (int catego
+ #   endif
+ #  elif defined _AIX && HAVE_NAMELESS_LOCALES
+         return get_locale_t_name (category, thread_locale);
+-#  elif defined __CYGWIN__
+-        /* Cygwin < 2.6 lacks uselocale and thread-local locales altogether.
+-           Cygwin <= 2.6.1 lacks NL_LOCALE_NAME, requiring peeking inside
+-           an opaque struct.  */
+-#   ifdef NL_LOCALE_NAME
+-        return nl_langinfo_l (NL_LOCALE_NAME (category), thread_locale);
+-#   else
+-        /* FIXME: Remove when we can assume new-enough Cygwin.  */
+-        struct __locale_t {
+-          char categories[7][32];
+-        };
+-        return ((struct __locale_t *) thread_locale)->categories[category];
+-#   endif
+ #  elif defined __HAIKU__
+         /* Since 2022, Haiku has per-thread locales.  locale_t is 'void *',
+            but in fact a 'LocaleBackendData *'.  */
+@@ -3299,7 +3286,7 @@ gl_locale_name_thread (int category, _GL
+    However it does not specify the exact format.  Neither do SUSV2 and
+    ISO C 99.  So we can use this feature only on selected systems (e.g.
+    those using GNU C Library).  */
+-#if defined _LIBC || ((defined __GLIBC__ && __GLIBC__ >= 2) && !defined __UCLIBC__)
++#if defined _LIBC || ((defined __GLIBC__ && __GLIBC__ >= 2) && !defined __UCLIBC__) || defined __CYGWIN__
+ # define HAVE_LOCALE_NULL
+ #endif
+ 
+@@ -3335,7 +3322,7 @@ gl_locale_name_posix (int category, _GL_
+        environment variables directly.  This is necessary
+          1. on systems which have a facility for customizing the default locale
+             (Mac OS X, native Windows, Cygwin) and where the system's setlocale()
+-            function ignores this default locale (Mac OS X, Cygwin), in two cases:
++            function ignores this default locale (Mac OS X), in two cases:
+             a. when the user missed to use the setlocale() override from libintl
+                (for example by not including <libintl.h>),
+             b. when setlocale supports only the "C" locale, such as on Cygwin
+@@ -3390,11 +3377,6 @@ gl_locale_name_environ (_GL_UNUSED int c
+          Ignore invalid LANG value set by the Terminal application.  */
+       if (strcmp (retval, "UTF-8") != 0)
+ #endif
+-#if defined __CYGWIN__
+-      /* Cygwin.
+-         Ignore dummy LANG value set by ~/.profile.  */
+-      if (strcmp (retval, "C.UTF-8") != 0)
+-#endif
+         return retval;
+     }
+ 
+@@ -3423,16 +3405,11 @@ gl_locale_name_default (void)
+        - On native Windows, by default, none of LC_* or LANG are set.
+          When no environment variable is set, setlocale (LC_ALL, "") uses the
+          locale chosen by the user.
+-       - On Cygwin 1.5.x, by default, none of LC_* or LANG are set.
+-         When no environment variable is set, setlocale (LC_ALL, "") uses the
+-         "C" locale.
+-       - On Cygwin 1.7, by default, LANG is set to "C.UTF-8" when the default
+-         ~/.profile is executed.
+          When no environment variable is set, setlocale (LC_ALL, "") uses the
+          "C.UTF-8" locale, which operates in the same way as the "C" locale.
+   */
+ 
+-#if !(HAVE_CFPREFERENCESCOPYAPPVALUE || defined WINDOWS_NATIVE || defined __CYGWIN__)
++#if !(HAVE_CFPREFERENCESCOPYAPPVALUE || defined WINDOWS_NATIVE)
+ 
+   /* The system does not have a way of setting the locale, other than the
+      POSIX specified environment variables.  We use C as default locale.  */
+@@ -3485,7 +3462,7 @@ gl_locale_name_default (void)
+ 
+ # endif
+ 
+-# if defined WINDOWS_NATIVE || defined __CYGWIN__ /* Native Windows or Cygwin */
++# if defined WINDOWS_NATIVE /* Native Windows */
+   {
+     LCID lcid;
+ 
