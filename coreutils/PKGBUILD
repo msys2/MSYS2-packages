@@ -1,8 +1,9 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=coreutils
-pkgver=8.32
-pkgrel=5
+pkgver=9.0
+_cygrel=1
+pkgrel=1
 pkgdesc="The basic file, shell and text manipulation utilities of the GNU operating system"
 arch=('i686' 'x86_64')
 license=('spdx:GPL-3.0-or-later')
@@ -12,29 +13,69 @@ msys2_references=(
   "cpe: cpe:/a:gnu:coreutils"
 )
 depends=('gmp' 'libiconv' 'libintl')
-makedepends=('groff' 'gmp-devel' 'libiconv-devel' 'gettext-devel' 'help2man' 'autotools' 'gcc')
+makedepends=('groff' 'gmp-devel' 'libiconv-devel' 'gettext-devel' 'help2man' 'texinfo' 'autotools' 'gcc')
 source=(https://ftp.gnu.org/gnu/${pkgname}/${pkgname}-${pkgver}.tar.xz{,.sig}
-        001-coreutils-8.30.patch
-        002-coreutils-8.32-enable-stdbuf.patch
+        https://sourceware.org/pub/cygwin/x86_64/release/${pkgname}/${pkgname}-${pkgver}-${_cygrel}-src.tar.xz
+        002-coreutils-9.0-stdbuf-dll.patch
         003-coreutils-8.32-fix-test-cases.patch
         004-msystem-osname-cygwin.patch)
-sha256sums=('4458d8de7849df44ccab15e16b1548b285224dbba5f08fac070c1c0e0bcc4cfa'
+sha256sums=('ce30acdf4a41bc5bb30dd955e9eaa75fa216b4e3deb08889ed32433c7b3b97ce'
             'SKIP'
-            '467bde24da0ccea48260f58d3c94a84de4e027ab598a926003642f791da47ca2'
-            'e3be62b9aceb3231f09f05bc3bd8b18f6aaa495f5063781cdd261d560a7e80d0'
+            '1ee03cb2fdeaf31270fb3563b3cf73af1be96ff3f40102324f6cd2f8a6091919'
+            '16ac7d9689801fa130d81e0888def067350e2f85f96efce0fdb2d4cfb052da60'
             'ad9e0582373500c0668e38483401169f48d6a2f8ad8d28ef8e7b06e4a3e08a74'
             '3922afd54b2323772f5cbd0638d0887ef858199bbaf4076a1db318173021c3dc')
 validpgpkeys=('6C37DC12121A5006BC1DB804DF6FD971306037D9')
 
+apply_patch_with_msg() {
+  local patch
+  for patch in "$@"
+  do
+    msg2 "Applying ${patch}"
+    patch -Nbp1 -i "${srcdir}/${patch}"
+  done
+}
+
 prepare() {
   cd ${srcdir}/${pkgname}-${pkgver}
 
-  patch -p1 -i ${srcdir}/001-coreutils-8.30.patch
-  patch -p1 -i ${srcdir}/002-coreutils-8.32-enable-stdbuf.patch
-  patch -p1 -i ${srcdir}/003-coreutils-8.32-fix-test-cases.patch
+  # Patches from Cygwin's source package
+  local _cygsrc=${pkgname}-${pkgver}-${_cygrel}.src
+  cp "${srcdir}/${_cygsrc}"/cygwin.{c,h} lib/
+  apply_patch_with_msg \
+    ${_cygsrc}/coreutils-8.32-configure.ac.patch \
+    ${_cygsrc}/coreutils-8.32-doc-coreutils.texi.patch \
+    ${_cygsrc}/coreutils-8.32-lib-freopen.c.patch \
+    ${_cygsrc}/coreutils-8.32-lib-hash-pjw.c.patch \
+    ${_cygsrc}/coreutils-8.32-lib-hash-pjw.h.patch \
+    ${_cygsrc}/coreutils-8.32-lib-local.mk.patch \
+    ${_cygsrc}/coreutils-9.0-lib-root-dev-ino.h.patch \
+    ${_cygsrc}/coreutils-8.32-lib-root-dev-ino.c.patch \
+    ${_cygsrc}/coreutils-8.32-lib-same.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-chcon.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-chgrp.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-chmod.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-chown.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-chown-core.h.patch \
+    ${_cygsrc}/coreutils-8.32-src-chroot.c.patch \
+    ${_cygsrc}/coreutils-9.0-src-copy.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-dd.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-dircolors.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-install.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-ls.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-mv.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-pwd.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-remove.h.patch \
+    ${_cygsrc}/coreutils-8.32-src-rm.c.patch \
+    ${_cygsrc}/coreutils-8.32-src-stat.c.patch
+
+  apply_patch_with_msg \
+    002-coreutils-9.0-stdbuf-dll.patch \
+    003-coreutils-8.32-fix-test-cases.patch
 
   # https://github.com/msys2/MSYS2-packages/issues/3012
-  patch -p1 -i ${srcdir}/004-msystem-osname-cygwin.patch
+  apply_patch_with_msg \
+    004-msystem-osname-cygwin.patch
 
   autoreconf -fi
 }
