@@ -1,6 +1,6 @@
 --- a/generic/tclBasic.c
 +++ b/generic/tclBasic.c
-@@ -434,6 +434,109 @@ TclFinalizeEvaluation(void)
+@@ -469,6 +469,109 @@
  /*
   *----------------------------------------------------------------------
   *
@@ -110,20 +110,10 @@
   * Tcl_CreateInterp --
   *
   *	Create a new TCL command interpreter.
-@@ -471,8 +574,7 @@ Tcl_CreateInterp(void)
- #endif /* TCL_COMPILE_STATS */
-     char mathFuncName[32];
-     CallFrame *framePtr;
--
--    TclInitSubsystems();
-+    const char *version = TclInitSubsystems();
- 
-     /*
-      * Panic if someone updated the CallFrame structure without also updating
-@@ -987,6 +1089,8 @@ Tcl_CreateInterp(void)
+@@ -1019,6 +1122,8 @@
       */
  
-     Tcl_PkgProvideEx(interp, "Tcl", TCL_PATCH_LEVEL, &tclStubs);
+     Tcl_PkgProvideEx(interp, "Tcl", version, &tclStubs);
 +    Tcl_CreateObjCommand(interp, "::tcl::build-info",
 +	    buildInfoObjCmd, (void *)version, NULL);
  
@@ -141,22 +131,21 @@
  
  /*
   * The data structure below is used to report background errors. One such
-@@ -1021,7 +1024,92 @@ Tcl_Exit(
-  *-------------------------------------------------------------------------
-  */
+@@ -1006,12 +1009,88 @@
  
--void
-+MODULE_SCOPE const TclStubs tclStubs;
-+
+ MODULE_SCOPE const TclStubs tclStubs;
+ 
 +#ifndef STRINGIFY
 +#  define STRINGIFY(x) STRINGIFY1(x)
 +#  define STRINGIFY1(x) #x
 +#endif
 +
-+static const struct {
-+    const TclStubs *stubs;
-+    const char version[256];
-+} stubInfo = {
+ static const struct {
+     const TclStubs *stubs;
+     const char version[256];
+ } stubInfo = {
+-    &tclStubs, {TCL_PATCH_LEVEL}
+-};
 +    &tclStubs, {TCL_PATCH_LEVEL "+" STRINGIFY(TCL_VERSION_UUID)
 +#if defined(__clang__) && defined(__clang_major__)
 +	    ".clang-" STRINGIFY(__clang_major__)
@@ -230,27 +219,6 @@
 +	    ".utf-16"
 +#endif
 +}};
-+
-+const char *
+ 
+ const char *
  TclInitSubsystems(void)
- {
-     if (inExit != 0) {
-@@ -1065,6 +1153,7 @@ TclInitSubsystems(void)
- 	TclpInitUnlock();
-     }
-     TclInitNotifier();
-+    return stubInfo.version;
- }
- 
- /*
---- a/generic/tclInt.h
-+++ b/generic/tclInt.h
-@@ -3031,7 +3031,7 @@ MODULE_SCOPE void	TclInitLimitSupport(Tc
- MODULE_SCOPE void	TclInitNamespaceSubsystem(void);
- MODULE_SCOPE void	TclInitNotifier(void);
- MODULE_SCOPE void	TclInitObjSubsystem(void);
--MODULE_SCOPE void	TclInitSubsystems(void);
-+MODULE_SCOPE const char *TclInitSubsystems(void);
- MODULE_SCOPE int	TclInterpReady(Tcl_Interp *interp);
- MODULE_SCOPE int	TclIsBareword(int byte);
- MODULE_SCOPE Tcl_Obj *	TclJoinPath(int elements, Tcl_Obj * const objv[],
