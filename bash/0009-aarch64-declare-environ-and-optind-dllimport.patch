@@ -1,0 +1,56 @@
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Subject: [PATCH] aarch64: declare environ and optind dllimport
+
+environ and optind are data exported by msys-2.0.dll.  With a plain
+"extern" declaration ld falls back to auto-import, and on aarch64 that
+pseudo-relocation is not applied yet, so bash writes "environ = export_env"
+into a local copy (export TZ=... has no effect in the same shell) and the
+testsuite helpers printenv and xcase read garbage.  <unistd.h> already
+declares optind dllimport; xcase.c's own redeclaration overrides it.
+
+Signed-off-by: aswin-mcw <aswin.kalies@multicorewareinc.com>
+---
+--- a/shell.c
++++ b/shell.c
+@@ -102,7 +102,7 @@
+ #endif
+ 
+ #if defined (NO_MAIN_ENV_ARG)
+-extern char **environ;	/* used if no third argument to main() */
++__declspec(dllimport) extern char **environ;	/* used if no third argument to main() */
+ #endif
+ 
+ extern int gnu_error_format;
+--- a/variables.c
++++ b/variables.c
+@@ -106,7 +106,7 @@
+ #define FV_SKIPINVISIBLE	0x02
+ #define FV_NODYNAMIC		0x04
+ 
+-extern char **environ;
++__declspec(dllimport) extern char **environ;
+ 
+ /* Variables used here and defined in other files. */
+ extern time_t shell_start_time;
+--- a/support/printenv.c
++++ b/support/printenv.c
+@@ -28,7 +28,7 @@
+ #include <stdlib.h>		/* exit */
+ #include <string.h>		/* strncmp */
+ 
+-extern char **environ;
++__declspec(dllimport) extern char **environ;
+ 
+ int
+ main (int argc, char **argv)
+--- a/support/xcase.c
++++ b/support/xcase.c
+@@ -33,7 +33,7 @@
+ extern int errno;
+ #endif
+ 
+-extern int optind;
++__declspec(dllimport) extern int optind;
+ 
+ #define LOWER	1
+ #define UPPER	2

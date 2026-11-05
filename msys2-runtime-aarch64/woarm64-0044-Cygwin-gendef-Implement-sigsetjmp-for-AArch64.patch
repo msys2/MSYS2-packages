@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:22 +0530
+Subject: [PATCH 044/109] Cygwin: gendef: Implement sigsetjmp for AArch64
+
+(cherry picked from commit 744fdb1eb27dbadcf380cc88863ab47e95c3ee51)
+---
+ winsup/cygwin/scripts/gendef | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 03ea0dd31..618898a17 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -609,7 +609,28 @@ EOF
+ 	# TODO: These are only stubs, they need to be implemented properly for AArch64.
+ 	return <<EOF;
+ 	.globl	sigsetjmp
++	.seh_proc sigsetjmp
+ sigsetjmp:
++	// prologue
++	stp		fp, lr, [sp, #-0x10]!	// save FP and LR registers
++	mov		fp, sp			// set FP to current SP
++	.seh_endprologue
++	str	w1, [x0, #0x100]		// buf->savemask = savemask
++	cbz     w1, 1f				// If savemask == 0, skip fetching sigmask
++	mov     x3, x0                        	// save buf in x3
++	sub     sp, sp, #32			// Allocate 32 bytes on stack call
++	mov     x0, #0                         	// SIG_SETMASK
++	mov     x1, xzr                        	// newmask = NULL
++	add     x2, x3, #0x108                 	// &buf->sigmask
++	bl      pthread_sigmask
++	add     sp, sp, #32
++1:
++	bl	setjmp
++	// epilogue
++	ldp	fp, lr, [sp], #0x10		// restore saved FP and LR registers
++	ret
++	.seh_endproc
++
+ 	.globl  setjmp
+ setjmp:
+ 	.globl	siglongjmp

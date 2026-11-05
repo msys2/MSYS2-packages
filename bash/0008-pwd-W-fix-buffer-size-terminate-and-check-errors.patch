@@ -1,0 +1,45 @@
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Subject: [PATCH] pwd -W: fix buffer size, terminate and check errors
+
+0006-bash-4.3-add-pwd-W-option.patch allocates PATH_MAX bytes for the
+converted path but tells cygwin_conv_path the buffer is PATH_MAX+1, never
+zeroes it, and ignores the results of getcwd and cygwin_conv_path.  On
+aarch64 the converted path came back unterminated, so pwd -W printed it
+with heap garbage appended (e.g. "C:/fbwork/-W"), which broke
+git-filter-branch.
+
+Signed-off-by: aswin-mcw <aswin.kalies@multicorewareinc.com>
+---
+--- a/builtins/cd.def
++++ b/builtins/cd.def
+@@ -487,10 +487,27 @@
+   list = loptend;
+ 
+   if (verbatim_pwd == 2) {
+-    buffer = xmalloc (PATH_MAX);
+-    wbuffer = xmalloc (PATH_MAX);
++    buffer = xmalloc (PATH_MAX + 1);
++    wbuffer = xmalloc (PATH_MAX + 1);
++    memset (buffer, 0, PATH_MAX + 1);
++    memset (wbuffer, 0, PATH_MAX + 1);
+     directory = getcwd (buffer, PATH_MAX);
+-    cygwin_conv_path (CCP_POSIX_TO_WIN_A|CCP_ABSOLUTE, buffer, wbuffer, PATH_MAX+1);
++    if (directory == 0)
++      {
++        free (buffer);
++        free (wbuffer);
++        builtin_error ("getcwd: cannot access parent directories");
++        return (EXECUTION_FAILURE);
++      }
++    if (cygwin_conv_path (CCP_POSIX_TO_WIN_A|CCP_ABSOLUTE, buffer, wbuffer,
++                          PATH_MAX) != 0)
++      {
++        free (buffer);
++        free (wbuffer);
++        builtin_error ("pwd: cannot convert path");
++        return (EXECUTION_FAILURE);
++      }
++    wbuffer[PATH_MAX] = 0;
+     {
+       char *c = wbuffer;
+       while (c = strchr (c, '\\'))
