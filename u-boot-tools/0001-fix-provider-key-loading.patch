@@ -1,0 +1,32 @@
+--- a/lib/rsa/rsa-sign.c
++++ b/lib/rsa/rsa-sign.c
+@@ -255,6 +255,8 @@
+	EVP_PKEY *private_key = NULL;
+	OSSL_STORE_CTX *store;
+
++	fclose(f);
++
+	if (!OSSL_PROVIDER_try_load(NULL, "default", true))
+		ERR(1, "OSSL_PROVIDER_try_load(default)");
+ 	/* pkcs11 provider is optional; only needed for pkcs11: URIs */
+@@ -269,6 +271,8 @@
+ 
+ 		if (!info) {
+ 			drain_openssl_errors(__LINE__, 0);
++			if (OSSL_STORE_error(store))
++				break;
+ 			continue;
+ 		}
+ 		if (OSSL_STORE_INFO_get_type(info) == OSSL_STORE_INFO_PKEY) {
+@@ -281,6 +285,11 @@
+ 	}
+ 	OSSL_STORE_close(store);
+ 
++	if (!private_key) {
++		fprintf(stderr, "Failure reading private key: '%s'\n", path);
++		return -EPROTO;
++	}
++
+ 	*evpp = private_key;
+ #else
+ 	if (!PEM_read_PrivateKey(f, evpp, NULL, path)) {
