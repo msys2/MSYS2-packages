@@ -1,0 +1,93 @@
+From: Windows on ARM Experiments <woarm64@qti.qualcomm.com>
+Subject: [PATCH] aarch64 cygwin: define __MSYS__ and MSYS linkage
+
+The runtime is built with the standard aarch64-pc-cygwin triple, mirroring the
+x86_64-pc-msys -> x86_64-pc-cygwin move upstream: MSYS-ness is expressed
+through preprocessor macros and link/lib specs, not the triple name.
+
+x86_64 injects __MSYS__ and the msys- linkage into the shared
+i386/cygwin{,-w64}.h. Do the aarch64 equivalent without touching those shared
+headers: add gcc/config/aarch64/msys.h and append it as the LAST entry of the
+existing aarch64-*-cygwin* tm_file chain, so its overrides win:
+  - EXTRA_OS_CPP_BUILTINS: also define __MSYS__ / __MSYS2__ (__CYGWIN__ stays)
+  - LINK_SPEC: DLL entry _cygwin_dll_entry -> _msys_dll_entry,
+    --dll-search-prefix=msys-
+  - LIB_SPEC: runtime import lib -lcygwin -> -lmsys-2.0
+
+Without the LINK_SPEC/LIB_SPEC overrides every console program fails to link
+with an undefined reference to WinMain.
+
+diff --git a/gcc/config.gcc b/gcc/config.gcc
+--- a/gcc/config.gcc
++++ b/gcc/config.gcc
+@@ -1285,6 +1285,9 @@ aarch64-*-cygwin*)
+ 	tm_file="${tm_file} i386/cygwin-stdint.h"
+ 	tm_file="${tm_file} mingw/winnt.h"
+ 	tm_file="${tm_file} mingw/winnt-dll.h"
++	# aarch64/msys.h MUST come last: it overrides EXTRA_OS_CPP_BUILTINS and
++	# LINK_SPEC/LIB_SPEC set by the shared headers above.
++	tm_file="${tm_file} aarch64/msys.h"
+ 	xm_file=i386/xm-cygwin.h
+ 	tmake_file="${tmake_file} aarch64/t-aarch64"
+ 	tmake_file="${tmake_file} aarch64/t-aarch64-mingw"
+diff --git a/gcc/config/aarch64/msys.h b/gcc/config/aarch64/msys.h
+new file mode 100644
+index 00000000000..04cd4618301
+--- /dev/null
++++ b/gcc/config/aarch64/msys.h
+@@ -0,0 +1,55 @@
++#ifndef GCC_AARCH64_MSYS_H
++#define GCC_AARCH64_MSYS_H
++
++/* Override cygwin default */
++#undef EXTRA_OS_CPP_BUILTINS
++#define EXTRA_OS_CPP_BUILTINS()        \
++  do {                                \
++    builtin_define("__CYGWIN__");      \
++    builtin_define("__MSYS__");        \
++    builtin_define("__MSYS2__");       \
++    builtin_define_std("unix");        \
++  } while (0)
++
++/* MSYS2 linkage overrides.
++
++   This header is included LAST in the aarch64-*-cygwin* tm_file chain (after
++   aarch64/cygming.h and i386/cygwin{,-w64}.h), so these #defines are the ones
++   that take effect.  Without them the aarch64 port inherits the Cygwin values
++   from the shared headers and every console program fails to link with an
++   undefined reference to WinMain (libmsys-2.0.a's libcmain.o is pulled because
++   the wrong DLL entry / import lib are selected).
++
++   These mirror the x86_64-pc-msys port's overrides of i386/cygwin.h and
++   i386/cygwin-w64.h (MSYS2's 0951-*-msys2-spec.patch):
++     - DLL entry symbol  : _cygwin_dll_entry -> _msys_dll_entry
++     - DLL search prefix : cyg              -> msys-
++     - runtime import lib: -lcygwin         -> -lmsys-2.0
++   The rest of the spec (subsystem, shared/dll, static/dynamic, -m aarch64pe via
++   the base header's target) is preserved verbatim.  */
++
++#undef LINK_SPEC
++#define LINK_SPEC "\
++  -m aarch64pe \
++  %{mwindows:--subsystem windows} \
++  %{mconsole:--subsystem console} \
++  %{shared: %{mdll: %eshared and mdll are not compatible}} \
++  %{shared: --shared} %{mdll:--dll} \
++  %{static:-Bstatic} %{!static:-Bdynamic} \
++  %{shared|mdll: %{!m32:-e _msys_dll_entry} %{m32:-e __msys_dll_entry@12} --enable-auto-image-base} \
++  %(shared_libgcc_undefs) \
++  --dll-search-prefix=msys- \
++  %{rdynamic: --export-all-symbols} \
++  %{!shared: %{!mdll: %{m32:--large-address-aware} --tsaware}}"
++
++#undef LIB_SPEC
++#define LIB_SPEC "\
++  %{pg:-lgmon} \
++  %{pthread: } \
++  -lmsys-2.0 \
++  %{mwindows:-lgdi32 -lcomdlg32} \
++  %{fvtable-verify=preinit:-lvtv -lpsapi; \
++    fvtable-verify=std:-lvtv -lpsapi} \
++  -ladvapi32 -lshell32 -luser32 -lkernel32"
++
++#endif /* GCC_AARCH64_MSYS_H */

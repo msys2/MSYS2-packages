@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:23 +0530
+Subject: [PATCH 045/109] Cygwin: configure: disable High Entropy VA
+ (64-bit ASLR) on AArch64
+
+(cherry picked from commit 075e014216ebbd4e9f643f74a2840ef53ed04303)
+---
+ winsup/cygserver/Makefile.am | 2 +-
+ winsup/cygwin/Makefile.am    | 3 ++-
+ winsup/testsuite/Makefile.am | 2 +-
+ winsup/utils/Makefile.am     | 4 ++--
+ 4 files changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/winsup/cygserver/Makefile.am b/winsup/cygserver/Makefile.am
+index ec7a62240..d83001510 100644
+--- a/winsup/cygserver/Makefile.am
++++ b/winsup/cygserver/Makefile.am
+@@ -36,7 +36,7 @@ cygserver_SOURCES = \
+ 
+ cygserver_CXXFLAGS = $(cygserver_flags) -D__OUTSIDE_CYGWIN__
+ cygserver_LDADD = -lntdll
+-cygserver_LDFLAGS = -static -static-libgcc
++cygserver_LDFLAGS = -static -static-libgcc -Wl,--disable-high-entropy-va
+ 
+ # Note: the objects in libcygserver are built without -D__OUTSIDE_CYGWIN__,
+ # unlike cygserver.exe
+diff --git a/winsup/cygwin/Makefile.am b/winsup/cygwin/Makefile.am
+index 4e8f19874..b00b5b080 100644
+--- a/winsup/cygwin/Makefile.am
++++ b/winsup/cygwin/Makefile.am
+@@ -616,7 +616,8 @@ $(NEW_DLL_NAME): $(LDSCRIPT) libdll.a $(VERSION_OFILES) $(LIBSERVER)\
+ 		  $(newlib_build)/libm.a $(newlib_build)/libc.a
+ 	$(AM_V_CXXLD)$(CXX) $(CXXFLAGS) \
+ 	-mno-use-libstdc-wrappers \
+-	-Wl,--gc-sections -nostdlib -Wl,-T$(LDSCRIPT) -static \
++	-Wl,--gc-sections -nostdlib -Wl,-T$(LDSCRIPT) \
++	-Wl,--dynamicbase -Wl,--disable-high-entropy-va -static \
+ 	$${SOURCE_DATE_EPOCH:+-Wl,--no-insert-timestamp} \
+ 	-Wl,--heap=0 -Wl,--out-implib,msysdll.a -shared -o $@ \
+ 	-e @DLL_ENTRY@ $(DEF_FILE) \
+diff --git a/winsup/testsuite/Makefile.am b/winsup/testsuite/Makefile.am
+index 8f2967a6d..409c88846 100644
+--- a/winsup/testsuite/Makefile.am
++++ b/winsup/testsuite/Makefile.am
+@@ -322,7 +322,7 @@ LDADD_FOR_TESTDLL = $(builddir)/../cygwin/libcygwin.a -lgcc -lkernel32 -luser32
+ 
+ # flags for test executables
+ AM_CPPFLAGS = -I$(srcdir)/libltp/include
+-AM_LDFLAGS = $(LDFLAGS_FOR_TESTDLL)
++AM_LDFLAGS = $(LDFLAGS_FOR_TESTDLL) -Wl,--disable-high-entropy-va
+ LDADD = $(builddir)/libltp.a $(builddir)/../cygwin/binmode.o $(LDADD_FOR_TESTDLL)
+ 
+ # additional flags for specific test executables
+diff --git a/winsup/utils/Makefile.am b/winsup/utils/Makefile.am
+index 57a4f377c..5adb3695e 100644
+--- a/winsup/utils/Makefile.am
++++ b/winsup/utils/Makefile.am
+@@ -73,14 +73,14 @@ tzmap.h:
+ 
+ BUILT_SOURCES = tzmap.h
+ 
+-AM_LDFLAGS = -static -Wl,--enable-auto-import
++AM_LDFLAGS = -static -Wl,--enable-auto-import -Wl,--disable-high-entropy-va
+ LDADD = -lnetapi32
+ 
+ cygpath_CXXFLAGS = -fno-threadsafe-statics $(AM_CXXFLAGS)
+ cygpath_LDADD = $(LDADD) -luserenv -lntdll
+ dumper_CXXFLAGS = -I$(top_srcdir)/../include $(AM_CXXFLAGS)
+ dumper_LDADD = $(LDADD) -lpsapi -lntdll -lbfd @BFD_LIBS@
+-dumper_LDFLAGS =
++dumper_LDFLAGS = -Wl,--disable-high-entropy-va
+ ldd_LDADD = $(LDADD) -lpsapi -lntdll
+ mount_CXXFLAGS = -DFSTAB_ONLY $(AM_CXXFLAGS)
+ minidumper_LDADD = $(LDADD) -ldbghelp
