@@ -1,7 +1,7 @@
 # Maintainer: Bin Meng <bmeng.cn@gmail.com>
 
 pkgname=u-boot-tools
-pkgver=2026.07
+pkgver=2026.10
 pkgrel=1
 pkgdesc="U-Boot Tools"
 arch=('i686' 'x86_64')
@@ -14,26 +14,37 @@ msys2_references=(
 license=('spdx:GPL-2.0-only')
 depends=('dtc' 'openssl')
 makedepends=('make' 'gcc' 'openssl-devel' 'libgnutls-devel' 'libuuid-devel')
-source=(https://ftp.denx.de/pub/u-boot/u-boot-${pkgver}.tar.bz2{,.sig})
+source=(https://git.u-boot-project.org/u-boot/u-boot/-/releases/v${pkgver}/downloads/u-boot-${pkgver}.tar.bz2{,.sig}
+        # https://github.com/u-boot/u-boot/pull/918
+        # https://github.com/openembedded/openembedded-core/commit/e7692ccf13484c8064f45dbaecd67ed8ea119cbc
+        "openssl-provider.patch::https://raw.githubusercontent.com/openembedded/openembedded-core/e7692ccf13484c8064f45dbaecd67ed8ea119cbc/meta/recipes-bsp/u-boot/files/0001-Add-support-for-OpenSSL-Provider-API.patch"
+        # Close the PEM file and reject failed provider key loads instead of using a NULL key.
+        0001-fix-provider-key-loading.patch)
 noextract=("u-boot-${pkgver}.tar.bz2")
-sha256sums=('78e8bfc382fe388f9b55aa1daf8c563522a037779b5d4c349d1415e381f1243e'
-            'SKIP')
+sha256sums=('3f856da3cbbc93af51ff95fde18588a348b4a26723b01d9841e999d988481015'
+            'SKIP'
+            '058f98f458e7d22c649d9f0217788054b637e9e075156847b4b8e22ebfd81aa7'
+            'af6af33de09c3b5262d257e4eb36d5a670a82329842658ff7243147c51442fdc')
 validpgpkeys=('F3CEA8743D60E0192F9B4C7A2BE2A0F50ABFE40A') # Thomas Rini <trini@konsulko.com>
 
 prepare() {
   # workaround an issue of bsdtar for extracting symbolic links in the tarball
   bsdtar -xzf ${srcdir}/u-boot-${pkgver}.tar.bz2 -C $srcdir || true
   bsdtar -xzf ${srcdir}/u-boot-${pkgver}.tar.bz2 -C $srcdir || true
+
+  cd ${srcdir}/u-boot-v${pkgver}
+  patch -p1 -i ${srcdir}/openssl-provider.patch
+  patch -p1 -i ${srcdir}/0001-fix-provider-key-loading.patch
 }
 
 build() {
-  cd ${srcdir}/u-boot-${pkgver}
+  cd ${srcdir}/u-boot-v${pkgver}
   make tools-only_defconfig tools-only NO_SDL=1
 }
 
 package() {
   mkdir -p ${pkgdir}/usr/bin
-  cd ${srcdir}/u-boot-${pkgver}
+  cd ${srcdir}/u-boot-v${pkgver}
   cp -f tools/dumpimage.exe ${pkgdir}/usr/bin/
   cp -f tools/fdt_add_pubkey.exe ${pkgdir}/usr/bin/
   cp -f tools/fdtgrep.exe ${pkgdir}/usr/bin/
