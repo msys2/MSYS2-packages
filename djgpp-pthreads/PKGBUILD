@@ -1,0 +1,120 @@
+# Contributer: Alexander Bruines <alexander.bruines@gmail.com>
+
+pkgbase=djgpp-pthreads
+pkgname=('djgpp-pthreads' 'djgpp-pthreads-common' 'djgpp-pthreads-i586' 'djgpp-pthreads-i686' 'djgpp-pthreads-info')
+pkgver=3.0
+pkgrel=1
+license=('spdx:GPL-2.0-only')
+url="https://pthread-djgpp.sourceforge.io/"
+arch=('x86_64')
+makedepends=('autoconf' 'autoconf2.69' 'automake' 'automake1.15' 'bison'
+ 'cmake' 'flex' 'gcc' 'gmp-devel' 'groff' 'make' 'mpc-devel' 'mpfr-devel'
+ 'ninja' 'patch' 'sed' 'tar' 'texinfo' 'unzip' 'xz' 'zip' 'zlib' 'zstd' )
+options=('!buildflags' '!strip')
+source=("https://sourceforge.net/projects/pthread-djgpp/files/djgpp-builder-v${pkgver}/djgpp-builder-v${pkgver}.tar.gz"
+        '0000-msys2-makepkg-fixups.patch')
+sha256sums=('2b3e49e0a8b7c4a589e3ba24800a715be5a5e55c3f816922226f0e6d41180b77'
+            'a5ccf7ee3fd316c46704a41894446827409f79a49eb798fe96919e6350fe4873')
+_common_files=(
+  'opt/bin/bin2h.exe'
+  'opt/bin/djasm.exe'
+  'opt/bin/dtou.exe'
+  'opt/bin/dxegen.exe'
+  'opt/bin/stubedit.exe'
+  'opt/bin/stubify.exe'
+  'opt/bin/utod.exe'
+  'opt/lib/bfd-plugins/libdep.a'
+  'opt/share/gcc-16/python/libstdcxx/__init__.py'
+  'opt/share/gcc-16/python/libstdcxx/v6/__init__.py'
+  'opt/share/gcc-16/python/libstdcxx/v6/printers.py'
+  'opt/share/gcc-16/python/libstdcxx/v6/xmethods.py')
+_doc_files=(
+  'opt/share/info/as.info'
+  'opt/share/info/bfd.info'
+  'opt/share/info/binutils.info'
+  'opt/share/info/cpp.info'
+  'opt/share/info/cppinternals.info'
+  'opt/share/info/ctf-spec.info'
+  'opt/share/info/dir'
+  'opt/share/info/gcc.info'
+  'opt/share/info/gccinstall.info'
+  'opt/share/info/gccint.info'
+  'opt/share/info/gfortran.info'
+  'opt/share/info/gprof.info'
+  'opt/share/info/ld.info'
+  'opt/share/info/ldint.info'
+  'opt/share/info/libquadmath.info'
+  'opt/share/info/sframe-spec.info'
+  'opt/share/man/man7/fsf-funding.7'
+  'opt/share/man/man7/gfdl.7'
+  'opt/share/man/man7/gpl.7')
+
+prepare() {
+  # Extract source
+  tar -xzf "${srcdir}/djgpp-builder-v${pkgver}.tar.gz" -C "${srcdir}"
+  # Small fixup for building the project using makepkg.
+  cd "${srcdir}" && patch -f -N -p1 -i "${source[1]}"
+}
+
+build() {
+  # Build DJGPP for i586 target
+  cmake -G Ninja -S "${srcdir}" -B "${srcdir}/build-i586" \
+    -DDJGPP_MARCH=i586 -DDJGPP_MTUNE=i586 -DHAVE_STATIC=ON -DHAVE_WATT32=OFF \
+    -DPTHREAD_SIMULATE_PIPE=OFF -DCMAKE_INSTALL_PREFIX=/opt
+  CC= CXX= CONFIG_SITE=/dev/null WANT_AUTOCONF='2.69' \
+    cmake --build "${srcdir}/build-i586"
+  # Build DJGPP for i686 target
+  cmake -G Ninja -S "${srcdir}" -B "${srcdir}/build-i686" \
+    -DDJGPP_MARCH=i686 -DDJGPP_MTUNE=i686 -DHAVE_STATIC=ON -DHAVE_WATT32=OFF \
+    -DPTHREAD_SIMULATE_PIPE=OFF -DCMAKE_INSTALL_PREFIX=/opt
+  CC= CXX= CONFIG_SITE=/dev/null WANT_AUTOCONF='2.69' \
+    cmake --build "${srcdir}/build-i686"
+}
+
+package_djgpp-pthreads() {
+  pkgdesc="DJGPP cross-compiler with POSIX threads and std::thread (i586+i686)"
+  depends=('djgpp-pthreads-i586' 'djgpp-pthreads-i686')
+}
+
+package_djgpp-pthreads-common() {
+  pkgdesc="DJGPP cross-compiler with POSIX threads and std::thread (common files)"
+  # Extract only the DJGPP Host utilities and package them seperately...
+  tar \
+    -C "${pkgdir}" \
+    -xf "${srcdir}/build-i586/djgpp205-i586_gcc-16.2.0-pthread.tar.xz" \
+    "${_common_files[@]}"
+}
+
+package_djgpp-pthreads-i586() {
+  pkgdesc="DJGPP cross-compiler with POSIX threads and std::thread (i586)"
+  depends=('djgpp-pthreads-common')
+  optdepends=('djgpp-pthreads-info')
+  # Extract i586-pc-msdosdjgpp version
+  tar -C "${pkgdir}" -xf "${srcdir}/build-i586/djgpp205-i586_gcc-16.2.0-pthread.tar.xz"
+  # Remove files that should go in the -common or -info package...
+  cd "${pkgdir}" && rm -f "${_common_files[@]}" "${_doc_files[@]}"
+  # Remove empty directories from the MSYS2 package...
+  find "${pkgdir}" -type d -empty -delete
+}
+
+package_djgpp-pthreads-i686() {
+  pkgdesc="DJGPP cross-compiler with POSIX threads and std::thread (i686)"
+  depends=('djgpp-pthreads-common')
+  optdepends=('djgpp-pthreads-info')
+  # Extract i686-pc-msdosdjgpp version
+  tar -C "${pkgdir}" -xf "${srcdir}/build-i686/djgpp205-i686_gcc-16.2.0-pthread.tar.xz"
+  # Remove files that should go in the -common or -info package...
+  cd "${pkgdir}" && rm -f "${_common_files[@]}" "${_doc_files[@]}"
+  # Remove empty directories from the MSYS2 package...
+  find "${pkgdir}" -type d -empty -delete
+}
+
+package_djgpp-pthreads-info() {
+  pkgdesc="DJGPP cross-compiler with POSIX threads and std::thread (info pages)"
+  depends=('info')
+  # Extract the documentation and package it seperately...
+  mkdir -p "${pkgdir}/opt/share"
+  unzip "${srcdir}/build-i586/djdev205-stage3.zip" "info/*" -d "${pkgdir}/opt/share"
+}
+
+# ex:set ft=sh
