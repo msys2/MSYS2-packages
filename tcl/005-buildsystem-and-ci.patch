@@ -36,58 +36,64 @@
 +          TESTFLAGS: -skip io-53.4.1
 --- a/.github/workflows/win-build.yml
 +++ b/.github/workflows/win-build.yml
-@@ -3,43 +3,6 @@ on: [push]
+@@ -11,49 +11,6 @@
  env:
    ERROR_ON_FAILURES: 1
  jobs:
 -  msvc:
--    runs-on: windows-latest
+-    runs-on: windows-2025
 -    defaults:
 -      run:
 -        shell: powershell
 -        working-directory: win
 -    strategy:
 -      matrix:
--        cfgopt:
+-        config:
 -          - ""
 -          - "OPTS=static,msvcrt"
+-          - "OPTS=static,staticpkg,msvcrt"
 -          - "OPTS=symbols"
--          - "OPTS=memdbg"
+-          - "OPTS=symbols STATS=compdbg,memdbg"
 -    # Using powershell means we need to explicitly stop on failure
 -    steps:
 -      - name: Checkout
--        uses: actions/checkout@v2
+-        uses: actions/checkout@v6
+-        timeout-minutes: 5
 -      - name: Init MSVC
 -        uses: ilammy/msvc-dev-cmd@v1
--      - name: Build ${{ matrix.cfgopt }}
+-        timeout-minutes: 5
+-      - name: Build ${{ matrix.config }}
 -        run: |
--          &nmake -f makefile.vc ${{ matrix.cfgopt }} all
+-          &nmake -f makefile.vc ${{ matrix.config }} all
 -          if ($lastexitcode -ne 0) {
 -             throw "nmake exit code: $lastexitcode"
 -          }
--      - name: Build Test Harness ${{ matrix.cfgopt }}
+-        timeout-minutes: 5
+-      - name: Build Test Harness ${{ matrix.config }}
 -        run: |
--          &nmake -f makefile.vc ${{ matrix.cfgopt }} tcltest
+-          &nmake -f makefile.vc ${{ matrix.config }} tcltest
 -          if ($lastexitcode -ne 0) {
 -             throw "nmake exit code: $lastexitcode"
 -          }
--      - name: Run Tests ${{ matrix.cfgopt }}
+-        timeout-minutes: 5
+-      - name: Run Tests ${{ matrix.config }}
 -        run: |
--          &nmake -f makefile.vc ${{ matrix.cfgopt }} test
+-          &nmake -f makefile.vc ${{ matrix.config }} test
 -          if ($lastexitcode -ne 0) {
 -             throw "nmake exit code: $lastexitcode"
 -          }
+-        timeout-minutes: 30
    gcc:
-     runs-on: windows-latest
+     runs-on: windows-2025
      defaults:
 --- a/manifest.uuid
 +++ b/manifest.uuid
 @@ -1 +1 @@
--553f5049a7a3982bbd5ec1f9349f8105c1126f8ea696ec332e16a3cbb3d01323
+-b0a0551c13a3dbba2dac30ab9b8df30d91cc1dff292f170e19980a5e4168df83
 +2e219577fb3767015386d80e0b14853a8a20b5b5e4e6055eeb2f9d59d509a61a
 --- a/unix/Makefile.in
 +++ b/unix/Makefile.in
-@@ -724,9 +724,6 @@ ${LIB_FILE}: ${STUB_LIB_FILE} ${OBJS}
+@@ -637,9 +637,6 @@
  	@MAKE_LIB@
  
  ${STUB_LIB_FILE}: ${STUB_LIB_OBJS}
@@ -97,48 +103,29 @@
  	rm -f $@
  	@MAKE_STUB_LIB@
  
-@@ -1161,6 +1158,10 @@ tclAsync.o: $(GENERIC_DIR)/tclAsync.c
- tclBasic.o: $(GENERIC_DIR)/tclBasic.c $(COMPILEHDR) $(MATHHDRS) $(NREHDR)
- 	$(CC) -c $(CC_SWITCHES) $(GENERIC_DIR)/tclBasic.c
- 
-+tclUuid.h: $(TOP_DIR)/manifest.uuid
-+	echo "#define TCL_VERSION_UUID \\" >$@
-+	cat $(TOP_DIR)/manifest.uuid >>$@
-+
- tclBinary.o: $(GENERIC_DIR)/tclBinary.c
- 	$(CC) -c $(CC_SWITCHES) $(GENERIC_DIR)/tclBinary.c
- 
-@@ -1215,7 +1216,7 @@ tclEnsemble.o: $(GENERIC_DIR)/tclEnsembl
- tclEnv.o: $(GENERIC_DIR)/tclEnv.c
- 	$(CC) -c $(CC_SWITCHES) $(GENERIC_DIR)/tclEnv.c
- 
--tclEvent.o: $(GENERIC_DIR)/tclEvent.c
-+tclEvent.o: $(GENERIC_DIR)/tclEvent.c tclUuid.h
- 	$(CC) -c $(CC_SWITCHES) $(GENERIC_DIR)/tclEvent.c
- 
- tclExecute.o: $(GENERIC_DIR)/tclExecute.c $(COMPILEHDR) $(MATHHDRS) $(NREHDR)
-@@ -2045,8 +2046,8 @@ $(UNIX_DIR)/tclConfig.h.in: $(MAC_OSX_DI
- 	cd $(MAC_OSX_DIR); autoheader; touch $@
+@@ -1978,10 +1975,7 @@
  
  $(TOP_DIR)/manifest.uuid:
--	printf "git." >$(TOP_DIR)/manifest.uuid
--	git rev-parse HEAD >>$(TOP_DIR)/manifest.uuid
-+	printf "git-" >$(TOP_DIR)/manifest.uuid
+ 	printf "git-" >$(TOP_DIR)/manifest.uuid
+-	(cd $(TOP_DIR); git rev-parse HEAD >>$(TOP_DIR)/manifest.uuid || \
+-	    (printf "svn-r" >$(TOP_DIR)/manifest.uuid ; \
+-	    svn info --show-item last-changed-revision >>$(TOP_DIR)/manifest.uuid) || \
+-	    printf "unknown" >$(TOP_DIR)/manifest.uuid)
 +	(cd $(TOP_DIR); git rev-parse HEAD >>$(TOP_DIR)/manifest.uuid)
  
- dist: $(UNIX_DIR)/configure $(UNIX_DIR)/tclConfig.h.in $(UNIX_DIR)/tcl.pc.in $(MAC_OSX_DIR)/configure $(TOP_DIR)/manifest.uuid genstubs dist-packages ${NATIVE_TCLSH}
- 	rm -rf $(DISTDIR)
+ dist: $(UNIX_DIR)/configure $(UNIX_DIR)/tclConfig.h.in $(UNIX_DIR)/tcl.pc.in genstubs \
+ 		$(MAC_OSX_DIR)/configure $(TOP_DIR)/manifest.uuid dist-packages ${NATIVE_TCLSH}
 --- a/unix/tcl.m4
 +++ b/unix/tcl.m4
-@@ -1213,16 +1213,16 @@ AC_DEFUN([SC_CONFIG_CFLAGS], [
+@@ -1209,16 +1209,17 @@
  	    if test "x${TCL_THREADS}" = "x0"; then
  		AC_MSG_ERROR([CYGWIN compile is only supported with --enable-threads])
  	    fi
 -	    do64bit_ok=yes
 -	    if test "x${SHARED_BUILD}" = "x1"; then
--		echo "running cd ../win; ${CONFIG_SHELL-/bin/sh} ./configure $ac_configure_args"
+-		echo "running cd ../win; ${CONFIG_SHELL-/bin/sh} ./configure $ac_configure_args --enable-64bit --host=x86_64-w64-mingw32"
 -		# The eval makes quoting arguments work.
--		if cd ../win; eval ${CONFIG_SHELL-/bin/sh} ./configure $ac_configure_args; cd ../unix
+-		if cd ../win; eval ${CONFIG_SHELL-/bin/sh} ./configure $ac_configure_args --enable-64bit --host=x86_64-w64-mingw32; cd ../unix
 -		then :
 -		else
 -		    { echo "configure: error: configure failed for ../win" 1>&2; exit 1; }
@@ -154,12 +141,13 @@
 +		[do64bit_ok=no],
 +		[do64bit_ok=yes])
 +	    AC_MSG_RESULT([$do64bit_ok])
++			SHARED_LIB_SUFFIX='${VERSION}.dll.a'
  	    ;;
  	dgux*)
  	    SHLIB_CFLAGS="-K PIC"
 --- a/win/Makefile.in
 +++ b/win/Makefile.in
-@@ -150,13 +150,13 @@ TCL_DLL_FILE		= @TCL_DLL_FILE@
+@@ -153,14 +153,14 @@
  TCL_LIB_FILE		= @TCL_LIB_FILE@
  DDE_DLL_FILE		= tcldde$(DDEVER)${DLLSUFFIX}
  DDE_LIB_FILE		= @LIBPREFIX@tcldde$(DDEVER)${DLLSUFFIX}${LIBSUFFIX}
@@ -170,30 +158,26 @@
  TEST_DLL_FILE		= tcltest$(VER)${DLLSUFFIX}
  TEST_EXE_FILE		= tcltest${EXESUFFIX}
  TEST_LIB_FILE		= @LIBPREFIX@tcltest$(VER)${DLLSUFFIX}${LIBSUFFIX}
- TEST_LOAD_PRMS		= package ifneeded dde 1.4.4 [list load [file normalize ${DDE_DLL_FILE}] Dde];\
--			  package ifneeded registry 1.3.5 [list load [file normalize ${REG_DLL_FILE}] Registry]
-+			  package ifneeded registry 1.3.6 [list load [file normalize ${REG_DLL_FILE}] Registry]
- TEST_LOAD_FACILITIES	= package ifneeded Tcltest ${VERSION}@TCL_PATCH_LEVEL@ [list load [file normalize ${TEST_DLL_FILE}]];\
+ TEST_LOAD_PRMS		= lappend ::auto_path {$(ROOT_DIR_WIN_NATIVE)/tests};\
+ 			  package ifneeded dde 1.4.6 [list load ${DDE_DLL_FILE} Dde];\
+-			  package ifneeded registry 1.3.5 [list load ${REG_DLL_FILE} Registry]
++			  package ifneeded registry 1.3.6 [list load ${REG_DLL_FILE} Registry]
+ TEST_LOAD_FACILITIES	= package ifneeded Tcltest ${VERSION}@TCL_PATCH_LEVEL@ [list load ${TEST_DLL_FILE}];\
  			  $(TEST_LOAD_PRMS)
  ZLIB_DLL_FILE		= zlib1.dll
-@@ -579,6 +579,16 @@ tclPkgConfig.${OBJEXT}: tclPkgConfig.c
- 		-DBUILD_tcl \
- 		@DEPARG@ $(CC_OBJNAME)
+@@ -608,10 +608,7 @@
  
-+tclEvent.${OBJEXT}: tclEvent.c tclUuid.h
-+
-+$(TOP_DIR)/manifest.uuid:
-+	printf "git-" >$(TOP_DIR)/manifest.uuid
+ $(TOP_DIR)/manifest.uuid:
+ 	printf "git-" >$(TOP_DIR)/manifest.uuid
+-	(cd '$(TOP_DIR)'; git rev-parse HEAD >>$(TOP_DIR)/manifest.uuid || \
+-	    (printf "svn-r" >$(TOP_DIR)/manifest.uuid ; \
+-	    svn info --show-item last-changed-revision >>$(TOP_DIR)/manifest.uuid) || \
+-	    printf "unknown" >$(TOP_DIR)/manifest.uuid)
 +	git rev-parse HEAD >>$(TOP_DIR)/manifest.uuid
-+
-+tclUuid.h:	$(TOP_DIR)/manifest.uuid
-+	echo "#define TCL_VERSION_UUID \\" >$@
-+	cat $(TOP_DIR)/manifest.uuid >>$@
-+
- # The following objects are part of the stub library and should not be built
- # as DLL objects but none of the symbols should be exported
  
-@@ -631,7 +641,7 @@ install-binaries: binaries
+ tclUuid.h:	$(TOP_DIR)/manifest.uuid
+ 	echo "#define TCL_VERSION_UUID \\" >$@
+@@ -670,7 +667,7 @@
  		else true; \
  		fi; \
  	    done;
@@ -202,7 +186,7 @@
  	    do \
  	    if [ ! -d "$(LIB_INSTALL_DIR)/$$i" ] ; then \
  		echo "Making directory $(LIB_INSTALL_DIR)/$$i"; \
-@@ -665,13 +675,13 @@ install-binaries: binaries
+@@ -704,13 +701,13 @@
  	    fi
  	@if [ -f $(REG_DLL_FILE) ]; then \
  	    echo Installing $(REG_DLL_FILE); \
@@ -217,5 +201,5 @@
 -	    $(COPY) $(REG_LIB_FILE) "$(LIB_INSTALL_DIR)/reg${REGDOTVER}"; \
 +	    $(COPY) $(REG_LIB_FILE) "$(LIB_INSTALL_DIR)/registry${REGDOTVER}"; \
  	    fi
- 
- install-libraries: libraries install-tzdata install-msgs
+ 	@echo "Installing pkg-config file to $(LIB_INSTALL_DIR)/pkgconfig/"
+ 	@$(INSTALL_DATA_DIR) "$(LIB_INSTALL_DIR)/pkgconfig"
