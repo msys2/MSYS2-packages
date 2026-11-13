@@ -80,7 +80,7 @@ if "x%~1" == "x-shell" (
   )
   set LOGINSHELL="%~2"
   call :removequotes LOGINSHELL
-  
+
   set msys2_arg="%~2"
   call :substituteparens msys2_arg
   call :removequotes msys2_arg
@@ -233,8 +233,8 @@ echo                                      directory
 echo     -[use-]full-path                 Use full current PATH variable
 echo                                      instead of trimming to minimal
 echo     -no-start                        Do not use "start" command and
-echo                                      return login shell resulting 
-echo                                      errorcode as this batch file 
+echo                                      return login shell resulting
+echo                                      errorcode as this batch file
 echo                                      resulting errorcode
 echo     -shell SHELL                     Set login shell
 echo     -help ^| --help ^| -? ^| /?         Display this help and exit
