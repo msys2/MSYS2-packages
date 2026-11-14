@@ -1,5 +1,5 @@
---- pacman-contrib-1.4.0/configure.ac.orig	2021-06-06 10:59:55.815788900 +0200
-+++ pacman-contrib-1.4.0/configure.ac	2021-06-06 10:57:04.735607300 +0200
+--- pacman-contrib-v1.13.1/configure.ac.orig	2025-12-12 04:57:19.000000000 +0800
++++ pacman-contrib-v1.13.1/configure.ac	2026-11-14 21:42:42.173095000 +0800
 @@ -62,7 +62,7 @@
  	AC_MSG_ERROR([*** libarchive >= 2.8.0 is needed to build pacman-contrib!]))
  
@@ -9,20 +9,38 @@
  	AC_MSG_ERROR([*** libalpm is needed to build pacman-contrib!]))
  
  PKG_CHECK_VAR(LIBMAKEPKGDIR, [libmakepkg], [libmakepkgdir], ,
---- pacman-contrib-1.0.0/src/Makefile.am.orig	2018-07-06 23:06:38.101782600 +0300
-+++ pacman-contrib-1.0.0/src/Makefile.am	2018-07-06 23:07:26.634558600 +0300
-@@ -86,6 +86,8 @@
+--- pacman-contrib-v1.13.1/src/Makefile.am.orig	2025-12-12 04:57:19.000000000 +0800
++++ pacman-contrib-v1.13.1/src/Makefile.am	2026-11-14 21:42:42.177648300 +0800
+@@ -113,6 +113,8 @@
  	$(LIBARCHIVE_CFLAGS) \
  	$(LIBALPM_CFLAGS)
  
 +AM_LDFLAGS = --static
 +
  edit = sed \
- 	-e 's|@bindir[@]|${bindir}|g' \
+ 	-e 's|@bindir[@]|$(bindir)|g' \
  	-e 's|@sysconfdir[@]|$(sysconfdir)|g' \
---- pacman-contrib-v1.10.5/src/checkupdates.sh.in.orig	2024-03-16 20:28:05.000000000 +0100
-+++ pacman-contrib-v1.10.5/src/checkupdates.sh.in	2024-03-17 12:49:36.397938100 +0100
-@@ -126,10 +126,6 @@
+--- pacman-contrib-v1.13.1/src/checkupdates.sh.in.orig	2025-12-12 04:57:19.000000000 +0800
++++ pacman-contrib-v1.13.1/src/checkupdates.sh.in	2026-11-14 21:44:26.816133400 +0800
+@@ -38,16 +38,7 @@
+ }
+ 
+ runasroot() {
+-	if (( EUID != 0 )); then
+-		if ! type -p sudo; then
+-			error 'Cannot find the sudo binary!'
+-			die "Either install \"sudo\" or run as root."
+-		else
+-			sudo "$@"
+-		fi
+-	else
+-		"$@"
+-	fi
++	"$@"
+ }
+ 
+ usage() {
+@@ -125,10 +116,6 @@
  	unset ALL_OFF BOLD BLUE GREEN RED YELLOW
  fi
  
@@ -33,36 +51,36 @@
  if [[ -z $CHECKUPDATES_DB ]]; then
  	CHECKUPDATES_DB="${TMPDIR:-/tmp}/checkup-db-${UID}/"
  fi
-@@ -148,7 +144,7 @@
+@@ -147,7 +134,7 @@
  if (( SYNC )); then
  	mkdir -p "$CHECKUPDATES_DB"
  	ln -s "${DBPath}/local" "$CHECKUPDATES_DB" &> /dev/null
--	if ! fakeroot -- pacman -Sy --dbpath "$CHECKUPDATES_DB" --logfile /dev/null &> /dev/null; then
-+	if ! pacman -Sy --dbpath "$CHECKUPDATES_DB" --logfile /dev/null &> /dev/null; then
+-	if ! fakeroot -- pacman -Sy --disable-sandbox-filesystem --dbpath "$CHECKUPDATES_DB" --logfile /dev/null &> /dev/null; then
++	if ! pacman -Sy --disable-sandbox-filesystem --dbpath "$CHECKUPDATES_DB" --logfile /dev/null &> /dev/null; then
  		die 'Cannot fetch updates'
  	fi
  fi
---- pacman-contrib-v1.5.1/src/paccache.sh.in.orig	2022-05-04 07:27:40.000000000 +0200
-+++ pacman-contrib-v1.5.1/src/paccache.sh.in	2022-05-06 22:30:33.109514700 +0200
-@@ -28,7 +28,7 @@
- LIBRARY=${LIBRARY:-'@libmakepkgdir@'}
+--- pacman-contrib-v1.13.1/src/paccache.sh.in.orig	2025-12-12 04:57:19.000000000 +0800
++++ pacman-contrib-v1.13.1/src/paccache.sh.in	2026-11-14 21:45:24.993581400 +0800
+@@ -26,7 +26,7 @@
+ declare    LIBRARY=${LIBRARY:-'@libmakepkgdir@'}
  
- declare -a cachedirs=() candidates=() cmdopts=() whitelist=() blacklist=()
--declare -i delete=0 dryrun=0 filecount=0 move=0 needsroot=0 totalsaved=0 verbose=0
-+declare -i delete=0 dryrun=0 filecount=0 move=0 totalsaved=0 verbose=0
- declare -i min_atime=0 min_mtime=0
- declare    delim=$'\n' keep=3 movedir= scanarch=
+ declare -a blacklist cachedirs candidates cmdopts whitelist
+-declare -i delete=0 dryrun=0 filecount=0 keep=3 min_atime=0 min_mtime=0 move=0 needsroot=0 totalsaved=0 verbose=0 QUIET=0 USE_COLOR=1
++declare -i delete=0 dryrun=0 filecount=0 keep=3 min_atime=0 min_mtime=0 move=0 totalsaved=0 verbose=0 QUIET=0 USE_COLOR=1
+ declare    delim=$'\n' movedir scanarch
  
-@@ -137,16 +137,7 @@
+ # Import libmakepkg
+@@ -134,16 +134,7 @@
  m4_include(../lib/size_to_human.sh)
  
- runcmd() {
+ runasroot() {
 -	if (( needsroot && EUID != 0 )); then
--		msg 'Escalating privileges using sudo'
--		if sudo -v &>/dev/null && sudo -l &>/dev/null; then
--			sudo "$@"
+-		if ! type -p sudo; then
+-			error 'Cannot find the sudo binary!'
+-			die 'Either install "sudo" or run as root.'
 -		else
--			die 'Failed to escalate'
+-			sudo "$@"
 -		fi
 -	else
 -		"$@"
@@ -71,7 +89,7 @@
  }
  
  summarize() {
-@@ -340,17 +331,12 @@
+@@ -339,17 +330,12 @@
  if (( move || delete )); then
  	# make it an absolute path since we're about to chdir
  	[[ $movedir && ${movedir:0:1} != '/' ]] && movedir=$PWD/$movedir
@@ -89,68 +107,67 @@
  	# unlikely that this will fail, but better make sure
  	pushd "$cachedir" &>/dev/null || die "failed to chdir to '%s'" "$cachedir"
  
---- pacman-contrib-v1.10.6/src/pacscripts.sh.in.orig	2024-05-10 22:46:19.000000000 +0200
-+++ pacman-contrib-v1.10.6/src/pacscripts.sh.in	2024-05-14 08:06:17.143324200 +0200
-@@ -30,7 +30,7 @@
- error() {
- 	local mesg=$1; shift
- 	# shellcheck disable=SC2059
--	printf "==> $(gettext "ERROR:") ${mesg}\n" "$@" >&2
-+	printf "==> $(/usr/bin/gettext "ERROR:") ${mesg}\n" "$@" >&2
+--- pacman-contrib-v1.13.1/src/pacscripts.sh.in.orig	2025-12-12 04:57:19.000000000 +0800
++++ pacman-contrib-v1.13.1/src/pacscripts.sh.in	2026-11-14 21:46:33.253656900 +0800
+@@ -63,16 +63,7 @@
  }
  
- usage() {
-@@ -64,17 +64,7 @@
- }
- 
- spacman() {
--	if [ $EUID -eq 0 ]; then
--		pacman "$@"
--	else
+ runasroot() {
+-	if (( EUID != 0 )); then
 -		if ! type -p sudo; then
--			error "Cannot find the sudo binary!"
--			error "${myname} requires root privileges. Either install \"sudo\" or run as root."
--			exit 1
+-			error 'Cannot find the sudo binary!'
+-			die "${myname} requires root privileges. Either install \"sudo\" or run as root."
 -		else
--			sudo pacman "$@"
+-			sudo "$@"
 -		fi
+-	else
+-		"$@"
 -	fi
-+	pacman "$@"
++	"$@"
  }
  
  print_db() {
-@@ -93,7 +83,7 @@
+@@ -90,7 +81,7 @@
  }
  
  print_pkg() {
 -	if ! bsdtar -xqOf "$1" .INSTALL 2>/dev/null; then
 +	if ! /usr/bin/bsdtar -xqOf "$1" .INSTALL 2>/dev/null; then
- 		error "Package $1 does not include any .INSTALL script"
- 		return 1
+ 		die "Package $1 does not include any .INSTALL script"
  	fi
-@@ -102,7 +92,7 @@
+ 	echo
+@@ -105,7 +96,7 @@
+ 	fi
  
- print_scriptlet() {
  	if [ -f "$1" ]; then
 -		if bsdtar tf "$1" .PKGINFO &>/dev/null; then
 +		if /usr/bin/bsdtar tf "$1" .PKGINFO &>/dev/null; then
  			print_pkg "$1"
  			return
  		fi
---- pacman-contrib-v1.5.1/src/updpkgsums.sh.in.orig	2022-05-06 22:28:24.662770100 +0200
-+++ pacman-contrib-v1.5.1/src/updpkgsums.sh.in	2022-05-06 22:28:52.172291500 +0200
-@@ -98,7 +98,7 @@
- 
- trap "rm -rf '$BUILDDIR' '$newbuildfile'" EXIT
+--- pacman-contrib-v1.13.1/src/updpkgsums.sh.in.orig	2025-12-12 04:57:19.000000000 +0800
++++ pacman-contrib-v1.13.1/src/updpkgsums.sh.in	2026-11-14 21:42:42.191595600 +0800
+@@ -109,7 +109,7 @@
+ trap 'rm -rf "$BUILDDIR" "$newbuildfile"' EXIT
+ # shellcheck disable=SC2154 # known_hash_algos imported via libmakepkg
  sumtypes=$(IFS='|'; echo "${known_hash_algos[*]}")
 -newsums=$(makepkg -g -p "$buildfile" "${MAKEPKG_OPTS[@]}") || die 'Failed to generate new checksums'
 +newsums=$(MINGW_PACKAGE_PREFIX=mingw-w64-i686 makepkg -g -p "$buildfile" "${MAKEPKG_OPTS[@]}") || die 'Failed to generate new checksums'
  
  if [[ -z $newsums ]]; then
  	die "$buildfile does not contain sources to update"
---- pacman-contrib-v1.5.3/src/pacdiff.sh.in.orig	2022-06-09 20:11:26.000000000 +0200
-+++ pacman-contrib-v1.5.3/src/pacdiff.sh.in	2022-06-28 09:14:25.345624300 +0200
-@@ -122,7 +122,7 @@
+--- pacman-contrib-v1.13.1/src/pacdiff.sh.in.orig	2025-12-12 04:57:19.000000000 +0800
++++ pacman-contrib-v1.13.1/src/pacdiff.sh.in	2026-11-14 21:48:23.504882000 +0800
+@@ -154,7 +154,7 @@
+ 		base="$(mktemp "$tempdir"/"$basename.base.XXX")"
+ 		merged="$(mktemp "$tempdir"/"$basename.merged.XXX")"
+ 
+-		if ! bsdtar -xqOf "$base_tar" "${file#/}" >"$base"; then
++		if ! /usr/bin/bsdtar -xqOf "$base_tar" "${file#/}" >"$base"; then
+ 			msg2 "Unable to extract the previous version of this file. Falling back to 2-way diff."
+ 			two_way_diff
+ 		else
+@@ -191,7 +191,7 @@
  	base="$(mktemp "$tempdir"/"$basename.base.XXX")"
  	merged="$(mktemp "$tempdir"/"$basename.merged.XXX")"
  
