@@ -1,0 +1,106 @@
+--- origsrc/procps-v4.0.7/src/pgrep.c
++++ src/procps-v4.0.7/src/pgrep.c
+@@ -41,7 +41,9 @@
+ #include <getopt.h>
+ #include <stdbool.h>
+ #include <time.h>
++#if defined(HAVE_PROCESS_MRELEASE)
+ #include <sys/syscall.h>
++#endif
+ #include <sys/mman.h>
+ 
+ #ifdef ENABLE_PIDWAIT
+@@ -177,7 +179,9 @@
+         fputs(_(" -H, --require-handler     match only if signal handler is present\n"), fp);
+         fputs(_(" -q, --queue <value>       integer value to be sent with the signal\n"), fp);
+         fputs(_(" -e, --echo                display what is killed\n"), fp);
++#if defined(HAVE_PROCESS_MRELEASE)
+         fputs(_(" -m, --mrelease            release process memory immediately after kill\n"), fp);
++#endif
+         break;
+ #ifdef ENABLE_PIDWAIT
+     case PIDWAIT:
+@@ -989,6 +993,8 @@
+     return -1;
+ }
+ 
++#ifndef __CYGWIN__
++
+ #if !defined(HAVE_PIDFD_OPEN)
+ 
+ #ifndef SYS_pidfd_open
+@@ -1038,6 +1045,8 @@
+ }
+ #endif
+ 
++#endif /*__CYGWIN__*/
++
+ static void parse_opts (int argc, char **argv)
+ {
+     char opts[64] = "";
+@@ -1299,9 +1308,11 @@
+             require_handler = true;
+             ++criteria_count;
+             break;
++#if defined(HAVE_PROCESS_MRELEASE)
+         case 'm':
+             opt_mrelease = true;
+             break;
++#endif
+         case 'Q':
+             opt_shell_quote = 1;
+             break;
+@@ -1358,6 +1369,7 @@
+ 
+ inline static int execute_kill(int pidfd, pid_t pid, int sig_num)
+ {
++#ifdef HAVE_SYS_PIDFD_H
+     if (pidfd >= 0) {
+         siginfo_t sinfo;
+         int rc;
+@@ -1374,6 +1386,7 @@
+         if (rc == 0 || errno != ENOSYS)
+             return rc;
+     } // ENOSYS will fall through to below
++#endif
+     if (use_sigqueue)
+         return sigqueue(pid, sig_num, sigval);
+     else
+@@ -1419,13 +1432,16 @@
+     case PKILL:
+         for (i = 0; i < num; i++) {
+             int pidfd = -1;
++#ifdef HAVE_SYS_PIDFD_H
+             pidfd = pidfd_open(procs[i].num, 0);
+             if (opt_mrelease && pidfd < 0)
+                 err(EXIT_FAILURE, _("pidfd_open for process %ld failed"), procs[i].num);
++#endif
+             if (execute_kill (pidfd, procs[i].num, opt_signal) != -1) {
+                 if (opt_echo)
+                     printf(_("%s killed (pid %lu)\n"), procs[i].str, procs[i].num);
+                 kill_count++;
++#if defined(HAVE_PROCESS_MRELEASE)
+                 if (opt_mrelease) {
+                     int res = process_mrelease(pidfd, 0);
+                     if (res != 0 && errno != ESRCH) {
+@@ -1434,6 +1450,7 @@
+                     }
+                     close(pidfd);
+                 }
++#endif
+                 continue;
+             }
+             if (errno==ESRCH)
+
+--- origsrc/procps-v4.0.7/library/readproc.c
++++ src/procps-v4.0.7/library/readproc.c
+@@ -35,7 +35,9 @@
+ #include <dirent.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#if defined(HAVE_PROCESS_MRELEASE)
+ #include <sys/syscall.h>
++#endif
+ #include <limits.h>
+ #include <stdint.h>
+ #ifdef WITH_SYSTEMD
