@@ -1,52 +1,59 @@
 # Maintainer: Andrea Zagli <andrea.zagli.free@gmail.com>
 
 pkgname=patchutils
-pkgver=0.4.3
+pkgver=0.4.5
 pkgrel=1
 pkgdesc="Utilities to work with patches"
 arch=('i686' 'x86_64')
 url="http://cyberelk.net/tim/software/patchutils/"
 msys2_repository_url="https://github.com/twaugh/patchutils"
 license=('spdx:GPL-2.0-or-later')
-source=("https://cyberelk.net/tim/data/patchutils/stable/patchutils-${pkgver}.tar.xz"{,.sig}
-        '0001-patchutils-0.4.3_interdiff.c-fix-MEMCPY-arguments.patch')
-sha256sums=('0efc96a9565fd156fc1064fdcc54c82b6229db0d402827c4c48b02f6ef956445'
-            'SKIP'
-            'da5eefc0bb7493e63ad940870f35cd8fd896fdbbc4b468f79eac0d6527963bed')
-depends=('pcre2')
 conflicts=('bash-completion<2.17.0-2')
-makedepends=('pcre2-devel' 'autotools' 'gcc' 'xmlto' 'docbook-xsl')
+depends=('libpcre2posix')
+optdepends=(
+  'python: for patchview'
+)
+makedepends=(
+  'autotools'
+  'gcc'
+  'pcre2-devel'
+  'xmlto'
+)
+source=(
+  "https://cyberelk.net/tim/data/patchutils/stable/patchutils-${pkgver}.tar.xz"{,.sig}
+  '0001-patchview-script-exeext.patch'
+)
+sha256sums=('8386a35a4d2d3cbc28fdcc93c5be007c382c78e3ee079070139f0d822e013325'
+            'SKIP'
+            '34796af26fbe4853a6c7b73dc13587de5adb9bb1fb246c833a8483120891a96c')
 validpgpkeys=('4629AFE960EC20BEC12E3104B7C20D079491EA63')
 
 prepare() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  patch -p1 -i '../0001-patchutils-0.4.3_interdiff.c-fix-MEMCPY-arguments.patch'
+  cd "${pkgname}-${pkgver}"
 
-  autoreconf -vfi
+  patch -Np1 -i "${srcdir}/0001-patchview-script-exeext.patch"
+
+  autoreconf -fiv
 }
 
 build() {
-  mkdir -p ${srcdir}/build-${pkgname}-${pkgver}
-  cd ${srcdir}/build-${pkgname}-${pkgver}
+  mkdir -p "build-${pkgname}-${pkgver}" && cd "build-${pkgname}-${pkgver}"
 
-  ../${pkgname}-${pkgver}/configure -C \
+  ../${pkgname}-${pkgver}/configure \
     --with-pcre2
 
   make
 }
 
 check() {
-  cd ${srcdir}/build-${pkgname}-${pkgver}
-  # patchutils 0.4.3: all tests succeed.
+  cd "build-${pkgname}-${pkgver}"
+  # patchutils 0.4.5: all tests succeed.
   make check
 }
 
 package() {
-  cd ${srcdir}/build-${pkgname}-${pkgver}
-  make DESTDIR=$pkgdir install
+  cd "build-${pkgname}-${pkgver}"
+  make DESTDIR="${pkgdir}" install
 
-  # license
-  mkdir -p ${pkgdir}/usr/share/licenses/${pkgname}/
-  cd ${srcdir}/${pkgname}-${pkgver}/
-  cp -v COPYING ${pkgdir}/usr/share/licenses/${pkgname}/
+  install -Dm644 "${srcdir}/${pkgname}-${pkgver}/COPYING" -t "${pkgdir}/usr/share/licenses/${pkgname}/"
 }
