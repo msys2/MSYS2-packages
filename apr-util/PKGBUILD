@@ -2,54 +2,67 @@
 
 pkgname=('apr-util' 'apr-util-devel')
 pkgver=1.6.5
-pkgrel=1
+pkgrel=2
 pkgdesc="The Apache Portable Runtime"
 arch=('i686' 'x86_64')
 url="https://apr.apache.org/"
 msys2_references=(
   "cpe: cpe:/a:apache:apr-util"
 )
-makedepends=('apr-devel' 'libexpat-devel' 'libsqlite-devel' 'autotools' 'gcc' 'libxcrypt-devel')
+makedepends=(
+  'apr-devel'
+  'autotools'
+  'gcc'
+  'libexpat-devel'
+  'libiconv-devel'
+  'libsqlite-devel'
+  'libxcrypt-devel'
+)
 options=('!libtool')
 license=('spdx:Apache-2.0')
-source=("https://archive.apache.org/dist/apr/apr-util-${pkgver}.tar.bz2"
-        plugins.patch)
+source=(
+  "https://archive.apache.org/dist/apr/apr-util-${pkgver}.tar.bz2"
+  'plugins.patch'
+  '0001-fix-parallel-module-build.patch'
+)
 sha256sums=('96de1dd6f6a0476d2d2e7964926d8c1ddc3bb0e210e1b1812d3ba5a454a392e2'
-            '3280d6ed8e577b626e60d495856d16f6944c3144c495fe9ed8cad6b39332824c')
+            '3280d6ed8e577b626e60d495856d16f6944c3144c495fe9ed8cad6b39332824c'
+            'af734c9b00e7728ed3c7c3c37772f9942fe8afead2a892789efa4a9ecfdfc58e')
 
 prepare() {
-  cd "${srcdir}/apr-util-${pkgver}"
+  cd "apr-util-${pkgver}"
 
-  patch -p1 -i ${srcdir}/plugins.patch
+  patch -Np1 -i ${srcdir}/plugins.patch
+  patch -Np1 -i ${srcdir}/0001-fix-parallel-module-build.patch
 
-  autoreconf -fi
+  autoreconf -fiv
 }
 
 build() {
-  cd "${srcdir}/apr-util-${pkgver}"
+  cd "apr-util-${pkgver}"
 
   export MSYSTEM=CYGWIN
   ./configure \
-    --build=${CHOST} \
     --prefix=/usr \
     --with-apr=/usr \
     --with-expat=/usr \
+    --with-iconv=/usr \
+    --with-sqlite3=/usr \
     --without-gdbm \
     --without-ldap \
-    --without-pgsql \
-    --with-sqlite3=/usr
+    --without-pgsql
 
-  make -j1
+  make
   make DESTDIR="${srcdir}/dest" install
 }
 
 check() {
-  cd "${srcdir}/apr-util-${pkgver}"
-  make -j1 check
+  cd "apr-util-${pkgver}"
+  make check
 }
 
 package_apr-util() {
-  depends=('apr' 'expat' 'libsqlite' 'libxcrypt')
+  depends=('apr' 'expat' 'libiconv' 'libsqlite' 'libxcrypt')
   groups=('libraries')
 
   mkdir -p ${pkgdir}/usr/bin
