@@ -1,9 +1,9 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname='rebase'
-pkgver=4.5.0
+pkgver=4.6.6
 _ver="${pkgver//./-}"
-pkgrel=5
+pkgrel=1
 pkgdesc='The Cygwin rebase distribution contains four utilities, rebase, rebaseall, peflags, and peflagsall'
 arch=('i686' 'x86_64')
 url='https://www.cygwin.com/'
@@ -26,53 +26,43 @@ makedepends=(
   'gzip'
   'sed'
 )
-# options=('debug' '!strip')
 source=(
   "${pkgname}-${pkgver}::git://sourceware.org/git/cygwin-apps/rebase.git#tag=${pkgname}-${_ver}"
-  '001-rebase-4.4.1-msys2.patch'
-  '002-rebaseall-add-python-exts.patch'
+  '001-msys2.patch'
   '003-allow-non-database-mode-when-__CYGWIN__-__MSYS__.patch'
   '004-msys2-usr.patch'
-  '005-peflags-add-support-for-IMAGE_DLLCHARACTERISTICS_GUA.patch'
   'autorebase.bat'
   'rebase.hook'
 )
-sha256sums=('f8ebc4dec0aeceecad2ed96662c83c7da5dfc3c88fddd1579ac4055756a418f9'
-            '36531bb3ddae6ad4b2db88560e0a7f62848096374696f9e07d04782f8c610bc7'
-            'b06d561d82e7c32573082cf0207ca80275bab241c61debf2d3d8cc10cf79e31b'
-            '4b789d2f6ae7de9afd778cce5823600ee0f53590b3e70e133dcafbb583d6cbbb'
-            '35484af07e1df8b00821428b774744537106f99592d849ad7db26b41f570fa8c'
-            'ee06d92470a8685b29595c974aaa819da91a9d6f361f81ad3001f5e83a1ea6f5'
+sha256sums=('ecad139ddc0c77e5d8e647543dbbaa9559f46b8e19a7fd2c59020ccea6ce9379'
+            'bee918288d615c7a0257fcfe169c25ac80ff1e0f98a8d9215721823354f6e407'
+            '3d716cb14dc1ef2fe4330da12b861065ff9d3a365d85ca0d01955cff277b4b72'
+            '9583d4436de7b63c782ca1a273d43dc18a10c0957b632e13c7daaa7f91163cf6'
             '37fbcf495c90c41c98afcd0ce06aabbc727a65468e92960efd9d88c0e3f83330'
             'a50a8bfdb28c47c1742f400287a8a7ba65f9893dee74c109aad517d46afed2a1')
 
 prepare() {
   cd "${pkgname}-${pkgver}"
 
-  patch -Np1 -i "${srcdir}/001-rebase-4.4.1-msys2.patch"
-  patch -Np1 -i "${srcdir}/002-rebaseall-add-python-exts.patch"
+  patch -Np1 -i "${srcdir}/001-msys2.patch"
   patch -Np1 -i "${srcdir}/003-allow-non-database-mode-when-__CYGWIN__-__MSYS__.patch"
   patch -Np1 -i "${srcdir}/004-msys2-usr.patch"
-  # https://cygwin.com/pipermail/cygwin-apps/2023-April/042816.html
-  patch -Np1 -i "${srcdir}/005-peflags-add-support-for-IMAGE_DLLCHARACTERISTICS_GUA.patch"
 
-  if check_option 'strip' 'n'; then
-    sed -i 's/ -s//g' Makefile.in
-  fi
-
-  autoreconf -fi
+  autoreconf -fiv
 }
 
 build() {
   cd "${pkgname}-${pkgver}"
 
+  # _WIN32_WINNT for WOF_EXTERNAL_INFO etc. used in rebase.c
+  local _flags="-static -static-libgcc -Wno-error=unused-but-set-variable -D_WIN32_WINNT=0x0A00"
+
   ./configure \
-    --build="${CHOST}" \
     --prefix=/usr \
     --sysconfdir=/etc \
     --with-posix-shell=/usr/bin/dash \
-    CFLAGS="${CFLAGS} -static -static-libgcc" \
-    CXXFLAGS="${CXXFLAGS} -static -static-libgcc -static-libstdc++"
+    CFLAGS="${CFLAGS} ${_flags}" \
+    CXXFLAGS="${CXXFLAGS} ${_flags} -static-libstdc++"
 
   make
 }
@@ -82,10 +72,9 @@ package() {
 
   make DESTDIR="${pkgdir}" install
 
-  cp -f "${srcdir}/autorebase.bat" "${pkgdir}/"
+  install -Dm755 "${srcdir}/autorebase.bat" -t "${pkgdir}/"
 
   if [[ "${CARCH}" == 'i686' ]]; then
-    install -dm755 "${pkgdir}/usr/share/libalpm/hooks"
-    cp -f "${srcdir}/rebase.hook" "${pkgdir}/usr/share/libalpm/hooks/"
+    install -Dm755 "${srcdir}/rebase.hook" -t "${pkgdir}/usr/share/libalpm/hooks/"
   fi
 }
