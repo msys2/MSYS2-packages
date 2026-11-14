@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:13:45 +0530
+Subject: [PATCH 010/109] Cygwin: implement spinlock pause for AArch64
+
+(cherry picked from commit 506a3a1f785c61ff498d51b40171b905d25c3de6)
+---
+ winsup/cygwin/create_posix_thread.cc | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/create_posix_thread.cc b/winsup/cygwin/create_posix_thread.cc
+index 3fcd61707..592aaf1a5 100644
+--- a/winsup/cygwin/create_posix_thread.cc
++++ b/winsup/cygwin/create_posix_thread.cc
+@@ -75,7 +75,7 @@ pthread_wrapper (PVOID arg)
+   /* Initialize new _cygtls. */
+   _my_tls.init_thread (wrapper_arg.stackbase - __CYGTLS_PADSIZE__,
+ 		       (DWORD (*)(void*, void*)) wrapper_arg.func);
+-#ifdef __x86_64__
++#if defined(__x86_64__)
+   __asm__ ("\n\
+ 	   leaq  %[WRAPPER_ARG], %%rbx	# Load &wrapper_arg into rbx	\n\
+ 	   movq  (%%rbx), %%r12		# Load thread func into r12	\n\
+@@ -99,6 +99,22 @@ pthread_wrapper (PVOID arg)
+ 	   call  *%%r12			# Call thread func		\n"
+ 	   : : [WRAPPER_ARG] "o" (wrapper_arg),
+ 	       [CYGTLS] "i" (__CYGTLS_PADSIZE__));
++#elif defined(__aarch64__)
++  /* Sets up a new thread stack, frees the original OS stack,
++   * and calls the thread function with its arg using AArch64 ABI. */
++  __asm__ __volatile__ ("\n\
++	   mov     x19, %[WRAPPER_ARG]  // x19 = &wrapper_arg              \n\
++	   ldp     x0, x10, [x19, #16]  // x0 = stackaddr, x10 = stackbase \n\
++	   sub     sp, x10, %[CYGTLS]   // sp = stackbase - (CYGTLS)       \n\
++	   mov     fp, xzr              // clear frame pointer (x29)       \n\
++	   mov     x1, xzr              // x1 = 0 (dwSize)                 \n\
++	   mov     x2, #0x8000          // x2 = MEM_RELEASE                \n\
++	   bl      VirtualFree          // free original stack             \n\
++	   ldp     x19, x0, [x19]       // x19 = func, x0 = arg            \n\
++	   blr     x19                  // call thread function            \n"
++	   : : [WRAPPER_ARG] "r" (&wrapper_arg),
++	       [CYGTLS] "r" (__CYGTLS_PADSIZE__)
++	   : "x0", "x1", "x2", "x10", "x19", "x29", "memory");
+ #else
+ #error unimplemented for this target
+ #endif

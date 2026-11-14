@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Sun, 30 Aug 2026 21:53:29 +0530
+Subject: [PATCH 26/29] mingw: use mingw_pe_seh_emit_stackalloc in
+ seh_pattern_emit
+
+Upstream 5816e459964 ("Rename SEH functions for reuse in AArch64")
+renamed seh_emit_stackalloc to mingw_pe_seh_emit_stackalloc.  Our own
+rename commit was dropped during the rebase because upstream already
+carries it, but our later commit "Fix unwiding codes when stack probing
+is applied" adds call sites that still use the old name:
+
+  winnt.cc:1527: error: 'seh_emit_stackalloc' was not declared in this scope
+  winnt.cc:1537: error: 'seh_emit_stackalloc' was not declared in this scope
+
+Upstream's rename is broader than ours was, so dropping ours left these
+two call sites orphaned.  A sweep of the full rename map found no other
+stale names.
+---
+ gcc/config/mingw/winnt.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/gcc/config/mingw/winnt.cc b/gcc/config/mingw/winnt.cc
+index 74ca1b44d94..5b728fa405b 100644
+--- a/gcc/config/mingw/winnt.cc
++++ b/gcc/config/mingw/winnt.cc
+@@ -1524,7 +1524,7 @@ seh_pattern_emit (FILE *f, struct seh_frame_state *seh, rtx pat)
+ 		increment = INTVAL (XEXP (src, 1));
+ 		src = XEXP (src, 0);
+ 		if (dest == stack_pointer_rtx)
+-		  seh_emit_stackalloc (f, seh, increment);
++		  mingw_pe_seh_emit_stackalloc (f, seh, increment);
+ 		break;
+ 
+ 	      case MINUS:
+@@ -1534,7 +1534,7 @@ seh_pattern_emit (FILE *f, struct seh_frame_state *seh, rtx pat)
+ 		extend = XEXP (extend, 1);
+ 		if (dest == stack_pointer_rtx && src == stack_pointer_rtx
+ 		    && REGNO(extend) == R12_REGNUM) 
+-		  seh_emit_stackalloc (f, seh, stack_alloc);
++		  mingw_pe_seh_emit_stackalloc (f, seh, stack_alloc);
+    	      break;
+ 
+ 	      case CONST_INT:

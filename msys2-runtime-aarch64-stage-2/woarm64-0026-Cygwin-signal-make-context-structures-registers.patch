@@ -1,0 +1,320 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:01 +0530
+Subject: [PATCH 026/109] Cygwin: signal: make context structures
+ registers handling portable
+
+(cherry picked from commit 017a156f8a2d0817e74d0e79c47ea24c57c77a3e)
+---
+ winsup/cygwin/exceptions.cc             | 51 ++++++++--------
+ winsup/cygwin/include/cygwin/signal.h   | 77 ++++++++++++++++++++++++-
+ winsup/cygwin/local_includes/register.h | 25 ++++++++
+ winsup/cygwin/profil.c                  |  7 +--
+ winsup/cygwin/thread.cc                 | 23 +-------
+ winsup/utils/profiler.cc                |  7 +--
+ 6 files changed, 135 insertions(+), 55 deletions(-)
+ create mode 100644 winsup/cygwin/local_includes/register.h
+
+diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
+index ca86b3643..7af9f18ae 100644
+--- a/winsup/cygwin/exceptions.cc
++++ b/winsup/cygwin/exceptions.cc
+@@ -28,26 +28,10 @@ details. */
+ #include "ntdll.h"
+ #include "exception.h"
+ #include "posix_timer.h"
++#include "register.h"
+ #include "gcc_seh.h"
+ #include "cygwin/exit_process.h"
+ 
+-/* Define macros for CPU-agnostic register access.  The _CX_foo
+-   macros are for access into CONTEXT, the _MC_foo ones for access into
+-   mcontext. The idea is to access the registers in terms of their job,
+-   not in terms of their name on the given target. */
+-#ifdef __x86_64__
+-#define _CX_instPtr	Rip
+-#define _CX_stackPtr	Rsp
+-#define _CX_framePtr	Rbp
+-/* For special register access inside mcontext. */
+-#define _MC_retReg	rax
+-#define _MC_instPtr	rip
+-#define _MC_stackPtr	rsp
+-#define _MC_uclinkReg	rbx	/* MUST be callee-saved reg */
+-#else
+-#error unimplemented for this target
+-#endif
+-
+ #define CALL_HANDLER_RETRY_OUTER 10
+ #define CALL_HANDLER_RETRY_INNER 10
+ #define DUMPSTACK_FRAME_LIMIT    32
+@@ -231,7 +215,7 @@ cygwin_exception::dump_exception ()
+ 	}
+     }
+ 
+-#ifdef __x86_64__
++#if defined(__x86_64__)
+   if (exception_name)
+     small_printf ("Exception: %s at rip=%012X\r\n", exception_name, ctx->Rip);
+   else
+@@ -251,6 +235,31 @@ cygwin_exception::dump_exception ()
+   small_printf ("cs=%04x ds=%04x es=%04x fs=%04x gs=%04x ss=%04x\r\n",
+ 		ctx->SegCs, ctx->SegDs, ctx->SegEs, ctx->SegFs,
+ 		ctx->SegGs, ctx->SegSs);
++#elif defined(__aarch64__)
++  if (exception_name)
++    small_printf ("Exception: %s at pc=%012X\r\n", exception_name, ctx->Pc);
++  else
++    small_printf ("Signal %d at pc=%012X\r\n", e->ExceptionCode, ctx->Pc);
++  small_printf ("x0=%016X x1=%016X x2=%016X x3=%016X\r\n",
++		ctx->X0, ctx->X1, ctx->X2, ctx->X3);
++  small_printf ("x4=%016X x5=%016X x6=%016X x7=%016X\r\n",
++		ctx->X4, ctx->X5, ctx->X6, ctx->X7);
++  small_printf ("x8=%016X x9=%016X x10=%016X x11=%016X\r\n",
++		ctx->X8, ctx->X9, ctx->X10, ctx->X11);
++  small_printf ("x12=%016X x13=%016X x14=%016X x15=%016X\r\n",
++		ctx->X12, ctx->X13, ctx->X14, ctx->X15);
++  small_printf ("x16=%016X x17=%016X x18=%016X x19=%016X\r\n",
++		ctx->X16, ctx->X17, ctx->X18, ctx->X19);
++  small_printf ("x20=%016X x21=%016X x22=%016X x23=%016X\r\n",
++		ctx->X20, ctx->X21, ctx->X22, ctx->X23);
++  small_printf ("x24=%016X x25=%016X x26=%016X x27=%016X\r\n",
++		ctx->X24, ctx->X25, ctx->X26, ctx->X27);
++  small_printf ("x28=%016X fp=%016X lr=%016X sp=%016X\r\n",
++		ctx->X28, ctx->Fp, ctx->Lr, ctx->Sp);
++  small_printf ("program=%W, pid %u, thread %s\r\n",
++		myself->progname, myself->pid, mythreadname ());
++  small_printf ("fpcr=%016X fpsr=%016X\r\n",
++		ctx->Fpcr, ctx->Fpsr);
+ #else
+ #error unimplemented for this target
+ #endif
+@@ -1814,11 +1823,7 @@ _cygtls::call_signal_handler ()
+ 	      __unwind_single_frame ((PCONTEXT) &context1.uc_mcontext);
+ 	      if (stackptr > stack)
+ 		{
+-#ifdef __x86_64__
+-		  context1.uc_mcontext.rip = retaddr ();
+-#else
+-#error unimplemented for this target
+-#endif
++		  context1.uc_mcontext._MC_instPtr = retaddr ();
+ 		}
+ 	    }
+ 
+diff --git a/winsup/cygwin/include/cygwin/signal.h b/winsup/cygwin/include/cygwin/signal.h
+index de728bede..4e9eafba7 100644
+--- a/winsup/cygwin/include/cygwin/signal.h
++++ b/winsup/cygwin/include/cygwin/signal.h
+@@ -19,7 +19,7 @@ extern "C" {
+   Define a struct __mcontext, which should be identical in layout to the Win32
+   API type CONTEXT with the addition of oldmask and cr2 fields at the end.
+ */
+-#ifdef __x86_64__
++#if defined(__x86_64__)
+ 
+ struct _uc_fpxreg {
+   __uint16_t significand[4];
+@@ -98,6 +98,81 @@ struct __attribute__ ((__aligned__ (16))) __mcontext
+   __uint64_t cr2;
+ };
+ 
++#elif defined(__aarch64__)
++
++/* Based on mingw-w64-headers/include/winnt.h. */
++
++#define ARM64_MAX_BREAKPOINTS 8
++#define ARM64_MAX_WATCHPOINTS 2
++
++union _neon128
++{
++  struct
++  {
++    __uint64_t low;
++    __int64_t high;
++  };
++  double d[2];
++  float s[4];
++  __uint16_t h[8];
++  __uint8_t b[16];
++};
++
++struct __attribute__ ((__aligned__ (16))) __mcontext
++{
++  __uint32_t ctxflags;
++  __uint32_t cpsr;
++  union
++  {
++    struct
++    {
++      __uint64_t x0;
++      __uint64_t x1;
++      __uint64_t x2;
++      __uint64_t x3;
++      __uint64_t x4;
++      __uint64_t x5;
++      __uint64_t x6;
++      __uint64_t x7;
++      __uint64_t x8;
++      __uint64_t x9;
++      __uint64_t x10;
++      __uint64_t x11;
++      __uint64_t x12;
++      __uint64_t x13;
++      __uint64_t x14;
++      __uint64_t x15;
++      __uint64_t x16;
++      __uint64_t x17;
++      __uint64_t x18;
++      __uint64_t x19;
++      __uint64_t x20;
++      __uint64_t x21;
++      __uint64_t x22;
++      __uint64_t x23;
++      __uint64_t x24;
++      __uint64_t x25;
++      __uint64_t x26;
++      __uint64_t x27;
++      __uint64_t x28;
++      __uint64_t fp;
++      __uint64_t lr;
++    };
++    __uint64_t x[31];
++  };
++  __uint64_t sp;
++  __uint64_t pc;
++  union _neon128 v[32];
++  __uint32_t fpcr;
++  __uint32_t fpsr;
++  __uint32_t bcr[ARM64_MAX_BREAKPOINTS];
++  __uint64_t bvr[ARM64_MAX_BREAKPOINTS];
++  __uint32_t wcr[ARM64_MAX_WATCHPOINTS];
++  __uint64_t wvr[ARM64_MAX_WATCHPOINTS];
++  __uint64_t oldmask;
++  __uint64_t cr2;
++};
++
+ #else
+ #error unimplemented for this target
+ #endif
+diff --git a/winsup/cygwin/local_includes/register.h b/winsup/cygwin/local_includes/register.h
+new file mode 100644
+index 000000000..1ddfe2ec0
+--- /dev/null
++++ b/winsup/cygwin/local_includes/register.h
+@@ -0,0 +1,25 @@
++/* Define macros for CPU-agnostic register access.  The _CX_foo
++   macros are for access into CONTEXT, the _MC_foo ones for access into
++   mcontext. The idea is to access the registers in terms of their job,
++   not in terms of their name on the given target. */
++#if defined(__x86_64__)
++#define _CX_instPtr	Rip
++#define _CX_stackPtr	Rsp
++#define _CX_framePtr	Rbp
++/* For special register access inside mcontext. */
++#define _MC_retReg	rax
++#define _MC_instPtr	rip
++#define _MC_stackPtr	rsp
++#define _MC_uclinkReg	rbx	/* MUST be callee-saved reg */
++#elif defined(__aarch64__)
++#define _CX_instPtr	Pc
++#define _CX_stackPtr	Sp
++#define _CX_framePtr	Fp
++/* For special register access inside mcontext. */
++#define _MC_retReg	x0
++#define _MC_instPtr	pc
++#define _MC_stackPtr	sp
++#define _MC_uclinkReg	x19	/* MUST be callee-saved reg */
++#else
++#error unimplemented for this target
++#endif
+diff --git a/winsup/cygwin/profil.c b/winsup/cygwin/profil.c
+index 30b37244a..9578ab1df 100644
+--- a/winsup/cygwin/profil.c
++++ b/winsup/cygwin/profil.c
+@@ -21,6 +21,7 @@
+ #include <errno.h>
+ #include <pthread.h>
+ #include "profil.h"
++#include "register.h"
+ 
+ #define SLEEPTIME (1000 / PROF_HZ)
+ 
+@@ -42,11 +43,7 @@ get_thrpc (HANDLE thr)
+   ctx.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+   pc = (size_t) - 1;
+   if (GetThreadContext (thr, &ctx)) {
+-#ifdef __x86_64__
+-    pc = ctx.Rip;
+-#else
+-#error unimplemented for this target
+-#endif
++    pc = ctx._CX_instPtr;
+   }
+   ResumeThread (thr);
+   return pc;
+diff --git a/winsup/cygwin/thread.cc b/winsup/cygwin/thread.cc
+index 493c98c0e..3446bceb3 100644
+--- a/winsup/cygwin/thread.cc
++++ b/winsup/cygwin/thread.cc
+@@ -32,6 +32,7 @@ details. */
+ #include "ntdll.h"
+ #include "cygwait.h"
+ #include "exception.h"
++#include "register.h"
+ 
+ /* For Linux compatibility, the length of a thread name is 16 characters. */
+ #define THRNAMELEN 16
+@@ -629,27 +630,7 @@ pthread::cancel ()
+       threadlist_t *tl_entry = cygheap->find_tls (cygtls);
+       if (!cygtls->inside_kernel (&context))
+ 	{
+-#if defined(__x86_64__)
+-	  /* Need to maintain the alignment of the stack pointer.
+-	     https://learn.microsoft.com/en-us/cpp/build/stack-usage?view=msvc-170
+-	     states,
+-	       "The stack will always be maintained 16-byte aligned,
+-		except within the prolog (for example, after the return
+-		address is pushed),",
+-	     that is, we need 16n + 8 byte alignment here because the stack
+-	     pointer must be maintaiined to the same alignment required by
+-	     the function prologue. Since the call instruction pushes the
+-	     return address (rip) onto the stack, which is 8 bytes,
+-	     an additional 8 bytes is required to emulate this behaviour.
+-	     However, we do not need to push return address itself, because
+-	     pthread::static_cancel_self() must not return. */
+-	  context.Rsp &= ~0x07UL;
+-	  if ((context.Rsp & 8) == 0)
+-	    context.Rsp -= 8;
+-	  context.Rip = (ULONG_PTR) pthread::static_cancel_self;
+-#else
+-#error unimplemented for this target
+-#endif
++	  context._CX_instPtr = (ULONG_PTR) pthread::static_cancel_self;
+ 	  SetThreadContext (win32_obj_id, &context);
+ 	}
+       cygheap->unlock_tls (tl_entry);
+diff --git a/winsup/utils/profiler.cc b/winsup/utils/profiler.cc
+index 4fe900b7f..04c6b3ed3 100644
+--- a/winsup/utils/profiler.cc
++++ b/winsup/utils/profiler.cc
+@@ -33,6 +33,7 @@ typedef uint16_t u_int16_t; // Non-standard sized type needed by ancient gmon.h
+ #define NO_GLOBALS_H
+ #include "gmon.h"
+ #include "path.h"
++#include "register.h"
+ 
+ /* Undo this #define from winsup.h. */
+ #ifdef ExitThread
+@@ -193,11 +194,7 @@ sample (CONTEXT *context, HANDLE h)
+       return 0ULL;
+     }
+   else
+-#ifdef __x86_64__
+-    return context->Rip;
+-#else
+-#error unimplemented for this target
+-#endif
++    return context->_CX_instPtr;
+ }
+ 
+ void

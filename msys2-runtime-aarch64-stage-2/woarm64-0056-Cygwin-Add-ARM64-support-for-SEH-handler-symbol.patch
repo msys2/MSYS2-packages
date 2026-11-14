@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:35 +0530
+Subject: [PATCH 056/109] Cygwin: Add ARM64 support for SEH handler
+ symbol references
+
+(cherry picked from commit 48e22e9d5b51a7dfceeffc1b628a8402e6e628ea)
+---
+ winsup/cygwin/local_includes/cygtls.h    | 23 ++++++++++++++------
+ winsup/cygwin/local_includes/exception.h | 27 +++++++++++++++---------
+ 2 files changed, 33 insertions(+), 17 deletions(-)
+
+diff --git a/winsup/cygwin/local_includes/cygtls.h b/winsup/cygwin/local_includes/cygtls.h
+index 9f83c134c..a07e143c7 100644
+--- a/winsup/cygwin/local_includes/cygtls.h
++++ b/winsup/cygwin/local_includes/cygtls.h
+@@ -344,6 +344,21 @@ public:
+   void leave () __attribute__ ((returns_twice));
+ };
+ 
++#if defined (__aarch64__)
++#define EXCEPTION_MYFAULT_REF "_ZN9exception7myfaultEP17_EXCEPTION_RECORDPvP8_CONTEXTP25_DISPATCHER_CONTEXT_ARM64"
++#define TRY_HANDLER_DATA (void) &&__l_try;
++#else
++#define EXCEPTION_MYFAULT_REF "_ZN9exception7myfaultEP17_EXCEPTION_RECORDPvP8_CONTEXTP19_DISPATCHER_CONTEXT"
++#define TRY_HANDLER_DATA \
++  __asm__ goto ("\n" \
++  "  .seh_handler " EXCEPTION_MYFAULT_REF ", @except						\n" \
++  "  .seh_handlerdata						\n" \
++  "  .long 1							\n" \
++  "  .rva %l[__l_try],%l[__l_endtry],%l[__l_except],%l[__l_except]	\n" \
++  "  .seh_code							\n" \
++  : : : : __l_try, __l_endtry, __l_except)
++#endif
++
+ /* Exception handling macros. This is a handmade SEH try/except. */
+ #define __mem_barrier	__asm__ __volatile__ ("" ::: "memory")
+ #define __try \
+@@ -351,13 +366,7 @@ public:
+     __label__ __l_try, __l_except, __l_endtry; \
+     __mem_barrier; \
+     san __sebastian (&&__l_except); \
+-    __asm__ goto ("\n" \
+-      "  .seh_handler _ZN9exception7myfaultEP17_EXCEPTION_RECORDPvP8_CONTEXTP19_DISPATCHER_CONTEXT, @except						\n" \
+-      "  .seh_handlerdata						\n" \
+-      "  .long 1							\n" \
+-      "  .rva %l[__l_try],%l[__l_endtry],%l[__l_except],%l[__l_except]	\n" \
+-      "  .seh_code							\n" \
+-      : : : : __l_try, __l_endtry, __l_except); \
++    TRY_HANDLER_DATA; \
+     { \
+       __l_try: \
+ 	__mem_barrier;
+diff --git a/winsup/cygwin/local_includes/exception.h b/winsup/cygwin/local_includes/exception.h
+index 13159d17b..cf81220d7 100644
+--- a/winsup/cygwin/local_includes/exception.h
++++ b/winsup/cygwin/local_includes/exception.h
+@@ -7,8 +7,23 @@ details. */
+ #pragma once
+ 
+ #define exception_list void
+-typedef struct _DISPATCHER_CONTEXT *PDISPATCHER_CONTEXT;
+ 
++#if defined (__aarch64__)
++#define EXCEPTION_HANDLE_REF "_ZN9exception6handleEP17_EXCEPTION_RECORDPvP8_CONTEXTP25_DISPATCHER_CONTEXT_ARM64"
++#define EXCEPTION_HANDLER_DATA
++#else
++#define EXCEPTION_HANDLE_REF "_ZN9exception6handleEP17_EXCEPTION_RECORDPvP8_CONTEXTP19_DISPATCHER_CONTEXT"
++#define EXCEPTION_HANDLER_DATA \
++  asm volatile ("\n\
++  1:									\n\
++    .seh_handler "							  \
++      EXCEPTION_HANDLE_REF ",						  \
++      @except								\n\
++    .seh_handlerdata							\n\
++    .long 1								\n\
++    .rva 1b, 2f, 2f, 2f							\n\
++    .seh_code								\n")
++#endif
+ class exception
+ {
+   static EXCEPTION_DISPOSITION myfault (EXCEPTION_RECORD *, exception_list *,
+@@ -19,15 +34,7 @@ public:
+   exception () __attribute__ ((always_inline))
+   {
+     /* Install SEH handler. */
+-    asm volatile ("\n\
+-    1:									\n\
+-      .seh_handler							  \
+-	_ZN9exception6handleEP17_EXCEPTION_RECORDPvP8_CONTEXTP19_DISPATCHER_CONTEXT,	  \
+-	@except								\n\
+-      .seh_handlerdata							\n\
+-      .long 1								\n\
+-      .rva 1b, 2f, 2f, 2f						\n\
+-      .seh_code								\n");
++    EXCEPTION_HANDLER_DATA;
+   };
+   ~exception () __attribute__ ((always_inline))
+   {

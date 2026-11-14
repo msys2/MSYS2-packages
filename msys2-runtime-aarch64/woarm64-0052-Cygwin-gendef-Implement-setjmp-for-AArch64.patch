@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:31 +0530
+Subject: [PATCH 052/109] Cygwin: gendef: Implement setjmp for AArch64
+
+(cherry picked from commit 09c000040577d4939264cec2cd304ec282ff9594)
+---
+ winsup/cygwin/scripts/gendef | 55 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 55 insertions(+)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index aa12ece2c..87f64009d 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -866,7 +866,62 @@ sigsetjmp:
+ 	.seh_endproc
+ 
+ 	.globl  setjmp
++	.seh_proc setjmp
+ setjmp:
++	// prologue
++	stp	fp, lr, [sp, #-0x10]!      	// push frame pointer (x29) and link register (x30)
++	mov	fp, sp                      	// set frame pointer
++	.seh_endprologue
++
++	// save callee-saved registers from jump buffer
++	stp	x19, x20, [x0, #0x08]       	// save x19, x20
++	stp	x21, x22, [x0, #0x18]       	// save x21, x22
++	stp	x23, x24, [x0, #0x28]       	// save x23, x24
++	stp	x25, x26, [x0, #0x38]       	// save x25, x26
++	stp	x27, x28, [x0, #0x48]       	// save x27, x28
++	stp	x29, x30, [x0, #0x58]       	// save frame ptr (x29) and return addr (x30)
++
++	mov	x1, sp				// get the current stack pointer
++	str	x1, [x0, #0x68]			// save SP
++
++	mrs	x1, fpcr			// get fp control register
++	str	x1, [x0, #0x70]			// save FPCR
++	mrs	x1, fpsr			// get fp status register
++	str	x1, [x0, #0x78]			// save FPSR
++
++	// save fp registers (d8-d15)
++	stp	d8,  d9,  [x0, #0x80]        	// save d8, d9
++	stp	d10, d11, [x0, #0x90]        	// save d10, d11
++	stp	d12, d13, [x0, #0xA0]        	// save d12, d13
++	stp	d14, d15, [x0, #0xB0]        	// save d14, d15
++
++	mov x9, x0 				// save jmp_buf pointer in x9
++	# // save TLS stack pointer
++	# ldr	x1, [sp]
++	# str	x1, [x0, #0xB8]
++
++	bl	stabilize_sig_stack		// call stabilize_sig_stack (returns TLS in x0)
++
++	// store the stack pointer to jump_buf
++	ldr	x2, =_cygtls.stackptr		// load the symbol address/offset
++	add	x2, x0, x2			// Final address of stackptr
++	ldr	x3, [x2]			// load current value of stackptr
++	str x3, [x0, #0xB8]           		// store stackptr into jmp_buf
++
++	// decrement the stack lock
++	ldr	x2, =_cygtls.stacklock 		// load the symbol address/offset
++	add	x2, x0, x2			// Final address of stacklock
++	ldr	w3, [x2]			// load current stacklock value
++	sub	w3, w3, #1			// decrement
++	str	w3, [x2]			//store back
++
++	mov	w0, #0				// return 0
++
++	// epilogue
++	ldp	fp, lr, [sp], #0x10		// restore saved FP and LR registers
++	ret
++	.seh_endproc
++
+ 	.globl	siglongjmp
+ 	.seh_proc siglongjmp
+ siglongjmp:

@@ -1,0 +1,80 @@
+From 175813e97a89d916ffca980dd10c5c9c502c459a Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Thu, 8 Oct 2026 00:49:43 +0530
+Subject: [PATCH] Cygwin: gendef: restore incyg in AArch64 longjmp instead of
+ clearing it
+
+AArch64 longjmp unconditionally set _cygtls.incyg to 0, on the assumption
+that the matching setjmp ran outside Cygwin.  That does not hold for code
+running in a DLL constructor: those run inside dll_crt0_1 with incyg == 1.
+
+OpenSSL's AArch64 capability probe (armcap.c) is such code.  It runs as a
+constructor of msys-crypto-3.dll, does sigsetjmp, executes probe
+instructions and siglongjmps out of the SIGILL handler.  The longjmp drops
+incyg to 0, dll_crt0_1 then does incyg-- before calling main, and incyg
+wraps to 0xffffffff.  Every program linked against libcrypto (sshd, ssh,
+curl, ...) therefore starts main with incyg == 0xffffffff, and _sigfe
+brings it to 0, not 1, on every Cygwin call:
+
+    plain program:            incyg at main() entry = 0
+    linked with -lcrypto:     incyg at main() entry = 4294967295
+
+With incyg == 0 while the thread is blocked in a syscall, setup_handler
+takes the interrupt_now path, inside_kernel() reports the thread inside
+ntdll, and the signal is never delivered.  sshd sitting in ppoll ignores
+SIGTERM, SIGHUP and even SIGKILL; only TerminateProcess stops it.
+
+Record incyg in setjmp, in jmp_buf slot 24 (0xC0, unused: _JBLEN is 25
+on AArch64 Cygwin), and restore that value in longjmp.  A longjmp back
+into user code still restores 0, because that is what its setjmp saw.
+
+Signed-off-by: aswin-mcw <aswin.kalies@multicorewareinc.com>
+---
+ winsup/cygwin/scripts/gendef | 22 +++++++++++++++++++---
+ 1 file changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 63cbc96..b4c39ac 100644
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -790,6 +790,15 @@ setjmp:
+ 	ldr	x3, [x2]			// load current value of stackptr
+ 	str	x3, [x0]			// store stackptr into jmp_buf
+ 
++	// Record incyg as well, in jmp_buf slot 24 (0xC0), so longjmp can put
++	// it back.  setjmp is not always called from outside Cygwin: a DLL
++	// constructor runs inside dll_crt0_1 with incyg == 1, and OpenSSL's
++	// AArch64 armcap probe does sigsetjmp there, executes a probe
++	// instruction and siglongjmps out of the SIGILL handler.
++	ldr	x2, =_cygtls.incyg		// load the symbol offset
++	ldr	w3, [x10, x2]			// load current incyg
++	str	x3, [x0, #0xC0]			// store incyg into jmp_buf
++
+ 	// decrement the stack lock
+ 	ldr	x2, =_cygtls.stacklock		// load the symbol offset
+ 	add	x2, x10, x2			// x2 = tls_base + &stacklock
+@@ -858,11 +867,18 @@ longjmp:
+ 	sub	w12, w12, #1			// decrement
+ 	str	w12, [x11]			// store back
+ 
+-	// we're not in cygwin anymore, clear "in cygwin" flag
++	// Restore incyg to its value at setjmp time.  Forcing it to 0 here
++	// is only right when the matching setjmp ran outside Cygwin; when it
++	// ran inside (e.g. in a DLL constructor during dll_crt0_1) the caller
++	// later does incyg--, which wraps it to 0xffffffff.  From then on
++	// every syscall runs with incyg == 0, setup_handler takes the
++	// interrupt_now path, finds the thread inside the kernel and retries
++	// forever: the process can no longer receive any signal, SIGKILL
++	// included.
+ 	ldr	x11, =_cygtls.incyg		// load the symbol offset
+ 	add	x11, x10, x11			// x11 = tls_base + &incyg
+-	mov	w12, wzr			// clear the incyg counter
+-	str	w12, [x11]			// store back the new value
++	ldr	x12, [x2, #0xC0]		// incyg saved by setjmp
++	str	w12, [x11]			// store back the saved value
+ 
+ 	// use second argument as the return value
+ 	mov	x0, x3				// move saved return value to x0
+-- 
+2.54.0
+

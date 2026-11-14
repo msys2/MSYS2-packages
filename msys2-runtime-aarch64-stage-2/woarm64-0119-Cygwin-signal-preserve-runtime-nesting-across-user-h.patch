@@ -1,0 +1,151 @@
+From 855abc179661a247ee1b4f44bddb62b1f0e3d0d8 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Wed, 7 Oct 2026 18:46:26 +0000
+Subject: [PATCH 119/119] Cygwin: signal: preserve runtime nesting across user
+ handlers
+
+CMake/libuv `posix_spawn` callers can hang waiting for `SIGCHLD` after
+nested signal delivery. Restoring `_cygtls::incyg` to `1` loses the
+concrete nesting level; subsequent balancing can leave it at zero,
+disabling the controlled signal-wakeup path.
+
+Preserve the incoming count, including zero, to keep runtime nesting
+balanced. The public-API regression targets lost wakeups after nested
+delivery, including within `pthread_once`.
+
+This was suggested by Takashi Yano on May 28th, 2025 in
+https://inbox.sourceware.org/cygwin-patches/20250528125311.2589-1-takashi.yano@nifty.ne.jp/,
+part of which was applied as 8201c57dd1 (Cygwin: signal: Revert
+_cygtls::inside_kernel() change, 2025-05-28). The remaining part is what
+is applied here, together with a regression test that exercises the code
+path that is fixed by it.
+
+Suggested-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+Fixes: b7097ab39ed0 ("Cygwin: signal: Revive toggling incyg flag in call_signal_handler()")
+Assisted-by: GPT-6.1
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+Reviewed-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+(cherry picked from commit 7fd5f9c932c02ac975576a5dfd535f795207ee2b)
+(cherry picked from commit b353e597a220cafd0488ffde102c4e55eab18d37)
+---
+ winsup/cygwin/exceptions.cc                 |  3 +-
+ winsup/cygwin/release/3.6.12                |  5 ++
+ winsup/testsuite/Makefile.am                |  1 +
+ winsup/testsuite/winsup.api/pthread/once2.c | 60 +++++++++++++++++++++
+ 4 files changed, 68 insertions(+), 1 deletion(-)
+ create mode 100644 winsup/cygwin/release/3.6.12
+ create mode 100644 winsup/testsuite/winsup.api/pthread/once2.c
+
+diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
+index d19ba73d2..89c42ce3c 100644
+--- a/winsup/cygwin/exceptions.cc
++++ b/winsup/cygwin/exceptions.cc
+@@ -1925,6 +1925,7 @@ _cygtls::call_signal_handler ()
+ 
+       int this_errno = saved_errno;
+       reset_signal_arrived ();
++      unsigned incyg_orig = incyg;
+       incyg = 0;
+       current_sig = 0;	/* Flag that we can accept another signal */
+ 
+@@ -2083,7 +2084,7 @@ _cygtls::call_signal_handler ()
+ 	}
+       unlock ();
+ 
+-      incyg = 1;
++      incyg = incyg_orig;
+ 
+       set_signal_mask (_my_tls.sigmask, (this_sa_flags & SA_SIGINFO)
+ 					? context1.uc_sigmask : this_oldmask);
+diff --git a/winsup/cygwin/release/3.6.12 b/winsup/cygwin/release/3.6.12
+new file mode 100644
+index 000000000..b3a78f8ce
+--- /dev/null
++++ b/winsup/cygwin/release/3.6.12
+@@ -0,0 +1,5 @@
++Fixes:
++------
++
++- Preserve runtime nesting across signal handlers, fixing potential hangs
++  in posix_spawn callers such as CMake.
+diff --git a/winsup/testsuite/Makefile.am b/winsup/testsuite/Makefile.am
+index eaaa055ec..be49dc25a 100644
+--- a/winsup/testsuite/Makefile.am
++++ b/winsup/testsuite/Makefile.am
+@@ -298,6 +298,7 @@ check_PROGRAMS = \
+ 	winsup.api/pthread/mutex8n \
+ 	winsup.api/pthread/mutex8r \
+ 	winsup.api/pthread/once1 \
++	winsup.api/pthread/once2 \
+ 	winsup.api/pthread/priority1 \
+ 	winsup.api/pthread/priority2 \
+ 	winsup.api/pthread/rwlock1 \
+diff --git a/winsup/testsuite/winsup.api/pthread/once2.c b/winsup/testsuite/winsup.api/pthread/once2.c
+new file mode 100644
+index 000000000..7da165370
+--- /dev/null
++++ b/winsup/testsuite/winsup.api/pthread/once2.c
+@@ -0,0 +1,60 @@
++/* Test signal delivery after a pthread_once initializer handles a signal. */
++
++#include "test.h"
++#include <poll.h>
++#include <signal.h>
++#include <time.h>
++
++static volatile sig_atomic_t seen;
++
++static void
++handler (int signo)
++{
++  (void) signo;
++  ++seen;
++}
++
++static void
++initialize (void)
++{
++  assert (raise (SIGALRM) == 0);
++}
++
++int
++main (void)
++{
++  struct sigaction action = {0};
++  stack_t stack = {0};
++  stack.ss_sp = malloc (SIGSTKSZ);
++  stack.ss_size = SIGSTKSZ;
++  assert (stack.ss_sp != NULL);
++  assert (sigaltstack (&stack, NULL) == 0);
++
++  action.sa_handler = handler;
++  assert (sigemptyset (&action.sa_mask) == 0);
++
++  for (int onstack = 0; onstack < 2; ++onstack)
++    {
++      pthread_once_t once = PTHREAD_ONCE_INIT;
++      action.sa_flags = onstack ? SA_ONSTACK : 0;
++      assert (sigaction (SIGALRM, &action, NULL) == 0);
++      seen = 0;
++      assert (pthread_once (&once, initialize) == 0);
++      assert (seen == 1);
++
++      struct timespec before, after;
++      assert (clock_gettime (CLOCK_MONOTONIC, &before) == 0);
++      alarm (1);
++      assert (poll (NULL, 0, 5000) == -1 && errno == EINTR);
++      assert (clock_gettime (CLOCK_MONOTONIC, &after) == 0);
++      long elapsed_ms = (after.tv_sec - before.tv_sec) * 1000
++			+ (after.tv_nsec - before.tv_nsec) / 1000000;
++      assert (elapsed_ms < 4000);
++      assert (seen == 2);
++    }
++
++  stack.ss_flags = SS_DISABLE;
++  assert (sigaltstack (&stack, NULL) == 0);
++  free (stack.ss_sp);
++  return 0;
++}
+-- 
+2.51.0.windows.1
+
