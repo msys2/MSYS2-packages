@@ -11,44 +11,58 @@ msys2_references=(
   "cpe: cpe:/a:gnu:gawk"
 )
 license=('spdx:GPL-3.0-or-later')
-depends=('sh' 'mpfr' 'libintl' 'libreadline')
-makedepends=('gettext-devel' 'mpfr-devel' 'libreadline-devel' 'autotools' 'gcc')
+depends=(
+  'mpfr'
+  'libintl'
+  'libreadline'
+)
+makedepends=(
+  'autotools'
+  'gcc'
+  'gettext-devel'
+  'mpfr-devel'
+  'libreadline-devel'
+)
 provides=('awk')
-source=(https://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.gz{,.sig})
+source=("https://ftp.gnu.org/pub/gnu/${pkgname}/${pkgname}-${pkgver}.tar.gz"{,.sig})
 sha256sums=('79c46f5de14401663c63c8df4fc45c3bda76f6329d73b213523a7c71f32f7243'
             'SKIP')
 validpgpkeys=('D1967C63788713177D861ED7DF597815937EC0D2')
 
 prepare() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${pkgname}-${pkgver}"
+
   autoreconf -fiv
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${pkgname}-${pkgver}"
 
   export gl_cv_have_weak=no
-  ./configure --build=${CHOST} \
-              --prefix=/usr \
-              --libexecdir=/usr/lib \
-              --without-libiconv-prefix \
-              --without-libintl-prefix
+
+  ./configure \
+    --prefix=/usr \
+    --libexecdir=/usr/lib \
+    --sysconfdir=/etc \
+    --without-libiconv-prefix \
+    --without-libintl-prefix
 
   make
 }
 
 check() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${pkgname}-${pkgver}"
+
   make check
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-  make DESTDIR=${pkgdir} install
+  cd "${pkgname}-${pkgver}"
+
+  make DESTDIR="${pkgdir}" install
 
   # remove unnessary import libraries of modules
   rm -fv "${pkgdir}"/usr/lib/gawk/*.dll.a
 
-  # roll-back the fake CHOST in gawkbug
-  sed -E -i '/^(MACHTYPE|OS)=/ s/cygwin/msys/' "${pkgdir}"/usr/bin/gawkbug
+  ln -vf "${pkgdir}"/usr/bin/{gawk,awk}.exe
 }
