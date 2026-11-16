@@ -5,7 +5,7 @@ pkgname=('perl' 'perl-doc' 'perl-devel')
 pkgver=5.42.3
 pkgrel=4
 pkgdesc="A highly capable, feature-rich programming language"
-arch=(i686 x86_64)
+arch=('i686' 'x86_64')
 license=('spdx:Artistic-1.0-Perl OR GPL-1.0-or-later')
 url="https://www.perl.org/"
 msys2_repository_url='https://github.com/Perl/perl5'
@@ -20,22 +20,23 @@ makedepends=(
   'libgdbm-devel'
   'libxcrypt-devel'
 )
-source=(https://www.cpan.org/src/5.0/perl-${pkgver}.tar.xz
-        perlbin.sh
-        perlbin.csh
-        perlbin.fish
-        perl-binary-module-dependency-1.template
-        0001-perl.cygwin-hints.patch
-        0002-perl.cygwin-Configure-libsearch.patch
-        0003-perl.cygwin-Configure-libpth.patch
-        0004-perl.cygwin-Win32.patch
-        0005-perl-5.36.0-msys2.patch
-        0006-Skip-a-regeneration-check-in-unrelated-git-repositor.patch
-        0007-Skip-optree_specials-test-13-on-Cygwin-Windows-Defen.patch
-        0008-Censor-dev-stdin-in-stat.t-like-stdout-and-stderr.patch
-        0009-Skip-locale_threads.t-on-Cygwin-incomplete-nl_langin.patch
-        0010-perlbug.t-set-PERL_BUILD_PACKAGING-to-avoid-XS-versi.patch)
-options=('!purge' 'emptydirs')
+source=(
+  https://www.cpan.org/src/5.0/perl-${pkgver}.tar.xz
+  perlbin.sh
+  perlbin.csh
+  perlbin.fish
+  perl-binary-module-dependency-1.template
+  0001-perl.cygwin-hints.patch
+  0002-perl.cygwin-Configure-libsearch.patch
+  0003-perl.cygwin-Configure-libpth.patch
+  0004-perl.cygwin-Win32.patch
+  0005-perl-5.36.0-msys2.patch
+  0006-Skip-a-regeneration-check-in-unrelated-git-repositor.patch
+  0007-Skip-optree_specials-test-13-on-Cygwin-Windows-Defen.patch
+  0008-Censor-dev-stdin-in-stat.t-like-stdout-and-stderr.patch
+  0009-Skip-locale_threads.t-on-Cygwin-incomplete-nl_langin.patch
+  0010-perlbug.t-set-PERL_BUILD_PACKAGING-to-avoid-XS-versi.patch
+)
 sha256sums=('c9387e1473a1866935cb047ece7c2e0a80767a3acdecb79d4a375f8a95970ddc'
             '91bf8a45a3f04f51fe0eca146a71e278d41dbde19ba60dabc1e41c4639477c07'
             '478a52dc440d5ca324f4c95238b39cc8c90d5d7d8d5601fa085ffef79fea04f4'
@@ -53,8 +54,8 @@ sha256sums=('c9387e1473a1866935cb047ece7c2e0a80767a3acdecb79d4a375f8a95970ddc'
             'de867870dde7406bae4aad2c5afcc9dcf39ad117c62f8c3881945e7ce412b768')
 
 prepare() {
-  chmod -R 0666 ${srcdir}/${pkgname}-${pkgver}
-  cd ${srcdir}/${pkgname}-${pkgver}
+  chmod -R u+w "${pkgname}-${pkgver}"
+  cd "${pkgname}-${pkgver}"
 
   patch -p1 -i ${srcdir}/0001-perl.cygwin-hints.patch
   patch -p1 -i ${srcdir}/0002-perl.cygwin-Configure-libsearch.patch
@@ -76,19 +77,13 @@ prepare() {
 #!/bin/sh
 d_readlink='undef'
 _EOF
-
-  # test broken with gdbm 1.15. See: https://rt.perl.org/Public/Bug/Display.html?id=133295
-  sed -i 's|BEGIN {|BEGIN { plan(skip_all => "fatal test unsupported with gdbm 1.15");|' ext/GDBM_File/t/fatal.t
-
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
-
-  CFLAGS+=" -Wno-int-conversion"
+  cd "${pkgname}-${pkgver}"
 
   export MSYSTEM=CYGWIN
-  ./Configure -des -Dusethreads \
+  ./Configure -des \
     -Doptimize="${CFLAGS}" \
     -Dprefix=/usr \
     -Dvendorprefix=/usr \
@@ -111,103 +106,34 @@ build() {
     -Ud_setproctitle
 
   LC_ALL=C make
-
-  _package "${srcdir}/_install"
 }
 
 check() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${pkgname}-${pkgver}"
+
   TEST_JOBS=$(echo $MAKEFLAGS | sed 's/.*-j\([0-9][0-9]*\).*/\1/') \
   MSYS=winsymlinks:nativestrict \
-  make test_harness
-  #make test
+    make test_harness
 }
 
-_package() {
-  local pkgdir="${1}"
-
-  make DESTDIR="${pkgdir}" install
-
-  for template in "${srcdir}/"*.template; do
-    install -Dm644 "${template}" "${pkgdir}/usr/share/makepkg-template/${template##*/}"
+_pick() {
+  local p="$1" f d; shift
+  for f; do
+    d="${srcdir}/${p}/${f}"
+    mkdir -vp "$(dirname "${d}")"
+    mv -v "${f}" "${d}"
+    rmdir -vp --ignore-fail-on-non-empty "$(dirname "${f}")"
   done
-  ln -s perl-binary-module-dependency-1.template "${pkgdir}/usr/share/makepkg-template/"perl-binary-module-dependency.template
-
-  ### Perl Settings ###
-  # Change man page extensions for site and vendor module builds.
-  # Set no mail address since bug reports should go to the bug tracker
-  # and not someone's email.
-  sed -e '/^man1ext=/ s/1perl/1p/' -e '/^man3ext=/ s/3perl/3pm/' \
-      -e "/^cf_email=/ s/'.*'/''/" \
-      -e "/^perladmin=/ s/'.*'/''/" \
-      -i ${pkgdir}/usr/lib/perl5/core_perl/Config_heavy.pl
-
-  ### CPAN Settings ###
-  # Set CPAN default config to use the site directories.
-  sed -e '/(makepl_arg =>/   s/""/"INSTALLDIRS=site"/' \
-      -e '/(mbuildpl_arg =>/ s/""/"installdirs=site"/' \
-      -i ${pkgdir}/usr/share/perl5/core_perl/CPAN/FirstTime.pm
-
-  # Profile script to set paths to perl scripts.
-  install -D -m755 ${srcdir}/perlbin.sh \
-                   ${pkgdir}/etc/profile.d/perlbin.sh
-  # Profile script to set paths to perl scripts on csh. (FS#22441)
-  install -D -m755 ${srcdir}/perlbin.csh \
-                  ${pkgdir}/etc/profile.d/perlbin.csh
-  # Profile script to set paths to perl scripts on fish. (FS#51191)
-  install -D -m755 ${srcdir}/perlbin.fish \
-                  ${pkgdir}/usr/share/fish/vendor_conf.d/perlbin.fish
-
-  # Add the dirs so new installs will already have them in PATH once they
-  # install their first perl programm
-  install -d -m755 "${pkgdir}/usr/bin/vendor_perl"
-  install -d -m755 "${pkgdir}/usr/bin/site_perl"
-
-  #(cd ${pkgdir}/usr/bin; mv perl${pkgver} perl)
-
-  # Remove all pod files *except* those under /usr/lib/perl5/core_perl/pods/
-  # (FS#16488)
-  rm -f ${pkgdir}/usr/share/perl5/core_perl/*.pod
-  for d in ${pkgdir}/usr/share/perl5/core_perl/*; do
-    if [ -d ${d} -a $(basename ${d}) != "pods" ]; then
-      find ${d} -name *.pod -delete
-    fi
-  done
-  find ${pkgdir}/usr/lib -name *.pod -delete
-  find ${pkgdir} -name .packlist -delete
-
-  find ${pkgdir}/usr/lib -type f -exec chmod 0644 {} \;
-  find ${pkgdir}/usr/share/perl5 -type f -exec chmod 0644 {} \;
-  # prevent xsinit-generated code from referencing boot_Win32CORE
-  sed -i -e "s/^\(static_ext\)=.*/\1=' '/" \
-    ${pkgdir}/usr/lib/perl5/core_perl/Config_heavy.pl
-
-  install -D -m755 ${srcdir}/${pkgname}-${pkgver}/lib/auto/XS/APItest/APItest.dll \
-                  ${pkgdir}/usr/lib/perl5/core_perl/auto/XS/APItest/APItest.dll
-  install -D -m755 ${srcdir}/${pkgname}-${pkgver}/lib/auto/XS/Typemap/Typemap.dll \
-                  ${pkgdir}/usr/lib/perl5/core_perl/auto/XS/Typemap/Typemap.dll
-  install -D -m755 ${srcdir}/${pkgname}-${pkgver}/lib/auto/Win32CORE/Win32CORE.a \
-                  ${pkgdir}/usr/lib/perl5/core_perl/auto/Win32CORE/Win32CORE.a
 }
 
-_find_doc_files() {
-  pushd "${1}" > /dev/null
-    echo usr/bin/core_perl/perldoc
-    echo usr/share/man/man1/perldoc.1perl
-    echo usr/share/perl5/core_perl/pods/
-
-    # everything else than section 1 goes as-is
-    find usr/share/man/ -maxdepth 1 -mindepth 1 -not -name man1
-
-    # section 1 manual pages for installed programs go in perl not perl-doc
-    find usr/share/man/man1 -type f -printf "%f\n" | \
-    while read man; do
-      prog=$(echo $man | sed 's/\.[13]perl$//')
-      if [ ! -f usr/bin/core_perl/$prog ] && [ ! -f usr/bin/$prog ]; then
-          echo usr/share/man/man1/$man
-      fi
-    done
-  popd > /dev/null
+_unpick() {
+  local p="$1" f d; shift
+  for f; do
+    d="${srcdir}/${p}/${f}"
+    mkdir -vp "$(dirname "${f}")"
+    mv -v "${d}" "${f}"
+    rmdir -vp --ignore-fail-on-non-empty "$(dirname "${d}")"
+  done
 }
 
 package_perl() {
@@ -338,25 +264,65 @@ provides=('perl-archive-tar=3.04'
           'perl-threads-shared=1.70'
           'perl-threads=2.43'
           'perl-version=0.9933')
-  # Add your own provides here
-  provides=(${provides[@]})
   replaces=('perl-Scalar-List-Utils')
 
-  cp -r "${srcdir}/_install/"* "${pkgdir}"
+  cd "${pkgname}-${pkgver}"
 
-  for file in $(_find_doc_files ${srcdir}/_install); do
-    rm -Rf "${pkgdir}/${file}"
+  make DESTDIR="${pkgdir}" install
+
+  install -Dm755 lib/auto/XS/APItest/APItest.dll -t "${pkgdir}/usr/lib/perl5/core_perl/auto/XS/APItest/"
+  install -Dm755 lib/auto/XS/Typemap/Typemap.dll -t "${pkgdir}/usr/lib/perl5/core_perl/auto/XS/Typemap/"
+  install -Dm755 lib/auto/Win32CORE/Win32CORE.a -t "${pkgdir}/usr/lib/perl5/core_perl/auto/Win32CORE/"
+
+  cd "${pkgdir}"
+
+  ### Perl Settings ###
+  # Change man page extensions for site and vendor module builds.
+  # Set no mail address since bug reports should go to the bug tracker
+  # and not someone's email.
+  # prevent xsinit-generated code from referencing boot_Win32CORE
+  sed -e '/^man1ext=/ s/1perl/1p/' -e '/^man3ext=/ s/3perl/3pm/' \
+      -e "/^cf_email=/ s/'.*'/''/" \
+      -e "/^perladmin=/ s/'.*'/''/" \
+      -e "s/^\(static_ext\)=.*/\1=' '/" \
+      -i usr/lib/perl5/core_perl/Config_heavy.pl
+
+  ### CPAN Settings ###
+  # Set CPAN default config to use the site directories.
+  sed -e '/(makepl_arg =>/   s/""/"INSTALLDIRS=site"/' \
+      -e '/(mbuildpl_arg =>/ s/""/"installdirs=site"/' \
+      -i usr/share/perl5/core_perl/CPAN/FirstTime.pm
+
+  for template in "${srcdir}/"*.template; do
+    install -Dm644 "${template}" "usr/share/makepkg-template/${template##*/}"
+  done
+  ln -v usr/share/makepkg-template/perl-binary-module-dependency{-1,}.template
+
+  # Profile script to set paths to perl scripts.
+  install -Dm755 "${srcdir}/"perlbin.{sh,csh} -t 'etc/profile.d/'
+  # Profile script to set paths to perl scripts on fish. (FS#51191)
+  install -Dm755 "${srcdir}/perlbin.fish" -t 'usr/share/fish/vendor_conf.d/'
+
+  # Add the dirs so new installs will already have them in PATH once they
+  # install their first perl programm
+  install -dm755 usr/bin/{site,vendor}_perl
+
+  # Split documention to perl-doc, except those man1 pages which are for perl scripts in /usr/bin/core_perl
+  _pick perl-doc usr/bin/core_perl/perldoc
+  _pick perl-doc usr/share/man/
+  _pick perl-doc usr/share/perl5/core_perl/pods/
+  local _prog
+  for _prog in usr/bin/core_perl/* usr/bin/perl; do
+    _unpick perl-doc usr/share/man/man1/$(basename "${_prog}").1perl
   done
 }
 
 package_perl-doc() {
   pkgdesc="Perl documentation"
   depends=("perl=${pkgver}")
+  options=('!purge') # Keep .pod files
 
-  for file in $(_find_doc_files ${srcdir}/_install); do
-    mkdir -p "${pkgdir}/$(dirname "${file}")"
-    cp -r "${srcdir}/_install/${file}" "${pkgdir}/${file}"
-  done
+  mv -v ${pkgname}/* "${pkgdir}"
 }
 
 package_perl-devel() {
