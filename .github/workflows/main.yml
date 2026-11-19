@@ -15,9 +15,10 @@ jobs:
       fail-fast: false
       matrix:
         include: [
-          { msystem: MSYS, runner: windows-2022 },
+          { msystem: MSYS, runner: windows-2022, name: MSYS x86_64 },
+          { msystem: MSYS, runner: windows-2022, name: MSYS cross-aarch64, extra-pkgs: "cross-msysarm64-gcc cross-msysarm64-binutils" },
         ]
-    name: ${{ matrix.msystem }}
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Gather Facts
@@ -50,7 +51,7 @@ jobs:
       - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: ${{ matrix.msystem }}
-          install: git python base-devel
+          install: git python base-devel ${{ matrix.extra-pkgs }}
           update: true
           location: '${{ steps.facts.outputs.drive }}\M'
 
@@ -76,6 +77,9 @@ jobs:
         id: build
         run: |
           cd "$(cygpath '${{ steps.facts.outputs.drive }}/_')"
+          if [ ${{ matrix.name }} = "MSYS cross-aarch64" ]; then
+            export MSYS2_ARM64_CROSS=1
+          fi
           ./.ci/ci-build.sh
 
       - name: "Upload binaries"
