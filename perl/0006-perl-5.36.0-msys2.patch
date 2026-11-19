@@ -59,15 +59,6 @@ diff --git a/Cross/Makefile-cross-SH b/Cross/Makefile-cross-SH
 index 0abd0a4..e98d69e 100644
 --- a/Cross/Makefile-cross-SH
 +++ b/Cross/Makefile-cross-SH
-@@ -56,7 +56,7 @@ true)
- 			     -install_name \$(shrpdir)/\$@"
- 		;;
- 	cygwin*)
--		linklibperl="-lperl"
-+		linklibperl="-L. -lperl"
- 		;;
- 	sunos*)
- 		linklibperl="-lperl"
 @@ -940,7 +940,7 @@ _mopup:
  	-rm -f perl.third lib*.so.perl.third perl.3log t/perl.third t/perl.3log
  	-rm -f perl.pixie lib*.so.perl.pixie lib*.so.Addrs
@@ -156,36 +147,6 @@ index 90ad660..6ab66d8 100644
  }
  else {
      $param{LIBS} = ['-luserenv -lwinhttp']
-diff --git a/cpan/Win32/t/Unicode.t b/cpan/Win32/t/Unicode.t
-index fa05188..b49507e 100644
---- a/cpan/Win32/t/Unicode.t
-+++ b/cpan/Win32/t/Unicode.t
-@@ -47,7 +47,7 @@ sub cleanup {
- cleanup();
- END { cleanup() }
- 
--plan tests => 12;
-+plan tests => 11;
- 
- # Create Unicode directory
- Win32::CreateDirectory($dir8);
-@@ -91,9 +91,11 @@ if ($^O eq "cygwin") {
-     $subdir = decode "UTF-8", Cygwin::posix_to_win_path($subdir, 1);
- }
- $subdir =~ s,/,\\,g;
--# Cygwin64 no longer returns an ANSI name
--skip($^O eq "cygwin", Win32::GetLongPathName($subdir), $long);
-+# 
-+SKIP: {
-+    skip("Cygwin64 no longer returns an ANSI name", 2) if $^O eq "cygwin";
- 
--# We can chdir() into the Unicode directory if we use the ANSI name
--ok(chdir(Win32::GetANSIPathName($dir)));
--ok(Win32::GetLongPathName(Win32::GetCwd()), $long);
-+    # We can chdir() into the Unicode directory if we use the ANSI name
-+    ok(chdir(Win32::GetANSIPathName($dir)));
-+    ok(Win32::GetLongPathName(Win32::GetCwd()), $long);
-+}
 diff --git a/cpan/autodie/t/chown.t b/cpan/autodie/t/chown.t
 index d4425ac..747dc29 100644
 --- a/cpan/autodie/t/chown.t
@@ -268,16 +229,16 @@ diff --git a/hints/cygwin.sh b/hints/cygwin.sh
 index 158e89d..b98212a 100644
 --- a/hints/cygwin.sh
 +++ b/hints/cygwin.sh
-@@ -27,7 +27,7 @@ libswanted=`echo " $libswanted " | sed -e 's/ m / /g'`
+@@ -27,7 +27,7 @@
  libswanted=`echo " $libswanted " | sed -e 's/ util / /g'`
- ignore_versioned_solibs='y'
- usenm='no'
--libc='/usr/lib/libcygwin.a'
-+libc='/usr/lib/libmsys-2.0.a'
- loclibpth=' '
- glibpth=' '
- plibpth=' '
-@@ -38,7 +38,7 @@ libswanted="$libswanted gdbm_compat"
+ test -z "$ignore_versioned_solibs" && ignore_versioned_solibs='y'
+ test -z "$usenm" && usenm='no'
+-test -z "$libc" && libc='/usr/lib/libcygwin.a'
++test -z "$libc" && libc='/usr/lib/libmsys-2.0.a'
+ test -z "$loclibpth" && loclibpth=' '
+ test -z "$glibpth" && glibpth=' '
+ test -z "$plibpth" && plibpth=' '
+@@ -38,7 +38,7 @@
  test -z "$optimize" && optimize='-O3'
  man3ext='3pm'
  test -z "$use64bitint" && use64bitint='define'
@@ -286,19 +247,6 @@ index 158e89d..b98212a 100644
  test -z "$usemymalloc" && usemymalloc='undef'
  ccflags="$ccflags -D_GNU_SOURCE"
  # - otherwise i686-cygwin
-@@ -99,12 +99,3 @@ lddlflags="$lddlflags $ldflags"
- #ldflags="$ldflags -s"
- #ccdlflags="$ccdlflags -s"
- #lddlflags="$lddlflags -s"
--
--# Seems that exporting _Thread_local doesn't work on cygwin. This 6 year old
--# gcc bug suggests that maybe the problem really is binutils, but either way
--# it still doesn't work, despite our probes looking good:
--# https://gcc.gnu.org/bugzilla/show_bug.cgi?id=64697
--d_thread_local=undef
--
--# Broken: https://sourceware.org/pipermail/cygwin/2022-August/252043.html */
--d_newlocale=undef
 diff --git a/t/io/fs.t b/t/io/fs.t
 index 9cda3e9..1540c74 100644
 --- a/t/io/fs.t
@@ -416,19 +364,6 @@ index 3e80f84..1a8754c 100644
    skip_all( "-x on MSWin32 only indicates file has executable suffix. Try Cygwin?" );
  }
  
-diff --git a/t/porting/globvar.t b/t/porting/globvar.t
-index aaf285a..d20b504 100644
---- a/t/porting/globvar.t
-+++ b/t/porting/globvar.t
-@@ -15,7 +15,7 @@ my %skip = map { ("PL_$_", 1) }
-     qw(
- 	  DBcv bitcount cshname generation lastgotoprobe
- 	  mod_latin1_uc modcount no_symref_sv uudmap
--	  watchaddr watchok warn_uninit_sv hash_chars
-+	  watchaddr watchok warn_uninit_sv hash_chars current_context
-      );
- 
- $skip{PL_hash_rand_bits}= $skip{PL_hash_rand_bits_enabled}= 1; # we can be compiled without these, so skip testing them
 diff --git a/utils/perlbug.PL b/utils/perlbug.PL
 index 4448160..a443010 100644
 --- a/utils/perlbug.PL
