@@ -1,28 +1,51 @@
 # Maintainer: Alexey Pavlov <alexpux@gmail.com>
 
 pkgname=man-db
-pkgver=2.13.1
-pkgrel=2
+pkgver=2.13.3
+pkgrel=1
 pkgdesc="A utility for reading man pages"
 arch=('i686' 'x86_64')
 url="https://man-db.gitlab.io/man-db/"
 msys2_repository_url='https://gitlab.com/man-db/man-db'
 msys2_references=(
-  "cpe: cpe:/a:man-db_project:man-db"
+  'anitya: 1882'
+  'archlinux: man-db'
+  'aur:' # ignore mandoc-cvs
+  'cpe: cpe:/a:man-db_project:man-db'
+  'gentoo: sys-apps/man-db'
 )
 license=('spdx:GPL-3.0-or-later AND LGPL-2.1-or-later')
-depends=( 'bash' 'gdbm' 'zlib' 'groff' 'libpipeline' 'less')
-optdepends=('gzip')
-makedepends=('gettext-devel' 'libgdbm-devel' 'libpipeline-devel' 'zlib-devel' 'autotools' 'gcc' 'flex')
-backup=('etc/man_db.conf')
+depends=(
+  'bash'
+  'gdbm'
+  'groff'
+  'less'
+  'libpipeline'
+  'zlib'
+)
+optdepends=(
+  'gzip'
+)
+makedepends=(
+  'autotools'
+  'flex'
+  'gcc'
+  'gettext-devel'
+  'libgdbm-devel'
+  'libpipeline-devel'
+  'zlib-devel'
+)
 conflicts=('man')
 provides=('man')
 replaces=('man')
-install=${pkgname}.install
-source=(https://download.savannah.gnu.org/releases/man-db/${pkgname}-${pkgver}.tar.xz{,.asc}
-        convert-mans
-        0001-man-db-update-stddef_h.m4-and-Makefile.am-of-gnulib-.patch)
-sha256sums=('8afebb6f7eb6bb8542929458841f5c7e6f240e30c86358c1fbcefbea076c87d9'
+install="${pkgname}.install"
+backup=('etc/man_db.conf')
+source=(
+  "https://download.savannah.gnu.org/releases/man-db/${pkgname}-${pkgver}.tar.xz"{,.asc}
+  convert-mans
+  0001-man-db-update-stddef_h.m4-and-Makefile.am-of-gnulib-.patch
+)
+sha256sums=('7c10ac705433c740af91264fc29eee471090ead63a408541ab9736284a8c9deb'
             'SKIP'
             '15c9452984c06335543d9692e25d7825063d39e4d7897a224a36bbbd5e0ffaa8'
             '4f49b7ee1760c89b67134fa4a01654201efa5388a2466a10f78c51d8312ce103')
@@ -30,12 +53,14 @@ validpgpkeys=('AC0A4FF12611B6FCCF01C111393587D97D86500B') # Colin Watson <cjwats
 
 prepare() {
   cd "${pkgname}-${pkgver}"
-  patch -p1 -i "${srcdir}/0001-man-db-update-stddef_h.m4-and-Makefile.am-of-gnulib-.patch"
+
+  patch -Np1 -i "${srcdir}/0001-man-db-update-stddef_h.m4-and-Makefile.am-of-gnulib-.patch"
+
   autoreconf -f
 }
 
 build() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${srcdir}/${pkgname}-${pkgver}"
 
   local -a extra_config
   # 32-bit cygwin only has 32-bit time_t
@@ -43,6 +68,7 @@ build() {
   if [[ "$CARCH" == "i686" ]]; then
     extra_config+=("--disable-year2038")
   fi
+
   ./configure \
     --prefix=/usr \
     --build=${CHOST} \
@@ -58,22 +84,25 @@ build() {
     --with-sections="1 n l 8 3 0 2 5 4 9 6 7" \
     --with-systemdsystemunitdir=/usr/lib/systemd/system \
     "${extra_config[@]}"
+
   make
 }
 
 check() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
   make check
 }
 
 package() {
-  cd ${srcdir}/${pkgname}-${pkgver}
+  cd "${srcdir}/${pkgname}-${pkgver}"
+
   make DESTDIR=${pkgdir} install
 
   # part of groff pkg
-  rm -f ${pkgdir}/usr/bin/zsoelim
+  rm -f "${pkgdir}/usr/bin/zsoelim"
 
   # script from LFS to convert manpages, see
   # http://www.linuxfromscratch.org/lfs/view/6.4/chapter06/man-db.html
-  install -D -m755 ${srcdir}/convert-mans  ${pkgdir}/usr/bin/convert-mans
+  install -D -m755 "${srcdir}/convert-mans" "${pkgdir}/usr/bin/convert-mans"
 }
