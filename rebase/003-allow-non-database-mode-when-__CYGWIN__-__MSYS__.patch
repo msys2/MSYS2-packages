@@ -1,7 +1,6 @@
-diff -urN rebase-4.4.1.orig/rebase.c rebase-4.4.1/rebase.c
---- rebase-4.4.1.orig/rebase.c	2014-06-14 14:11:24.073986700 +0100
-+++ rebase-4.4.1/rebase.c	2014-06-14 23:18:28.632106000 +0100
-@@ -42,6 +42,7 @@
+--- rebase-4.6.6/rebase.c.orig	2026-11-14 19:07:45.549777100 +0800
++++ rebase-4.6.6/rebase.c	2026-11-14 19:07:45.599887500 +0800
+@@ -45,6 +45,7 @@
  
  BOOL save_image_info ();
  BOOL load_image_info ();
@@ -9,9 +8,9 @@ diff -urN rebase-4.4.1.orig/rebase.c rebase-4.4.1/rebase.c
  BOOL merge_image_info ();
  BOOL collect_image_info (const char *pathname);
  void print_image_info ();
-@@ -67,6 +68,12 @@
- BOOL image_storage_flag = FALSE;
+@@ -76,6 +77,12 @@
  BOOL image_oblivious_flag = FALSE;
+ BOOL perform_rebase_flag = TRUE;
  BOOL force_rebase_flag = FALSE;
 +/* Added to support MSYS2. If you do not use database mode (-s)
 +then the files are not sorted by name. Also, duplicates are
@@ -22,7 +21,7 @@ diff -urN rebase-4.4.1.orig/rebase.c rebase-4.4.1/rebase.c
  ULONG offset = 0;
  int args_index = 0;
  BOOL verbose = FALSE;
-@@ -193,6 +200,12 @@
+@@ -226,6 +233,12 @@
      }
  #endif /* __CYGWIN__ */
  
@@ -35,7 +34,7 @@ diff -urN rebase-4.4.1.orig/rebase.c rebase-4.4.1/rebase.c
    /* Collect file list, if specified. */
    if (file_list)
      {
-@@ -241,6 +254,8 @@
+@@ -274,6 +287,8 @@
      }
    else if (!image_storage_flag)
      {
@@ -44,7 +43,7 @@ diff -urN rebase-4.4.1.orig/rebase.c rebase-4.4.1/rebase.c
        /* Rebase. */
        ULONG64 new_image_base = image_base;
        for (i = 0; i < img_info_size; ++i)
-@@ -583,32 +598,46 @@
+@@ -639,33 +654,46 @@
    return img->flag.cannot_rebase;
  }
  
@@ -55,13 +54,14 @@ diff -urN rebase-4.4.1.orig/rebase.c rebase-4.4.1/rebase.c
  {
 -  int i, end;
 -  img_info_t *match;
+-  BOOL sorted;
 -  ULONG64 floating_image_base;
-+  int i, j;
- 
+-
 -  /* Sort new files from command line by name. */
 -  qsort (img_info_list + img_info_rebase_start,
 -	 img_info_size - img_info_rebase_start, sizeof (img_info_t),
 -	 img_info_name_cmp);
++  int i, j;
 +  if (!obey_order_flag)
 +    {
 +    /* Sort new files from command line by name. */
@@ -96,6 +96,7 @@ diff -urN rebase-4.4.1.orig/rebase.c rebase-4.4.1/rebase.c
 +{
 +  int i, end;
 +  img_info_t *match;
++  BOOL sorted;
 +  ULONG64 floating_image_base;
 +
 +  dedupe_image_info ();
@@ -103,7 +104,7 @@ diff -urN rebase-4.4.1.orig/rebase.c rebase-4.4.1/rebase.c
    /* Iterate through new files and see if they are already available in
       existing database. */
    if (img_info_rebase_start)
-@@ -1196,8 +1225,13 @@
+@@ -1453,8 +1481,13 @@
  	  break;
  	}
      }
@@ -119,9 +120,8 @@ diff -urN rebase-4.4.1.orig/rebase.c rebase-4.4.1/rebase.c
        || (force_rebase_flag && !perform_rebase_flag))
      {
        usage ();
-diff -urN rebase-4.4.1.orig/rebaseall.in rebase-4.4.1/rebaseall.in
---- rebase-4.4.1.orig/rebaseall.in	2014-06-14 14:11:24.073986700 +0100
-+++ rebase-4.4.1/rebaseall.in	2014-06-14 14:11:36.750711700 +0100
+--- rebase-4.6.6/rebaseall.in.orig	2026-11-14 19:07:45.549777100 +0800
++++ rebase-4.6.6/rebaseall.in	2026-11-14 19:07:45.609656600 +0800
 @@ -29,7 +29,7 @@
  PATH=$(cd $tp2 && pwd):@bindir@:/bin
  
@@ -152,7 +152,7 @@ diff -urN rebase-4.4.1.orig/rebaseall.in rebase-4.4.1/rebaseall.in
      exit ${ExitCode}
  }
  
-@@ -121,6 +122,8 @@
+@@ -126,6 +127,8 @@
      	Touch="-t";;
      T)
  	FileList="${OPTARG}";;
@@ -161,7 +161,7 @@ diff -urN rebase-4.4.1.orig/rebaseall.in rebase-4.4.1/rebaseall.in
      v)
  	Verbose="-v";;
      \?)
-@@ -175,8 +178,8 @@
+@@ -172,8 +175,8 @@
  [ -f "${db_file}" ] && database_exists="yes"
  
  # If BaseAddress has not been specified, and the rebase database doesn't exist
@@ -172,7 +172,7 @@ diff -urN rebase-4.4.1.orig/rebaseall.in rebase-4.4.1/rebaseall.in
  then
    BaseAddress=$DefaultBaseAddress
  fi
-@@ -204,8 +207,15 @@
+@@ -201,8 +204,15 @@
  fi
  
  # Set temp file
@@ -189,19 +189,10 @@ diff -urN rebase-4.4.1.orig/rebaseall.in rebase-4.4.1/rebaseall.in
 +fi
  
  # Create rebase list
- case $Platform in
-@@ -214,7 +224,7 @@
-       grep -E "\.($Suffixes)\$" |
-       sed -e '/\/cygwin1\.dll$/d' -e '/\/cyglsa.*\.dll$/d' \
-           -e '/sys-root\/mingw/d' -e 's/^/\//' \
--          -e '/\/d\?ash\.exe$/d' -e '/\/rebase\.exe$/d' >"${TmpFile}"
-+          -e '/\/d\?ash\.exe$/d' -e '/\/rebase\.exe$/d' >>"${TmpFile}"
-     # some interpreters include a method for installing addons outside of the
-     # package manager, such as CPAN and RubyGems.
-     for d in /usr/lib/perl5/site_perl /usr/lib/py*/site-packages \
-@@ -257,20 +267,11 @@
-     ;;
- esac
+ for f in /bin /lib
+@@ -227,20 +237,11 @@
+ # dynamicbase flag removed.
+ NoDyn='-n'
  
 -# Append user supplied file list, if any
 -if [ -n "${FileList}" ]
