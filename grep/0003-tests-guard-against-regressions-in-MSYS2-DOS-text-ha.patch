@@ -1,0 +1,162 @@
+From 07e440f321fb57d76383f5c6605ba0970fe01983 Mon Sep 17 00:00:00 2001
+From: Johannes Schindelin <johannes.schindelin@gmx.de>
+Date: Tue, 15 Sep 2026 16:53:32 +0200
+Subject: [PATCH 3/N] tests: guard against regressions in MSYS2 DOS text
+ handling
+
+The restored DOS text behavior needs regression coverage beyond ordinary
+matching. Byte accounting, binary classification and input resumption must
+remain correct across read and file boundaries.
+
+The MSYS2 Bash removes CRLF from command substitution output, which would hide
+the regressions these checks are meant to catch.
+
+Assisted-by: GPT-6
+Signed-off-by: Johannes Schindelin <johannes.schindelin@gmx.de>
+---
+ tests/Makefile.am |   1 +
+ tests/dosbuf      | 123 ++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 124 insertions(+)
+ create mode 100755 tests/dosbuf
+
+diff --git a/tests/Makefile.am b/tests/Makefile.am
+index 223088f0..26031bb2 100644
+--- a/tests/Makefile.am
++++ b/tests/Makefile.am
+@@ -101,6 +101,7 @@ TESTS =						\
+   dfa-infloop					\
+   dfa-invalid-utf8				\
+   dfaexec-multibyte				\
++  dosbuf					\
+   empty						\
+   empty-line					\
+   empty-line-mb					\
+diff --git a/tests/dosbuf b/tests/dosbuf
+new file mode 100755
+index 00000000..a4c74aa9
+--- /dev/null
++++ b/tests/dosbuf
+@@ -0,0 +1,123 @@
++#!/bin/sh
++# Exercise DOS text conversion without shell command substitution.
++
++. "${srcdir=.}/init.sh"; path_prepend_ ../src
++
++case $host_triplet in
++  *-cygwin* | *-msys* | *-mingw*) ;;
++  *) skip_ 'requires text and binary I/O modes' ;;
++esac
++
++fail=0
++
++printf 'first\r\nsecond\r\n' > in || framework_failure_
++printf 'first\n' > exp || framework_failure_
++for matcher in G E F; do
++  grep -"$matcher" -x first < in > out || fail=1
++  compare exp out || fail=1
++done
++if test "$PCRE_WORKS" = 1; then
++  grep -P -x first < in > out || fail=1
++  compare exp out || fail=1
++fi
++
++grep -U '^' in > out || fail=1
++compare in out || fail=1
++
++printf '0:first\n7:second\n' > exp || framework_failure_
++grep -b '^' in > out || fail=1
++compare exp out || fail=1
++printf '0:first\n6:second\n' > exp || framework_failure_
++for option in -u --unix-byte-offsets; do
++  grep -b "$option" '^' in > out || fail=1
++  compare exp out || fail=1
++done
++printf '7:second\n' > exp || framework_failure_
++grep -bo second in > out || fail=1
++compare exp out || fail=1
++
++printf 'first\r\n' > pat || framework_failure_
++printf 'first\n' > exp || framework_failure_
++grep -f pat in > out || fail=1
++compare exp out || fail=1
++
++printf 'first\r\n\0second\r\n' > in || framework_failure_
++grep -a '^' in > out || fail=1
++compare in out || fail=1
++
++printf 'one\rtwo\r\n' > in || framework_failure_
++printf 'onetwo\n' > exp || framework_failure_
++grep '^' in > out || fail=1
++compare exp out || fail=1
++printf 'one\rtwo\n' > in || framework_failure_
++grep '^' in > out || fail=1
++compare in out || fail=1
++
++printf 'a\r\n' > in || framework_failure_
++printf 'b\rx\n' > in2 || framework_failure_
++printf '0:a\n0:b\rx\n' > exp || framework_failure_
++grep -hb '^' in in2 > out || fail=1
++compare exp out || fail=1
++
++printf 'a\r\nb\nc\n' > in || framework_failure_
++printf '0:a\n3:b\n5:c\n' > exp || framework_failure_
++grep -b '^' in > out || fail=1
++compare exp out || fail=1
++
++printf 'a\r\nb\r\n' > in || framework_failure_
++printf 'a\nb\r\n' > exp || framework_failure_
++(grep -m1 a && cat) < in > out || fail=1
++compare exp out || fail=1
++printf '0:a\nb\r\n' > exp || framework_failure_
++for option in -bm1 -bum1; do
++  (grep "$option" a && cat) < in > out || fail=1
++  compare exp out || fail=1
++done
++
++printf 'a\nb\nb\r\n' > exp || framework_failure_
++(grep -m1 -A1 a && cat) < in > out || fail=1
++compare exp out || fail=1
++
++printf 'a\r\n\rb\r\n' > in || framework_failure_
++printf 'a\n\rb\r\n' > exp || framework_failure_
++(grep -m1 a && cat) < in > out || fail=1
++compare exp out || fail=1
++printf 'a\r\n\r\r' > in || framework_failure_
++printf 'a\n\r\r' > exp || framework_failure_
++(grep -m1 a && cat) < in > out || fail=1
++compare exp out || fail=1
++printf 'a\r\nb\r' > in || framework_failure_
++printf 'a\nb\n' > exp || framework_failure_
++(grep -m2 . && cat) < in > out || fail=1
++compare exp out || fail=1
++
++# CR-only reads must not look like EOF or reset the file classification.
++$AWK 'BEGIN { for (i = 0; i < 262144; i++) printf "\r" }' > crs \
++  || framework_failure_
++{ printf 'a\r\n'; cat crs; printf 'b\r\n'; } > in || framework_failure_
++printf 'b\n' > exp || framework_failure_
++grep -x b in > out || fail=1
++compare exp out || fail=1
++printf '262147:b\n' > exp || framework_failure_
++grep -bx b in > out || fail=1
++compare exp out || fail=1
++printf '2:b\n' > exp || framework_failure_
++grep -bux b in > out || fail=1
++compare exp out || fail=1
++
++{ printf 'a\r\n'; cat crs; printf '\n'; } > in || framework_failure_
++printf '3:\n' > exp || framework_failure_
++grep -bx '' in > out || fail=1
++compare exp out || fail=1
++
++# Split an empty CRLF record across the initial 96 KiB read boundary.
++$AWK 'BEGIN {
++  printf "a\r\n"
++  for (i = 0; i < 98299; i++) printf "b"
++  printf "\n\r\n"
++}' > in || framework_failure_
++printf '98303:\n' > exp || framework_failure_
++grep -bx '' in > out || fail=1
++compare exp out || fail=1
++
++Exit $fail
