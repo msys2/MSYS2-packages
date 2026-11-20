@@ -73,6 +73,14 @@ check() {
   printf 'crlf\r\n' | src/grep -Fx crlf > msys2-crlf.actual || return 1
   cmp msys2-crlf.expected msys2-crlf.actual || return 1
 
+  # Characters outside Unicode's Basic Multilingual Plane, such as the
+  # 4-byte UTF-8 emoji U+1F600 below, need two 16-bit wchar_t units on
+  # Cygwin. grep 3.0 never matched such a literal in a pattern in UTF-8
+  # locales; guard against that regression:
+  # https://github.com/msys2/MSYS2-packages/issues/5001
+  # https://github.com/msys2/MSYS2-packages/pull/6679#issuecomment-6340256863
+  printf 'a\360\237\230\200b\n' | LC_ALL=C.UTF-8 src/grep -q $'\360\237\230\200' || return 1
+
   MSYS=winsymlinks:sys make check
 }
 
