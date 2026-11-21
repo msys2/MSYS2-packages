@@ -1,0 +1,85 @@
+From b6e315143bf72c6d4e75a858716adbbe03c679f0 Mon Sep 17 00:00:00 2001
+From: =?utf8?q?M=C3=A1t=C3=A9=20Dimand?= <mate.dimand@arm.com>
+Date: Wed, 16 Sep 2026 15:52:16 +0200
+Subject: [PATCH] Cygwin: gendef: fix SEH directives in AArch64 sigdelayed
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf8
+Content-Transfer-Encoding: 8bit
+
+The directive .seh_save_regp_x should not be used with x16 or x17
+registers. (This error is now deteected by gas, reporing "Error:
+unexpected register number")
+
+The newly added x29 and x30 push + the save_fplr directive enables full
+stack unwinding.
+
+Co-authored by: Evgeny Karpov <evgeny.karpov@arm.com>
+Signed-off-by: MÃ¡tÃ© Dimand <mate.dimand@arm.com>
+---
+ winsup/cygwin/exceptions.cc  |  4 ++--
+ winsup/cygwin/scripts/gendef | 18 ++++++++++--------
+ 2 files changed, 12 insertions(+), 10 deletions(-)
+
+diff --git a/winsup/cygwin/exceptions.cc b/winsup/cygwin/exceptions.cc
+index 4c3f20c12..293c4c45c 100644
+--- a/winsup/cygwin/exceptions.cc
++++ b/winsup/cygwin/exceptions.cc
+@@ -990,7 +990,7 @@ sigdelayed_init(PCONTEXT ctx)
+   const DWORD64 stack_x16 = sp[0];
+   const DWORD64 stack_x17 = sp[1];
+   const DWORD64 stack_x0 = sp[2];
+-  const DWORD64 stack_lr = sp[3];
++  const DWORD64 stack_lr = sp[5];
+ 
+   ctx->X16 = stack_x16; // x16 clobbered by RtlCaptureContext
+   ctx->X17 = stack_x17;
+@@ -1002,7 +1002,7 @@ sigdelayed_init(PCONTEXT ctx)
+      happened to change. */
+   static_assert(sizeof(CONTEXT) == 0x390);
+ 
+-  ctx->Sp += sizeof(CONTEXT) + 32; // undo stack pushes from sigdelayed
++  ctx->Sp += sizeof(CONTEXT) + 48; // undo stack pushes from sigdelayed
+ 
+   _my_tls.sigdelayed_impl(ctx);
+ }
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 9f631dea4..5043eb350 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -468,23 +468,25 @@ _sigbe:
+ 	.global	sigdelayed
+ 	.seh_proc sigdelayed
+ sigdelayed:
+-	sub	sp,	sp,	0x390 	// sizeof(ARM64_NT_CONTEXT)
+-	.seh_stackalloc 0x390
+-	stp	x0,	x30,	[sp, #-16]!
++	sub	sp,	sp,	0x3C0 	// sizeof(ARM64_NT_CONTEXT) + 48
++	.seh_stackalloc 0x3C0
++	stp	x29,	x30,	[sp, #32]
++	.seh_save_fplr 32
++	.seh_endprologue
++
++	str	x0,	[sp, #16]
+ 
+ 	// x16 gets clobbered after calling RtlCaptureContext.
+ 	// Both x16 and x17 are considered volatile registers, so we preserve both.
+-	stp	x16,	x17,	[sp, #-16]!
+-	.seh_save_regp_x x16, 16
+-	.seh_endprologue
++	stp	x16,	x17,	[sp]
+ 
+ 	// RtlCaptureContext captures the current CPU state
+ 	// at the time of calling it, letting us restore it
+ 	// later with adjusted registers in sigdelayed_impl.
+-	add	x0,	sp,	32		// set x0 to the stack space allocated for the context
++	add	x0,	sp,	48		// set x0 to the stack space allocated for the context
+ 	bl RtlCaptureContext
+ 
+-	add	x0,	sp,	32		// reset x0 in case it got clobbered
++	add	x0,	sp,	48		// reset x0 in case it got clobbered
+ 	bl sigdelayed_init
+ 
+ 	// unreachable
+-- 
+2.43.7
+

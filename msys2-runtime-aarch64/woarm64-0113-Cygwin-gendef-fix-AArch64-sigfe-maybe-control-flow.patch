@@ -1,0 +1,79 @@
+From f23292d8a71d5795784f7f6977b6f030ac4adcb3 Mon Sep 17 00:00:00 2001
+From: Mayank Agrawal <mayagr@qti.qualcomm.com>
+Date: Fri, 18 Sep 2026 12:22:26 +0530
+Subject: [PATCH] Cygwin: gendef: fix AArch64 _sigfe_maybe control flow
+
+_sigfe_maybe returned on both outcomes of the 'TLS initialized?' check,
+so it never entered _sigfe and never called the wrapped function.
+
+The wrapper enters it with 'br' after reserving 16 bytes and storing the
+real function address at [sp], but AArch64 'ret' branches to x30 and
+pops nothing, so the bypass path returned without calling the function
+while leaking the wrapper slot.
+
+Branch to a shared L_sigfe_entry label when TLS is valid, mirroring the
+x86_64 path's "je 1f", and otherwise pop the wrapper slot and tail-call
+the real function through it.
+
+The CYGTLS_INITIALIZED comparison also built 0x173fc763 instead of
+0xc763173f, as the movz/movk halves were swapped, so it could never
+match.
+
+Fixes: ae46abc226ce ("Cygwin: gendef: add _sigfe_maybe for TLS initialization checks on AArch64")
+Signed-off-by: Aswin Kalies <aswin.kalies@multicorewareinc.com>
+---
+ winsup/cygwin/scripts/gendef | 31 +++++++++++++++++++------------
+ 1 file changed, 19 insertions(+), 12 deletions(-)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 5f25c543e..ce56e5fc8 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -368,25 +368,32 @@ EOF
+ 	.seh_proc _sigfe_maybe
+ _sigfe_maybe:					# stack is aligned on entry!
+ 	.seh_endprologue
+-	ldr     x10, [x18, #0x8]		// Load TEB pointer in x10
+-	ldr     x11, =_cygtls.initialized	// Load relative offset of _cygtls.initialized
+-	add     x11, x10, x11                  	// compute absolute address and store in x11
+-	cmp     sp, x11				// Compare current stack pointer with TLS location
+-	b.hs    0f                             	// if sp >= tls, skip TLS logic
+-	ldr     w12, [x11]                    	// Load the value at _cygtls.initialized (32-bit)
+-	movz    w13, #0xc763			// Prepare magic value(0xc763173f) lower 16 bits
+-	movk    w13, #0x173f, lsl #16		// Add upper 16 bits, full value now in w13
+-	cmp     w12, w13			// Compare loaded value with magic
+-	b.ne    0f                              // If not equal, not initialized, skip TLS logic
+-	ret
++	// x18 is the Windows TEB pointer.  Its field at offset 8 is the base
++	// used to resolve offsets within Cygwin's _cygtls block.
++	ldr	x10, [x18, #0x8]		// Load the Cygwin TLS base into x10
++	ldr	x11, =_cygtls.initialized	// Load the _cygtls.initialized offset
++	add	x11, x10, x11			// Compute &_cygtls.initialized
++	cmp	sp, x11				// Compare SP with the TLS location
++	b.hs	0f				// No usable Cygwin TLS if SP >= it
++	ldr	w12, [x11]			// Load the initialization marker
++	movz	w13, #0x173f			// Prepare magic value 0xc763173f, low half
++	movk    w13, #0xc763, lsl #16		// Add high half: 0xc763173f
++	cmp     w12, w13			// Compare the marker with the expected magic value
++	b.eq    .L_sigfe_entry			// Valid TLS: use the normal signal front end
+ 0:
+-	ret
++	// The wrapper reserved 16 bytes and stored the real function at [sp].
++	// AArch64 ret uses x30 and does not pop that wrapper slot.
++	ldr     x9, [sp], #16			// Remove the wrapper slot and load the target
++	br      x9				// Enter the target while preserving x30
+ 	.seh_endproc
+ 
+     .seh_proc _sigfe
+ _sigfe:
+     .seh_endprologue
+     ldr     x10, [x18, #0x8]		// Load TLS base into x10
++.L_sigfe_entry:
++	// _sigfe_maybe reaches this point after loading x10; direct _sigfe calls
++	// reach it through the TLS-base load above.
+     mov     w9, #1			// constant value for lock acquisition
+ 0:  ldr     x11, =_cygtls.stacklock	// Load offset of stacklock
+     add     x12, x10, x11		// Compute final address of stacklock
+-- 
+2.43.7
+

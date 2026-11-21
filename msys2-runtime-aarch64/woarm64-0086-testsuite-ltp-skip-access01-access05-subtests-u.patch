@@ -1,0 +1,68 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:15:15 +0530
+Subject: [PATCH 086/109] testsuite/ltp: skip access01/access05 subtests
+ unsupported on Cygwin/MSYS2
+
+(cherry picked from commit d8f79860da7c564c8474082be2ff4db35f20ffe0)
+---
+ winsup/testsuite/winsup.api/ltp/access01.c | 16 ++++++++++++++--
+ winsup/testsuite/winsup.api/ltp/access05.c | 18 +++++++++++++++++-
+ 2 files changed, 31 insertions(+), 3 deletions(-)
+
+diff --git a/winsup/testsuite/winsup.api/ltp/access01.c b/winsup/testsuite/winsup.api/ltp/access01.c
+index fdeea779b..f3205c8c1 100644
+--- a/winsup/testsuite/winsup.api/ltp/access01.c
++++ b/winsup/testsuite/winsup.api/ltp/access01.c
+@@ -181,8 +181,20 @@ int main(int ac, char **av)
+ 	Tst_count=0;
+ 
+ 	for (tc=0; tc<Ntc; tc++) {
+-	    /* 
+-	     * Call access(2) 
++	    /*
++	     * On Cygwin/MSYS2 execute permission is not the POSIX 'x' bit:
++	     * it is derived from the file's extension (.exe/.bat/...) or a
++	     * '#!' shebang, so a plain file is never X_OK regardless of its
++	     * mode bits.  Skip the X_OK subtest as not applicable here.
++	     */
++	    if (Test_cases[tc].mode == X_OK) {
++		tst_resm(TCONF, "access(%s, X_OK): execute permission is not the "
++			 "POSIX x bit on Cygwin/MSYS2, skipping",
++			 Test_cases[tc].file);
++		continue;
++	    }
++	    /*
++	     * Call access(2)
+ 	     */
+ 	    TEST(access(Test_cases[tc].file, Test_cases[tc].mode));
+ 	
+diff --git a/winsup/testsuite/winsup.api/ltp/access05.c b/winsup/testsuite/winsup.api/ltp/access05.c
+index 499023ab6..040e52e5f 100644
+--- a/winsup/testsuite/winsup.api/ltp/access05.c
++++ b/winsup/testsuite/winsup.api/ltp/access05.c
+@@ -166,7 +166,23 @@ main(int ac, char **av)
+ 				file_name = (char *)get_high_address();
+ 			}
+ 
+-			/* 
++			/*
++			 * On Windows/NTFS the owner of a file can always read
++			 * it; read access cannot be denied to the owner via
++			 * mode bits.  The "Read Access denied" subtest (chmod
++			 * 0333) therefore cannot return EACCES on Cygwin/MSYS2,
++			 * so skip it as not applicable.  (W_OK and X_OK denial
++			 * are still enforced and remain tested.)
++			 */
++			if (Test_cases[ind].exp_errno == EACCES &&
++			    access_mode == R_OK) {
++				tst_resm(TCONF, "access(R_OK) cannot be denied "
++					 "to the file owner on Cygwin/MSYS2, "
++					 "skipping");
++				continue;
++			}
++
++			/*
+ 			 * Call access(2) to test different test conditions.
+ 			 * verify that it fails with -1 return value and
+ 			 * sets appropriate errno.

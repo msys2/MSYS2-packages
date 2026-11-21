@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Fri, 16 Oct 2026 12:10:00 +0530
+Subject: [PATCH] Cygwin: cygwin.din: export GetCommandLine{A,W}@0 from undecorated
+ targets
+
+The exports GetCommandLineA@0 and GetCommandLineW@0 named their targets
+cygwin_GetCommandLineA@0 and cygwin_GetCommandLineW@0, but the functions
+are plain cdecl symbols without that decoration.  ld used to resolve
+this through the PE+ stdcall fixup pass; binutils removed that pass for
+PE+ (534e9a794c4 "PE+: Remove the stdcall fixup machinery"), after which
+the DLL no longer links:
+
+  ld: cannot export cygwin_GetCommandLineA@0: symbol not defined
+  ld: cannot export cygwin_GetCommandLineW@0: symbol not defined
+
+Name the real symbols as targets.  The exported names keep their @0, so
+the DLL's export table is unchanged, and this links with both old and
+new ld.
+
+Signed-off-by: aswin-mcw <aswin.kalies@multicorewareinc.com>
+---
+--- a/winsup/cygwin/cygwin.din
++++ b/winsup/cygwin/cygwin.din
+@@ -665,8 +665,8 @@
+ getc_unlocked SIGFE
+ getchar SIGFE
+ getchar_unlocked SIGFE
+-GetCommandLineA@0 = cygwin_GetCommandLineA@0 NOSIGFE
+-GetCommandLineW@0 = cygwin_GetCommandLineW@0 NOSIGFE
++GetCommandLineA@0 = cygwin_GetCommandLineA NOSIGFE
++GetCommandLineW@0 = cygwin_GetCommandLineW NOSIGFE
+ getcontext NOSIGFE
+ getcwd SIGFE
+ getdelim = __getdelim SIGFE
+-- 
+2.54.0

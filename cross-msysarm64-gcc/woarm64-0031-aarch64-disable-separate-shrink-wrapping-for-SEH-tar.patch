@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Tue, 27 Oct 2026 15:43:00 +0530
+Subject: [PATCH 31/31] aarch64: disable separate shrink-wrapping for SEH
+ targets
+
+Separate shrink-wrapping saves and restores individual callee-saved
+registers on the paths that need them, outside the prologue.  Windows
+ARM64 unwind data describes a single prologue, so this cannot be
+expressed; the restores in the function body were instead emitted as
+.seh_save_reg.  When the offset is misaligned or out of range the
+assembler rejects them:
+
+  Error: offset should be a multiple of 8
+  Error: offset overflows expected range
+
+and otherwise accepts them as wrong unwind data.
+
+Return NULL from aarch64_get_separate_components for SEH targets, the
+standard way to opt out (try_shrink_wrapping_separate stops when there
+are no components).  Ordinary shrink-wrapping of the whole prologue is
+unaffected.
+
+Signed-off-by: aswin-mcw <aswin.kalies@multicorewareinc.com>
+---
+ gcc/config/aarch64/aarch64.cc | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/gcc/config/aarch64/aarch64.cc b/gcc/config/aarch64/aarch64.cc
+index 2d08d1a..2906296 100644
+--- a/gcc/config/aarch64/aarch64.cc
++++ b/gcc/config/aarch64/aarch64.cc
+@@ -10021,6 +10021,16 @@ offset_12bit_unsigned_scaled_p (machine_mode mode, poly_int64 offset)
+ static sbitmap
+ aarch64_get_separate_components (void)
+ {
++#ifdef TARGET_SEH
++  /* Windows unwind data describes a single prologue: the SEH directives
++     only express register saves made before .seh_endprologue.  Separate
++     shrink-wrapping moves individual saves and restores into the body, where
++     they are reported as saves with offsets the assembler rejects or, worse,
++     accepts.  */
++  if (TARGET_SEH)
++    return NULL;
++#endif
++
+   aarch64_frame &frame = cfun->machine->frame;
+   sbitmap components = sbitmap_alloc (LAST_SAVED_REGNUM + 1);
+   bitmap_clear (components);
+-- 
+2.51.0
+

@@ -1,0 +1,183 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mayank Agrawal <mayagr@qti.qualcomm.com>
+Date: Tue, 28 Jul 2026 14:35:57 +0530
+Subject: [PATCH 106/109] strace(arm64): add crash reporter to localize the
+ ARM64 segfault (#20)
+
+strace.exe segfaults on aarch64-pc-msys when tracing a process (issue
+#20).  The only signal today is the shell's bare "Segmentation fault"
+line; the fault reproduces only on the ARM64 box, so root-causing it
+needs a fault address we currently don't have.
+
+Install a vectored exception handler plus a last-resort unhandled-filter
+in main2() that, on a genuine fault, print the exception code, the
+faulting instruction address, and -- decisively -- the module + offset
+that address resolves to (via GetModuleHandleExW FROM_ADDRESS), so we
+can tell immediately whether the PC is in strace.exe's own logic or
+inside msys-2.0.dll.  A few registers are dumped from the CONTEXT record
+(ARM64 and x86_64 branches).  GCC-SEH pseudo-exceptions, breakpoints and
+the SetThreadName marker are skipped so only real crashes are reported;
+the trace file is flushed first so no captured lines are lost.
+
+Inert unless a fault occurs, pure win32/ntdll (no cygwin runtime
+dependency), so it is safe in this -lntdll util and stays permanently.
+Compile-checked for both aarch64-w64-mingw32 and x86_64 with -Wall
+-Wextra.
+
+(cherry picked from commit a6e58e7461d83c6031739f81919bbe2d875598a5)
+(cherry picked from commit d36a17a60240f1878347c46ea5b1ffaf8f7685dc)
+---
+ winsup/utils/mingw/strace.cc | 126 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 126 insertions(+)
+
+diff --git a/winsup/utils/mingw/strace.cc b/winsup/utils/mingw/strace.cc
+index a6b2e5d54..37f510f2b 100644
+--- a/winsup/utils/mingw/strace.cc
++++ b/winsup/utils/mingw/strace.cc
+@@ -1063,6 +1063,125 @@ struct option longopts[] = {
+ 
+ static const char *const opts = "+b:dehHfm:no:p:qS:tTuVw";
+ 
++/* Crash reporter (issue #20).  strace.exe is a native (aarch64-pc-msys /
++   x86_64) PE that drives a debug loop and calls into msys-2.0.dll via
++   cygwin_internal for every debug event.  When it faults there is no
++   useful signal beyond the shell's "Segmentation fault" line, and the
++   crash reproduces only on the ARM64 box.  This handler turns a fault
++   into an actionable report: exception code, faulting instruction
++   address, and -- decisively -- the module + offset that address lands
++   in, so we can tell instantly whether the PC is inside strace.exe's own
++   logic or inside msys-2.0.dll.  It is inert unless a genuine fault
++   occurs, so it stays in the tree permanently.  Pure win32/ntdll: safe in
++   a -lntdll util with no cygwin runtime dependency.  */
++
++static FILE *crash_ofile;	/* trace file to flush before we die */
++static LONG crash_reported;	/* guard: report a fault only once */
++
++/* True for control-flow "exceptions" that are not crashes: the GCC SEH
++   pseudo-exceptions (see gcc_seh.h), debugger breakpoints, and the
++   SetThreadName marker.  These must not be reported.  */
++static bool
++is_noncrash_exception (DWORD code)
++{
++  switch (code)
++    {
++    case STATUS_GCC_THROW:
++    case STATUS_GCC_UNWIND:
++    case STATUS_GCC_FORCED:
++    case STATUS_BREAKPOINT:
++    case (DWORD) 0x406d1388:		/* SetThreadName exception. */
++      return true;
++    }
++  return false;
++}
++
++/* Core reporter: dump the fault to stderr, once.  No cygwin runtime
++   dependency -- pure win32/ntdll, safe in a -lntdll util.  */
++static void
++strace_report_fault (EXCEPTION_POINTERS *ep)
++{
++  if (InterlockedExchange (&crash_reported, 1))
++    return;			/* already reported by the other hook */
++
++  /* Don't lose already-captured trace lines. */
++  if (crash_ofile && crash_ofile != stdout)
++    fflush (crash_ofile);
++  fflush (stderr);
++
++  const DWORD code = ep->ExceptionRecord->ExceptionCode;
++  void *addr = ep->ExceptionRecord->ExceptionAddress;
++  fprintf (stderr, "\n%s: *** fatal exception 0x%08lx at %p ***\n",
++	   pgm, code, addr);
++
++  if (code == EXCEPTION_ACCESS_VIOLATION
++      && ep->ExceptionRecord->NumberParameters >= 2)
++    {
++      static const char *const acc[] = { "read", "write", "execute" };
++      ULONG_PTR kind = ep->ExceptionRecord->ExceptionInformation[0];
++      fprintf (stderr, "%s:   access violation: %s at %p\n", pgm,
++	       kind < 3 ? acc[kind] : "?",
++	       (void *) ep->ExceptionRecord->ExceptionInformation[1]);
++    }
++
++  /* Resolve the faulting PC to module + offset -- the decisive datum:
++     tells us instantly whether the PC is in strace.exe or msys-2.0.dll. */
++  HMODULE mod = NULL;
++  if (GetModuleHandleExW (GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
++			  | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
++			  (LPCWSTR) addr, &mod)
++      && mod)
++    {
++      WCHAR path[MAX_PATH + 1] = L"";
++      GetModuleFileNameW (mod, path, MAX_PATH);
++      fprintf (stderr, "%s:   in module %ls + 0x%tx (base %p)\n", pgm,
++	       path[0] ? path : L"(unknown)",
++	       (char *) addr - (char *) mod, (void *) mod);
++    }
++  else
++    fprintf (stderr, "%s:   PC is not in any loaded module\n", pgm);
++
++#ifdef __aarch64__
++  CONTEXT *c = ep->ContextRecord;
++  if (c)
++    fprintf (stderr,
++	     "%s:   Pc=%p Sp=%p Lr(x30)=%p Fp(x29)=%p X0=%p X1=%p\n", pgm,
++	     (void *) c->Pc, (void *) c->Sp, (void *) c->Lr, (void *) c->Fp,
++	     (void *) c->X0, (void *) c->X1);
++#elif defined(__x86_64__)
++  CONTEXT *c = ep->ContextRecord;
++  if (c)
++    fprintf (stderr, "%s:   Rip=%p Rsp=%p Rbp=%p Rcx=%p Rdx=%p\n", pgm,
++	     (void *) c->Rip, (void *) c->Rsp, (void *) c->Rbp,
++	     (void *) c->Rcx, (void *) c->Rdx);
++#endif
++
++  fflush (stderr);
++}
++
++/* First-chance vectored hook: catches the fault even if some frame would
++   otherwise swallow it, but must not claim the exception -- report and
++   let the search continue.  */
++static LONG WINAPI
++strace_vectored_report (EXCEPTION_POINTERS *ep)
++{
++  if (!is_noncrash_exception (ep->ExceptionRecord->ExceptionCode))
++    strace_report_fault (ep);
++  return EXCEPTION_CONTINUE_SEARCH;
++}
++
++/* Last-resort top-level filter: report (if the vectored hook somehow
++   didn't) and terminate cleanly, suppressing the WER dialog that would
++   otherwise hang an unattended box/CI run.  */
++static LONG WINAPI
++strace_unhandled_filter (EXCEPTION_POINTERS *ep)
++{
++  if (is_noncrash_exception (ep->ExceptionRecord->ExceptionCode))
++    return EXCEPTION_CONTINUE_SEARCH;
++  strace_report_fault (ep);
++  return EXCEPTION_EXECUTE_HANDLER;
++}
++
+ static void
+ print_version ()
+ {
+@@ -1088,6 +1207,12 @@ main2 (int argc, char **argv)
+   int sawquiet = -1;
+   DWORD ret = 0;
+ 
++  /* Install the crash reporter before we do anything else, so a fault
++     anywhere in the debug loop yields code+address+module instead of a
++     bare "Segmentation fault" (issue #20).  */
++  AddVectoredExceptionHandler (0, strace_vectored_report);
++  SetUnhandledExceptionFilter (strace_unhandled_filter);
++
+   if (load_cygwin ())
+     {
+       char **av = (char **) cygwin_internal (CW_ARGV);
+@@ -1203,6 +1328,7 @@ character #%d.\n", optarg, (int) (endptr - optarg), endptr);
+ 
+   if (!ofile)
+     ofile = stdout;
++  crash_ofile = ofile;		/* so the crash reporter can flush it */
+ 
+   if (bufsize)
+     setvbuf (ofile, (char *) alloca (bufsize), _IOFBF, bufsize);

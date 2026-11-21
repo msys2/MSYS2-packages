@@ -1,0 +1,429 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:04 +0530
+Subject: [PATCH 028/109] newlib: libc: update asmdefs.h compatible with
+ Cygwin AArch64
+
+(cherry picked from commit 132135c102a9aecf212322300e8a3998aedfd508)
+---
+ newlib/libc/machine/aarch64/asmdefs.h   | 105 ++++++++++--------------
+ newlib/libc/machine/aarch64/memchr.S    |   2 -
+ newlib/libc/machine/aarch64/memcmp.S    |   4 -
+ newlib/libc/machine/aarch64/memcpy.S    |   3 -
+ newlib/libc/machine/aarch64/memrchr.S   |   1 -
+ newlib/libc/machine/aarch64/memset.S    |   3 -
+ newlib/libc/machine/aarch64/rawmemchr.S |  17 +---
+ newlib/libc/machine/aarch64/setjmp.S    |  14 ++--
+ newlib/libc/machine/aarch64/strchr.S    |   1 -
+ newlib/libc/machine/aarch64/strchrnul.S |   1 -
+ newlib/libc/machine/aarch64/strcmp.S    |   2 -
+ newlib/libc/machine/aarch64/strcpy.S    |   2 -
+ newlib/libc/machine/aarch64/strlen.S    |   1 -
+ newlib/libc/machine/aarch64/strncmp.S   |   3 -
+ newlib/libc/machine/aarch64/strnlen.S   |   2 -
+ newlib/libc/machine/aarch64/strrchr.S   |   1 -
+ 16 files changed, 54 insertions(+), 108 deletions(-)
+
+diff --git a/newlib/libc/machine/aarch64/asmdefs.h b/newlib/libc/machine/aarch64/asmdefs.h
+index 131b95e1f..6c99fa704 100644
+--- a/newlib/libc/machine/aarch64/asmdefs.h
++++ b/newlib/libc/machine/aarch64/asmdefs.h
+@@ -1,19 +1,28 @@
+ /*
+  * Macros for asm code.  AArch64 version.
+  *
+- * Copyright (c) 2019-2023, Arm Limited.
++ * Copyright (c) 2019-2025, Arm Limited.
+  * SPDX-License-Identifier: MIT OR Apache-2.0 WITH LLVM-exception
+  */
+ 
+ #ifndef _ASMDEFS_H
+ #define _ASMDEFS_H
+ 
++/* Set the line separator for the assembler.  */
++#if defined (__APPLE__)
++# define SEP %%
++# define PREF _
++#else
++# define SEP ;
++# define PREF
++#endif
++
+ /* Branch Target Identitication support.  */
+ #define BTI_C		hint	34
+ #define BTI_J		hint	36
+ /* Return address signing support (pac-ret).  */
+-#define PACIASP		hint	25; .cfi_window_save
+-#define AUTIASP		hint	29; .cfi_window_save
++#define PACIASP		hint	25 SEP .cfi_window_save
++#define AUTIASP		hint	29 SEP .cfi_window_save
+ 
+ /* GNU_PROPERTY_AARCH64_* macros from elf.h.  */
+ #define FEATURE_1_AND 0xc0000000
+@@ -21,32 +30,18 @@
+ #define FEATURE_1_PAC 2
+ 
+ /* Add a NT_GNU_PROPERTY_TYPE_0 note.  */
+-#ifdef __ILP32__
+ #define GNU_PROPERTY(type, value)	\
+-  .section .note.gnu.property, "a";	\
+-  .p2align 2;				\
+-  .word 4;				\
+-  .word 12;				\
+-  .word 5;				\
+-  .asciz "GNU";				\
+-  .word type;				\
+-  .word 4;				\
+-  .word value;				\
++  .section .note.gnu.property, "a"  SEP \
++  .p2align 3			    SEP \
++  .word 4			    SEP \
++  .word 16			    SEP \
++  .word 5			    SEP \
++  .asciz "GNU"			    SEP \
++  .word type			    SEP \
++  .word 4			    SEP \
++  .word value			    SEP \
++  .word 0			    SEP \
+   .text
+-#else
+-#define GNU_PROPERTY(type, value)	\
+-  .section .note.gnu.property, "a";	\
+-  .p2align 3;				\
+-  .word 4;				\
+-  .word 16;				\
+-  .word 5;				\
+-  .asciz "GNU";				\
+-  .word type;				\
+-  .word 4;				\
+-  .word value;				\
+-  .word 0;				\
+-  .text
+-#endif
+ 
+ /* If set then the GNU Property Note section will be added to
+    mark objects to support BTI and PAC-RET.  */
+@@ -60,47 +55,37 @@ GNU_PROPERTY (FEATURE_1_AND, FEATURE_1_BTI|FEATURE_1_PAC)
+ #endif
+ 
+ #define ENTRY_ALIGN(name, alignment)	\
+-  .global name;		\
+-  .type name,%function;	\
+-  .align alignment;		\
+-  name:			\
+-  .cfi_startproc;	\
+-  BTI_C;
++  .align alignment		    SEP \
++  ENTRY_ALIAS(name)		    SEP \
++  .cfi_startproc		    SEP \
++  BTI_C
+ 
+ #define ENTRY(name)	ENTRY_ALIGN(name, 6)
+ 
+-#define ENTRY_ALIAS(name)	\
+-  .global name;		\
+-  .type name,%function;	\
+-  name:
+-
+-#define END(name)	\
+-  .cfi_endproc;		\
+-  .size name, .-name;
++#if defined (__APPLE__)
++/* Darwin is an underscore platform, symbols need an extra _ prefix.  */
++# define ENTRY_ALIAS(name)	\
++  .global _ ## name	    SEP \
++  _ ## name:
+ 
+-#define L(l) .L ## l
++# define END(name)	.cfi_endproc
++#elif defined (_WIN32) || defined (__CYGWIN__)
++# define ENTRY_ALIAS(name)	\
++  .global name		   SEP  \
++  name:
+ 
+-#ifdef __ILP32__
+-  /* Sanitize padding bits of pointer arguments as per aapcs64 */
+-#define PTR_ARG(n)  mov w##n, w##n
++# define END(name)	.cfi_endproc
+ #else
+-#define PTR_ARG(n)
+-#endif
++# define ENTRY_ALIAS(name)	\
++  .global name;			\
++  .type name,%function;		\
++  name:
+ 
+-#ifdef __ILP32__
+-  /* Sanitize padding bits of size arguments as per aapcs64 */
+-#define SIZE_ARG(n)  mov w##n, w##n
+-#else
+-#define SIZE_ARG(n)
++# define END(name)	\
++  .cfi_endproc;		\
++  .size name, .-name
+ #endif
+ 
+-/* Compiler supports SVE instructions  */
+-#ifndef HAVE_SVE
+-# if __aarch64__ && (__GNUC__ >= 8 || __clang_major__ >= 5)
+-#   define HAVE_SVE 1
+-# else
+-#   define HAVE_SVE 0
+-# endif
+-#endif
++#define L(l) .L ## l
+ 
+ #endif
+diff --git a/newlib/libc/machine/aarch64/memchr.S b/newlib/libc/machine/aarch64/memchr.S
+index a0f305e0f..074a004cf 100644
+--- a/newlib/libc/machine/aarch64/memchr.S
++++ b/newlib/libc/machine/aarch64/memchr.S
+@@ -50,8 +50,6 @@
+  */
+ 
+ ENTRY (memchr)
+-	PTR_ARG (0)
+-	SIZE_ARG (2)
+ 	/* Do not dereference srcin if no bytes to compare.  */
+ 	cbz	cntin, L(zero_length)
+ 	/*
+diff --git a/newlib/libc/machine/aarch64/memcmp.S b/newlib/libc/machine/aarch64/memcmp.S
+index 18874d321..2a9c446bb 100644
+--- a/newlib/libc/machine/aarch64/memcmp.S
++++ b/newlib/libc/machine/aarch64/memcmp.S
+@@ -34,10 +34,6 @@
+ 
+ 
+ ENTRY (memcmp)
+-	PTR_ARG (0)
+-	PTR_ARG (1)
+-	SIZE_ARG (2)
+-
+ 	cmp	limit, 16
+ 	b.lo	L(less16)
+ 	ldp	data1, data3, [src1]
+diff --git a/newlib/libc/machine/aarch64/memcpy.S b/newlib/libc/machine/aarch64/memcpy.S
+index 248e7843a..252d2452a 100644
+--- a/newlib/libc/machine/aarch64/memcpy.S
++++ b/newlib/libc/machine/aarch64/memcpy.S
+@@ -58,9 +58,6 @@
+ 
+ ENTRY_ALIAS (memmove)
+ ENTRY (memcpy)
+-	PTR_ARG (0)
+-	PTR_ARG (1)
+-	SIZE_ARG (2)
+ 	add	srcend, src, count
+ 	add	dstend, dstin, count
+ 	cmp	count, 128
+diff --git a/newlib/libc/machine/aarch64/memrchr.S b/newlib/libc/machine/aarch64/memrchr.S
+index ba9915cc3..2525cf190 100644
+--- a/newlib/libc/machine/aarch64/memrchr.S
++++ b/newlib/libc/machine/aarch64/memrchr.S
+@@ -45,7 +45,6 @@
+    exactly which byte matched.  */
+ 
+ ENTRY (memrchr)
+-	PTR_ARG (0)
+ 	add	end, srcin, cntin
+ 	sub	endm1, end, 1
+ 	bic	src, endm1, 15
+diff --git a/newlib/libc/machine/aarch64/memset.S b/newlib/libc/machine/aarch64/memset.S
+index ca76439a9..5bf4851f3 100644
+--- a/newlib/libc/machine/aarch64/memset.S
++++ b/newlib/libc/machine/aarch64/memset.S
+@@ -25,9 +25,6 @@
+ #define zva_val	x5
+ 
+ ENTRY (memset)
+-	PTR_ARG (0)
+-	SIZE_ARG (2)
+-
+ 	dup	v0.16B, valw
+ 	add	dstend, dstin, count
+ 
+diff --git a/newlib/libc/machine/aarch64/rawmemchr.S b/newlib/libc/machine/aarch64/rawmemchr.S
+index 26da81005..85dda749a 100644
+--- a/newlib/libc/machine/aarch64/rawmemchr.S
++++ b/newlib/libc/machine/aarch64/rawmemchr.S
+@@ -34,22 +34,13 @@
+ /* See rawmemchr-stub.c.  */
+ #else
+ 
+-#define L(l) .L ## l
+-
+-	.macro def_fn f p2align=0
+-	.text
+-	.p2align \p2align
+-	.global \f
+-	.type \f, %function
+-\f:
+-	.endm
++#include "asmdefs.h"
+ 
+ /* Special case rawmemchr (s, 0) as strlen, otherwise tailcall memchr.
+    Call strlen without setting up a full frame - it preserves x14/x15.
+ */
+ 
+-def_fn rawmemchr p2align=5
+-	.cfi_startproc
++ENTRY_ALIGN (rawmemchr, 5)
+ 	cbz	w1, L(do_strlen)
+ 	mov	x2, -1
+ 	b	memchr
+@@ -61,8 +52,6 @@ L(do_strlen):
+ 	bl	strlen
+ 	add	x0, x14, x0
+ 	ret	x15
+-	.cfi_endproc
++END (rawmemchr)
+ 
+-	.size   rawmemchr, . - rawmemchr
+ #endif
+-
+diff --git a/newlib/libc/machine/aarch64/setjmp.S b/newlib/libc/machine/aarch64/setjmp.S
+index 0856145bf..1a1f2a387 100644
+--- a/newlib/libc/machine/aarch64/setjmp.S
++++ b/newlib/libc/machine/aarch64/setjmp.S
+@@ -26,6 +26,8 @@
+    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  */
+ 
++#include "asmdefs.h"
++
+ #define GPR_LAYOUT			\
+ 	REG_PAIR (x19, x20,  0);	\
+ 	REG_PAIR (x21, x22, 16);	\
+@@ -42,9 +44,7 @@
+ 	REG_PAIR (d14, d15, 160);
+ 
+ // int setjmp (jmp_buf)
+-	.global	setjmp
+-	.type	setjmp, %function
+-setjmp:
++ENTRY (setjmp)
+ 	mov	x16, sp
+ #define REG_PAIR(REG1, REG2, OFFS)	stp REG1, REG2, [x0, OFFS]
+ #define REG_ONE(REG1, OFFS)		str REG1, [x0, OFFS]
+@@ -54,12 +54,10 @@ setjmp:
+ #undef REG_ONE
+ 	mov	w0, #0
+ 	ret
+-	.size	setjmp, .-setjmp
++END (setjmp)
+ 
+ // void longjmp (jmp_buf, int) __attribute__ ((noreturn))
+-	.global	longjmp
+-	.type	longjmp, %function
+-longjmp:
++ENTRY (longjmp)
+ #define REG_PAIR(REG1, REG2, OFFS)	ldp REG1, REG2, [x0, OFFS]
+ #define REG_ONE(REG1, OFFS)		ldr REG1, [x0, OFFS]
+ 	GPR_LAYOUT
+@@ -71,4 +69,4 @@ longjmp:
+ 	cinc	w0, w1, eq
+ 	// use br not ret, as ret is guaranteed to mispredict
+ 	br	x30
+-	.size	longjmp, .-longjmp
++END (longjmp)
+diff --git a/newlib/libc/machine/aarch64/strchr.S b/newlib/libc/machine/aarch64/strchr.S
+index 500d9aff2..a4e089b99 100644
+--- a/newlib/libc/machine/aarch64/strchr.S
++++ b/newlib/libc/machine/aarch64/strchr.S
+@@ -54,7 +54,6 @@
+ /* Locals and temporaries.  */
+ 
+ ENTRY (strchr)
+-	PTR_ARG (0)
+ 	/* Magic constant 0xc0300c03 to allow us to identify which lane
+ 	   matches the requested byte.  Even bits are set if the character
+ 	   matches, odd bits if either the char is NUL or matches.  */
+diff --git a/newlib/libc/machine/aarch64/strchrnul.S b/newlib/libc/machine/aarch64/strchrnul.S
+index ceaf4dca1..4d6093be7 100644
+--- a/newlib/libc/machine/aarch64/strchrnul.S
++++ b/newlib/libc/machine/aarch64/strchrnul.S
+@@ -50,7 +50,6 @@
+ /* Locals and temporaries.  */
+ 
+ ENTRY (strchrnul)
+-	PTR_ARG (0)
+ 	/* Magic constant 0x40100401 to allow us to identify which lane
+ 	   matches the termination condition.  */
+ 	mov	wtmp2, #0x0401
+diff --git a/newlib/libc/machine/aarch64/strcmp.S b/newlib/libc/machine/aarch64/strcmp.S
+index 691a1760e..1d85da432 100644
+--- a/newlib/libc/machine/aarch64/strcmp.S
++++ b/newlib/libc/machine/aarch64/strcmp.S
+@@ -54,8 +54,6 @@
+ 
+ 
+ ENTRY (strcmp)
+-	PTR_ARG (0)
+-	PTR_ARG (1)
+ 	sub	off2, src2, src1
+ 	mov	zeroones, REP8_01
+ 	and	tmp, src1, 7
+diff --git a/newlib/libc/machine/aarch64/strcpy.S b/newlib/libc/machine/aarch64/strcpy.S
+index 57c46f390..1f5f70792 100644
+--- a/newlib/libc/machine/aarch64/strcpy.S
++++ b/newlib/libc/machine/aarch64/strcpy.S
+@@ -55,8 +55,6 @@
+    exactly which byte matched.  */
+ 
+ ENTRY (STRCPY)
+-	PTR_ARG (0)
+-	PTR_ARG (1)
+ 	bic	src, srcin, 15
+ 	ld1	{vdata.16b}, [src]
+ 	cmeq	vhas_nul.16b, vdata.16b, 0
+diff --git a/newlib/libc/machine/aarch64/strlen.S b/newlib/libc/machine/aarch64/strlen.S
+index 68a6f357c..a3345a3ab 100644
+--- a/newlib/libc/machine/aarch64/strlen.S
++++ b/newlib/libc/machine/aarch64/strlen.S
+@@ -78,7 +78,6 @@
+    character, return the length, if not, continue in the main loop.  */
+ 
+ ENTRY (strlen)
+-	PTR_ARG (0)
+ 	and	tmp1, srcin, MIN_PAGE_SIZE - 1
+ 	cmp	tmp1, MIN_PAGE_SIZE - 32
+ 	b.hi	L(page_cross)
+diff --git a/newlib/libc/machine/aarch64/strncmp.S b/newlib/libc/machine/aarch64/strncmp.S
+index 373695503..6b1994ef5 100644
+--- a/newlib/libc/machine/aarch64/strncmp.S
++++ b/newlib/libc/machine/aarch64/strncmp.S
+@@ -58,9 +58,6 @@
+ #endif
+ 
+ ENTRY (strncmp)
+-	PTR_ARG (0)
+-	PTR_ARG (1)
+-	SIZE_ARG (2)
+ 	cbz	limit, L(ret0)
+ 	eor	tmp1, src1, src2
+ 	mov	zeroones, #REP8_01
+diff --git a/newlib/libc/machine/aarch64/strnlen.S b/newlib/libc/machine/aarch64/strnlen.S
+index 091002e0b..dc9fcb2fd 100644
+--- a/newlib/libc/machine/aarch64/strnlen.S
++++ b/newlib/libc/machine/aarch64/strnlen.S
+@@ -39,8 +39,6 @@
+    identifies the first zero byte.  */
+ 
+ ENTRY (strnlen)
+-	PTR_ARG (0)
+-	SIZE_ARG (1)
+ 	bic	src, srcin, 15
+ 	cbz	cntin, L(nomatch)
+ 	ld1	{vdata.16b}, [src]
+diff --git a/newlib/libc/machine/aarch64/strrchr.S b/newlib/libc/machine/aarch64/strrchr.S
+index b0574228b..67013e39d 100644
+--- a/newlib/libc/machine/aarch64/strrchr.S
++++ b/newlib/libc/machine/aarch64/strrchr.S
+@@ -58,7 +58,6 @@
+    identify exactly which byte is causing the termination, and why.  */
+ 
+ ENTRY (strrchr)
+-	PTR_ARG (0)
+ 	/* Magic constant 0x40100401 to allow us to identify which lane
+ 	   matches the requested byte.  Magic constant 0x80200802 used
+ 	   similarly for NUL termination.  */

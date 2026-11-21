@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:13:43 +0530
+Subject: [PATCH 008/109] Cygwin obtain stack base on AArch64
+
+(cherry picked from commit 03537734bdd40c39190ebb0bef9f648735858102)
+---
+ winsup/cygwin/include/cygwin/config.h  | 7 ++++++-
+ winsup/testsuite/winsup.api/cygload.cc | 7 +++++++
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/include/cygwin/config.h b/winsup/cygwin/include/cygwin/config.h
+index 2a7083278..d9f911d47 100644
+--- a/winsup/cygwin/include/cygwin/config.h
++++ b/winsup/cygwin/include/cygwin/config.h
+@@ -36,8 +36,13 @@ __attribute__((__gnu_inline__))
+ extern inline struct _reent *__getreent (void)
+ {
+   register char *ret;
+-#ifdef __x86_64__
++#if defined(__x86_64__)
+   __asm __volatile__ ("movq %%gs:8,%0" : "=r" (ret));
++#elif defined(__aarch64__)
++  /* x18 register points to TEB, offset 0x8 points to stack base.
++     See _TEB structure definition in winsup\cygwin\local_includes\ntdll.h
++     for more details. */
++  __asm __volatile__ ("ldr %0, [x18, #0x8]" : "=r" (ret));
+ #else
+ #error unimplemented for this target
+ #endif
+diff --git a/winsup/testsuite/winsup.api/cygload.cc b/winsup/testsuite/winsup.api/cygload.cc
+index 1b2f79dc0..c60d3ef06 100644
+--- a/winsup/testsuite/winsup.api/cygload.cc
++++ b/winsup/testsuite/winsup.api/cygload.cc
+@@ -82,6 +82,13 @@ cygwin::padding::padding ()
+     "movl %%fs:4, %0"
+     :"=r"(stackbase)
+     );
++# elif __aarch64__
++  // x18 register points to TEB. See _TEB structure definition in
++  // winsup\cygwin\local_includes\ntdll.h
++  __asm__ volatile (
++    "ldr %0, [x18, #0x8]"
++   :"=r" (stackbase)
++   );
+ # else
+ #  error Unknown architecture
+ # endif
