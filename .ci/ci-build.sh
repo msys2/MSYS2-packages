@@ -126,9 +126,9 @@ for package in "${packages[@]}"; do
 
         echo "::group::[runtime-dependencies] ${pkgname}"
         message "Runtime dependencies for ${pkgname}"
-        declare -a binaries=($(pacman -Ql $pkgname | sed -e 's|^[^ ]* ||' | grep -E ${MINGW_PREFIX}/.+\.\(dll\|exe\|pyd\)$))
+        readarray -t binaries < <(pacman -Ql "${pkgname}" | sed -e 's|^[^ ]* ||' | grep -E "${MINGW_PREFIX}/.+\.(dll|exe|pyd)$")
         if [ "${#binaries[@]}" -ne 0 ]; then
-            for binary in ${binaries[@]}; do
+            for binary in "${binaries[@]}"; do
                 echo "${binary}:"
                 ldd "${binary}" | GREP_COLORS="mt=1;35" grep --color=always "msys-.*\|" \
                     || echo "        None"
