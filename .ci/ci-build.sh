@@ -88,7 +88,7 @@ message 'Processing changes'
 message 'Building packages' "${packages[@]}"
 
 message 'Adding an empty local repository'
-repo-add $PWD/artifacts/ci.db.tar.gz
+repo-add "$PWD/artifacts/ci.db.tar.gz"
 sed -i '1s|^|[ci]\nServer = file://'"$PWD"'/artifacts/\nSigLevel = Never\n|' /etc/pacman.conf
 pacman -Sy
 
@@ -103,13 +103,13 @@ for package in "${packages[@]}"; do
     echo "::group::[build] ${package}"
     execute 'Clear cache' pacman -Scc --noconfirm
     execute 'Fetch keys' "$DIR/fetch-validpgpkeys.sh"
-    cp -r ${package} B && cd B
+    rm -rf B && cp -r "${package}" B && cd B
     message 'Building binary'
-    makepkg --noconfirm --noprogressbar --nocheck --syncdeps --rmdeps --cleanbuild || failure "Building binary failed"
+    makepkg --noconfirm --noprogressbar --nocheck --syncdeps --rmdeps --cleanbuild || failure 'Building binary failed'
     cd - > /dev/null
-    repo-add $PWD/artifacts/ci.db.tar.gz $PWD/B/*.pkg.tar.*
+    repo-add "$PWD/artifacts/ci.db.tar.gz" "$PWD/B"/*.pkg.tar.*
     pacman -Sy
-    cp $PWD/B/*.pkg.tar.* $PWD/artifacts
+    cp "$PWD/B"/*.pkg.tar.* "$PWD/artifacts"
     echo "::endgroup::"
 
     cd B
