@@ -49,8 +49,8 @@ execute(){
     cd "${package:-.}"
     message "${status}"
     if [[ "${command}" != *:* ]]
-        then ${command} ${arguments[@]}
-        else ${command%%:*} | ${command#*:} ${arguments[@]}
+        then "${command}" "${arguments[@]}"
+        else "${command%%:*}" | "${command#*:}" "${arguments[@]}"
     fi || failure "${status} failed"
     cd - > /dev/null
 }
