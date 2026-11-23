@@ -130,11 +130,11 @@ for package in "${packages[@]}"; do
         if [ "${#binaries[@]}" -ne 0 ]; then
             for binary in ${binaries[@]}; do
                 echo "${binary}:"
-                ldd ${binary} | GREP_COLOR="1;35" grep --color=always "msys-.*\|" \
+                ldd "${binary}" | GREP_COLORS="mt=1;35" grep --color=always "msys-.*\|" \
                     || echo "        None"
             done
             message "DLL bases for ${pkgname}"
-            rebase -i "${binaries[@]}" | GREP_COLOR="1;35" grep --color=always "msys-.*\|" \
+            rebase -i "${binaries[@]}" | GREP_COLORS="mt=1;35" grep --color=always "msys-.*\|" \
                 || echo "        None"
         fi
         echo "::endgroup::"
