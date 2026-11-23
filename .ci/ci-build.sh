@@ -118,8 +118,11 @@ for package in "${packages[@]}"; do
         [[ "$pkg" == *.sig ]] && continue
 
         pkgname="$(echo "$pkg" | rev | cut -d- -f4- | rev)"
+        skip_install=0
+        grep -qFx "${package}" "$DIR/ci-dont-install-list.txt" && skip_install=1
+
         echo "::group::[install] ${pkgname}"
-        grep -qFx "${package}" "$DIR/ci-dont-install-list.txt" || pacman --noprogressbar --upgrade --noconfirm $pkg
+        [ "${skip_install}" -eq 1 ] || pacman --noprogressbar --upgrade --noconfirm "$pkg"
         echo "::endgroup::"
 
         echo "::group::[meta-diff] ${pkgname}"
@@ -133,27 +136,29 @@ for package in "${packages[@]}"; do
         new_pkgver="$(pacman -Qip "${pkg}" | pkgver_from_metadata || true)"
         diff -Nur \
             <(pacman -Fl ${MSYSTEM,,}/"${pkgname}" | sed -e 's|^[^ ]* |/|' -e "s|${old_pkgver}|PKGVER|g" | sort) \
-            <(pacman -Ql "${pkgname}" | sed -e 's|^[^/]*||' -e "s|${new_pkgver}|PKGVER|g" | sort) || true
+            <(pacman -Qlp "${pkg}" | sed -e 's|^[^ ]* ||' -e "s|${new_pkgver}|PKGVER|g" | sort) || true
         echo "::endgroup::"
 
         echo "::group::[runtime-dependencies] ${pkgname}"
-        message "Runtime dependencies for ${pkgname}"
-        readarray -t binaries < <(pacman -Ql "${pkgname}" | sed -e 's|^[^ ]* ||' | grep -E "${MINGW_PREFIX}/.+\.(dll|exe|pyd)$")
-        if [ "${#binaries[@]}" -ne 0 ]; then
-            for binary in "${binaries[@]}"; do
-                echo "${binary}:"
-                ldd "${binary}" | GREP_COLORS="mt=1;35" grep --color=always "msys-.*\|" \
+        if [ "${skip_install}" -eq 0 ]; then
+            message "Runtime dependencies for ${pkgname}"
+            readarray -t binaries < <(pacman -Ql "${pkgname}" | sed -e 's|^[^ ]* ||' | grep -E "${MINGW_PREFIX}/.+\.(dll|exe|pyd)$")
+            if [ "${#binaries[@]}" -ne 0 ]; then
+                for binary in "${binaries[@]}"; do
+                    echo "${binary}:"
+                    ldd "${binary}" | GREP_COLORS="mt=1;35" grep --color=always "msys-.*\|" \
+                        || echo "        None"
+                done
+                message "DLL bases for ${pkgname}"
+                rebase -i "${binaries[@]}" | GREP_COLORS="mt=1;35" grep --color=always "msys-.*\|" \
                     || echo "        None"
-            done
-            message "DLL bases for ${pkgname}"
-            rebase -i "${binaries[@]}" | GREP_COLORS="mt=1;35" grep --color=always "msys-.*\|" \
-                || echo "        None"
+            fi
         fi
         echo "::endgroup::"
 
         echo "::group::[uninstall] ${pkgname}"
         message "Uninstalling $pkgname"
-        grep -qFx "${package}" "$DIR/ci-dont-install-list.txt" || pacman -R --recursive --unneeded --noconfirm --noprogressbar "$pkgname"
+        [ "${skip_install}" -eq 1 ] || pacman -R --recursive --unneeded --noconfirm --noprogressbar "$pkgname"
         echo "::endgroup::"
     done
     cd - > /dev/null
