@@ -135,9 +135,20 @@ for package in "${packages[@]}"; do
         message "File listing diff for ${pkgname}"
         old_pkgver="$(pacman -Si ${MSYSTEM,,}/"${pkgname}" | pkgver_from_metadata || true)"
         new_pkgver="$(pacman -Qip "${pkg}" | pkgver_from_metadata || true)"
+
+        old_files="$(pacman -Fl ${MSYSTEM,,}/"${pkgname}" | sed -e 's|^[^ ]* |/|' || true)"
+        new_files="$(pacman -Qlp "${pkg}" | sed -e 's|^[^ ]* ||' || true)"
+
+        old_pyver="$(sed -n 's|.*\(python3\.[0-9]\+\).*|\1|p; T; q' <<< "${old_files}")"
+        new_pyver="$(sed -n 's|.*\(python3\.[0-9]\+\).*|\1|p; T; q' <<< "${new_files}")"
+
+        if [ -n "${old_pyver}" ] && [ -n "${new_pyver}" ] && [ "${old_pyver}" != "${new_pyver}" ]; then
+            message "Python version bump for ${pkgname}: ${old_pyver#python} -> ${new_pyver#python}"
+        fi
+
         diff -Nur \
-            <(pacman -Fl ${MSYSTEM,,}/"${pkgname}" | sed -e 's|^[^ ]* |/|' ${old_pkgver:+-e "s|${old_pkgver}|PKGVER|g"} | sort) \
-            <(pacman -Qlp "${pkg}" | sed -e 's|^[^ ]* ||' ${new_pkgver:+-e "s|${new_pkgver}|PKGVER|g"} | sort) || true
+            <(${old_files:+printf '%s\n' "${old_files}"} | sed ${old_pkgver:+-e "s|${old_pkgver}|PKGVER|g"} -e 's|\(python-\?\)3\.[0-9]\+|\1PYVER|g' -e 's|cpython-3[0-9]\+|cpython-PYVER|g' -e 's|-py3\.[0-9]\+\.egg-info|-pyPYVER.egg-info|g' | sort) \
+            <(${new_files:+printf '%s\n' "${new_files}"} | sed ${new_pkgver:+-e "s|${new_pkgver}|PKGVER|g"} -e 's|\(python-\?\)3\.[0-9]\+|\1PYVER|g' -e 's|cpython-3[0-9]\+|cpython-PYVER|g' -e 's|-py3\.[0-9]\+\.egg-info|-pyPYVER.egg-info|g' | sort) || true
         echo "::endgroup::"
 
         echo "::group::[runtime-dependencies] ${pkgname}"
