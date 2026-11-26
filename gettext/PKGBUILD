@@ -103,12 +103,12 @@ prepare() {
 }
 
 _ci_check() {
-  cd "${srcdir}/build-${CHOST}/gettext-tools"
+cd "${srcdir}/${pkgname}-${pkgver}/gettext-tools"
 
   # Inspect which filesystem wrappers gnulib decided to replace
   grep -E 'REPLACE_(CANONICALIZE|REALPATH|GETCWD|OPEN|STAT|LSTAT)|HAVE_(REALPATH|CANONICALIZE)' config.h || true
 
-  # Run only the relevant gnulib tests (fast)
+  # Run only the relevant gnulib tests
   make -C gnulib-tests check \
     TESTS="test-supersede test-canonicalize test-canonicalize-lgpl test-getcwd test-getcwd-lgpl test-open test-stat" \
     VERBOSE=1 || {
@@ -119,10 +119,11 @@ _ci_check() {
       return 1
     }
 
-  # Smoke-test the built msgfmt in both /tmp and the build drive mount (/d/...)
-  ./src/msgfmt -o /tmp/smoke-test.mo /dev/null
-  ./src/msgfmt -o "${PWD}/smoke-test.mo" /dev/null
-  rm -f /tmp/smoke-test.mo "${PWD}/smoke-test.mo"
+  # Smoke-test the installed msgfmt with /tmp, absolute /d/..., and relative paths
+  PATH="${srcdir}/dest/usr/bin:${PATH}" "${srcdir}/dest/usr/bin/msgfmt" -o /tmp/smoke-test.mo /dev/null
+  PATH="${srcdir}/dest/usr/bin:${PATH}" "${srcdir}/dest/usr/bin/msgfmt" -o "${PWD}/smoke-test.mo" /dev/null
+  PATH="${srcdir}/dest/usr/bin:${PATH}" "${srcdir}/dest/usr/bin/msgfmt" -o smoke-test-rel.mo /dev/null
+  rm -f /tmp/smoke-test.mo "${PWD}/smoke-test.mo" smoke-test-rel.mo
 }
 
 build() {
