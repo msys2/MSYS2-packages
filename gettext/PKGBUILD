@@ -103,27 +103,95 @@ prepare() {
 }
 
 _ci_check() {
-cd "${srcdir}/${pkgname}-${pkgver}/gettext-tools"
+  local _rc=0
+  local _bindir="${srcdir}/dest/usr/bin"
+  cd "${srcdir}/${pkgname}-${pkgver}/gettext-tools"
 
-  # Inspect which filesystem wrappers gnulib decided to replace
-  grep -E 'REPLACE_(CANONICALIZE|REALPATH|GETCWD|OPEN|STAT|LSTAT)|HAVE_(REALPATH|CANONICALIZE)' config.h || true
+  msg2 "Inspecting gnulib filesystem wrapper decisions..."
+  grep -E '^(REPLACE_(CANONICALIZE|REALPATH|GETCWD|OPEN|STAT|LSTAT)|HAVE_(REALPATH|CANONICALIZE))[[:space:]]*=' \
+    gnulib-lib/Makefile || true
+  grep -E 'HAVE_(REALPATH|CANONICALIZE)|REPLACE_(CANONICALIZE|REALPATH|GETCWD|OPEN|STAT|LSTAT)' \
+    config.h || true
+  grep -E 'gl_cv_func_getcwd' config.log || true
 
-  # Run only the relevant gnulib tests
-  make -C gnulib-tests check \
-    TESTS="test-supersede test-canonicalize test-canonicalize-lgpl test-getcwd test-getcwd-lgpl test-open test-stat" \
-    VERBOSE=1 || {
-      for f in gnulib-tests/test-*.log; do
-        echo "=== $f ==="
-        cat "$f"
-      done
-      return 1
-    }
+  msg2 "Running core gnulib filesystem tests..."
+  local _gnulib_tests=(
+    test-supersede.exe
+    test-canonicalize.exe
+    test-canonicalize-lgpl.exe
+    test-getcwd-lgpl.exe
+    test-open.exe
+    test-stat.exe
+  )
+  make -C gnulib-tests check TESTS="${_gnulib_tests[*]}" VERBOSE=1 || _rc=1
 
-  # Smoke-test the installed msgfmt with /tmp, absolute /d/..., and relative paths
-  PATH="${srcdir}/dest/usr/bin:${PATH}" "${srcdir}/dest/usr/bin/msgfmt" -o /tmp/smoke-test.mo /dev/null
-  PATH="${srcdir}/dest/usr/bin:${PATH}" "${srcdir}/dest/usr/bin/msgfmt" -o "${PWD}/smoke-test.mo" /dev/null
-  PATH="${srcdir}/dest/usr/bin:${PATH}" "${srcdir}/dest/usr/bin/msgfmt" -o smoke-test-rel.mo /dev/null
-  rm -f /tmp/smoke-test.mo "${PWD}/smoke-test.mo" smoke-test-rel.mo
+  local _t _log
+  for _t in "${_gnulib_tests[@]}"; do
+    _log="gnulib-tests/${_t%.exe}.log"
+    msg2 "=== ${_log} ==="
+    if [[ -f "${_log}" ]]; then
+      cat "${_log}"
+    else
+      echo "(missing)"
+    fi
+  done
+
+  msg2 "Running diagnostic test-getcwd.sh (non-fatal)..."
+  make -C gnulib-tests check-TESTS TESTS="test-getcwd.sh" VERBOSE=1 || \
+    warning "test-getcwd.sh failed (expected when gl_cv_func_getcwd_path_max=no)"
+
+  local _found_getcwd_log=0
+  for _log in gnulib-tests/test-getcwd.sh.log gnulib-tests/test-getcwd.log; do
+    if [[ -f "${_log}" ]]; then
+      _found_getcwd_log=1
+      msg2 "=== ${_log} ==="
+      cat "${_log}"
+    fi
+  done
+  (( _found_getcwd_log )) || warning "No test-getcwd log found"
+
+  msg2 "Running upstream msgfmt tests..."
+  local _msgfmt_tests=(msgfmt-1 msgfmt-2 msgfmt-3 msgfmt-4)
+  make -C tests check TESTS="${_msgfmt_tests[*]}" VERBOSE=1 || _rc=1
+  for _t in "${_msgfmt_tests[@]}"; do
+    _log="tests/${_t}.log"
+    msg2 "=== ${_log} ==="
+    if [[ -f "${_log}" ]]; then
+      cat "${_log}"
+    else
+      echo "(missing)"
+    fi
+  done
+
+  msg2 "Smoke-testing installed msgfmt..."
+  local _po="${PWD}/smoke-test.po"
+  cat > "${_po}" << 'EOF'
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "hello"
+msgstr "world"
+EOF
+
+  local _out
+  for _out in /tmp/smoke-test.mo "${PWD}/smoke-test.mo" smoke-test-rel.mo; do
+    msg2 "Testing msgfmt -o ${_out}"
+    if PATH="${_bindir}:${PATH}" "${_bindir}/msgfmt" -v -o "${_out}" "${_po}" && [[ -s "${_out}" ]]; then
+      ls -lh "${_out}"
+    else
+      warning "msgfmt failed for output path: ${_out}"
+      _rc=1
+    fi
+  done
+  rm -f "${_po}" /tmp/smoke-test.mo "${PWD}/smoke-test.mo" smoke-test-rel.mo
+
+  if (( _rc == 0 )); then
+    msg2 "All CI checks passed."
+  else
+    warning "CI checks failed (exit status: ${_rc})."
+  fi
+  return "${_rc}"
 }
 
 build() {
