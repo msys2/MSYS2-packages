@@ -1,0 +1,61 @@
+pkgbase=abseil-cpp
+pkgname='abseil-cpp'
+pkgver=20260817.0
+pkgrel=1
+pkgdesc="Abseil Common Libraries (C++) from Google"
+arch=('i686' 'x86_64')
+url="https://abseil.io"
+msys2_repository_url="https://github.com/abseil/abseil-cpp"
+msys2_references=(
+  "cpe: cpe:/a:google:abseil"
+)
+license=('spdx:Apache-2.0')
+groups=('libraries' 'development')
+depends=(
+  'gcc-libs'
+)
+makedepends=(
+  'cmake'
+  'gcc'
+  'ninja'
+)
+source=(
+  "https://github.com/abseil/abseil-cpp/releases/download/${pkgver}/${pkgbase}-${pkgver}.tar.gz"
+  '001-disable-policy-checks.patch'
+  '002-fix-threadid-type.patch'
+)
+sha256sums=('f7e05179df39c45434cad433f5783840bb3788ef322976f9138bc6b72b3a107d'
+            '1e7cb1ac09cb99879d37092376c51f1908b5f6415deb8a9c84f9cba88afb09aa'
+            'cf4976487e421b8f1dc11936f55c8b71ca97f3953808de9d010ad3e3632dc0f7')
+
+prepare() {
+  cd "${pkgbase}-${pkgver}"
+
+  patch -Np1 -i "${srcdir}/001-disable-policy-checks.patch"
+  patch -Np1 -i "${srcdir}/002-fix-threadid-type.patch"
+}
+
+build() {
+  # Shared libraries are disabled because Abseil lacks DLL symbol
+  # export annotations on MSYS/Cygwin internal targets
+
+  cmake -B build-static -S "${pkgbase}-${pkgver}" \
+    -GNinja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DABSL_PROPAGATE_CXX_STD=ON \
+    -DCMAKE_CXX_STANDARD=17
+
+  cmake --build build-static
+}
+
+check() {
+  ctest --test-dir build-static --output-on-failure
+}
+
+package() {
+  DESTDIR="${pkgdir}" cmake --install build-static
+
+  install -Dm644 "${srcdir}/${pkgbase}-${pkgver}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
