@@ -53,7 +53,6 @@ sha256sums=('39acf4b0371e9b110b60005562aace5b3631fed9b1bb9ecccfc7f56e58bb1d7f'
             '0dee4c8a74c0b4851564c55c26d8e49fe8060bfcf5846185cea7e63b0383cf31'
             '9126239d01528ebbef82d7d676d248512be0f9c6fc3997303316336b61551732'
             '6796239f68f05d2af7059a6c546c449d0edfeea3306dd185deaf113159a61540'
-            '8e1aa30749682966fc94bf10cbf8406f58a11e13bd325fccf32b4461db078741'
             'fff05e994d64e2ff7c229ab6218ccaa788ef00f9cb5e7d8b96036f99d8078db4'
             'dc0ff68482c096c083b64355acc25d8e7447e83a509455de7e8023525be07d1d'
             '5e0851e372d78aac8ec20be40b13b2c010e45c1703d676711d793ae86ca82fd5')
@@ -85,7 +84,6 @@ prepare() {
   patch -p1 -i $srcdir/gettext-0.26-msys2-cygwin-macro.patch
   patch -p1 -i $srcdir/gettext-0.22-disable-libtextstyle.patch
   patch -p1 -i $srcdir/gettext-0.19.8.1-msys2.patch
-  # patch -p1 -i $srcdir/gettext-0.26-supersede-open-fallback.patch
 
   pushd gettext-tools/misc > /dev/null
     mkdir archive
@@ -100,6 +98,52 @@ prepare() {
 
   libtoolize --copy --force
   ./autogen.sh --skip-gnulib
+}
+
+build() {
+	cd "${srcdir}/${pkgname}-${pkgver}"
+
+  local CHOST="$(echo "${CHOST}" | sed 's|-msys$|-cygwin|')"
+
+  # GCC 16's stdcountof.h is C-only; use gnulib's C/C++ fallback.
+  #
+  # This is a tricky one, gnulib replaces MSYS/Cygwin getcwd() with its own
+  # because of the following problem:
+  # checking whether getcwd (NULL, 0) allocates memory for result... yes
+  # checking for getcwd with POSIX signature... yes
+  # checking whether getcwd handles long file names properly... no   <-- only failure
+  # checking whether getcwd succeeds when 4k < cwd_length < 16k... yes
+
+  ./configure \
+    ac_cv_header_stdcountof_h=no \
+    gl_cv_func_getcwd_path_max=yes \
+    --build=${CHOST} \
+    --host=${CHOST} \
+    --prefix=/usr \
+    --with-included-libunistring \
+    --with-included-libxml \
+    --with-included-gettext \
+    --without-emacs \
+    --enable-shared \
+    --enable-static \
+    --disable-java \
+    --disable-csharp \
+    --disable-d \
+    --disable-go \
+    --disable-modula2 \
+    --disable-openmp
+
+  make
+
+  make DESTDIR="${srcdir}/dest" install
+  rm -f ${srcdir}/dest/usr/lib/charset.alias
+
+  # gettext and gnulib are so broken that there is no chance to update gettext seamlessly
+  # here is a script to verify that getcwd() is working
+  #
+  # enable line below when testing a version update in CI
+  # or use it by yourself locally
+  # _ci_check
 }
 
 _ci_check() {
@@ -192,48 +236,6 @@ EOF
     warning "CI checks failed (exit status: ${_rc})."
   fi
   return "${_rc}"
-}
-
-build() {
-	cd "${srcdir}/${pkgname}-${pkgver}"
-
-  local CHOST="$(echo "${CHOST}" | sed 's|-msys$|-cygwin|')"
-
-  # GCC 16's stdcountof.h is C-only; use gnulib's C/C++ fallback.
-  #
-  # This is a tricky one, gnulib replaces MSYS/Cygwin getcwd() with its own
-  # because of the following problem:
-  # checking whether getcwd (NULL, 0) allocates memory for result... yes
-  # checking for getcwd with POSIX signature... yes
-  # checking whether getcwd handles long file names properly... no   <-- only failure
-  # checking whether getcwd succeeds when 4k < cwd_length < 16k... yes
-
-  ./configure \
-    ac_cv_header_stdcountof_h=no \
-    gl_cv_func_getcwd_path_max=yes \
-    --build=${CHOST} \
-    --host=${CHOST} \
-    --prefix=/usr \
-    --with-included-libunistring \
-    --with-included-libxml \
-    --with-included-gettext \
-    --without-emacs \
-    --enable-shared \
-    --enable-static \
-    --disable-java \
-    --disable-csharp \
-    --disable-d \
-    --disable-go \
-    --disable-modula2 \
-    --disable-openmp
-
-  make
-
-  make DESTDIR="${srcdir}/dest" install
-  rm -f ${srcdir}/dest/usr/lib/charset.alias
-
-  # temporarily for CI
-  _ci_check
 }
 
 check() {
