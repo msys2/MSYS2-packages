@@ -102,6 +102,29 @@ prepare() {
   ./autogen.sh --skip-gnulib
 }
 
+_ci_check() {
+  cd "${srcdir}/build-${CHOST}/gettext-tools"
+
+  # Inspect which filesystem wrappers gnulib decided to replace
+  grep -E 'REPLACE_(CANONICALIZE|REALPATH|GETCWD|OPEN|STAT|LSTAT)|HAVE_(REALPATH|CANONICALIZE)' config.h || true
+
+  # Run only the relevant gnulib tests (fast)
+  make -C gnulib-tests check \
+    TESTS="test-supersede test-canonicalize test-canonicalize-lgpl test-getcwd test-getcwd-lgpl test-open test-stat" \
+    VERBOSE=1 || {
+      for f in gnulib-tests/test-*.log; do
+        echo "=== $f ==="
+        cat "$f"
+      done
+      return 1
+    }
+
+  # Smoke-test the built msgfmt in both /tmp and the build drive mount (/d/...)
+  ./src/msgfmt -o /tmp/smoke-test.mo /dev/null
+  ./src/msgfmt -o "${PWD}/smoke-test.mo" /dev/null
+  rm -f /tmp/smoke-test.mo "${PWD}/smoke-test.mo"
+}
+
 build() {
 	cd "${srcdir}/${pkgname}-${pkgver}"
 
@@ -130,6 +153,9 @@ build() {
 
   make DESTDIR="${srcdir}/dest" install
   rm -f ${srcdir}/dest/usr/lib/charset.alias
+
+  # temporarily for CI
+  _ci_check
 }
 
 check() {
