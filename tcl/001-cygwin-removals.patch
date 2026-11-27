@@ -1,17 +1,17 @@
 --- a/generic/tcl.h
 +++ b/generic/tcl.h
-@@ -462,7 +462,7 @@ typedef unsigned TCL_WIDE_INT_TYPE	Tcl_W
+@@ -462,7 +462,7 @@
  #   else
  	typedef struct _stat32i64 Tcl_StatBuf;
  #   endif /* _MSC_VER < 1400 */
 -#elif defined(__CYGWIN__)
 +#elif 0
      typedef struct {
- 	dev_t st_dev;
+ 	unsigned st_dev;
  	unsigned short st_ino;
 --- a/generic/tclCmdAH.c
 +++ b/generic/tclCmdAH.c
-@@ -1810,7 +1810,7 @@ FileAttrIsOwnedCmd(
+@@ -1788,7 +1788,7 @@
      int objc,
      Tcl_Obj *const objv[])
  {
@@ -33,7 +33,7 @@
  		    (sourceStatBuf.st_dev == targetStatBuf.st_dev)) {
 --- a/generic/tclFileName.c
 +++ b/generic/tclFileName.c
-@@ -413,7 +413,6 @@ TclpGetNativePathType(
+@@ -416,7 +416,6 @@
  
  	    if (path[0] == '/') {
  		++path;
@@ -41,27 +41,15 @@
  		/*
  		 * Check for "//" network path prefix
  		 */
-@@ -422,7 +421,6 @@ TclpGetNativePathType(
- 		    while (*path && *path != '/') {
+@@ -426,7 +425,6 @@
  			++path;
  		    }
--#if defined(__CYGWIN__)
- 		    /* UNC paths need to be followed by a share name */
- 		    if (*path++ && (*path && *path != '/')) {
- 			++path;
-@@ -431,10 +429,7 @@ TclpGetNativePathType(
- 			}
- 		    } else {
- 			path = origPath + 1;
--		    }
+ 		}
 -#endif
--		}
--#endif
-+		    }		}
  		if (driveNameLengthPtr != NULL) {
  		    /*
- 		     * We need this addition in case the QNX or Cygwin code was used.
-@@ -655,7 +650,6 @@ SplitUnixPath(
+ 		     * We need this addition in case the "//" code was used.
+@@ -647,7 +645,6 @@
      if (*path == '/') {
  	Tcl_Obj *rootElt;
  	++path;
@@ -69,24 +57,24 @@
  	/*
  	 * Check for "//" network path prefix
  	 */
-@@ -664,7 +658,6 @@ SplitUnixPath(
- 	    while (*path && *path != '/') {
+@@ -657,7 +654,6 @@
  		++path;
  	    }
--#if defined(__CYGWIN__)
- 	    /* UNC paths need to be followed by a share name */
- 	    if (*path++ && (*path && *path != '/')) {
- 		++path;
-@@ -674,9 +667,7 @@ SplitUnixPath(
- 	    } else {
- 		path = origPath + 1;
- 	    }
--#endif
  	}
 -#endif
  	rootElt = Tcl_NewStringObj(origPath, path - origPath);
  	Tcl_ListObjAppendElement(NULL, result, rootElt);
  	while (*path == '/') {
+@@ -1870,9 +1866,7 @@
+ 
+     } else if (tclPlatform == TCL_PLATFORM_UNIX) {
+ 	if (pathPrefix == NULL && tail[0] == '/'
+-#if defined(__CYGWIN__) || defined(__QNX__)
+ 		&& tail[1] != '/'
+-#endif
+ 	) {
+ 	    pathPrefix = Tcl_NewStringObj(tail, 1);
+ 	    tail++;
 --- a/generic/tclIntPlatDecls.h
 +++ b/generic/tclIntPlatDecls.h
 @@ -40,7 +40,7 @@ extern "C" {
@@ -170,10 +158,10 @@
  
 -#if defined(__CYGWIN__)
 +#if 0
- static TCL_NORETURN Tcl_PanicProc *panicProc = tclWinDebugPanic;
+ static Tcl_PanicProc *panicProc = tclWinDebugPanic;
  #else
- static TCL_NORETURN1 Tcl_PanicProc *panicProc = NULL;
-@@ -52,7 +52,7 @@ Tcl_SetPanicProc(
+ static Tcl_PanicProc *panicProc = NULL;
+@@ -52,7 +52,7 @@
  #if defined(_WIN32)
      /* tclWinDebugPanic only installs if there is no panicProc yet. */
      if ((proc != tclWinDebugPanic) || (panicProc == NULL))
@@ -182,15 +170,15 @@
      if (proc == NULL)
  	panicProc = tclWinDebugPanic;
      else
-@@ -106,7 +106,7 @@ Tcl_PanicVA(
- 		arg8);
+@@ -107,7 +107,7 @@
  	fprintf(stderr, "\n");
  	fflush(stderr);
+     }
 -#if defined(_WIN32) || defined(__CYGWIN__)
 +#if defined(_WIN32)
- #   if defined(__GNUC__)
- 	__builtin_trap();
- #   elif defined(_WIN64)
+ #if defined(__GNUC__)
+     __builtin_trap();
+ #elif defined(_WIN64)
 --- a/generic/tclPlatDecls.h
 +++ b/generic/tclPlatDecls.h
 @@ -31,7 +31,7 @@
@@ -202,7 +190,7 @@
  #   if defined(_UNICODE)
  	typedef wchar_t TCHAR;
  #   else
-@@ -50,7 +50,7 @@ extern "C" {
+@@ -50,7 +50,7 @@
   * Exported function declarations:
   */
  
@@ -211,7 +199,7 @@
  /* 0 */
  EXTERN TCHAR *		Tcl_WinUtfToTChar(const char *str, int len,
  				Tcl_DString *dsPtr);
-@@ -77,7 +77,7 @@ typedef struct TclPlatStubs {
+@@ -81,7 +81,7 @@
      int magic;
      void *hooks;
  
@@ -219,8 +207,8 @@
 +#if defined(_WIN32) /* WIN */
      TCHAR * (*tcl_WinUtfToTChar) (const char *str, int len, Tcl_DString *dsPtr); /* 0 */
      char * (*tcl_WinTCharToUtf) (const TCHAR *str, int len, Tcl_DString *dsPtr); /* 1 */
- #endif /* WIN */
-@@ -100,7 +100,7 @@ extern const TclPlatStubs *tclPlatStubsP
+     void (*reserved2)(void);
+@@ -106,7 +106,7 @@
   * Inline function declarations:
   */
  
@@ -231,7 +219,7 @@
  #define Tcl_WinTCharToUtf \
 --- a/generic/tclStubInit.c
 +++ b/generic/tclStubInit.c
-@@ -137,7 +137,7 @@ static const char *TclGetStartupScriptFi
+@@ -139,7 +139,7 @@
      return Tcl_GetString(path);
  }
  
@@ -240,7 +228,7 @@
  #undef TclWinNToHS
  #define TclWinNToHS winNToHS
  static unsigned short TclWinNToHS(unsigned short ns) {
-@@ -161,7 +161,7 @@ static unsigned short TclWinNToHS(unsign
+@@ -169,7 +169,7 @@
  #   define TclUnixOpenTemporaryFile 0
  #   define TclpReaddir 0
  #   define TclpIsAtty 0
@@ -249,7 +237,7 @@
  #   define TclpIsAtty isatty
  #   define TclWinSetInterfaces (void (*) (int))(void *)doNothing
  #   define TclWinAddProcess (void (*) (void *, unsigned int))(void *)doNothing
-@@ -214,13 +214,23 @@ TclWinNoBackslash(char *path)
+@@ -222,13 +222,23 @@
      return path;
  }
  
@@ -274,8 +262,8 @@
  
  int
  TclpGetPid(Tcl_Pid pid)
-@@ -228,12 +238,6 @@ TclpGetPid(Tcl_Pid pid)
-     return (int) (size_t) pid;
+@@ -236,12 +246,6 @@
+     return (int)(size_t)pid;
  }
  
 -static void
@@ -287,7 +275,7 @@
  char *
  Tcl_WinUtfToTChar(
      const char *string,
-@@ -755,7 +759,7 @@ static const TclIntStubs tclIntStubs = {
+@@ -764,7 +768,7 @@
  static const TclIntPlatStubs tclIntPlatStubs = {
      TCL_STUB_MAGIC,
      0,
@@ -296,7 +284,7 @@
      TclGetAndDetachPids, /* 0 */
      TclpCloseFile, /* 1 */
      TclpCreateCommandChannel, /* 2 */
-@@ -788,7 +792,7 @@ static const TclIntPlatStubs tclIntPlatS
+@@ -797,7 +801,7 @@
      TclWinCPUID, /* 29 */
      TclUnixOpenTemporaryFile, /* 30 */
  #endif /* UNIX */
@@ -305,7 +293,7 @@
      TclWinConvertError, /* 0 */
      TclWinConvertWSAError, /* 1 */
      TclWinGetServByName, /* 2 */
-@@ -859,7 +863,7 @@ static const TclIntPlatStubs tclIntPlatS
+@@ -868,7 +872,7 @@
  static const TclPlatStubs tclPlatStubs = {
      TCL_STUB_MAGIC,
      0,
@@ -313,7 +301,7 @@
 +#if defined(_WIN32) /* WIN */
      Tcl_WinUtfToTChar, /* 0 */
      Tcl_WinTCharToUtf, /* 1 */
- #endif /* WIN */
+     0, /* 2 */
 --- a/tools/genStubs.tcl
 +++ b/tools/genStubs.tcl
 @@ -299,9 +299,6 @@ proc genStubs::addPlatformGuard {plat if
@@ -348,7 +336,7 @@
  	    if {$eltxt ne ""} {
 --- a/unix/tclUnixFCmd.c
 +++ b/unix/tclUnixFCmd.c
-@@ -91,7 +91,7 @@ static int		SetPermissionsAttribute(Tcl_
+@@ -91,7 +91,7 @@
  			    Tcl_Obj *attributePtr);
  static int		GetModeFromPermString(Tcl_Interp *interp,
  			    const char *modeStringPtr, mode_t *modePtr);
@@ -357,7 +345,7 @@
  static int		GetUnixFileAttributes(Tcl_Interp *interp, int objIndex,
  			    Tcl_Obj *fileName, Tcl_Obj **attributePtrPtr);
  static int		SetUnixFileAttributes(Tcl_Interp *interp, int objIndex,
-@@ -124,20 +124,11 @@ extern const char *const tclpFileAttrStr
+@@ -124,20 +124,11 @@
  
  #else /* !DJGPP */
  enum {
@@ -379,7 +367,7 @@
  #ifdef MAC_OSX_TCL
      MACOSX_CREATOR_ATTRIBUTE, MACOSX_TYPE_ATTRIBUTE, MACOSX_HIDDEN_ATTRIBUTE,
      MACOSX_RSRCLENGTH_ATTRIBUTE,
-@@ -147,20 +138,11 @@ enum {
+@@ -147,20 +138,11 @@
  
  MODULE_SCOPE const char *const tclpFileAttrStrings[];
  const char *const tclpFileAttrStrings[] = {
@@ -401,7 +389,7 @@
  #ifdef MAC_OSX_TCL
      "-creator", "-type", "-hidden", "-rsrclength",
  #endif
-@@ -169,19 +151,10 @@ const char *const tclpFileAttrStrings[]
+@@ -169,19 +151,10 @@
  
  MODULE_SCOPE const TclFileAttrProcs tclpFileAttrProcs[];
  const TclFileAttrProcs tclpFileAttrProcs[] = {
@@ -422,7 +410,7 @@
      {GetUnixFileAttributes, SetUnixFileAttributes},
  #endif
  #ifdef MAC_OSX_TCL
-@@ -2275,7 +2248,7 @@ DefaultTempDir(void)
+@@ -2273,7 +2246,7 @@
      return TCL_TEMPORARY_FILE_DIRECTORY;
  }
  
@@ -433,16 +421,16 @@
  StatError(
 --- a/unix/tclUnixFile.c
 +++ b/unix/tclUnixFile.c
-@@ -40,7 +40,7 @@ TclpFindExecutable(
+@@ -39,7 +39,7 @@
+     const char *argv0)		/* The value of the application's argv[0]
  				 * (native). */
  {
-     Tcl_Encoding encoding;
 -#ifdef __CYGWIN__
 +#if 0
      int length;
      wchar_t buf[PATH_MAX] = L"";
      char name[PATH_MAX * 3 + 1];
-@@ -1186,7 +1186,7 @@ TclpUtime(
+@@ -1179,7 +1179,7 @@
      return utime((const char *)Tcl_FSGetNativePath(pathPtr), tval);
  }
  
@@ -462,7 +450,7 @@
  #ifdef __cplusplus
  extern "C" {
  #endif
-@@ -783,7 +783,7 @@ void
+@@ -787,7 +787,7 @@
  TclpSetVariables(
      Tcl_Interp *interp)
  {
@@ -471,7 +459,7 @@
      SYSTEM_INFO sysInfo;
      static OSVERSIONINFOW osInfo;
      static int osInfoInitialized = 0;
-@@ -880,7 +880,7 @@ TclpSetVariables(
+@@ -874,7 +874,7 @@
  #endif
  
      unameOK = 0;
@@ -482,9 +470,9 @@
  	void *handle = GetModuleHandleW(L"NTDLL");
 --- a/unix/tclUnixPort.h
 +++ b/unix/tclUnixPort.h
-@@ -118,8 +118,8 @@ extern "C" {
- #pragma clang diagnostic pop
- #endif
+@@ -111,8 +111,8 @@
+     __declspec(dllimport) extern int SetFileAttributesW(const WCHAR *, int);
+     __declspec(dllimport) extern int cygwin_conv_path(int, const void *, void *, int);
  #   define timezone _timezone
 -    extern int TclOSstat(const char *name, void *statBuf);
 -    extern int TclOSlstat(const char *name, void *statBuf);

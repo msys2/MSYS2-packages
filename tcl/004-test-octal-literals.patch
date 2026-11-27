@@ -1,15 +1,15 @@
 --- a/tests/chanio.test
 +++ b/tests/chanio.test
-@@ -5334,7 +5334,7 @@ test chan-io-40.1 {POSIX open access mod
+@@ -5348,7 +5348,7 @@
  test chan-io-40.2 {POSIX open access modes: CREAT} -setup {
      file delete $path(test3)
- } -constraints {unix} -body {
+ } -constraints {unix notWsl} -body {
 -    set f [open $path(test3) {WRONLY CREAT} 0o600]
 +    set f [open $path(test3) {WRONLY CREAT} 0o644]
      file stat $path(test3) stats
      set x [format 0o%03o [expr {$stats(mode) & 0o777}]]
      chan puts $f "line 1"
-@@ -5343,7 +5343,7 @@ test chan-io-40.2 {POSIX open access mod
+@@ -5357,7 +5357,7 @@
      lappend x [chan gets $f]
  } -cleanup {
      chan close $f
@@ -17,10 +17,10 @@
 +} -result {0o644 {line 1}}
  test chan-io-40.3 {POSIX open access modes: CREAT} -setup {
      file delete $path(test3)
- } -constraints {unix umask} -body {
+ } -constraints {unix umask notWsl} -body {
 --- a/tests/cmdAH.test
 +++ b/tests/cmdAH.test
-@@ -327,15 +327,15 @@ test cmdAH-8.14 {Tcl_FileObjCmd: dirname
+@@ -344,15 +344,15 @@
  test cmdAH-8.15 {Tcl_FileObjCmd: dirname} testsetplatform {
      testsetplatform unix
      file dirname //foo/bar
@@ -39,7 +39,7 @@
  test cmdAH-8.18 {Tcl_FileObjCmd: dirname} testsetplatform {
      testsetplatform unix
      file dirname /foo//
-@@ -471,7 +471,7 @@ test cmdAH-9.14 {Tcl_FileObjCmd: tail} t
+@@ -488,7 +488,7 @@
  test cmdAH-9.15 {Tcl_FileObjCmd: tail} testsetplatform {
      testsetplatform unix
      file tail //foo/bar
@@ -48,16 +48,16 @@
  test cmdAH-9.16 {Tcl_FileObjCmd: tail} testsetplatform {
      testsetplatform unix
      file tail {//foo\/bar/baz}
-@@ -1407,7 +1407,7 @@ test cmdAH-27.4.1 {
+@@ -1424,7 +1424,7 @@
  catch {testsetplatform $platform}
  removeFile $gorpfile
- set gorpfile [makeFile "Test string" gorp.file]
+ set gorpfile [makeFile "Test string" g\xF3rp.file]
 -catch {file attributes $gorpfile -permissions 0o765}
 +catch {file attributes $gorpfile -permissions 0o644}
  
  # stat
  test cmdAH-28.1 {Tcl_FileObjCmd: stat} -returnCodes error -body {
-@@ -1435,7 +1435,7 @@ test cmdAH-28.5 {Tcl_FileObjCmd: stat} -
+@@ -1452,7 +1452,7 @@
  } -body {
      file stat $gorpfile stat
      format 0o%03o [expr {$stat(mode) & 0o777}]
@@ -66,59 +66,3 @@
  test cmdAH-28.6 {Tcl_FileObjCmd: stat} {
      list [catch {file stat _bogus_ stat} msg] [string tolower $msg] $errorCode
  } {1 {could not read "_bogus_": no such file or directory} {POSIX ENOENT {no such file or directory}}}
---- a/tests/fCmd.test
-+++ b/tests/fCmd.test
-@@ -384,7 +384,7 @@ test fCmd-4.14 {TclFileMakeDirsCmd: Tclp
-     file delete -force foo
- } -constraints {unix notRoot} -body {
-     file mkdir foo
--    file attr foo -perm 040000
-+    file attr foo -perm 0o40000
-     file mkdir foo/tf1
- } -returnCodes error -cleanup {
-     file delete -force foo
-@@ -697,11 +697,11 @@ test fCmd-6.30 {CopyRenameOneFile: TclpR
-     cleanup $tmpspace
- } -constraints {unix notRoot} -body {
-     file mkdir foo/bar
--    file attr foo -perm 040555
-+    file attr foo -perm 0o40555
-     file rename foo/bar $tmpspace
- } -returnCodes error -cleanup {
-     catch {file delete [file join $tmpspace bar]}
--    catch {file attr foo -perm 040777}
-+    catch {file attr foo -perm 0o40777}
-     catch {file delete -force foo}
- } -match glob -result {*: permission denied}
- test fCmd-6.31 {CopyRenameOneFile: TclpDeleteFile passed} -setup {
-@@ -754,7 +754,7 @@ test fCmd-8.1 {FileBasename: basename of
-     -constraints {unix notRoot knownBug} -body {
-     # Labelled knownBug because it is dangerous [Bug: 3881]
-     file mkdir td1
--    file attr td1 -perm 040000
-+    file attr td1 -perm 0o40000
-     file rename ~$user td1
- } -returnCodes error -cleanup {
-     file delete -force td1
-@@ -773,7 +773,7 @@ test fCmd-9.1 {file rename: comprehensiv
- } -constraints {unix notRoot} -body {
-     file mkdir td1
-     file mkdir td2
--    file attr td2 -perm 040000
-+    file attr td2 -perm 0o40000
-     file rename td1 td2/
- } -returnCodes error -cleanup {
-     file delete -force td2
---- a/tests/tcltest.test
-+++ b/tests/tcltest.test
-@@ -716,8 +716,8 @@ test tcltest-8.60 {::workingDirectory}
- 
- switch -- $::tcl_platform(platform) {
-     unix {
--	file attributes $notReadableDir -permissions 777
--	file attributes $notWriteableDir -permissions 777
-+	file attributes $notReadableDir -permissions 0o777
-+	file attributes $notWriteableDir -permissions 0o777
-     }
-     default {
- 	catch {testchmod 0o777 $notWriteableDir}
