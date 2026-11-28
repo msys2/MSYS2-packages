@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Thu, 30 Jul 2026 23:44:40 +0530
+Subject: [PATCH 097/109] Cygwin: testsuite: XFAIL permission tests that fail
+ under MSYS2's noacl default
+
+MSYS2 mounts its filesystems with the "noacl" option by default (see the
+"- Move root to /usr. ... - By default mount without ACLs." patch), so POSIX
+permission bits are not backed by Windows ACLs and chmod()/umask() cannot
+enforce them; the mode is derived from the DOS read-only attribute only.
+Cygwin, in contrast, mounts with ACLs enabled by default, which is why the
+following LTP tests pass under Cygwin but fail under the MSYS2 runtime:
+
+  - access01, access05 - access() must reflect the mode set by chmod()
+  - chmod01            - chmod() must change the permission bits
+  - stat02             - st_mode must reflect chmod()
+  - umask03            - umask() must mask the mode of created files
+  - symlink03          - expects EACCES when the target directory is not
+                         writable
+
+These are expected platform differences, not runtime defects.
+
+Enabling ACLs is not a viable alternative, as confirmed in CI: mounting the
+test tree with the "acl" flag makes access01, access05, chmod01 and stat02
+pass, but it does NOT fix umask03 or symlink03, and it regresses the
+stat/fstat metadata tests (stat01, fstat02, fstat04), which then read
+ACL-derived ownership/mode values the tests do not expect. In other words,
+"acl" only trades one set of failures for another, while running a
+configuration MSYS2 does not use by default.
+
+(An earlier experiment also appeared to break the cygserver-backed System V
+IPC tests -- semtest, shmtest, msgtest -- under "acl". That turned out to be
+an unrelated cygserver startup race, not an ACL effect; it is fixed
+separately by waiting for cygserver before running the suite, and those
+tests pass under both noacl and acl.)
+
+Since noacl is the deliberate MSYS2 default and enabling ACLs does not make
+the suite pass, mark these tests XFAIL so the suite documents the expected
+difference from Cygwin instead of masking a regression.
+
+(cherry picked from commit d9ab7f46511d4066978c87622bf64ca32b76e89f)
+(cherry picked from commit b8704938f970d62b04c5a755b1d20361551ebd96)
+---
+ winsup/testsuite/Makefile.am | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/winsup/testsuite/Makefile.am b/winsup/testsuite/Makefile.am
+index 5f2cc1b4b..35dd3b987 100644
+--- a/winsup/testsuite/Makefile.am
++++ b/winsup/testsuite/Makefile.am
+@@ -336,9 +336,15 @@ TESTS = $(check_PROGRAMS) \
+ # The chmod/symlink entries are the subset of PR #344's XFAILs that also fail on
+ # aarch64-pc-msys; the others pass here and would XPASS if listed.
+ XFAIL_TESTS = \
++	winsup.api/ltp/access01 \
++	winsup.api/ltp/access05 \
++	winsup.api/ltp/chmod01 \
+ 	winsup.api/ltp/setgroups01 \
+ 	winsup.api/ltp/setuid02 \
++	winsup.api/ltp/stat02 \
++	winsup.api/ltp/symlink03 \
+ 	winsup.api/ltp/ulimit01 \
++	winsup.api/ltp/umask03 \
+ 	winsup.api/ltp/unlink08 \
+ 	winsup.api/ltp/umask03 \
+ 	winsup.api/ltp/stat02 \

@@ -1,0 +1,85 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Tue, 27 Oct 2026 15:00:00 +0530
+Subject: [PATCH 30/31] aarch64: mingw: do not report register copies and loads
+ as SEH saves
+
+aarch64_pe_seh_unwind_emit hands every insn up to the end of the
+prologue to seh_pattern_emit, not only the frame-related ones, and at
+-O2 the scheduler moves ordinary code in among the register saves.  Two
+cases of seh_pattern_emit then took that code for a save:
+
+- REG <- REG: "mov xN, sp" into a callee-saved register was emitted via
+  seh_emit_save (..., INTVAL (XEXP (src, 1))), but src is the REG
+  itself, so XEXP (src, 1) is garbage and cc1 crashed:
+
+    during RTL pass: final
+    internal compiler error: Segmentation fault
+      seh_pattern_emit  gcc/config/mingw/winnt.cc:1525
+
+  This is "mov x25, sp" taking the address of a local array, e.g. gawk's
+  gen-float-table.c or busybox at -O2 -fstack-protector-strong.
+
+- REG <- MEM: a load of a callee-saved register from [sp, #n] was
+  emitted as .seh_save_reg.  The assembler accepts it, so the unwind data
+  is silently wrong: sed's lib/quotearg.c at -O2 loads a stack-passed
+  argument with "ldr x26, [sp, 256]" in the prologue, and an unwind
+  through that frame restores the caller's x26 from the argument slot.
+
+Neither a register copy nor a load is a save.  Only the frame pointer
+setup (.seh_set_fp) is an unwind operation in the REG case; the MEM case
+goes away.
+
+Signed-off-by: aswin-mcw <aswin.kalies@multicorewareinc.com>
+---
+ gcc/config/mingw/winnt.cc | 24 ++++++++++++------------
+ 1 file changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/gcc/config/mingw/winnt.cc b/gcc/config/mingw/winnt.cc
+index c5302dd..4e88d54 100644
+--- a/gcc/config/mingw/winnt.cc
++++ b/gcc/config/mingw/winnt.cc
+@@ -1517,12 +1517,16 @@ seh_pattern_emit (FILE *f, struct seh_frame_state *seh, rtx pat)
+ 	    switch (GET_CODE (src))
+ 	      {
+ 	      case REG:
++		/* Only the frame pointer setup is an unwind operation here.
++		   Every insn up to the end of the prologue is looked at, not
++		   just frame-related ones, and the scheduler can move ordinary
++		   code in among the register saves, e.g. "mov x25, sp" taking
++		   the address of a local array.  That is not a register save
++		   and needs no directive; reading XEXP (src, 1) of the REG
++		   here crashed cc1.  */
+ 		if (dest == hard_frame_pointer_rtx
+ 		    && src == stack_pointer_rtx)
+ 		  fputs ("\t.seh_set_fp\n", f);
+-		else if (CALLEE_SAVED_REG_NUMBER (REGNO (dest))
+-			 && src == stack_pointer_rtx)
+-		  seh_emit_save (f, seh, dest, INTVAL (XEXP (src, 1)));
+ 		break;
+ 
+ 	      case PLUS:
+@@ -1548,15 +1552,11 @@ seh_pattern_emit (FILE *f, struct seh_frame_state *seh, rtx pat)
+ 		  stack_alloc = increment;
+ 		break;
+ 
+-	      case MEM:
+-		src = XEXP (src, 0);
+-		if (GET_CODE (src) == PLUS
+-		    && GET_CODE (XEXP (src, 0)) == REG
+-		    && CALLEE_SAVED_REG_NUMBER (REGNO (dest))
+-		    && XEXP (src, 0) == stack_pointer_rtx)
+-		  seh_emit_save (f, seh, dest, INTVAL (XEXP (src, 1)));
+-		break;
+-
++	      /* A load into a register is never a save.  In the prologue it
++		 is ordinary code the scheduler moved in, e.g. a stack-passed
++		 argument loaded into a callee-saved register; reporting it as
++		 a save would make the unwinder restore that register from the
++		 argument slot.  */
+ 	      default:
+ 		break;
+ 	      }
+-- 
+2.51.0
+

@@ -1,0 +1,36 @@
+From 58028b6b744ff6aa49c9097a52fb0ccbb5a48ff2 Mon Sep 17 00:00:00 2001
+From: =?utf8?q?M=C3=A1t=C3=A9=20Dimand?= <mate.dimand@arm.com>
+Date: Mon, 29 Jun 2026 14:47:59 +0200
+Subject: [PATCH] Cygwin: gendef: fixed AArch64 setjmp storing incorrect frame
+ pointer in jmpbuf
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf8
+Content-Transfer-Encoding: 8bit
+
+This bug caused testcase "mmaptest02" to not run properly, because of the
+exception handler not being ran at the last access violation, presumably
+due to the frame pointer being incorrect. Fixing this allows the process
+to end gracefully.
+
+Signed-off-by: MÃ¡tÃ© Dimand <mate.dimand@arm.com>
+---
+ winsup/cygwin/scripts/gendef | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index 233847e1a..5f25c543e 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -742,7 +742,8 @@ setjmp:
+ 	stp	x23, x24, [x0, #0x28]		// save x23, x24
+ 	stp	x25, x26, [x0, #0x38]		// save x25, x26
+ 	stp	x27, x28, [x0, #0x48]		// save x27, x28
+-	stp	x29, x30, [x0, #0x58]		// save x29 (FP) and x30 (LR)
++	ldr	x1, [sp]			// load the previous FP from the stack
++	stp	x1, x30, [x0, #0x58]		// save previous FP and x30 (LR)
+ 
+ 	add	x1, sp, #0x10			// get the old stack pointer
+ 	str	x1, [x0, #0x68]			// save SP
+-- 
+2.43.7
+

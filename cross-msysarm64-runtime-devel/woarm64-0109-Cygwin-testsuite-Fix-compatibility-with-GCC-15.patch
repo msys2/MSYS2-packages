@@ -1,0 +1,469 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 14:29:19 +0530
+Subject: [PATCH 109/109] Cygwin: testsuite: Fix compatibility with GCC
+ 15
+
+(cherry picked from commit 2daa0b7eefaa26f48d3a4160889f356dca3d4739)
+
+C23 (GCC 15 default) makes "void f();" mean "takes no arguments" rather
+than "unspecified", so the old-style LTP declarations no longer match the
+signal handler prototype:
+
+  alarm01.c:196: passing argument 2 of signal from incompatible pointer type
+    expected void (*)(int) but argument is of type void (*)(void)
+  alarm01.c:223: number of arguments does not match prototype
+
+Fixes 14 LTP sources.  Without it the testsuite does not compile.
+---
+ winsup/testsuite/winsup.api/ltp/alarm01.c  |  5 ++---
+ winsup/testsuite/winsup.api/ltp/alarm02.c  |  4 ++--
+ winsup/testsuite/winsup.api/ltp/alarm03.c  |  5 ++---
+ winsup/testsuite/winsup.api/ltp/exit02.c   |  2 +-
+ winsup/testsuite/winsup.api/ltp/fcntl07.c  |  2 +-
+ winsup/testsuite/winsup.api/ltp/fcntl07B.c |  2 +-
+ winsup/testsuite/winsup.api/ltp/kill02.c   | 18 ++++++++---------
+ winsup/testsuite/winsup.api/ltp/mmap05.c   |  2 +-
+ winsup/testsuite/winsup.api/ltp/munmap01.c |  4 ++--
+ winsup/testsuite/winsup.api/ltp/munmap02.c |  4 ++--
+ winsup/testsuite/winsup.api/ltp/pause01.c  |  4 ++--
+ winsup/testsuite/winsup.api/ltp/pipe01.c   |  2 +-
+ winsup/testsuite/winsup.api/ltp/signal03.c | 23 +++++++++-------------
+ winsup/testsuite/winsup.api/ltp/unlink08.c | 22 +++++++++------------
+ 14 files changed, 44 insertions(+), 55 deletions(-)
+
+diff --git a/winsup/testsuite/winsup.api/ltp/alarm01.c b/winsup/testsuite/winsup.api/ltp/alarm01.c
+index 187e488c9..2ee192991 100644
+--- a/winsup/testsuite/winsup.api/ltp/alarm01.c
++++ b/winsup/testsuite/winsup.api/ltp/alarm01.c
+@@ -188,7 +188,7 @@ main(int ac, char **av)
+ void 
+ setup()
+ {
+-    void trapper();
++    void trapper(int sig);
+ 
+     /* capture signals */
+     tst_sig(NOFORK, DEF_HANDLER, cleanup);
+@@ -218,8 +218,7 @@ cleanup()
+ }	/* End cleanup() */
+ 
+ void
+-trapper(sig)
+-int sig;
++trapper(int sig)
+ {
+    signal(SIGALRM, trapper);
+ }
+diff --git a/winsup/testsuite/winsup.api/ltp/alarm02.c b/winsup/testsuite/winsup.api/ltp/alarm02.c
+index 03a41b4f7..6ef75529e 100644
+--- a/winsup/testsuite/winsup.api/ltp/alarm02.c
++++ b/winsup/testsuite/winsup.api/ltp/alarm02.c
+@@ -99,7 +99,7 @@
+ 
+ void setup();
+ void cleanup(void) __attribute__((noreturn));
+-void alarm_received();
++void alarm_received(int sig);
+ 
+ 
+ 
+@@ -232,7 +232,7 @@ cleanup()
+     tst_exit();
+ }
+ 
+-void alarm_received()
++void alarm_received(int sig)
+ {
+   received_alarm = 1;
+ }
+diff --git a/winsup/testsuite/winsup.api/ltp/alarm03.c b/winsup/testsuite/winsup.api/ltp/alarm03.c
+index 871f6fabf..f7d0c1529 100644
+--- a/winsup/testsuite/winsup.api/ltp/alarm03.c
++++ b/winsup/testsuite/winsup.api/ltp/alarm03.c
+@@ -191,7 +191,7 @@ main(int ac, char **av)
+ void 
+ setup()
+ {
+-    void trapper();
++    void trapper(int sig);
+ 
+     /* capture signals */
+     tst_sig(FORK, DEF_HANDLER, cleanup);
+@@ -221,8 +221,7 @@ cleanup()
+ }	/* End cleanup() */
+ 
+ void
+-trapper(sig)
+-int sig;
++trapper(int sig)
+ {
+    signal(SIGALRM, trapper);
+ }
+diff --git a/winsup/testsuite/winsup.api/ltp/exit02.c b/winsup/testsuite/winsup.api/ltp/exit02.c
+index 1503106e9..b6c741ebf 100644
+--- a/winsup/testsuite/winsup.api/ltp/exit02.c
++++ b/winsup/testsuite/winsup.api/ltp/exit02.c
+@@ -45,6 +45,7 @@
+ #include <signal.h>
+ #include <fcntl.h>
+ #include <sys/wait.h>
++#include <string.h>
+ #include "test.h"
+ #include "usctest.h"
+ 
+@@ -69,7 +70,6 @@ main(int ac, char **av)
+ 	char wbuf[BUFSIZ], rbuf[BUFSIZ];
+ 	int len, rlen;
+ 	int rval = 0;
+-	char *strcpy();
+ 	int lc;				/* loop counter */
+ 	const char *msg;		/* message returned from parse_opts */
+ 
+diff --git a/winsup/testsuite/winsup.api/ltp/fcntl07.c b/winsup/testsuite/winsup.api/ltp/fcntl07.c
+index e0082df45..8d9387356 100644
+--- a/winsup/testsuite/winsup.api/ltp/fcntl07.c
++++ b/winsup/testsuite/winsup.api/ltp/fcntl07.c
+@@ -142,7 +142,7 @@
+ #include "usctest.h"
+ #include "search_path.h"
+ 
+-void setup();
++void setup(char *path);
+ void cleanup(void) __attribute__((noreturn));
+ void help();
+ 
+diff --git a/winsup/testsuite/winsup.api/ltp/fcntl07B.c b/winsup/testsuite/winsup.api/ltp/fcntl07B.c
+index db866fddd..3d61e4867 100644
+--- a/winsup/testsuite/winsup.api/ltp/fcntl07B.c
++++ b/winsup/testsuite/winsup.api/ltp/fcntl07B.c
+@@ -142,7 +142,7 @@
+ #include "usctest.h"
+ #include "search_path.h"
+ 
+-void setup();
++void setup(char *path);
+ void cleanup(void) __attribute__((noreturn));
+ void help();
+ 
+diff --git a/winsup/testsuite/winsup.api/ltp/kill02.c b/winsup/testsuite/winsup.api/ltp/kill02.c
+index eba47cc6a..d4af44afa 100644
+--- a/winsup/testsuite/winsup.api/ltp/kill02.c
++++ b/winsup/testsuite/winsup.api/ltp/kill02.c
+@@ -185,19 +185,19 @@ int alarm_flag = FALSE;		/*This flag indicates an alarm time out.			*/
+ char who_am_i = '0';		/*This indicates which process is which when using	*/
+ 				/*interrupt routine usr1_rout.				*/
+ 
+-void notify_timeout();		/*Signal handler that the parent enters if it times out	*/
++void notify_timeout(int sig);		/*Signal handler that the parent enters if it times out	*/
+ 				/*waiting for the child to indicate its set up status.	*/
+ void parent_rout();		/*This is the parents routine.				*/
+ void child1_rout();		/*This is child 1's routine.				*/
+ void child2_rout();		/*This is child 2's routine.				*/
+ void childA_rout();		/*This is child A's routine.				*/
+ void childB_rout();		/*This is child B's routine.				*/
+-void usr1_rout();		/*This routine is used by all children to indicate that	*/
++void usr1_rout(int sig);		/*This routine is used by all children to indicate that	*/
+ 				/*they have caught signal SIGUSR1.			*/
+ void par_kill();		/*This routine is called by the original parent to	*/
+ 				/*remove child 2 and to indicate to child 1 to 		*/
+ 				/*remove its children.					*/
+-void chld1_kill();		/*This routine is used by child 1 to remove itself and	*/
++void chld1_kill(int sig);		/*This routine is used by child 1 to remove itself and	*/
+ 				/*its children A and B.					*/
+ 
+ void setup();
+@@ -515,7 +515,7 @@ void child1_rout()
+    if (signal(SIGUSR2,chld1_kill) == SIG_ERR) {
+ 	tst_brkm(TBROK,NULL,"Could not set to catch the parents signal.");
+ 	(void) write(pipe1_fd[1],CHAR_SET_FAILED,1);
+-	(void) chld1_kill();
++	(void) chld1_kill(SIGUSR1);
+ 	exit(0);
+    }
+ 
+@@ -525,7 +525,7 @@ void child1_rout()
+    if (signal(SIGALRM,notify_timeout) == SIG_ERR) {
+ 	tst_brkm(TBROK,NULL,"Could not set to catch the childs time out alarm.");
+ 	(void) write(pipe1_fd[1],CHAR_SET_FAILED,1);
+-	(void) chld1_kill();
++	(void) chld1_kill(SIGUSR1);
+ 	exit(0);
+    }
+ 
+@@ -550,7 +550,7 @@ void child1_rout()
+    */
+    if (alarm_flag == TRUE) {
+ 	tst_brkm(TBROK,NULL,"The set up of the children failed by timing out.");
+-	(void) chld1_kill();
++	(void) chld1_kill(SIGUSR1);
+ 	(void) write(pipe1_fd[1],CHAR_SET_FAILED,1);
+ 	exit(0);
+    }
+@@ -740,7 +740,7 @@ setup()
+ /***********************************************************
+  *  This routine indicates that the process caught SIGUSR1.
+  **********************************************************/
+-void usr1_rout()
++void usr1_rout(int sig)
+ {
+ 	char mesg[MAXMESG];	/*Used to buffer messages for tst_res.	*/
+ 
+@@ -772,7 +772,7 @@ void usr1_rout()
+  *  which occurs when the child fails to notify the parent
+  *  the status of set up.
+  **********************************************************/
+-void notify_timeout()
++void notify_timeout(int sig)
+ {
+   alarm_flag = TRUE;
+ 
+@@ -810,7 +810,7 @@ void par_kill()
+  *  This routine is executed by child 1 when the parent tells it to
+  *  remove it's children and itself.
+  ********************************************************************/
+-void chld1_kill()
++void chld1_kill(int sig)
+ {
+ 	char mesg[MAXMESG];	/*Used to buffer messages for tst_resm.	*/
+ 
+diff --git a/winsup/testsuite/winsup.api/ltp/mmap05.c b/winsup/testsuite/winsup.api/ltp/mmap05.c
+index 600cd761e..23a658991 100644
+--- a/winsup/testsuite/winsup.api/ltp/mmap05.c
++++ b/winsup/testsuite/winsup.api/ltp/mmap05.c
+@@ -97,7 +97,7 @@ sigjmp_buf env;			/* environment for sigsetjmp/siglongjmp */
+ 
+ void setup();			/* Main setup function of test */
+ void cleanup(void) __attribute__((noreturn));			/* cleanup function for the test */
+-void sig_handler();		/* signal handler to catch SIGSEGV */
++void sig_handler(int sig);		/* signal handler to catch SIGSEGV */
+ 
+ int
+ main(int ac, char **av)
+diff --git a/winsup/testsuite/winsup.api/ltp/munmap01.c b/winsup/testsuite/winsup.api/ltp/munmap01.c
+index 0527201be..91e06c56d 100644
+--- a/winsup/testsuite/winsup.api/ltp/munmap01.c
++++ b/winsup/testsuite/winsup.api/ltp/munmap01.c
+@@ -88,7 +88,7 @@ unsigned int map_len;		/* length of the region to be mapped */
+ 
+ void setup();			/* Main setup function of test */
+ void cleanup(void);		/* cleanup function for the test */
+-void sig_handler();		/* signal catching function */
++void sig_handler(int sig);		/* signal catching function */
+ 
+ int
+ main(int ac, char **av)
+@@ -244,7 +244,7 @@ setup()
+  *   cleanup function and exit the program.
+  */
+ void
+-sig_handler()
++sig_handler(int sig)
+ {
+ 	tst_resm(TPASS, "Functionality of munmap() successful");
+ 
+diff --git a/winsup/testsuite/winsup.api/ltp/munmap02.c b/winsup/testsuite/winsup.api/ltp/munmap02.c
+index 7345e73e0..ddd9626e6 100644
+--- a/winsup/testsuite/winsup.api/ltp/munmap02.c
++++ b/winsup/testsuite/winsup.api/ltp/munmap02.c
+@@ -90,7 +90,7 @@ unsigned int map_len;		/* length of the region to be mapped */
+ 
+ void setup();			/* Main setup function of test */
+ void cleanup(void);		/* cleanup function for the test */
+-void sig_handler();		/* signal catching function */
++void sig_handler(int sig);		/* signal catching function */
+ 
+ int
+ main(int ac, char **av)
+@@ -255,7 +255,7 @@ setup()
+  *   cleanup function and exit the program.
+  */
+ void
+-sig_handler()
++sig_handler(int sig)
+ {
+ 	tst_resm(TPASS, "Functionality of munmap() successful");
+ 
+diff --git a/winsup/testsuite/winsup.api/ltp/pause01.c b/winsup/testsuite/winsup.api/ltp/pause01.c
+index 1c3b94607..fbdc0287e 100644
+--- a/winsup/testsuite/winsup.api/ltp/pause01.c
++++ b/winsup/testsuite/winsup.api/ltp/pause01.c
+@@ -124,7 +124,7 @@ int TST_TOTAL=1;    		/* Total number of test cases. */
+ extern int Tst_count;		/* Test Case counter for tst_* routines */
+ 
+ int exp_enos[]={EINTR, 0};
+-void go();
++void go(int sig);
+ 
+ int
+ main(int ac, char **av)
+@@ -224,6 +224,6 @@ cleanup()
+ 
+ /* routine to catch the alarm signal */
+ void
+-go()
++go(int sig)
+ {
+ }
+diff --git a/winsup/testsuite/winsup.api/ltp/pipe01.c b/winsup/testsuite/winsup.api/ltp/pipe01.c
+index cc01cc988..20350717b 100644
+--- a/winsup/testsuite/winsup.api/ltp/pipe01.c
++++ b/winsup/testsuite/winsup.api/ltp/pipe01.c
+@@ -44,6 +44,7 @@
+  *	NONE
+  */
+ #include <errno.h>
++#include <string.h>
+ #include "test.h"
+ #include "usctest.h"
+ 
+@@ -64,7 +65,6 @@ main(int ac, char **av)
+ 	char wrbuf[BUFSIZ], rebuf[BUFSIZ];
+ 	int red, written;		/* no. of chars read/written to pipe */
+ 	int greater, length;
+-	char *strcpy();
+ 
+ 	/* parse standard options */
+ 	if ((msg = parse_opts(ac, av, (option_t *)NULL, NULL)) != (char *)NULL){
+diff --git a/winsup/testsuite/winsup.api/ltp/signal03.c b/winsup/testsuite/winsup.api/ltp/signal03.c
+index 2a0923ca2..5a55ade2e 100644
+--- a/winsup/testsuite/winsup.api/ltp/signal03.c
++++ b/winsup/testsuite/winsup.api/ltp/signal03.c
+@@ -170,9 +170,9 @@
+ 
+ void setup();
+ void cleanup(void) __attribute__((noreturn));
+-void do_test();
++void do_test(int test_case, int Tst_count);
+ void sigdfl_test();
+-void update_timings();
++void update_timings(struct tblock atblock);
+ 
+ #if defined(linux)
+ # define SIG_PF sig_t  /* This might need to be sighandler_t on some systems */
+@@ -222,9 +222,7 @@ long Tret;
+  *   M A I N
+  ***********************************************************************/
+ int
+-main(argc, argv)
+-int argc;
+-char **argv;
++main(int argc, char *argv[])
+ {
+     int lc;
+     const char *msg;
+@@ -278,18 +276,16 @@ char **argv;
+  *
+  ***********************************************************************/
+ void
+-do_test(test_case, tst_count)
+-int test_case;
+-int tst_count;
++do_test(int test_case, int tst_count)
+ {
+   int term_stat;	/* Termination status of the child returned to	 */
+ 			/* the parent.					 */
+   char string[30];
+   int fd1[2];		/* ipc */
+   int rd_sz;		/* size of read */
+-  void p_timeout_handler();
++  void p_timeout_handler(int sig);
+   void c_timeout_handler();
+-  void catchsig();
++  void catchsig(int sig);
+ 
+   Tst_count = tst_count;
+ 
+@@ -620,7 +616,7 @@ cleanup()
+  *  call cleanup.
+  ***********************************************************************/
+ void
+-p_timeout_handler()
++p_timeout_handler(int sig)
+ {
+     kill(Pid, SIGKILL);
+     cleanup();
+@@ -643,7 +639,7 @@ c_timeout_handler()
+  * if called.
+  ***********************************************************************/
+ void
+-catchsig()
++catchsig(int sig)
+ {
+    exit_val = SIG_CAUGHT;
+    return;
+@@ -653,8 +649,7 @@ catchsig()
+  * Update timing information
+  ***********************************************************************/
+ void
+-update_timings(atblock)
+-struct tblock atblock;
++update_timings(struct tblock atblock)
+ {
+     tblock.tb_max += atblock.tb_max;
+     tblock.tb_min += atblock.tb_min;
+diff --git a/winsup/testsuite/winsup.api/ltp/unlink08.c b/winsup/testsuite/winsup.api/ltp/unlink08.c
+index e793b46f2..367b13d38 100644
+--- a/winsup/testsuite/winsup.api/ltp/unlink08.c
++++ b/winsup/testsuite/winsup.api/ltp/unlink08.c
+@@ -129,15 +129,15 @@ extern int Tst_count;		/* Test Case counter for tst_* routines */
+ 
+ int exp_enos[]={0, 0};
+ 
+-int unwrite_dir_setup();
+-int unsearch_dir_setup();
+-int dir_setup();
+-int no_setup();
++int unwrite_dir_setup(int flag);
++int unsearch_dir_setup(int flag);
++int dir_setup(int flag);
++int no_setup(int flag);
+ 
+ struct test_case_t {
+    const char *pathname;
+    const char *desc;
+-   int (*setupfunc)();
++   int (*setupfunc)(int flag);
+    int exp_ret;		/* -1 means error, 0 means != -1 */
+    int exp_errno;
+ } Test_cases[] = {
+@@ -306,8 +306,7 @@ cleanup()
+  *
+  ******************************************************************/
+ int
+-unwrite_dir_setup(flag)
+-int flag;
++unwrite_dir_setup(int flag)
+ {
+     int fd;
+ 
+@@ -358,8 +357,7 @@ int flag;
+  *
+  ******************************************************************/
+ int
+-unsearch_dir_setup(flag)
+-int flag;
++unsearch_dir_setup(int flag)
+ {
+     int fd;
+ 
+@@ -410,8 +408,7 @@ int flag;
+  *
+  ******************************************************************/
+ int
+-dir_setup(flag)
+-int flag;
++dir_setup(int flag)
+ {
+     if (mkdir("regdir", 0777) == -1 ) {
+ 	tst_brkm(TBROK, cleanup, 
+@@ -425,8 +422,7 @@ int flag;
+  *
+  ******************************************************************/
+ int
+-no_setup(flag)
+-int flag;
++no_setup(int flag)
+ {
+ 	return 0;
+ }

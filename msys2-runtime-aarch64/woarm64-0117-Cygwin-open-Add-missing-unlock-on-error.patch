@@ -1,0 +1,40 @@
+From d706206ffdd18ad91733fe003b6cf197ef15659b Mon Sep 17 00:00:00 2001
+From: Takashi Yano <takashi.yano@nifty.ne.jp>
+Date: Mon, 3 Aug 2026 12:11:20 +0900
+Subject: [PATCH 117/119] Cygwin: open: Add missing unlock on error
+
+the commit 524d75ff7398 ("Cygwin: open: Unlock fdtab before open_
+with_arch()") introduced a bug that fdtab lock was not unlocked
+when new fd cannot be allocated due to an error.
+
+This patch adds missing unlock for fdtab lock on error.
+
+Fixes: 524d75ff7398 ("Cygwin: open: Unlock fdtab before open_with_arch()")
+Suggested-by: Johannes Schindelin <Johannes.Schindelin@gmx.de>
+Signed-off-by: Takashi Yano <takashi.yano@nifty.ne.jp>
+Reviewed-by: Mark Geisert <mark@maxrnd.com>
+(cherry picked from commit 10d2abae386c8c5937b04d42e4cae862066347f7)
+(cherry picked from commit 5891530ed9278b8144fd225f907c638e027d8281)
+---
+ winsup/cygwin/syscalls.cc | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/winsup/cygwin/syscalls.cc b/winsup/cygwin/syscalls.cc
+index f04b7d344..8d56754ad 100644
+--- a/winsup/cygwin/syscalls.cc
++++ b/winsup/cygwin/syscalls.cc
+@@ -1554,7 +1554,10 @@ open (const char *unix_path, int flags, ...)
+       cygheap->fdtab.lock();
+       fd = cygheap->fdtab.find_unused_handle ();
+       if (fd < 0)
+-	__leave;		/* errno already set */
++	{
++	  cygheap->fdtab.unlock ();
++	  __leave;		/* errno already set */
++	}
+       cygheap->fdtab[fd] = fh; /* tentative setting to mark as used */
+       cygheap->fdtab.unlock();
+ 
+-- 
+2.51.0.windows.1
+

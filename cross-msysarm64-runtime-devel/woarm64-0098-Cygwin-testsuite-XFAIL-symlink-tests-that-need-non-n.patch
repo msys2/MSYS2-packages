@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Thu, 30 Jul 2026 23:45:00 +0530
+Subject: [PATCH 098/109] Cygwin: testsuite: XFAIL symlink tests that need
+ non-native symlink semantics
+
+The Cygwin testsuite runs with MSYS=winsymlinks:nativestrict so that symbolic
+links are created as genuine native NTFS symlinks; this lets the bulk of the
+symlink/readlink/lstat tests (lstat02, readlink01/02, symlink02/04) pass
+without Cygwin's ".lnk" or magic-file fallbacks. A native NTFS symlink must
+record at creation time whether its target is a file or a directory, so it
+cannot be created for a non-existing ("dangling") target. Two tests depend on
+exactly that and therefore fail:
+
+  - symlink05 - creates a symlink to a non-existing object name and expects
+                the call to succeed; nativestrict cannot create such a link.
+  - symlink01 - a combined SGI symlink-behaviour test whose setup creates
+                symlinks pointing at both real and non-existing ("(null)")
+                targets and verifies them with lstat().  The dangling entries
+                cannot be created under nativestrict, so the setup aborts with
+                "Test Case Declaration Error" / lstat failures (BROK).  (Its
+                ELOOP / over-long-pathname case itself passes.)
+
+Both fail for a fundamental Win32 reason under nativestrict, not a runtime
+defect.  The non-native link modes (winsymlinks:lnk / :sys) would let them
+pass but would regress the many tests that rely on native symlink semantics,
+so nativestrict remains the correct default.  Mark these two tests XFAIL.
+
+(cherry picked from commit 1d35a896d4755ea84c507cc595f41431f3509b5f)
+(cherry picked from commit b3495d380711ddaaae5f90ac90ba21966c119b29)
+---
+ winsup/testsuite/Makefile.am | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/winsup/testsuite/Makefile.am b/winsup/testsuite/Makefile.am
+index 35dd3b987..eaaa055ec 100644
+--- a/winsup/testsuite/Makefile.am
++++ b/winsup/testsuite/Makefile.am
+@@ -342,7 +342,9 @@ XFAIL_TESTS = \
+ 	winsup.api/ltp/setgroups01 \
+ 	winsup.api/ltp/setuid02 \
+ 	winsup.api/ltp/stat02 \
++	winsup.api/ltp/symlink01 \
+ 	winsup.api/ltp/symlink03 \
++	winsup.api/ltp/symlink05 \
+ 	winsup.api/ltp/ulimit01 \
+ 	winsup.api/ltp/umask03 \
+ 	winsup.api/ltp/unlink08 \

@@ -1,0 +1,62 @@
+From 9a766fd000d80716cc87efcb4f789a3d932ce52f Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Fri, 16 Oct 2026 11:05:47 +0530
+Subject: [PATCH 11/11] ld: pe-dll: filter runtime symbols from AArch64
+ --export-all-symbols
+
+The AArch64 PE targets used autofilter_symbollist_generic, which only
+excludes DllMain and the pseudo-reloc helpers.  A DLL linked with
+--export-all-symbols (libtool's default on Cygwin) therefore re-exported
+the C runtime's entry points and hooks and its global variables:
+
+  cygwin_premain0 .. cygwin_premain3, _fmode, __dso_handle, ...
+
+On aarch64-pc-cygwin this makes the import library of such a DLL
+(e.g. ncurses) define cygwin_premain0, which then collides with any
+object that legitimately provides it:
+
+  ld: textreadmode.o: multiple definition of `cygwin_premain0'
+
+Use the same list as the x86 targets; with pe_use_plus it contains no
+stdcall-decorated names, so it applies unchanged to AArch64.
+
+Signed-off-by: aswin-mcw <aswin.kalies@multicorewareinc.com>
+---
+ ld/pe-dll.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/ld/pe-dll.c b/ld/pe-dll.c
+index 3bde5f6131f..e4f60ef6680 100644
+--- a/ld/pe-dll.c
++++ b/ld/pe-dll.c
+@@ -210,6 +210,9 @@ static const autofilter_entry_type autofilter_symbollist_generic[] =
+   { NULL, 0 }
+ };
+ 
++/* Used by the x86 and AArch64 PE targets, for both Cygwin and MinGW: with
++   --export-all-symbols a DLL must not re-export the C runtime's entry
++   points and hooks (cygwin_premain0-3 & co.) or its global variables.  */
+ static const autofilter_entry_type autofilter_symbollist_i386[] =
+ {
+   { STRING_COMMA_LEN ("_NULL_IMPORT_DESCRIPTOR") },
+@@ -374,7 +377,7 @@ static pe_details_type pe_detail_list[] =
+     PE_ARCH_aarch64,
+     bfd_arch_aarch64,
+     false,
+-    autofilter_symbollist_generic
++    autofilter_symbollist_i386
+   },
+   {
+     "pei-aarch64-little",
+@@ -386,7 +389,7 @@ static pe_details_type pe_detail_list[] =
+     PE_ARCH_aarch64,
+     bfd_arch_aarch64,
+     false,
+-    autofilter_symbollist_generic
++    autofilter_symbollist_i386
+   },
+   { NULL, NULL, 0, 0, 0, 0, 0, 0, false, NULL }
+ };
+-- 
+2.51.0.windows.1
+

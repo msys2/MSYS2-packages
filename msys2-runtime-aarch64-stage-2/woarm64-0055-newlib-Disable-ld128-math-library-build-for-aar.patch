@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:14:34 +0530
+Subject: [PATCH 055/109] newlib: Disable ld128 math library build for
+ aarch64 Windows
+
+(cherry picked from commit 9d4da8898bfc85943a63fd9924f4f818e1701bb3)
+---
+ newlib/configure         |  8 ++++++++
+ newlib/libc/acinclude.m4 | 11 ++++++++++-
+ newlib/libm/Makefile.inc |  2 ++
+ 3 files changed, 20 insertions(+), 1 deletion(-)
+
+diff --git a/newlib/configure b/newlib/configure
+index 33a2ed1c5..6d1fd4ed9 100755
+--- a/newlib/configure
++++ b/newlib/configure
+@@ -6198,6 +6198,14 @@ else
+ fi
+ 
+ 
++ case $host in
++  aarch64-*-mingw* | aarch64-*-cygwin*)
++    IS_AARCH64_WINDOWS=yes ;;
++  *)
++    IS_AARCH64_WINDOWS=no ;;
++esac
++
++
+  if test -r "${srcdir}/libc/machine/${machine_dir}/machine/_fpmath.h"; then
+   HAVE_FPMATH_H_TRUE=
+   HAVE_FPMATH_H_FALSE='#'
+diff --git a/newlib/libc/acinclude.m4 b/newlib/libc/acinclude.m4
+index 52a6c57cf..a1040386b 100644
+--- a/newlib/libc/acinclude.m4
++++ b/newlib/libc/acinclude.m4
+@@ -63,7 +63,16 @@ m4_foreach_w([MACHINE], [
+   z8k
+ ], [AM_CONDITIONAL([HAVE_LIBC_MACHINE_]m4_toupper(MACHINE), test "${machine_dir}" = MACHINE)])
+ 
+-AM_CONDITIONAL(HAVE_FPMATH_H, test -r "${srcdir}/libc/machine/${machine_dir}/machine/_fpmath.h")
++case $host in
++  aarch64-*-cygwin* | aarch64-*-mingw*)
++    IS_AARCH64_WINDOWS=yes ;;
++  *)
++    IS_AARCH64_WINDOWS=no ;;
++esac
++
++AM_CONDITIONAL([HAVE_FPMATH_H],
++  [test -r "${srcdir}/libc/machine/${machine_dir}/machine/_fpmath.h" &&
++   test "$IS_AARCH64_WINDOWS" = no])
+ 
+ 
+ AM_CONDITIONAL(MACH_ADD_SETJMP, test "x$mach_add_setjmp" = "xtrue")
+diff --git a/newlib/libm/Makefile.inc b/newlib/libm/Makefile.inc
+index bf31b1be7..a0147f0a2 100644
+--- a/newlib/libm/Makefile.inc
++++ b/newlib/libm/Makefile.inc
+@@ -55,8 +55,10 @@ include %D%/test/Makefile.inc
+ 
+ if HAVE_LIBM_MACHINE_AARCH64
+ include %D%/machine/aarch64/Makefile.inc
++if HAVE_FPMATH_H
+ include %D%/ld128/Makefile.inc
+ endif
++endif
+ if HAVE_LIBM_MACHINE_AMDGCN
+ include %D%/machine/amdgcn/Makefile.inc
+ endif

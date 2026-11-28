@@ -1,0 +1,52 @@
+From 72949ea444315e47e161e73f20d398e50b331f44 Mon Sep 17 00:00:00 2001
+From: Mayank Agrawal <mayagr@qti.qualcomm.com>
+Date: Fri, 18 Sep 2026 12:24:05 +0530
+Subject: [PATCH] Cygwin: gendef: fix AArch64 stabilize_sig_stack lock retry
+
+The retry label sat below the code that computes the stacklock address
+and the "locked" constant, so those were set up once on entry and not
+recomputed.  The signal-handler path below branches back to the label
+after using x9 and x12 for the incyg counter, so a retry could operate
+on incyg rather than stacklock, or spin.
+
+Move the label above the setup so both are recomputed on every
+iteration, and clear the exclusive monitor before yielding on
+contention.
+
+Fixes: 5effc7a9bff3 ("Cygwin: gendef: Implement stabilize_sig_stack for aarch64")
+Signed-off-by: Aswin Kalies <aswin.kalies@multicorewareinc.com>
+---
+ winsup/cygwin/scripts/gendef | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/scripts/gendef b/winsup/cygwin/scripts/gendef
+index ce56e5fc8..9f631dea4 100755
+--- a/winsup/cygwin/scripts/gendef
++++ b/winsup/cygwin/scripts/gendef
+@@ -502,11 +502,13 @@ stabilize_sig_stack:
+ 
+ 	ldr	x10, [x18, #0x8]		// load TLS block base pointer into x10
+ 
+-	// try to acquire the lock
++	// try to acquire the lock.  The address and the "locked" constant are
++	// recomputed on every iteration: the signal-handler path below branches
++	// back here after using x9/x12 for the incyg counter.
++1:
+ 	mov	w9, #1				// value to store (1 == locked)
+ 	ldr	x11, =_cygtls.stacklock		// load the symbol offset
+ 	add	x12, x10, x11			// x12 = tls_base + &stacklock
+-1:
+ 	ldaxr	w13, [x12]			// load old lock value
+ 	cbnz	w13, 2f				// if already locked, wait
+ 	stxr	w14, w9, [x12]			// attempt to acquire the lock
+@@ -514,6 +516,7 @@ stabilize_sig_stack:
+ 	b	3f				// lock acquired, continue
+ 
+ 2:
++	clrex					// drop the exclusive monitor
+ 	yield					// yield to allow other threads to run
+ 	b	1b				// retry acquiring the lock
+ 
+-- 
+2.43.7
+

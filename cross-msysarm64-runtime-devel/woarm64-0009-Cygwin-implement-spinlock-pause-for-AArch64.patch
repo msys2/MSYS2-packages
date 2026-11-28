@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: aswin-mcw <aswin.kalies@multicorewareinc.com>
+Date: Wed, 9 Sep 2026 13:13:44 +0530
+Subject: [PATCH 009/109] Cygwin: implement spinlock pause for AArch64
+
+(cherry picked from commit ba9745f09650a2e2e69b8f90d6a9bf645490842b)
+---
+ winsup/cygwin/local_includes/cygtls.h           | 5 ++++-
+ winsup/cygwin/thread.cc                         | 5 +++++
+ winsup/testsuite/winsup.api/pthread/cpu_relax.h | 3 ++-
+ 3 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/winsup/cygwin/local_includes/cygtls.h b/winsup/cygwin/local_includes/cygtls.h
+index 786e39536..9f83c134c 100644
+--- a/winsup/cygwin/local_includes/cygtls.h
++++ b/winsup/cygwin/local_includes/cygtls.h
+@@ -244,8 +244,11 @@ public: /* Do NOT remove this public: line, it's a marker for gentls_offsets. */
+   {
+     while (InterlockedExchange (&stacklock, 1))
+       {
+-#ifdef __x86_64__
++#if defined(__x86_64__)
+ 	__asm__ ("pause");
++#elif defined(__aarch64__)
++	__asm__ ("dmb ishst\n"
++                 "yield");
+ #else
+ #error unimplemented for this target
+ #endif
+diff --git a/winsup/cygwin/thread.cc b/winsup/cygwin/thread.cc
+index d410b9575..493c98c0e 100644
+--- a/winsup/cygwin/thread.cc
++++ b/winsup/cygwin/thread.cc
+@@ -1966,7 +1966,12 @@ pthread_spinlock::lock ()
+       else if (spins < FAST_SPINS_LIMIT)
+         {
+           ++spins;
++#if defined(__x86_64__)
+           __asm__ volatile ("pause":::);
++#elif defined(__aarch64__)
++          __asm__ volatile ("dmb ishst\n"
++                            "yield":::);
++#endif
+         }
+       else
+ 	{
+diff --git a/winsup/testsuite/winsup.api/pthread/cpu_relax.h b/winsup/testsuite/winsup.api/pthread/cpu_relax.h
+index 1936dc5f4..71cec0b2b 100644
+--- a/winsup/testsuite/winsup.api/pthread/cpu_relax.h
++++ b/winsup/testsuite/winsup.api/pthread/cpu_relax.h
+@@ -4,7 +4,8 @@
+ #if defined(__x86_64__) || defined(__i386__)  // Check for x86 architectures
+    #define CPU_RELAX() __asm__ volatile ("pause" :::)
+ #elif defined(__aarch64__) || defined(__arm__)  // Check for ARM architectures
+-   #define CPU_RELAX() __asm__ volatile ("yield" :::)
++   #define CPU_RELAX() __asm__ volatile ("dmb ishst \
++                                          yield" :::)
+ #else
+    #error unimplemented for this target
+ #endif
